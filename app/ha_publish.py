@@ -115,7 +115,9 @@ def trains_device(boards: list[tuple[dict[str, Any], dict[str, Any]]]) -> Device
     return Device("trains", "Trains and buses", sensors)
 
 
-def roads_device(status: dict[str, Any]) -> Device:
+def roads_device(status: dict[str, Any], events: list[dict[str, Any]] | None = None) -> Device:
+    """Corridor counts, plus every live closure and speed restriction nationwide in map tiles
+    (with positions) so Home Assistant can show the ones near its own zones."""
     corridors = [c for c in status.get("corridors") or [] if c.get("enabled", True)]
     sensors = [
         Sensor(f"corridor_{slug(str(c.get('id')))}", f"{c.get('name') or c.get('id')}: active works",
@@ -126,6 +128,17 @@ def roads_device(status: dict[str, Any]) -> Device:
     live = sum(int(r.get("n") or 0) for r in status.get("events_live") or [])
     sensors.append(Sensor("live_events", "Live road events", live, icon="mdi:traffic-cone",
                           state_class="measurement"))  # fmt: skip
+    tiles: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    for e in events or []:
+        if e.get("lat") is not None and e.get("lon") is not None:
+            tiles.setdefault(_tile(e["lat"], e["lon"]), []).append(e)
+    for (ti, tj), rows in sorted(tiles.items()):
+        sensors.append(Sensor(
+            f"tile_{ti}_{tj}".replace("-", "m"), f"Road events tile {ti}/{tj}", len(rows),
+            icon="mdi:map-marker-alert", state_class="measurement",
+            attributes={"lat_from": ti * TILE_DEG, "lon_from": tj * TILE_DEG, "size_deg": TILE_DEG,
+                        "events": rows},
+        ))  # fmt: skip
     return Device("roads", "Roads", sensors)
 
 
@@ -185,7 +198,13 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
         return trains_device(pairs)
 
     async def roads() -> Device:
-        return roads_device(await _get(c, "/v1/status"))
+        status = await _get(c, "/v1/status")
+        try:
+            events = (await _get(c, "/v1/status/events/map"))["events"]
+        except httpx.HTTPError as exc:  # the counts are still worth publishing
+            log.info("home assistant: road event positions skipped (%s)", type(exc).__name__)
+            events = []
+        return roads_device(status, events)
 
     jobs = [("fuel", fuel), ("trains", trains), ("roads", roads)]
     for pl in places:

@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [Unreleased]
 
 ### Added
+- Road closures and speed restrictions in Home Assistant. The worker publishes every live National Highways event nationwide, with positions, in map tiles, and the roads dashboard lists the closures and speed restrictions near Home Assistant's own `zone.home` (changeable at the top of each card). New `GET /v1/status/events/map` (unplanned events, and planned works starting within `planned_days`, default 7).
+
+### Added
 - Ready-made Home Assistant dashboards, one per data source (pollen, fuel, trains and buses, roads, events) in `homeassistant/dashboards/`, using only built-in cards. See docs/home-assistant.md.
 
 ### Fixed
