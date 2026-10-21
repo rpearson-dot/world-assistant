@@ -12,6 +12,7 @@ answer into sensors (app/ha.py) and sends them over MQTT. One domain failing nev
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import math
 import statistics
@@ -31,6 +32,23 @@ FUEL_NAMES = {"E10": "Petrol (E10)", "B7_STANDARD": "Diesel"}
 
 
 TILE_DEG = 0.5  # fuel stations are grouped into tiles of this size so each sensor stays small
+
+
+MAX_ATTR_BYTES = 12000  # Home Assistant's recorder drops attributes over 16384 bytes; stay well under
+
+
+def _chunks(rows: list[dict[str, Any]], limit: int = MAX_ATTR_BYTES) -> list[list[dict[str, Any]]]:
+    """Split a tile's rows so each part's JSON stays under `limit` bytes (one part when it already does)."""
+    out: list[list[dict[str, Any]]] = [[]]
+    size = 0
+    for r in rows:
+        n = len(json.dumps(r, default=str)) + 2
+        if out[-1] and size + n > limit:
+            out.append([])
+            size = 0
+        out[-1].append(r)
+        size += n
+    return out
 
 
 def _tile(lat: float, lon: float) -> tuple[int, int]:
@@ -58,12 +76,14 @@ def fuel_device(results: dict[str, list[dict[str, Any]]]) -> Device:
             tiles.setdefault(_tile(st["lat"], st["lon"]), []).append(st)
         for (ti, tj), rows in sorted(tiles.items()):
             rows.sort(key=lambda r: r["pence"])
-            sensors.append(Sensor(
-                f"tile_{slug(fuel)}_{ti}_{tj}".replace("-", "m"), f"{label} tile {ti}/{tj}", len(rows),
-                icon="mdi:map-marker-radius", state_class="measurement",
-                attributes={"fuel": fuel, "lat_from": ti * TILE_DEG, "lon_from": tj * TILE_DEG,
-                            "size_deg": TILE_DEG, "stations": rows},
-            ))  # fmt: skip
+            for part, chunk in enumerate(_chunks(rows)):
+                sensors.append(Sensor(
+                    f"tile_{slug(fuel)}_{ti}_{tj}".replace("-", "m") + (f"_p{part + 1}" if part else ""),
+                    f"{label} tile {ti}/{tj}" + (f" part {part + 1}" if part else ""), len(chunk),
+                    icon="mdi:map-marker-radius", state_class="measurement",
+                    attributes={"fuel": fuel, "lat_from": ti * TILE_DEG, "lon_from": tj * TILE_DEG,
+                                "size_deg": TILE_DEG, "stations": chunk},
+                ))  # fmt: skip
     return Device("fuel", "Fuel prices", sensors)
 
 
@@ -183,12 +203,14 @@ def roads_device(status: dict[str, Any], events: list[dict[str, Any]] | None = N
         if e.get("lat") is not None and e.get("lon") is not None:
             tiles.setdefault(_tile(e["lat"], e["lon"]), []).append(e)
     for (ti, tj), rows in sorted(tiles.items()):
-        sensors.append(Sensor(
-            f"tile_{ti}_{tj}".replace("-", "m"), f"Road events tile {ti}/{tj}", len(rows),
-            icon="mdi:map-marker-alert", state_class="measurement",
-            attributes={"lat_from": ti * TILE_DEG, "lon_from": tj * TILE_DEG, "size_deg": TILE_DEG,
-                        "events": rows},
-        ))  # fmt: skip
+        for part, chunk in enumerate(_chunks(rows)):
+            sensors.append(Sensor(
+                f"tile_{ti}_{tj}".replace("-", "m") + (f"_p{part + 1}" if part else ""),
+                f"Road events tile {ti}/{tj}" + (f" part {part + 1}" if part else ""), len(chunk),
+                icon="mdi:map-marker-alert", state_class="measurement",
+                attributes={"lat_from": ti * TILE_DEG, "lon_from": tj * TILE_DEG, "size_deg": TILE_DEG,
+                            "events": chunk},
+            ))  # fmt: skip
     return Device("roads", "Roads", sensors)
 
 

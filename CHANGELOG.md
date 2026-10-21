@@ -10,6 +10,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ### Added
 - Icons in Unraid's Docker tab: a simple green earth with a USB cable hanging off it, and a coloured band naming each supporting container's role (worker, database, cache, routing, vault). The compose files carry the `net.unraid.docker.icon` labels, the api also gets a `net.unraid.docker.webui` link to `/status`, and the icons are served by the api at `/icons/<name>.png` without a token. Sources in `deploy/unraid/`.
 
+### Fixed
+- Home Assistant no longer loses the attributes of busy fuel and road-event map tiles. A tile whose
+  data would pass the recorder's 16 KB limit is now split across several sensors (`…_p2`, `…_p3`);
+  the dashboards read them all.
+- The events package survives the home zone not being loaded at start-up (it asked with an empty
+  location and stayed empty for an hour). It now re-checks a minute after start-up, and a failed
+  request shows as unknown instead of 0.
+
+
 ## [0.7.4] - 2026-10-21
 
 ### Removed

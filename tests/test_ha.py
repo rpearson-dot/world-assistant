@@ -195,3 +195,24 @@ def test_pollen_points_are_mappable_sensors() -> None:
     assert s.state == 4 and s.attributes["latitude"] == 52.25 and s.attributes["longitude"] == -1.75
     assert s.attributes["Grasses"] == "high, high" and s.attributes["Birch"] == "low, moderate"
     assert list(s.attributes).index("Grasses") < list(s.attributes).index("Birch")  # worst first
+
+
+def test_an_oversized_tile_is_split_so_attributes_stay_under_the_recorder_limit() -> None:
+    import json
+
+    events = [
+        {"id": str(i), "kind": "roadworks", "detail": "x" * 400, "roads": ["M6"], "lat": 54.6, "lon": -3.2, "pts": [[54.6, -3.2]] * 6}
+        for i in range(80)
+    ]
+    d = ha_publish.roads_device({"corridors": []}, events)
+    tiles = [s for s in d.sensors if s.key.startswith("tile_")]
+    assert len(tiles) > 1 and "_p" not in tiles[0].key and tiles[1].key.endswith("_p2")
+    assert sum(t.state for t in tiles) == 80
+    assert all(len(json.dumps(t.attributes)) < 16384 for t in tiles)
+    stations = [
+        {"lat": 51.5, "lon": -0.1, "pence": 140 + i % 9, "name": "S" * 40, "brand": "B" * 20, "postcode": "SW1A 1AA"}
+        for i in range(400)
+    ]
+    fuel = [s for s in ha_publish.fuel_device({"e10": stations}).sensors if s.key.startswith("tile_e10_")]
+    assert len(fuel) > 1 and sum(s.state for s in fuel) == 400
+    assert all(len(json.dumps(s.attributes)) < 16384 for s in fuel)
