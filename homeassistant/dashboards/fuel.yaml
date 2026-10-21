@@ -10,7 +10,7 @@ views:
       - type: markdown
         title: Cheapest petrol (E10) near you
         content: |
-          {% set zone = 'zone.home' %}{% set radius_km = 5 %}{% set fuel = 'e10' %}
+          {% set zone = 'zone.home' %}{% set radius_km = 10 %}{% set fuel = 'e10' %}
           {% set me = states.person | selectattr('name', 'eq', user) | list %}{% set p = me[0] if me else none %}{% set away = p is not none and p.state not in ['home', 'unknown', 'unavailable'] and p.attributes.latitude is defined and p.attributes.latitude is not none and (p.attributes.gps_accuracy | default(0) | float(0)) <= 1000 %}{% set z = p if away else states[zone] %}{% set where = 'your location' if away else z.name %}
           {% set ns = namespace(r=[]) %}
           {% for t in states.sensor if t.entity_id.startswith('sensor.wa_fuel_tile_' ~ fuel ~ '_') %}{% for s in t.attributes.stations | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, s.lat, s.lon) %}{% if d is not none and d < radius_km %}{% set ns.r = ns.r + [[s.pence, s.name, s.brand, s.postcode, d]] %}{% endif %}{% endfor %}{% endfor %}
@@ -23,7 +23,7 @@ views:
       - type: markdown
         title: Cheapest diesel near you
         content: |
-          {% set zone = 'zone.home' %}{% set radius_km = 5 %}{% set fuel = 'b7_standard' %}
+          {% set zone = 'zone.home' %}{% set radius_km = 10 %}{% set fuel = 'b7_standard' %}
           {% set me = states.person | selectattr('name', 'eq', user) | list %}{% set p = me[0] if me else none %}{% set away = p is not none and p.state not in ['home', 'unknown', 'unavailable'] and p.attributes.latitude is defined and p.attributes.latitude is not none and (p.attributes.gps_accuracy | default(0) | float(0)) <= 1000 %}{% set z = p if away else states[zone] %}{% set where = 'your location' if away else z.name %}
           {% set ns = namespace(r=[]) %}
           {% for t in states.sensor if t.entity_id.startswith('sensor.wa_fuel_tile_' ~ fuel ~ '_') %}{% for s in t.attributes.stations | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, s.lat, s.lon) %}{% if d is not none and d < radius_km %}{% set ns.r = ns.r + [[s.pence, s.name, s.brand, s.postcode, d]] %}{% endif %}{% endfor %}{% endfor %}
