@@ -246,3 +246,40 @@ def test_turnaround_at_a_place_is_captured_once() -> None:
 def test_bus_page_is_served_without_a_token() -> None:
     r = TestClient(app).get("/bus")
     assert r.status_code == 200 and "Buses" in r.text and "innerHTML" not in r.text
+
+
+@pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
+async def test_backfill_records_a_missed_run_once_from_the_stored_state(
+    schema: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sqlalchemy import text
+
+    from app.integrations.bus import poller, store
+    from app.integrations.bus.backfill import backfill
+
+    engine = create_async_engine(URL)  # type: ignore[arg-type]
+    try:
+        async with engine.begin() as conn:
+            await store.upsert_tracker(conn, "main", cfg_dict(), True)
+        monkeypatch.setattr(poller, "compute_hits", lambda *a, **k: [])  # as if live matching had missed the bus
+        client = _FakeClient()
+        now = _FakeClient.board - 600
+        while now <= _FakeClient.board + 1500:
+            client.now = now
+            async with engine.connect() as conn:
+                row = await store.get_tracker(conn, "main")
+            assert row
+            await poll_one(engine, client, row, now)  # type: ignore[arg-type]
+            now += 30
+        async with engine.connect() as conn:
+            assert (await conn.execute(text("SELECT count(*) FROM bus_target_hit"))).scalar_one() == 0
+        monkeypatch.undo()
+        out = await backfill(engine, "main", DAY, now=_FakeClient.board + 2000)
+        assert out["ok"] is True and out["found"] == 1 and out["buses"][0]["vehicle"] == "V9" and out["buses"][0]["slot"] == "07:30"
+        again = await backfill(engine, "main", DAY, now=_FakeClient.board + 2000)
+        assert again["found"] == 1  # it finds it again, but...
+        async with engine.connect() as conn:
+            assert (await conn.execute(text("SELECT count(*) FROM bus_target_hit"))).scalar_one() == 1  # ...saves it once
+        assert (await backfill(engine, "nope", DAY))["ok"] is False
+    finally:
+        await engine.dispose()

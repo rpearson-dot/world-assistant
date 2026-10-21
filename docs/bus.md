@@ -46,6 +46,7 @@ Find stop ids with `GET /v1/tfl/stations?q=...&modes=bus`. Keep your own config 
   strict rule.
 * **`show_until`** (default `08:00`, top level): after this time of day on a weekday the chance of making
   the deadline is no longer shown (nothing leaving later could make it), and at weekends it is never shown.
+* **`direction`** is only a note of which way the route runs at set-up; matching does not use it, because stops are specific to one side of the road.
 * **`place`**: stops with the same place name are the same place on opposite sides. A bus seen at
   both one after the other has turned round there; this is stored as a `turnaround` anomaly with
   both times and the gap.
@@ -66,6 +67,14 @@ Open `/bus` in a browser for all of this on one page (token typed in, as on `/fu
 | `/v1/bus/trackers/{id}/anomalies` | trip starts, reverse moves, turnarounds |
 
 Polling runs every 30 s inside the poll window (`WA_BUS_POLL_ENABLED`, `WA_LOCAL_TZ`).
+
+## Backfilling a missed day
+
+If the live matching missed a day (it did, once: see the changelog), run
+`docker compose exec worker python -m app.integrations.bus.backfill <tracker> [YYYY-MM-DD]`. It works out
+which of the buses the tracker still remembers (its last 40 trips) reached the target in time, using the
+same rule, and saves the ones not already saved. Do it the same day: older trips are pushed out of
+memory by newer ones. Repeating it is harmless.
 
 ## Changing the times
 
