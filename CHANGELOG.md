@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- Home Assistant sensors over MQTT discovery for pollen, fuel prices, train and bus departures, road works and nearby events. The worker reads the service's own API every `WA_HA_INTERVAL_MIN` minutes (default 5) and publishes retained sensors that go `unavailable` if the worker stops. `WA_HA_PUBLISH=false` turns them off. See docs/home-assistant.md.
+
 ## [0.6.1] - 2026-10-21
 
 ### Fixed

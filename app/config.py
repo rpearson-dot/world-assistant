@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     mqtt_enabled: bool = True
     mqtt_topic_prefix: str = "world_assistant"
     mqtt_discovery_prefix: str = "homeassistant"
+    # Home Assistant sensors: the worker reads this API and publishes the results over MQTT.
+    ha_publish: bool = True
+    ha_api_url: str = "http://api:8000"
+    ha_interval_min: int = 5
 
     # National Highways allows 10 calls per subscription key per minute.
     # Stay under it so retries and clock skew never trip the upstream limit.

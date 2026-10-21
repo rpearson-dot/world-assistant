@@ -42,7 +42,7 @@ It started as a personal project on a home Unraid server. Nothing in it is speci
 | **Places and trips** | Named places (by postcode or coordinates) and trips between them. Your **home** is the default place everywhere. |
 | **Routing** | Optional self-hosted Valhalla turns a trip into a real road line, which becomes that trip's corridor. |
 | **Vehicles** | Petrol/diesel (mpg) and electric (battery, health, miles per kWh). Trip cost, range check, and whether a cheaper station is worth the detour. |
-| **Buses and trains** | Live bus tracking with on-time statistics, and train departure boards (TfL and National Rail). Summaries can be published to Home Assistant over MQTT. |
+| **Buses and trains** | Live bus tracking with on-time statistics, and train departure boards (TfL and National Rail). Summaries, plus pollen, fuel, roads and events, can be published to Home Assistant over MQTT ([how](docs/home-assistant.md)). |
 | **Assistant** | The same data as spoken-style answers: `/v1/ask` for Siri Shortcuts and scripts, and `/mcp` for AI assistants that speak the Model Context Protocol. |
 | **Web pages** | `/status`, `/bus`, `/trains`, `/fuel`, `/events`, `/pollen`, `/places`. Small, fast, no accounts. |
 | **Operations** | One-click backups, signed releases, optional automatic updates with rollback, optional bundled key vault. |
