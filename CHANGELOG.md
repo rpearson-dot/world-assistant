@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Changed
+- The Unraid icons' cable is now a green USB data cable with a USB-A plug (it looked like a power lead).
+
 ### Added
 - Icons in Unraid's Docker tab: a simple green earth with a USB cable hanging off it, and a coloured band naming each supporting container's role (worker, database, cache, routing, vault). The compose files carry the `net.unraid.docker.icon` labels, the api also gets a `net.unraid.docker.webui` link to `/status`, and the icons are served by the api at `/icons/<name>.png` without a token. Sources in `deploy/unraid/`.
 
