@@ -30,7 +30,7 @@ auto_deploy_main() {
   SECRETS="${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}"
   API="${AUTO_DEPLOY_API:-http://127.0.0.1:${WA_API_PORT:-8010}}"
   REPO_IMAGE="${AUTO_DEPLOY_IMAGE:-ghcr.io/rpearson-dot/world-assistant}"
-  REPO_SLUG="${AUTO_DEPLOY_REPO:-rpearson-dot/World-assistant}"
+  REPO_SLUG="${AUTO_DEPLOY_REPO:-rpearson-dot/world-assistant}"
   COSIGN_IMAGE="${AUTO_DEPLOY_COSIGN_IMAGE:-ghcr.io/sigstore/cosign/cosign:v3.0.6}"
   VERIFY="${AUTO_DEPLOY_VERIFY:-true}"
 
@@ -90,7 +90,7 @@ auto_deploy_main() {
 
   if [ "$VERIFY" = "true" ]; then
     log "Verifying the signature..."
-    identity="https://github.com/${REPO_SLUG}/.github/workflows/release.yml@.*"
+    identity="(?i)https://github.com/${REPO_SLUG}/.github/workflows/release.yml@.*"
     issuer="https://token.actions.githubusercontent.com"
     if command -v cosign >/dev/null 2>&1; then
       cosign verify "$new_ref" --certificate-identity-regexp "$identity" --certificate-oidc-issuer "$issuer" >/dev/null 2>&1
