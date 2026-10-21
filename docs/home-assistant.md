@@ -8,15 +8,26 @@ The worker reads this service's own API every few minutes (so Home Assistant alw
 what the web pages show) and publishes retained messages to the broker. Home Assistant needs only
 its normal MQTT integration, pointed at the same broker.
 
+## Where the places live
+
+World Assistant's "default place" belongs to its own web pages. Nothing sent to Home Assistant uses
+it. Home Assistant has its own locations (zones), so it does the filtering:
+
+- **Fuel** is published for the whole country. You filter by distance from any zone in a template.
+- **Pollen and events** can only be fetched for a point, so they are published for each place saved
+  in World Assistant (`/places`). Save a place for each Home Assistant location you want them for;
+  each appears as its own device.
+- **Trains, buses and roads** are not location-based and are published as they are.
+
 ## What appears
 
 | Device | Sensors |
 |---|---|
-| **Pollen** | `Allergy risk` (0 to 10, today; the forecast is in its attributes), `Allergy risk label`, and one `Pollen: <name>` sensor per allergen (level today, with the next days in attributes). |
-| **Fuel prices** | `Cheapest Petrol (E10)` and `Cheapest Diesel` near your default place, in pence. Attributes name the station and list the five nearest. |
+| **Fuel prices** | `<fuel>: national median` (with the cheapest station in attributes), and one `<fuel> tile` sensor per half-degree map square (roughly 55 by 35 km). A tile's state is how many stations it holds; its attributes list every station with price, brand, postcode and coordinates, cheapest first. Petrol (E10) and diesel. |
+| **Pollen: `<place>`** | `Allergy risk` (0 to 10, today; the forecast is in its attributes), `Allergy risk label`, and one `Pollen: <name>` sensor per allergen. |
+| **Events: `<place>`** | `Events coming up` (count for the next seven days) and `Next event`, with the next five in attributes. |
 | **Trains and buses** | For each departure board you have set up: `<board>: next departure` (minutes; the next services are in attributes) and `<board>: delayed or cancelled` (a count). Bus tracker sensors keep their own device (see [bus.md](bus.md)). |
-| **Roads** | One `<corridor>: active works` sensor per enabled National Highways corridor, and `Live road events` (everything currently open). |
-| **Events nearby** | `Events coming up` (count for the next seven days) and `Next event`, with the next five in attributes. |
+| **Roads** | One `<corridor>: active works` sensor per enabled National Highways corridor, and `Live road events`. |
 
 If a data source is not set up (no pollen key, no events key), that device is simply left out.
 
@@ -35,22 +46,59 @@ If a data source is not set up (no pollen key, no events key), that device is si
 Each sensor tells Home Assistant to mark it `unavailable` if nothing arrives for three intervals, so
 a stopped worker shows as unavailable rather than as old numbers that look current.
 
-## A starter dashboard
+## Filtering by a Home Assistant location
 
-Add a manual card to any dashboard. Entity ids follow `sensor.wa_<device>_<sensor>`; check the exact
-ids under Settings > Devices & services > MQTT.
+Fuel stations near a zone, as a template sensor (Settings > Devices & services > Helpers > Template,
+or in `configuration.yaml`). Change `zone.home` for any zone and `5` for the radius in km:
+
+```yaml
+template:
+  - sensor:
+      - name: Cheapest petrol near home
+        unit_of_measurement: p
+        state: >
+          {% set z = states.zone.home %}
+          {% set ns = namespace(r=[]) %}
+          {% for t in states.sensor if t.entity_id.startswith('sensor.wa_fuel_tile_e10_') %}
+            {% for s in t.attributes.stations | default([]) %}
+              {% if distance(z.attributes.latitude, z.attributes.longitude, s.lat, s.lon) < 5 %}
+                {% set ns.r = ns.r + [s.pence] %}
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+          {{ ns.r | min if ns.r else none }}
+        attributes:
+          nearby: >
+            {% set z = states.zone.home %}
+            {% set ns = namespace(r=[]) %}
+            {% for t in states.sensor if t.entity_id.startswith('sensor.wa_fuel_tile_e10_') %}
+              {% for s in t.attributes.stations | default([]) %}
+                {% if distance(z.attributes.latitude, z.attributes.longitude, s.lat, s.lon) < 5 %}
+                  {% set ns.r = ns.r + [s] %}
+                {% endif %}
+              {% endfor %}
+            {% endfor %}
+            {{ ns.r | sort(attribute='pence') }}
+```
+
+Show it on a dashboard with an entities card for the price and a Markdown card for the list
+(`{% for s in state_attr('sensor.cheapest_petrol_near_home', 'nearby')[:5] %}`). The stations carry
+`lat` and `lon`, so a map card can plot them too. Large attributes are not kept in history (Home
+Assistant skips attributes over 16 KB when recording), which suits live prices.
+
+Other entities, e.g. a card per location:
 
 ```yaml
 type: entities
 title: Today
 entities:
-  - sensor.wa_pollen_allergy_risk_label
-  - sensor.wa_fuel_cheapest_e10
+  - sensor.wa_pollen_home_allergy_risk_label
+  - sensor.wa_fuel_national_e10
   - sensor.wa_roads_live_events
-  - sensor.wa_events_next_event
+  - sensor.wa_events_home_next_event
 ```
 
-For the departure board, a Markdown card shows the attributes:
+Check the exact ids under Settings > Devices & services > MQTT. For a departure board, a Markdown card:
 
 ```yaml
 type: markdown
@@ -71,12 +119,12 @@ Tell me when the pollen risk is high and I have not taken an antihistamine:
 alias: Pollen warning
 trigger:
   - platform: numeric_state
-    entity_id: sensor.wa_pollen_allergy_risk
+    entity_id: sensor.wa_pollen_home_allergy_risk
     above: 6
 action:
   - service: notify.notify
     data:
-      message: "Pollen risk is {{ states('sensor.wa_pollen_allergy_risk_label') }} today."
+      message: "Pollen risk is {{ states('sensor.wa_pollen_home_allergy_risk_label') }} today."
 ```
 
 ## Rebuilding Home Assistant around this
@@ -92,6 +140,8 @@ action:
 
 ## Privacy
 
-State messages carry place names, station names, postcodes of fuel stations and event venues. They
-do not carry your coordinates. Anyone who can read your broker can read them; if the broker is open
-to your whole network, set a username and the `mqtt_password` secret.
+Messages carry place names you saved, station names and postcodes, and event venues. Fuel stations
+come with their (public) coordinates. Your own coordinates are never published, and World Assistant
+never learns your Home Assistant zones: the filtering happens inside Home Assistant. Anyone who can
+read your broker can read all of this; if the broker is open to your whole network, set a username
+and the `mqtt_password` secret.

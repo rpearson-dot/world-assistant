@@ -45,21 +45,30 @@ def test_removals_clear_the_config() -> None:
 
 
 def test_pollen_device() -> None:
-    d = ha_publish.pollen_device(POLLEN)
+    d = ha_publish.pollen_device(POLLEN, "home-2")
+    assert d.id == "pollen_home_2" and d.name == "Pollen: Home"
     by = {s.key: s for s in d.sensors}
     assert by["allergy_risk"].state == 3.5 and by["allergy_risk_label"].state == "Low"
     assert by["pollen_grass"].state == 0 and by["pollen_birch_tree"].state is None
     assert by["pollen_grass"].attributes["levels"] == [0, 1]
 
 
-def test_fuel_device_handles_no_stations() -> None:
-    best = {"pence": 131.9, "trading_name": "Shell X", "brand_name": "Shell", "distance_km": 1.2}
-    d = ha_publish.fuel_device({"E10": {"cheapest_overall": best, "stations": [best]},
-                                "B7_STANDARD": {"cheapest_overall": None, "stations": []}})  # fmt: skip
-    e10, b7 = d.sensors
-    assert e10.key == "cheapest_e10" and e10.state == 131.9 and e10.unit == "p"
-    assert e10.attributes["station"] == "Shell X"
-    assert b7.state is None and b7.attributes["nearest"] == []
+def _st(i: str, lat: float, lon: float, pence: float) -> dict[str, Any]:
+    return {"id": i, "name": f"S{i}", "brand": "B", "postcode": "AB1", "lat": lat, "lon": lon, "pence": pence}
+
+
+def test_fuel_device_is_nationwide_tiles_without_a_home() -> None:
+    stations = [_st("1", 51.51, -0.12, 140.0), _st("2", 51.52, -0.11, 132.9), _st("3", 55.95, -3.19, 138.0)]
+    d = ha_publish.fuel_device({"E10": stations, "B7_STANDARD": []})
+    by = {s.key: s for s in d.sensors}
+    nat = by["national_e10"]
+    assert nat.state == 138.0 and nat.attributes["cheapest_pence"] == 132.9 and nat.attributes["stations"] == 3
+    tiles = [s for s in d.sensors if s.key.startswith("tile_e10_")]
+    assert sorted(t.state for t in tiles) == [1, 2]  # London pair share a tile; Edinburgh has its own
+    london = next(t for t in tiles if t.state == 2)
+    assert [r["pence"] for r in london.attributes["stations"]] == [132.9, 140.0]  # cheapest first
+    assert "-" not in london.key and london.attributes["size_deg"] == 0.5
+    assert by["national_b7_standard"].state is None  # no stations: unknown, not a crash
 
 
 def test_trains_device_counts_disruption() -> None:
@@ -87,7 +96,9 @@ def test_roads_device_skips_disabled_corridors() -> None:
 def test_events_device() -> None:
     data = {"count": 2, "days": 7, "place": "Home",
             "events": [{"name": "Gig", "date": "2026-10-25", "venue": "Hall"}, {"name": "Fair"}]}  # fmt: skip
-    up, nxt = ha_publish.events_device(data).sensors
+    dev = ha_publish.events_device(data, "work")
+    assert dev.id == "events_work"
+    up, nxt = dev.sensors
     assert up.state == 2 and nxt.state == "Gig" and nxt.attributes["venue"] == "Hall"
     assert ha_publish.events_device({}).sensors[1].state is None
 
@@ -103,13 +114,24 @@ def _client(routes: dict[str, Any]) -> httpx.AsyncClient:
 
 
 @pytest.mark.asyncio
-async def test_collect_skips_domains_that_fail() -> None:
-    routes = {"/v1/pollen/near": POLLEN, "/v1/status": {"corridors": [], "events_live": []},
-              "/v1/tfl/boards": [{"id": "b", "name": "B"}]}  # fmt: skip
-    async with _client(routes) as c:
+async def test_collect_publishes_per_saved_place_and_skips_failures() -> None:
+    seen: list[tuple[str, dict[str, str]]] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append((req.url.path, dict(req.url.params)))
+        bodies = {"/v1/places": [{"id": "home", "name": "Home"}, {"id": "work", "name": "Work"}],
+                  "/v1/pollen/near": POLLEN, "/v1/status": {"corridors": [], "events_live": []},
+                  "/v1/tfl/boards": [{"id": "b", "name": "B"}]}  # fmt: skip
+        body = bodies.get(req.url.path)
+        return httpx.Response(200, json=body) if body is not None else httpx.Response(503)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://api") as c:
         devices = await ha_publish.collect(c)
-    assert [d.id for d in devices] == ["pollen", "trains", "roads"]  # fuel and events 503; the board 503s too
-    assert next(d for d in devices if d.id == "trains").sensors == []
+    assert [d.id for d in devices] == ["trains", "roads", "pollen_home", "pollen_work"]
+    assert {p.get("place") for path, p in seen if path == "/v1/pollen/near"} == {"home", "work"}
+    # nothing asks for the default place or sends coordinates
+    assert not any({"lat", "lon"} & set(p) for _, p in seen)
+    assert not any(path in ("/v1/pollen/near", "/v1/events/near") and "place" not in p for path, p in seen)
 
 
 @pytest.mark.asyncio
@@ -122,9 +144,14 @@ async def test_ha_sync_publishes_discovery_once_then_state_only(monkeypatch: pyt
 
     real = httpx.AsyncClient
     monkeypatch.setattr(mqtt, "publish", fake_publish)
-    monkeypatch.setattr(ha_publish.httpx, "AsyncClient", lambda **kw: real(
-        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=POLLEN) if r.url.path == "/v1/pollen/near"
-                                      else httpx.Response(503)), base_url="http://api"))
+
+    def handler(r: httpx.Request) -> httpx.Response:
+        if r.url.path == "/v1/status":
+            return httpx.Response(200, json={"corridors": [], "events_live": []})
+        return httpx.Response(503)
+
+    monkeypatch.setattr(ha_publish.httpx, "AsyncClient",
+                        lambda **kw: real(transport=httpx.MockTransport(handler), base_url="http://api"))
     ctx: dict[str, Any] = {}
     assert await ha_publish.ha_sync(ctx) > 0
     assert await ha_publish.ha_sync(ctx) > 0
