@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-10-21
+
 ## [0.7.3] - 2026-10-21
 
 ### Removed
