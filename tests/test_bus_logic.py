@@ -133,6 +133,8 @@ def test_slots_matching_and_reliability() -> None:
     assert slots == ["07:11", "07:23", "07:46"]
     assert events.nearest_slot(slots, "07:20") == "07:23"
     assert events.nearest_slot(slots, "09:30") is None
+    assert events.nearest_slot(slots, "07:20", taken={"07:23"}) == "07:11"
+    assert events.nearest_slot(slots, "07:20", taken=set(slots)) is None
     days = [
         {"date": "2026-10-19", "slots": slots, "hit_slots": ["07:11", "07:23"]},
         {"date": "2026-10-20", "slots": slots, "hit_slots": ["07:11"]},

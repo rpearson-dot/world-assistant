@@ -5,7 +5,7 @@ Pure functions over the plain-dict state from trips.py.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from datetime import tzinfo
 from typing import Any
 
@@ -124,10 +124,13 @@ def to_minutes(hhmm: str) -> int:
     return int(h) * 60 + int(m)
 
 
-def nearest_slot(slots: Sequence[str], hhmm: str) -> str | None:
+def nearest_slot(slots: Sequence[str], hhmm: str, taken: Collection[str] = ()) -> str | None:
+    """The scheduled slot closest to `hhmm` (within the tolerance), skipping any in `taken`."""
     best, best_diff = None, None
     target = to_minutes(hhmm)
     for s in slots:
+        if s in taken:
+            continue
         diff = abs(to_minutes(s) - target)
         if best_diff is None or diff < best_diff:
             best, best_diff = s, diff

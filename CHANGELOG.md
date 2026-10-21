@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Fixed
+- Bus tracker: each bus now claims the nearest scheduled departure that no earlier bus has claimed, so two bunched buses no longer count as one and leave a neighbouring departure marked as missed. Re-running the backfill corrects the slot of buses already on record.
+
 ## [0.7.5] - 2026-10-21
 
 ### Changed
