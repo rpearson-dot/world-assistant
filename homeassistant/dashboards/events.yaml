@@ -1,24 +1,21 @@
-# What's on near you (the app's location when away, else the home zone) (8 km, next 7 days). Needs
-# homeassistant/packages/world_assistant.yaml; change the radius and days there.
+# What's on near whoever is looking. Needs the per-person sensors from scripts/ha-setup.py (see
+# docs/home-assistant.md). The viewer's Home Assistant person name must match their user name.
 title: Events
 views:
   - title: Events
     path: events
     icon: mdi:calendar-star
     cards:
-      - type: entities
-        title: At a glance
-        entities:
-          - entity: sensor.wa_events_upcoming
-            name: Events coming up
-          - entity: sensor.wa_events_next
-            name: Next event
       - type: markdown
-        title: Coming up
+        title: Coming up near you
         content: |
-          {% set events = state_attr('sensor.wa_events_upcoming', 'events') %}
-          {% if events %}
+          {% set me = states.person | selectattr('name', 'eq', user) | list %}
+          {% set s = me[0].entity_id.split('.')[1] if me else '' %}
+          {% set e = 'sensor.wa_events_' ~ s ~ '_upcoming' %}
+          {% set events = state_attr(e, 'events') %}
+          {% if events %}{{ states(e) }} in the next {{ state_attr(e, 'days') or 7 }} days, {{ user }}.
+
           | Date | Event | Venue | Away | Price |
-          |:--|:--|:--|--:|:--|{% for e in events %}
-          | {{ e.date or '' }}{{ ' ' ~ e.doors_open if e.doors_open else '' }} | **{{ e.name }}** | {{ e.venue or '' }}{{ ', ' ~ e.town if e.town else '' }} | {{ ('%.1f km' % e.distance_km) if e.distance_km is not none else '' }} | {{ e.price or '' }} |{% endfor %}
-          {% else %}Nothing listed in the next {{ state_attr('sensor.wa_events_upcoming', 'days') or 7 }} days, or the World Assistant package is not installed yet (docs/home-assistant.md).{% endif %}
+          |:--|:--|:--|--:|:--|{% for ev in events %}
+          | {{ ev.date or '' }}{{ ' ' ~ ev.doors_open if ev.doors_open else '' }} | **{{ ev.name }}** | {{ ev.venue or '' }}{{ ', ' ~ ev.town if ev.town else '' }} | {{ ('%.1f km' % ev.distance_km) if ev.distance_km is not none else '' }} | {{ ev.price or '' }} |{% endfor %}
+          {% else %}Nothing listed near you, or no event data for "{{ user }}" yet. Is the World Assistant package installed, and does a person with that name exist? (docs/home-assistant.md){% endif %}

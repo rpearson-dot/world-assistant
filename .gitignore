@@ -21,3 +21,6 @@ dist/
 
 # Build outputs
 sbom/
+
+# generated Home Assistant files (scripts/ha-setup.py)
+ha-out/
