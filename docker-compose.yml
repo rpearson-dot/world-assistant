@@ -73,6 +73,8 @@ services:
   wa-db:
     image: postgis/postgis:16-3.4
     restart: unless-stopped
+    labels:
+      net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/database.png"
     environment:
       POSTGRES_DB: worldassistant
       POSTGRES_USER: worldassistant
@@ -99,6 +101,8 @@ services:
   wa-redis:
     image: redis:7-alpine
     restart: unless-stopped
+    labels:
+      net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/cache.png"
     environment:
       TZ: ${TZ:-Europe/London}
     secrets:
@@ -124,6 +128,9 @@ services:
 
   api:
     <<: *app
+    labels:
+      net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/world-assistant.png"
+      net.unraid.docker.webui: "http://[IP]:[PORT:8000]/status"
     ports:
       - "${WA_API_PORT:-8010}:8000"
     depends_on:
@@ -144,6 +151,8 @@ services:
 
   worker:
     <<: *app
+    labels:
+      net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/worker.png"
     command: ["arq", "app.worker.WorkerSettings"]
     depends_on:
       migrate:
