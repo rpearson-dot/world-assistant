@@ -28,7 +28,7 @@ def _jinja() -> Any:
 
 
 def test_the_static_dashboards_are_here() -> None:
-    assert {p.stem for p in DASHBOARDS} == {"pollen", "fuel", "trains-buses", "roads", "events"}
+    assert {p.stem for p in DASHBOARDS} == {"pollen", "fuel", "trains-buses", "roads", "events", "manage"}
 
 
 @pytest.mark.parametrize("path", DASHBOARDS, ids=lambda p: p.stem)
