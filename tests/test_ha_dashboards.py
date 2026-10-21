@@ -1,8 +1,7 @@
-"""The Home Assistant files in homeassistant/ and scripts/ha-setup.py must stay valid, and do the right thing."""
+"""The Home Assistant files in homeassistant/ must stay valid, and do the right thing."""
 
 from __future__ import annotations
 
-import importlib.util
 import math
 import re
 import types
@@ -14,6 +13,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 DASHBOARDS = sorted((ROOT / "homeassistant" / "dashboards").glob("*.yaml"))
+PACKAGES = ROOT / "homeassistant" / "packages"
 
 
 class _HaLoader(yaml.SafeLoader):
@@ -21,18 +21,6 @@ class _HaLoader(yaml.SafeLoader):
 
 
 _HaLoader.add_multi_constructor("!", lambda loader, suffix, node: f"<{suffix}>")
-
-
-def _setup() -> Any:
-    spec = importlib.util.spec_from_file_location("ha_setup", ROOT / "scripts" / "ha-setup.py")
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-SETUP = _setup()
-PEOPLE = ["person.alex", "person.sam"]
 
 
 def _jinja() -> Any:
@@ -57,7 +45,7 @@ def test_dashboard_is_valid(path: Path) -> None:
                 env.from_string(card["content"])  # raises on a template syntax error
 
 
-@pytest.mark.parametrize("name", ["pollen", "fuel", "roads", "events"])
+@pytest.mark.parametrize("name", ["pollen", "fuel", "roads"])
 def test_location_dashboards_follow_the_viewer(name: str) -> None:
     text = (ROOT / "homeassistant" / "dashboards" / f"{name}.yaml").read_text(encoding="utf-8")
     assert "eq', user" in text, "must pick the viewer's own person, not one fixed person"
@@ -65,37 +53,9 @@ def test_location_dashboards_follow_the_viewer(name: str) -> None:
 
 
 def test_no_secrets_in_the_repo_files() -> None:
-    for p in [*DASHBOARDS, ROOT / "scripts" / "ha-setup.py"]:
+    for p in [*DASHBOARDS, *PACKAGES.glob("*.yaml")]:
         low = p.read_text(encoding="utf-8").lower()
         assert "bearer " not in low.replace('"bearer <contents', "").replace("bearer <", "")
-
-
-# --- the generator ---------------------------------------------------------------------------
-
-
-def _package(people: list[str] = PEOPLE) -> dict[str, Any]:
-    return yaml.load(SETUP.package(people, "192.168.1.10:8010"), Loader=_HaLoader)
-
-
-def test_package_has_separate_sensors_for_each_person() -> None:
-    env = _jinja().Environment()
-    doc = _package()
-    assert len(doc["rest"]) == 2  # events, for two people
-    for r in doc["rest"]:
-        assert r["headers"]["Authorization"] == "<secret>"
-        assert "sensor.wa_location_" in r["resource_template"]
-        assert "zone.home" in r["resource_template"]  # the fallback
-        env.from_string(r["resource_template"])
-    for who in ("alex", "sam"):
-        mine = [r for r in doc["rest"] if f"wa_location_{who}" in r["resource_template"]]
-        assert len(mine) == 1
-        assert not any(f"wa_location_{other}" in r["resource_template"] for r in mine for other in {"alex", "sam"} - {who})
-        ids = {s["unique_id"] for r in mine for s in r["sensor"]}
-        assert ids == {f"wa_events_{who}_upcoming", f"wa_events_{who}_next"}
-    tmpl = doc["template"][0]["sensor"]
-    assert [t["unique_id"] for t in tmpl] == ["wa_location_alex", "wa_location_sam"]
-    for t in tmpl:
-        env.from_string(t["state"])
 
 
 class _Attrs(dict):  # type: ignore[type-arg]
@@ -156,53 +116,6 @@ def _env(ents: dict[str, tuple[str, dict[str, Any]]], **ctx: Any) -> Any:
 FAR = {"latitude": 52.5, "longitude": -1.9, "gps_accuracy": 20}
 
 
-def _location(who: str, person: tuple[str, dict[str, Any]] | None) -> tuple[str, str, str]:
-    doc = _package()
-    sensor = next(t for t in doc["template"][0]["sensor"] if t["unique_id"] == f"wa_location_{who}")
-    ents = {"zone.home": ("zoning", {"latitude": 51.5, "longitude": -0.12})}
-    if person:
-        ents[f"person.{who}"] = person
-    env = _env(ents)
-
-    def run(tpl: str) -> str:
-        return env.from_string(tpl).render().strip()
-
-    return run(sensor["state"]), run(sensor["attributes"]["latitude"]), run(sensor["attributes"]["longitude"])
-
-
-def test_each_persons_location_is_their_phone_when_away_else_the_home_zone() -> None:
-    assert _location("alex", None) == ("home zone", "51.5", "-0.12")  # no such person yet
-    assert _location("alex", ("home", FAR)) == ("home zone", "51.5", "-0.12")  # at home: no GPS jitter
-    assert _location("alex", ("Birmingham", FAR)) == ("phone", "52.5", "-1.9")
-    assert _location("alex", ("Birmingham", {**FAR, "gps_accuracy": 5000}))[0] == "home zone"  # too vague
-    assert _location("sam", ("not_home", {"gps_accuracy": 10}))[0] == "home zone"  # no coordinates
-
-
-def test_the_person_entity_is_the_one_asked_for() -> None:
-    sam = _package()["template"][0]["sensor"][1]  # sam's location sensor
-    assert sam["unique_id"] == "wa_location_sam" and "person.sam" in sam["state"]
-    assert "person.alex" not in sam["state"]
-
-
-@pytest.mark.parametrize("bad", ["alex", "person.Alex", "sensor.x", "person.a-b", ""])
-def test_generator_rejects_bad_people(bad: str) -> None:
-    with pytest.raises(ValueError):
-        SETUP.package([bad], "192.168.1.10:8010")
-
-
-def test_generator_rejects_bad_host_and_duplicates() -> None:
-    with pytest.raises(ValueError):
-        SETUP.package(["person.alex"], "http://x/y")
-    with pytest.raises(ValueError):
-        SETUP.package(["person.alex", "person.alex"], "h:1")
-
-
-def test_generator_writes_the_package(tmp_path: Path) -> None:
-    assert SETUP.main(["--host", "nas:8010", "--out", str(tmp_path), *PEOPLE]) == 0
-    assert (tmp_path / "world_assistant.yaml").exists() and not (tmp_path / "pollen.yaml").exists()
-    assert SETUP.main(["--host", "nas:8010", "--out", str(tmp_path), "nobody"]) == 2
-
-
 # --- what each viewer sees --------------------------------------------------------------------
 
 
@@ -226,23 +139,24 @@ def test_fuel_card_shows_each_viewer_prices_where_that_viewer_is() -> None:
     assert "Home Shell" in sam and "Away BP" not in sam and "Home" in sam
 
 
-def test_events_card_reads_only_the_viewers_own_sensor() -> None:
-    def ev(name: str) -> dict[str, Any]:
-        return {"events": [{"name": name, "date": "2026-10-25", "distance_km": 1.0}], "days": 7}
+def test_events_package_asks_for_the_home_zone_and_keeps_the_token_secret() -> None:
+    env = _jinja().Environment()
+    doc = yaml.load((PACKAGES / "world_assistant_events.yaml").read_text(encoding="utf-8"), Loader=_HaLoader)
+    (r,) = doc["rest"]
+    assert r["resource"] == "<secret>" and r["headers"]["Authorization"] == "<secret>"
+    assert "zone.home" in r["params"]["lat"] and "zone.home" in r["params"]["lon"]
+    for v in r["params"].values():
+        env.from_string(v)
+    assert {s["unique_id"] for s in r["sensor"]} == {"wa_events_home_upcoming", "wa_events_home_next"}
 
-    ents = {
-        "person.alex": ("home", {"friendly_name": "Alex"}),
-        "person.sam": ("home", {"friendly_name": "Sam"}),
-        "sensor.wa_events_alex_upcoming": ("1", ev("Alex Gig")),
-        "sensor.wa_events_sam_upcoming": ("1", ev("Sam Play")),
-    }
-    card = _card("events")
-    a = _env(ents, user="Alex").from_string(card).render()
-    s = _env(ents, user="Sam").from_string(card).render()
-    assert "Alex Gig" in a and "Sam Play" not in a
-    assert "Sam Play" in s and "Alex Gig" not in s
-    nobody = _env(ents, user="Guest").from_string(card).render()
-    assert "Gig" not in nobody and "Play" not in nobody
+
+def test_events_card_lists_the_events_near_home() -> None:
+    ev = {"events": [{"name": "Home Gig", "date": "2026-10-25", "distance_km": 1.0}], "days": 7, "radius_km": 8}
+    ents = {"zone.home": ("zoning", {"latitude": 51.5, "longitude": -0.12, "friendly_name": "Home"}),
+            "sensor.wa_events_home_upcoming": ("1", ev)}  # fmt: skip
+    out = _env(ents, user="Anyone").from_string(_card("events")).render()
+    assert "Home Gig" in out and "of Home" in out
+    assert "Nothing listed" in _env({}, user="Anyone").from_string(_card("events")).render()
 
 
 # --- pollen --------------------------------------------------------------------------------------
