@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-10-21
+
 ### Added
 - Extra places for events in Home Assistant. `rest_command.wa_add_location` registers a name and position (`POST /v1/ha/locations`); the worker publishes a `sensor.wa_events_place_<name>` for each over MQTT and the events dashboard lists whichever exist. Capped at 8 (`WA_HA_LOCATIONS_MAX`); each is searched every 12 hours (`WA_HA_LOCATION_REFRESH_H`), about 4 provider requests a day per place; places not renewed within 30 days are dropped, and within 7 days once 75% of the cap is used. Migration 0016.
 - Each pollen forecast point is a Home Assistant sensor with a position (`sensor.wa_pollen_point_<lat>_<lon>`), and the pollen dashboard has a map card of them: tap a marker for the allergy risk and each allergen by day.
