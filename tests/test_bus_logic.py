@@ -126,6 +126,21 @@ def test_bus_that_terminates_short_counts_via_return_stop() -> None:
     assert [(h["vehicle"], h["via_return"]) for h in hits] == [("V1", True)]
 
 
+def test_assign_slots_keeps_buses_in_order() -> None:
+    slots = ["07:14", "07:26", "07:38", "07:49"]
+    m = events.to_minutes
+    # today's real case: 07:14, then two bunched buses just after 07:26
+    assert events.assign_slots([m("07:14"), m("07:27"), m("07:28")], slots) == ["07:14", "07:26", "07:38"]
+    # a late bus cannot jump ahead of the one in front of it
+    assert events.assign_slots([m("07:30"), m("07:31")], slots) == ["07:26", "07:38"]
+    # one bus between two slots takes the nearer; a slot already taken is not offered
+    assert events.assign_slots([m("07:20")], slots) == ["07:26"]
+    assert events.assign_slots([m("07:20")], slots, taken={"07:26"}) == ["07:14"]
+    # nothing within reach: no slot, and the others still match
+    assert events.assign_slots([m("07:14"), m("09:30")], slots) == ["07:14", None]
+    assert events.assign_slots([], slots) == []
+
+
 def test_slots_matching_and_reliability() -> None:
     times = ["06:50", "07:11", "07:23", "07:46", "08:00", "08:10"]
     # with a 08:10 deadline and a 12 minute minimum journey, only departures up to 07:58 can make it

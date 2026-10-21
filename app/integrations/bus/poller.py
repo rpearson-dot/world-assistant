@@ -15,8 +15,8 @@ from app.config import get_settings
 from app.integrations.bus import store
 from app.integrations.bus.config import TrackerConfig
 from app.integrations.bus.events import (
+    assign_slots,
     early_terminations,
-    nearest_slot,
     segment_observations,
     sentence,
     slots_in_window,
@@ -24,7 +24,7 @@ from app.integrations.bus.events import (
     to_minutes,
     turnarounds,
 )
-from app.integrations.bus.trips import detect_anomalies, new_state, update_trips
+from app.integrations.bus.trips import detect_anomalies, first_sightings, new_state, update_trips
 from app.integrations.tfl.client import TflClient, TflError
 from app.jobs import tracked
 from app.ratelimit import RateLimitExceeded
@@ -74,9 +74,10 @@ def compute_hits(
         return []
     hits = target_hits(state, now, tcfg, local_epoch(local_day, cfg.earliest, tz), local_epoch(local_day, cfg.deadline, tz))
     claimed: set[str] = set(state.setdefault("claimed", []))
-    for h in sorted(hits, key=lambda x: x["board_ts"]):  # earliest bus first; each claims one slot
-        board_local = datetime.fromtimestamp(h["board_ts"], tz)
-        slot = nearest_slot(slots, board_local.strftime("%H:%M"), claimed)
+    hits = sorted(hits, key=lambda x: x["board_ts"])
+    locals_ = [datetime.fromtimestamp(h["board_ts"], tz) for h in hits]
+    chosen = assign_slots([t.hour * 60 + t.minute for t in locals_], slots, claimed)  # in order: buses do not overtake
+    for h, board_local, slot in zip(hits, locals_, chosen, strict=True):
         if slot:
             claimed.add(slot)
         h["slot"] = slot
@@ -109,6 +110,7 @@ def process_poll(
     anomalies = detect_anomalies(state, lookup.dir_of)
     anomalies += turnarounds(state, cfg.place_of)
     anomalies += early_terminations(state, lookup.end_pos, lookup.names)
+    anomalies += first_sightings(state, lookup.names)
     obs = segment_observations(state, now, cfg.segment_pairs())
     hits = compute_hits(cfg, state, now, local_day, tz, slots)
     return {"anomalies": anomalies, "observations": obs, "hits": hits}

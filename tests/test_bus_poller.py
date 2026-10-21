@@ -123,6 +123,24 @@ def test_bunched_buses_each_claim_their_own_slot(monkeypatch: pytest.MonkeyPatch
     assert run([100])[0]["slot"] is None
 
 
+def test_first_sighting_is_recorded_once_per_run() -> None:
+    from app.integrations.bus.trips import first_sightings
+
+    board = T0 + 30 * 60
+    state = new_state()
+    lookup = Lookup(SEQ)
+    now = board - 600
+    anomalies: list[dict[str, Any]] = []
+    for _ in range(3):
+        out = process_poll(TrackerConfig.model_validate(cfg_dict()), state,
+                           feed("V1", {"AAAA0002": board}, now), lookup, now, DAY, TZ, ["07:30"])  # fmt: skip
+        anomalies += out["anomalies"]
+        now += 30
+    seen = [a for a in anomalies if a["type"] == "first_seen"]
+    assert len(seen) == 1 and seen[0]["vehicle"] == "V1" and seen[0]["stop"] == "Middle stop" and seen[0]["pos"] == 1
+    assert first_sightings(state, {}) == []
+
+
 def test_bus_after_deadline_is_not_a_hit() -> None:
     board = T0 + 65 * 60  # 08:05 local; arrives 08:20, after the 08:10 deadline
     hits = drive({"AAAA0001": board, "AAAA0002": board + 600, "AAAA0003": board + 900, "AAAA0009": board + 1200},

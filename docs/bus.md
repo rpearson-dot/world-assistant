@@ -62,6 +62,7 @@ Open `/bus` in a browser for all of this on one page (token typed in, as on `/fu
 | `/v1/bus/trackers/{id}/target?day=` | scheduled slots, buses that made it, the last one, a spoken summary, and `outlook`: the chance each remaining bus gets there by the deadline |
 | `/v1/bus/trackers/{id}/terminations?days=` | a daily log of buses that ended a trip short of the end of the route while watched: the stop where each was last seen and when, whether it turned back (and where and when it next appeared) or just stopped appearing, and whether that was between your earliest time and the deadline |
 | `/v1/bus/trackers/{id}/log?days=` | success or failure of every scheduled bus on every recorded day, with arrival time and delay, and the overall success rate |
+| `/v1/bus/trackers/{id}/anomalies?type=` | recent oddities (turnarounds, early endings); `?type=first_seen` lists where each run first appeared in the feed, which is otherwise hidden |
 | `/v1/bus/trackers/{id}/reliability` | per-slot hit rate over 30 days |
 | `/v1/bus/trackers/{id}/conditions` | leg times, last 30 minutes vs the day |
 | `/v1/bus/trackers/{id}/anomalies` | trip starts, reverse moves, turnarounds |
@@ -131,3 +132,7 @@ Settings: `WA_MQTT_HOST`, `WA_MQTT_PORT`, `WA_MQTT_USER`, secret `mqtt_password`
 `WA_MQTT_ENABLED`, `WA_MQTT_TOPIC_PREFIX` (default `world_assistant`),
 `WA_MQTT_DISCOVERY_PREFIX` (default `homeassistant`). If the broker is unreachable, publishing
 backs off for five minutes and polling carries on.
+
+## How buses are matched to timetable departures
+
+Each bus that reaches the target is matched to a scheduled departure by the time it left the boarding stop. Buses on a route do not overtake, so the match keeps their order: a late bus never takes a departure ahead of the bus in front of it, and each departure is used once. A departure with no bus matched to it by 30 minutes after its time counts as a miss.
