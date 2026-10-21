@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "world-assistant"
-version = "0.7.3"
+version = "0.7.4"
 description = "API gateway for everything outside the home"
 readme = "README.md"
 license = {text = "MIT"}
