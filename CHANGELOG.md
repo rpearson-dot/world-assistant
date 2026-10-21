@@ -5,10 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [Unreleased]
 
 ### Added
+- Nationwide pollen. The worker fetches a lattice of about 51 points across Britain three times a day (gently, 10 s apart; setting `WA_POLLEN_GRID_DEG`), stores it (`pollen_grid`, migration 0015) and publishes it to Home Assistant as pollen tiles plus a colour-coded map image (`image.wa_pollen_map`). New `GET /v1/pollen/grid`; `/v1/pollen/near?lat&lon` answers from the nearest stored point, so the provider never sees anyone's location.
+- Pollen dashboard: the map, each viewer's pollen this week, and a history graph for the home location, fed by a static package (`homeassistant/packages/world_assistant_pollen.yaml`, no setup or secrets).
 - `scripts/pollen-survey.py`: a one-off survey of how finely the pollen provider's forecast varies across Britain (about 100 calls, run with `docker compose exec -T api python - < scripts/pollen-survey.py`), to decide how many points a nationwide pollen grid needs.
 
 ### Changed
-- Home Assistant location is now per person. The fixed package file is replaced by `scripts/ha-setup.py`, which writes pollen and events sensors for each person you list (their app location while away, else `zone.home`) plus a pollen dashboard with a history page each. The fuel, roads, events and pollen dashboards show each viewer data for where they are, picking their person by the logged-in user's name. Someone 100 miles from you no longer sees your pollen count or petrol prices.
+- Home Assistant location is now per person. The fixed package file is replaced by `scripts/ha-setup.py`, which writes events sensors for each person you list (their app location while away, else `zone.home`). The fuel, roads, events and pollen dashboards show each viewer data for where they are, picking their person by the logged-in user's name. Someone 100 miles from you no longer sees your pollen count or petrol prices.
 
 ## [0.7.2] - 2026-10-21
 

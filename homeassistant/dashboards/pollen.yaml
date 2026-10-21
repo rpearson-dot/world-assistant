@@ -1,0 +1,46 @@
+# Pollen: a map of the forecast across Britain, this week for wherever the viewer is, and a history
+# graph for the home zone. Needs homeassistant/packages/world_assistant_pollen.yaml for the graph.
+# The viewer's Home Assistant person name must match their user name; zone is the fallback.
+title: Pollen
+views:
+  - title: Pollen
+    path: pollen
+    icon: mdi:flower-pollen
+    cards:
+      - type: picture-entity
+        entity: image.wa_pollen_map
+        show_name: false
+        show_state: false
+      - type: markdown
+        title: Pollen this week
+        content: |
+          {% set zone = 'zone.home' %}
+          {% set me = states.person | selectattr('name', 'eq', user) | list %}{% set p = me[0] if me else none %}{% set away = p is not none and p.state not in ['home', 'unknown', 'unavailable'] and p.attributes.latitude is defined and p.attributes.latitude is not none and (p.attributes.gps_accuracy | default(0) | float(0)) <= 1000 %}{% set z = p if away else states[zone] %}{% set where = 'your location' if away else z.name %}
+          {% set ns = namespace(best=none, d=1000) %}{% for t in states.sensor if t.entity_id.startswith('sensor.wa_pollen_tile_') %}{% for q in t.attributes.points | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, q.lat, q.lon) %}{% if d is not none and d < ns.d %}{% set ns.d = d %}{% set ns.best = q %}{% endif %}{% endfor %}{% endfor %}
+          {% set bars = ['⬜', '🟩', '🟨', '🟧', '🟥'] %}
+          {% if ns.best and ns.d <= 150 %}Allergy risk near {{ where }}: **{{ (ns.best.label or ['unknown'])[0] or 'unknown' }}** ({{ (ns.best.risk or [none])[0] }}/10), from a forecast point {{ ns.d | round(0) | int }} km away.
+
+          | |{% for d in ns.best.dates %} {{ as_datetime(d).strftime('%a') }} |{% endfor %}
+          |:--|{% for d in ns.best.dates %}:-:|{% endfor %}{% for a in ns.best.allergens %}
+          | **{{ a.name }}** |{% for lv in (a.levels or []) %} {{ bars[lv | int(0)] if lv is not none else '▫️' }} |{% endfor %}{% endfor %}
+
+          ⬜ none 🟩 low 🟨 moderate 🟧 high 🟥 very high
+          {% else %}No pollen forecast within 150 km of {{ where }} yet. It refreshes three times a day.{% endif %}
+      - type: history-graph
+        title: Last 30 days, home
+        hours_to_show: 720
+        entities:
+          - entity: sensor.wa_pollen_home_allergy_risk
+            name: Allergy risk
+          - entity: sensor.wa_pollen_home_alder
+            name: Alder
+          - entity: sensor.wa_pollen_home_birch
+            name: Birch
+          - entity: sensor.wa_pollen_home_grasses
+            name: Grasses
+          - entity: sensor.wa_pollen_home_mugwort
+            name: Mugwort
+          - entity: sensor.wa_pollen_home_olive
+            name: Olive
+          - entity: sensor.wa_pollen_home_ragweed
+            name: Ragweed

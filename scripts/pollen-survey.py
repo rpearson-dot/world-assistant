@@ -1,6 +1,7 @@
 """One-off survey: how finely does the pollen provider really vary across Britain?
 
-Run from the project folder on the server (about 100 calls, 3 seconds apart, about 5 minutes):
+Run from the project folder on the server (about 100 calls, 10 seconds apart, about 17 minutes; it
+stops by itself if the provider starts refusing calls):
 
     docker compose exec -T api python - < scripts/pollen-survey.py
 
@@ -20,12 +21,14 @@ from typing import Any
 from app.config import get_settings
 from app.integrations.pollen.client import DEFAULT_BASE, PollenClient
 
-PAUSE_S = 3.0
+PAUSE_S = 10.0
+MAX_CONSECUTIVE_ERRORS = 3  # stop and say so, rather than hammer a provider that is refusing us
 
 
 def fingerprint(raw: Any) -> str:
-    """The same forecast gives the same fingerprint: allergens, daily risk and hourly risk."""
-    if not isinstance(raw, dict):
+    """The same forecast gives the same fingerprint: allergens, daily risk and hourly risk.
+    Anything that is not a real forecast is "error", so failures never look like an answer."""
+    if not isinstance(raw, dict) or "contamination" not in raw:
         return "error"
     keep = {k: raw.get(k) for k in ("contamination", "allergyrisk", "allergyrisk_hourly")}
     return hashlib.sha256(json.dumps(keep, sort_keys=True, default=str).encode()).hexdigest()[:6]
@@ -57,19 +60,35 @@ def runs(prints: list[tuple[tuple[float, float], str]]) -> list[tuple[tuple[floa
 async def survey(raw_for: Any, pause: float = PAUSE_S) -> dict[str, Any]:
     result: dict[str, Any] = {"transects": {}, "extra_fields": {}}
 
+    result["errors"] = []
+    streak = 0
+
     async def get(pt: tuple[float, float]) -> Any:
+        """The raw answer, or "ERR:<why>" (never confused with a real forecast)."""
+        nonlocal streak
+        if streak >= MAX_CONSECUTIVE_ERRORS:
+            return "ERR:skipped"
         await asyncio.sleep(pause)
         try:
-            return await raw_for(pt[0], pt[1])
-        except Exception as exc:  # noqa: BLE001 - report and carry on
-            return {"error": type(exc).__name__}
+            raw = await raw_for(pt[0], pt[1])
+            if isinstance(raw, dict) and raw.get("error"):
+                raise ValueError(str(raw["error"])[:80])
+            if not isinstance(raw, dict) or "contamination" not in raw:
+                raise ValueError("unexpected response shape")
+        except Exception as exc:  # noqa: BLE001 - report it, count it, carry on
+            streak += 1
+            msg = f"{type(exc).__name__}: {str(exc)[:100]}"
+            result["errors"].append((pt, msg))
+            return "ERR:" + msg
+        streak = 0
+        return raw
 
     first = True
     for name, pts in transect_points().items():
         prints = []
         for pt in pts:
             raw = await get(pt)
-            if first and isinstance(raw, dict):
+            if first and isinstance(raw, dict):  # (only a real answer reaches here)
                 result["extra_fields"] = {k: v for k, v in raw.items()
                                           if k not in ("contamination", "allergyrisk", "allergyrisk_hourly")
                                           and isinstance(v, (str, int, float, bool))}  # fmt: skip
@@ -81,7 +100,9 @@ async def survey(raw_for: Any, pause: float = PAUSE_S) -> dict[str, Any]:
     groups: dict[str, list[tuple[float, float]]] = {}
     for pt, fp in grid:
         groups.setdefault(fp, []).append(pt)
+    groups.pop("error", None)
     result["grid_points"] = len(grid)
+    result["grid_answered"] = sum(len(g) for g in groups.values())
     result["grid_distinct"] = len(groups)
     result["grid_groups"] = sorted(groups.values(), key=len, reverse=True)
     return result
@@ -94,7 +115,13 @@ def show(result: dict[str, Any]) -> None:
         print(f"\n{name}: {len(rs)} different answers")
         for a, b, fp, n in rs:
             print(f"  {fp}  {a} to {b}  ({n} points)")
-    print(f"\n1 degree grid over Britain: {result['grid_points']} points, {result['grid_distinct']} different answers")
+    errs = result.get("errors") or []
+    if errs:
+        print(f"\nNOT ALL CALLS WORKED: {len(errs)} failed. First failures:")
+        for pt, msg in errs[:5]:
+            print(f"  {pt}: {msg}")
+        print("  (it stops after 3 failures in a row, so later points were skipped)")
+    print(f"\n1 degree grid over Britain: {result['grid_answered']} of {result['grid_points']} points answered, {result['grid_distinct']} different answers")
     for g in result["grid_groups"][:12]:
         print(f"  {len(g):3d} points like {g[0]} ... {g[-1]}")
 

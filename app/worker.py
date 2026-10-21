@@ -17,6 +17,7 @@ from app.integrations.fuelfinder.sync import fuel_sync_prices, fuel_sync_station
 from app.integrations.nationalhighways.capture import capture_job
 from app.integrations.nationalhighways.poller import poll_live, poll_planned
 from app.logging import configure_logging
+from app.pollen_grid import pollen_grid_sync
 from app.pollen_history import pollen_sync
 from app.ratelimit import SlidingWindowLimiter
 
@@ -61,6 +62,7 @@ class WorkerSettings:
         fuel_sync_prices,
         poll_bus,
         pollen_sync,
+        pollen_grid_sync,
         ha_sync,
     ]
     cron_jobs: ClassVar[list] = [
@@ -78,6 +80,8 @@ class WorkerSettings:
         cron(fuel_sync_stations, hour={3}, minute={20}, timeout=900, max_tries=1),
         # Pollen: every 4 hours (the service's fair-use guidance); builds the 90-day history.
         cron(pollen_sync, hour={1, 5, 9, 13, 17, 21}, minute={25}, timeout=300, max_tries=1),
+        # Nationwide pollen lattice, three times a day (offset from the saved-place fetch).
+        cron(pollen_grid_sync, hour={2, 10, 18}, minute={40}, timeout=3000, max_tries=1),
         # Home Assistant sensors. WA_HA_INTERVAL_MIN (default 5) must divide into the hour sensibly.
         cron(ha_sync, minute=set(range(1, 60, _HA_MIN)), timeout=120, max_tries=1),
         cron(

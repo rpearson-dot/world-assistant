@@ -156,3 +156,30 @@ def test_roads_device_publishes_event_tiles() -> None:
     assert all("-" not in t.key for t in tiles)
     assert {e["id"] for t in tiles for e in t.attributes["events"]} == {"a", "b", "c"}
     assert [s.key for s in d.sensors if not s.key.startswith("tile_")] == ["live_events"]
+
+
+def test_image_entity_discovery_and_base64_state() -> None:
+    dev = Device("pollen", "Pollen", [], [ha.Image("map", "Pollen map", b"<svg/>")])
+    (topic, payload, retain), = ha.image_discovery("wa", "homeassistant", dev)
+    cfg = json.loads(payload)
+    assert topic == "homeassistant/image/wa_pollen_map/config" and retain
+    assert cfg["image_topic"] == "wa/pollen/map" and cfg["image_encoding"] == "b64"
+    assert cfg["default_entity_id"] == "image.wa_pollen_map" and cfg["content_type"] == "image/svg+xml"
+    assert ha.image_states("wa", dev) == [("wa/pollen/map", "PHN2Zy8+", True)]  # base64 of "<svg/>"
+
+
+def test_a_picture_is_sent_once_until_it_changes() -> None:
+    sent: dict[str, str] = {}
+    pts = [{"lat": 52.0, "lon": -1.0, "allergy_risk_label": ["low"], "dates": ["d"], "allergy_risk": [2],
+            "allergens": []}]  # fmt: skip
+
+    def run(points: list[dict[str, Any]]) -> list[mqtt.Message]:
+        return ha_publish.messages([ha_publish.pollen_device(points)], with_discovery=False, expire_after=900, sent_images=sent)
+
+    def images(msgs: list[mqtt.Message]) -> list[mqtt.Message]:
+        return [m for m in msgs if m[0].endswith("/map")]
+
+    assert len(images(run(pts))) == 1
+    assert images(run(pts)) == []  # unchanged: not re-sent
+    assert len(images(run([{**pts[0], "allergy_risk_label": ["high"]}]))) == 1  # changed: sent again
+    assert any(m[0].startswith("world_assistant/pollen/tile_") for m in run(pts))  # the tile sensors still go every time
