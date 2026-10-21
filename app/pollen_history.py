@@ -2,7 +2,8 @@
 
 Each fetch records today's levels (a later fetch the same day replaces the earlier one), so the
 history is what the service said about each day on that day. The worker fetches for every saved
-place every 4 hours, so it fills in whether or not anyone opens the page.
+place once a day (the provider allows 40 requests a day in all), so it fills in whether or not
+anyone opens the page.
 """
 
 from __future__ import annotations
@@ -18,11 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.config import get_settings
 from app.integrations.pollen.client import DEFAULT_BASE, PollenClient, PollenError
+from app.pollen_budget import PollenBudgetError
 
 log = logging.getLogger("wa.pollen")
 KEEP_DAYS = 90
 RISK = "_risk"
-CACHE_SECONDS = 4 * 3600  # the service asks for no more than one fetch every 4 hours
+CACHE_SECONDS = 24 * 3600  # the provider allows 40 requests a day, and a fetch covers four days
 
 
 def cache_key(lat: float, lon: float, country: str, today: date) -> str:
@@ -122,7 +124,7 @@ async def history(engine: AsyncEngine, place_id: str, today: date, days: int = K
 async def pollen_sync(ctx: dict[str, Any]) -> Any:
     """Worker job: fetch the forecast for every saved place, store today's values, warm the cache."""
     from app.jobs import tracked
-    from app.ratelimit import SlidingWindowLimiter
+    from app.pollen_budget import PollenLimiter
 
     settings = get_settings()
 
@@ -135,7 +137,7 @@ async def pollen_sync(ctx: dict[str, Any]) -> Any:
             places = (await conn.execute(text("SELECT id, lat, lon FROM place ORDER BY id"))).all()
         fetched: dict[tuple[float, float], dict[str, Any]] = {}
         stored = 0
-        limiter = SlidingWindowLimiter(ctx["redis"], "pollen", 20)
+        limiter = PollenLimiter(ctx["redis"], settings.pollen_daily_limit)
         async with PollenClient(settings.pollen_api_key, settings.pollen_base_url or DEFAULT_BASE, limiter=limiter) as c:
             for pid, lat, lon in places:
                 spot = (round(lat, 2), round(lon, 2))
@@ -152,6 +154,8 @@ async def pollen_sync(ctx: dict[str, Any]) -> Any:
                     stored += await record(engine, pid, today, fetched[spot])
                 except PollenError as exc:
                     log.warning("pollen fetch for %s failed: %s", pid, exc)
+                    if isinstance(exc, PollenBudgetError):
+                        break  # nothing more can be fetched today
         await prune(engine, today)
         return {"places": len(places), "values": stored}
 

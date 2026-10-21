@@ -1,7 +1,8 @@
 """A nationwide pollen forecast, fetched on a lattice and kept here.
 
 The provider answers one point at a time, so the worker asks for a lattice of points over Britain
-and Northern Ireland three times a day and stores every answer. Anyone (the web page, the
+and Northern Ireland, a few points at a time (the provider allows 40 requests a day in all, and a
+forecast covers four days), and stores every answer. Anyone (the web page, the
 assistant, Home Assistant) then gets the answer for any location from the stored points, with no
 call to the provider and no location sent anywhere. `changed_at` records when a point's forecast
 last differed, which shows how often the provider really updates.
@@ -14,7 +15,7 @@ import hashlib
 import json
 import logging
 import math
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -40,7 +41,6 @@ _NI = [(54.0, -6.0), (54.6, -5.5), (55.2, -6.0), (55.2, -7.0), (54.7, -8.0), (54
 SOURCE = "Austrian Pollen Information Service, www.polleninformation.at"
 PAUSE_S = 10.0  # between provider calls: gentle, the service asks for fair use
 MAX_FAILURES_IN_A_ROW = 4  # then give up until the next run
-MAX_AGE_H = 24  # a stored point older than this is not used
 MAX_KM = 150.0  # and neither is one further than this from the request
 
 
@@ -88,15 +88,50 @@ def fingerprint(forecast: dict[str, Any]) -> str:
     return hashlib.sha256(json.dumps(keep, sort_keys=True, default=str).encode()).hexdigest()[:12]
 
 
+_LISTS = ("dates", "allergy_risk", "allergy_risk_level", "allergy_risk_label", "allergy_risk_hourly")
+
+
+def for_day(forecast: dict[str, Any], today: date) -> dict[str, Any] | None:
+    """A stored forecast cut so that its first day is `today`, or None when it does not cover today.
+
+    A fetch returns four days (today and three more), so a point fetched two days ago still has two
+    useful days left. Reading by date lets points be refreshed every few days instead of every day."""
+    dates = forecast.get("dates") or []
+    try:
+        offset = (today - date.fromisoformat(str(dates[0]))).days
+    except (IndexError, ValueError):
+        return None
+    if offset < 0 or offset >= len(dates):
+        return None
+    out = {k: (v[offset:] if k in _LISTS and isinstance(v, list) else v) for k, v in forecast.items()}
+    out["allergens"] = [
+        {**a, "levels": (a.get("levels") or [])[offset:], "labels": (a.get("labels") or [])[offset:]}
+        for a in forecast.get("allergens") or []
+    ]
+    return out
+
+
+def _today(now: datetime | None) -> date:
+    return (now or datetime.now(UTC)).astimezone(ZoneInfo(get_settings().local_tz)).date()
+
+
+def current(points: list[dict[str, Any]], now: datetime | None = None) -> list[dict[str, Any]]:
+    """The stored points with each forecast cut to start today; points that no longer cover today are left out."""
+    today = _today(now)
+    out = []
+    for p in points:
+        f = for_day(p["forecast"], today)
+        if f is not None:
+            out.append({**p, "forecast": f})
+    return out
+
+
 def nearest(
     points: list[dict[str, Any]], lat: float, lon: float, now: datetime | None = None
 ) -> tuple[dict[str, Any], float] | None:
-    """The closest stored point that is recent and near enough, with its distance in km."""
-    now = now or datetime.now(UTC)
+    """The closest stored point that still covers today and is near enough, with its distance in km."""
     best: tuple[dict[str, Any], float] | None = None
-    for p in points:
-        if p.get("fetched_at") and now - p["fetched_at"] > timedelta(hours=MAX_AGE_H):
-            continue
+    for p in current(points, now):
         d = km((lat, lon), (p["lat"], p["lon"]))
         if d <= MAX_KM and (best is None or d < best[1]):
             best = (p, d)
@@ -142,9 +177,10 @@ async def prune(engine: AsyncEngine, keep: set[tuple[float, float]]) -> None:
 
 
 async def pollen_grid_sync(ctx: dict[str, Any], pause: float = PAUSE_S) -> Any:
-    """Worker job: refresh every lattice point. Three times a day is plenty."""
+    """Worker job: refresh the stalest lattice points, a few each run. A forecast covers four days, so
+    every point being refreshed every couple of days is enough, and it keeps within the daily budget."""
     from app.jobs import tracked
-    from app.ratelimit import SlidingWindowLimiter
+    from app.pollen_budget import PollenBudgetError, PollenLimiter
 
     s = get_settings()
 
@@ -154,24 +190,34 @@ async def pollen_grid_sync(ctx: dict[str, Any], pause: float = PAUSE_S) -> Any:
         engine: AsyncEngine = ctx["engine"]
         today = datetime.now(ZoneInfo(s.local_tz)).date()
         pts = grid_points(s.pollen_grid_step_deg)
-        limiter = SlidingWindowLimiter(ctx["redis"], "pollen", 20)
+        limiter = PollenLimiter(ctx["redis"], s.pollen_daily_limit)
+        have = {(p["lat"], p["lon"]): p["fetched_at"] for p in await load(engine)}
+        pts.sort(key=lambda q: have.get(q) or datetime.min.replace(tzinfo=UTC))  # stalest first
         ok = failed = streak = 0
+        budget = False
         async with PollenClient(s.pollen_api_key, s.pollen_base_url or DEFAULT_BASE, limiter=limiter) as c:
             for lat, lon in pts:
                 if streak >= MAX_FAILURES_IN_A_ROW:
                     break  # the service is refusing us; try again next run
+                if ok + failed >= s.pollen_grid_calls_per_run or await limiter.remaining() <= s.pollen_reserve_calls:
+                    budget = True  # leave the rest of the day's budget for saved places and look-ups
+                    break
                 await asyncio.sleep(pause)
                 try:
                     await store(engine, lat, lon, await c.forecast(lat, lon, today, country=s.pollen_country))
                     ok += 1
                     streak = 0
+                except PollenBudgetError:
+                    budget = True
+                    break
                 except PollenError as exc:
                     failed += 1
                     streak += 1
                     log.warning("pollen grid point (%s, %s) failed: %s", lat, lon, exc)
         if ok:
             await prune(engine, set(pts))
-        return {"points": len(pts), "ok": ok, "failed": failed, "gave_up": streak >= MAX_FAILURES_IN_A_ROW}
+        return {"points": len(pts), "ok": ok, "failed": failed, "gave_up": streak >= MAX_FAILURES_IN_A_ROW,
+                "budget_stop": budget}  # fmt: skip
 
     return await tracked(ctx["engine"], "pollen_grid_sync", run)
 

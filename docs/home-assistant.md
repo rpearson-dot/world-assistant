@@ -26,7 +26,7 @@ How each kind of data gets there:
 
 | Data | How it gets to Home Assistant |
 |---|---|
-| **Fuel prices**, **road closures and speed restrictions**, **pollen** | Published nationwide over MQTT with positions. The dashboards filter by distance from the viewer's position (or the `zone` at the top of each card). Nothing to set up per person. Pollen is a grid of about 50 points across Britain, refreshed three times a day. |
+| **Fuel prices**, **road closures and speed restrictions**, **pollen** | Published nationwide over MQTT with positions. The dashboards filter by distance from the viewer's position (or the `zone` at the top of each card). Nothing to set up per person. Pollen is a grid of about 50 points across Britain, refreshed a few points at a time, twice a day. |
 | **Events** | Looked up for one point at a time, so Home Assistant fetches them itself for `zone.home` (hourly) and the dashboard shows what is on near home. Needs the one-off setup below. Events do not follow the viewer. |
 | **Trains and buses** | Not location-based. Published over MQTT as they are. |
 
@@ -94,7 +94,7 @@ Only the place's name and position are stored (table `ha_location`).
 
 ### How the pollen grid works
 
-The pollen provider answers one point at a time and asks for no more than about one call every four hours per point. So the worker fetches a fixed lattice of points over Britain (1 degree apart, about 51 points on land; `WA_POLLEN_GRID_DEG`) at 02:40, 10:40 and 18:40, pausing 10 seconds between calls, and stores them in the `pollen_grid` table. It stops if the provider fails four times in a row and tries again at the next run. Anything asking for pollen at a point (`/v1/pollen/near?lat=..&lon=..`, or Home Assistant's tiles) is answered from the nearest stored point within 150 km and under 24 hours old, falling back to a live fetch otherwise. `GET /v1/pollen/grid` returns the whole lattice. Each stored point records when its forecast last changed (`changed_at`), which shows whether the provider updates every four hours or daily.
+The pollen provider answers one point at a time and, importantly, allows only **40 requests a day** on a key. So everything shares one daily budget of 36 requests (`WA_POLLEN_DAILY_LIMIT`; the day is the UTC date), and the worker keeps a lattice of points over Britain (1 degree apart, about 51 points on land; `WA_POLLEN_GRID_DEG`) in the `pollen_grid` table. Because each fetch covers four days (today and three more), a stored point stays useful for up to four days: lookups read the entry for today's date. At 03:40 and 15:40 the worker refreshes the 12 stalest points (`WA_POLLEN_GRID_CALLS_PER_RUN`), pausing 10 seconds between calls, so every point is refreshed roughly every two days. It stops early when only 6 requests of the day's budget are left (`WA_POLLEN_RESERVE_CALLS`, kept for saved places and live lookups), and gives up if the provider fails four times in a row. Anything asking for pollen at a point (`/v1/pollen/near?lat=..&lon=..`, or Home Assistant's tiles) is answered from the nearest stored point within 150 km that still covers today, falling back to a live fetch otherwise (which uses budget). `GET /v1/pollen/grid` returns the lattice, each cut to start today. Each stored point records when its forecast last changed (`changed_at`), which shows how often the provider really updates.
 
 ## Setting up pollen and events (once)
 
@@ -131,6 +131,7 @@ use any saved place. Pollen is answered from the stored grid, so the pollen prov
 | `WA_MQTT_ENABLED` | `true` | Turns all MQTT publishing off, including the bus tracker. |
 | `WA_HA_PUBLISH` | `true` | Turns off just these sensors. |
 | `WA_HA_INTERVAL_MIN` | `5` | How often the worker publishes. |
+| `WA_POLLEN_DAILY_LIMIT`, `WA_POLLEN_GRID_CALLS_PER_RUN`, `WA_POLLEN_RESERVE_CALLS` | `36`, `12`, `6` | The pollen request budget (above). |
 | `WA_HA_LOCATIONS_MAX` | `8` | Most extra places for events (below). |
 | `WA_HA_LOCATION_TTL_DAYS` | `30` | A place not renewed for this long is dropped. |
 | `WA_HA_LOCATION_PRESSURE_TTL_DAYS` | `7` | The shorter time-out once 75% of the cap is used. |

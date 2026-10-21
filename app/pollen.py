@@ -1,4 +1,4 @@
-"""Pollen and allergy risk near a saved place: Polleninformation forecast, cached for 4 hours."""
+"""Pollen and allergy risk near a saved place: Polleninformation forecast, cached for the day."""
 
 from __future__ import annotations
 
@@ -17,17 +17,17 @@ from app.config import get_settings
 from app.integrations.pollen.client import ATTRIBUTION, DEFAULT_BASE, PollenClient, PollenError
 from app.pagestyle import themed
 from app.places import place_or_default
+from app.pollen_budget import PollenLimiter
+from app.pollen_grid import current, nearest
 from app.pollen_grid import load as load_grid
-from app.pollen_grid import nearest
 from app.pollen_history import CACHE_SECONDS, KEEP_DAYS, cache_key, history, record
-from app.ratelimit import SlidingWindowLimiter
 
 router = APIRouter(prefix="/v1/pollen", tags=["pollen"], dependencies=[Depends(require_token)])
 
 
 def _client(request: Request) -> PollenClient:
     s = get_settings()
-    limiter = SlidingWindowLimiter(request.app.state.redis, "pollen", 20)
+    limiter = PollenLimiter(request.app.state.redis, s.pollen_daily_limit)
     return PollenClient(s.pollen_api_key, s.pollen_base_url or DEFAULT_BASE, limiter=limiter)
 
 
@@ -44,7 +44,7 @@ async def _place(request: Request, place: str) -> tuple[str, float, float]:
 @router.get("/grid")
 async def grid(request: Request) -> dict[str, Any]:
     """The stored forecast for every point of the nationwide lattice (what Home Assistant filters)."""
-    points = await load_grid(request.app.state.engine)
+    points = current(await load_grid(request.app.state.engine))  # each cut to start today
     out = []
     for p in points:
         f = p["forecast"]
@@ -255,7 +255,7 @@ async function loadHistory() {
     l.append(cb, sw, document.createTextNode(it.name)); lg.append(l);
   }
   drawEach();
-  $('hnote').textContent = HIST.days_recorded + ' of the last ' + HIST.days.length + ' days recorded so far. History builds up as the app checks every 4 hours, and is kept for 90 days.';
+  $('hnote').textContent = HIST.days_recorded + ' of the last ' + HIST.days.length + ' days recorded so far. History builds up as the app checks once a day, and is kept for 90 days.';
 }
 async function show() {
   msg.textContent = ''; $('list').replaceChildren();
@@ -263,7 +263,7 @@ async function show() {
   $('note').textContent = 'Loading...';
   try {
     const d = await get('/v1/pollen/near?place=' + encodeURIComponent($('place').value));
-    $('note').textContent = 'Pollen near ' + d.place + (d.cached ? ' (saved from earlier; refreshed every 4 hours)' : '') + '.';
+    $('note').textContent = 'Pollen near ' + d.place + (d.cached ? ' (saved from earlier; refreshed daily)' : '') + '.';
     $('list').append(row('Allergy risk', d.dates, d.allergy_risk_level, d.allergy_risk_label,
       d.allergy_risk.map(r => r == null ? '' : r + '/10')));
     for (const a of d.allergens) $('list').append(row(a.name || a.id || 'Pollen', d.dates, a.levels, a.labels));

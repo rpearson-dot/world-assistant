@@ -2,7 +2,7 @@
 
 Personal API key (request it through the contact form on polleninformation.at/en/data-interface),
 kept in the pollen_api_key secret. Non-commercial use only, with the credit "Austrian Pollen
-Information Service, www.polleninformation.at". Fair use: one fetch every 4 hours is enough.
+Information Service, www.polleninformation.at". The key allows 40 requests a day (see app/pollen_budget.py).
 
 The key travels in the `apikey` query parameter, so errors here never include the request URL.
 Response (documented): `contamination` = allergens with `poll_id`, `poll_title`, `contamination_1..4`
