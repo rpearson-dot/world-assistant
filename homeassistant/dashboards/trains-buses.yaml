@@ -1,0 +1,27 @@
+# Train and bus departure boards, and the bus tracker. Finds every board; nothing to edit.
+title: Trains and buses
+views:
+  - title: Trains and buses
+    path: trains-buses
+    icon: mdi:train
+    cards:
+      - type: markdown
+        title: Departures
+        content: |
+          {% set ns = namespace(found=false) %}
+          {% for s in states.sensor | sort(attribute='entity_id') if s.entity_id.startswith('sensor.wa_trains_') and s.entity_id.endswith('_next') %}{% set ns.found = true %}
+          ### {{ s.name | replace('Trains and buses ', '') | replace(': next departure', '') }}
+          {% if s.attributes.stale %}⚠️ Data is stale.
+          {% endif %}{% if s.attributes.departures %}| Due | To | Plat | Status |
+          |--:|:--|:-:|:--|{% for d in s.attributes.departures %}
+          | {{ d.minutes }} min | {{ d.destination }} | {{ d.platform or '' }} | {{ ('🔴 ' if d.status in ['Cancelled'] else ('🟠 ' if (d.delay_minutes or 0) >= 5 else '🟢 ')) }}{{ d.status or '' }}{{ ' (+' ~ d.delay_minutes ~ ' min)' if (d.delay_minutes or 0) > 0 else '' }} |{% endfor %}
+          {% else %}No services listed.
+          {% endif %}{% endfor %}
+          {% if not ns.found %}No boards yet. Set one up in World Assistant (Trains page).{% endif %}
+      - type: markdown
+        title: Bus tracker
+        content: |
+          {% set ns = namespace(found=false) %}
+          {% for s in states.sensor | sort(attribute='entity_id') if s.entity_id.startswith('sensor.wa_bus_') and (s.entity_id.endswith('_last_bus') or s.entity_id.endswith('_summary')) %}{% set ns.found = true %}
+          - **{{ s.name }}**: {{ s.state }}{% endfor %}
+          {% if not ns.found %}No bus tracker is publishing right now (it only runs in its polling window).{% endif %}

@@ -1,0 +1,26 @@
+# Pollen. Finds every World Assistant place that has pollen sensors; no entity ids to edit.
+title: Pollen
+views:
+  - title: Pollen
+    path: pollen
+    icon: mdi:flower-pollen
+    cards:
+      - type: markdown
+        title: Pollen this week
+        content: |
+          {% set bars = ['⬜', '🟩', '🟨', '🟧', '🟥'] %}
+          {% set ns = namespace(found=false) %}
+          {% for r in states.sensor if r.entity_id.startswith('sensor.wa_pollen_') and r.entity_id.endswith('_allergy_risk') %}
+          {% set base = r.entity_id[:-13] %}
+          {% set dates = r.attributes.dates or [] %}
+          {% set ns.found = true %}
+          ## {{ r.attributes.place }}
+          Allergy risk today: **{{ r.attributes.label or 'unknown' }}** ({{ r.state }}/10)
+
+          | |{% for d in dates %} {{ as_datetime(d).strftime('%a') }} |{% endfor %}
+          |:--|{% for d in dates %}:-:|{% endfor %}{% for s in states.sensor | sort(attribute='entity_id') if s.entity_id.startswith(base ~ '_pollen_') %}
+          | **{{ s.entity_id[(base ~ '_pollen_') | length:] | replace('_', ' ') | title }}** |{% for lv in (s.attributes.levels or []) %} {{ bars[lv | int(0)] if lv is not none else '▫️' }} |{% endfor %}{% endfor %}
+
+          ⬜ none 🟩 low 🟨 moderate 🟧 high 🟥 very high
+          {% endfor %}
+          {% if not ns.found %}No pollen data yet. Save a place in World Assistant and wait a few minutes.{% endif %}

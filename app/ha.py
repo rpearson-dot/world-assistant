@@ -55,7 +55,9 @@ def discovery(prefix: str, disc_prefix: str, device: Device, expire_after: int) 
     for s in device.sensors:
         uid = unique_id(device.id, s.key)
         payload: dict[str, Any] = {
-            "name": s.name, "unique_id": uid, "object_id": uid, "device": info,
+            "name": s.name, "unique_id": uid, "device": info,
+            # object_id is deprecated in Home Assistant; default_entity_id replaces it.
+            "object_id": uid, "default_entity_id": f"sensor.{uid}",
             "state_topic": state_topic(prefix, device.id, s.key),
             "json_attributes_topic": state_topic(prefix, device.id, f"{s.key}/attributes"),
             "expire_after": expire_after,

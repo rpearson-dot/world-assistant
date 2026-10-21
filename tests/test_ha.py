@@ -31,6 +31,7 @@ def test_discovery_has_expiry_unique_ids_and_only_set_fields() -> None:
     assert all(m[2] for m in msgs) and a["expire_after"] == 900
     assert a["unit_of_measurement"] == "min" and "unit_of_measurement" not in b
     assert a["state_topic"] == "wa/pollen/a" and a["json_attributes_topic"] == "wa/pollen/a/attributes"
+    assert a["default_entity_id"] == "sensor.wa_pollen_a" and a["object_id"] == "wa_pollen_a"
     assert a["device"]["identifiers"] == ["world_assistant_pollen"]
 
 
