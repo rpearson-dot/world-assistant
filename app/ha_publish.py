@@ -29,6 +29,8 @@ log = logging.getLogger("wa.ha")
 
 FUELS = ("E10", "B7_STANDARD")
 FUEL_NAMES = {"E10": "Petrol (E10)", "B7_STANDARD": "Diesel"}
+FRESH_H = 48.0  # the national median uses only prices this recent; older ones are still listed, with their age
+STATION_KEYS = ("name", "brand", "postcode", "lat", "lon", "pence", "age_h")  # what a tile keeps of a station
 
 
 TILE_DEG = 0.5  # fuel stations are grouped into tiles of this size so each sensor stays small
@@ -62,18 +64,19 @@ def fuel_device(results: dict[str, list[dict[str, Any]]]) -> Device:
     sensors: list[Sensor] = []
     for fuel, stations in results.items():
         label = FUEL_NAMES.get(fuel, fuel)
-        prices = sorted(s["pence"] for s in stations if s.get("pence") is not None)
-        cheapest = min(stations, key=lambda s: s["pence"], default=None)
+        fresh = [s for s in stations if s.get("age_h") is None or s["age_h"] <= FRESH_H]
+        prices = sorted(s["pence"] for s in fresh if s.get("pence") is not None)
+        cheapest = min(fresh, key=lambda s: s["pence"], default=None)
         sensors.append(Sensor(
             f"national_{slug(fuel)}", f"{label}: national median", statistics.median(prices) if prices else None,
             icon="mdi:gas-station", unit="p", state_class="measurement",
-            attributes={"stations": len(stations), "cheapest_pence": cheapest and cheapest["pence"],
+            attributes={"stations": len(fresh), "listed": len(stations), "cheapest_pence": cheapest and cheapest["pence"],
                         "cheapest_station": cheapest and cheapest["name"],
                         "cheapest_postcode": cheapest and cheapest["postcode"]},
         ))  # fmt: skip
         tiles: dict[tuple[int, int], list[dict[str, Any]]] = {}
         for st in stations:
-            tiles.setdefault(_tile(st["lat"], st["lon"]), []).append(st)
+            tiles.setdefault(_tile(st["lat"], st["lon"]), []).append({k: st.get(k) for k in STATION_KEYS})
         for (ti, tj), rows in sorted(tiles.items()):
             rows.sort(key=lambda r: r["pence"])
             for part, chunk in enumerate(_chunks(rows)):
@@ -234,7 +237,7 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
         return pollen_device((await _get(c, "/v1/pollen/grid"))["points"])
 
     async def fuel() -> Device:
-        return fuel_device({f: (await _get(c, "/v1/fuel/all", fuel=f))["stations"] for f in FUELS})
+        return fuel_device({f: (await _get(c, "/v1/fuel/all", fuel=f, max_age_hours=get_settings().ha_fuel_max_age_h))["stations"] for f in FUELS})
 
     async def trains() -> Device:
         pairs = []

@@ -216,3 +216,14 @@ def test_an_oversized_tile_is_split_so_attributes_stay_under_the_recorder_limit(
     fuel = [s for s in ha_publish.fuel_device({"e10": stations}).sensors if s.key.startswith("tile_e10_")]
     assert len(fuel) > 1 and sum(s.state for s in fuel) == 400
     assert all(len(json.dumps(s.attributes)) < 16384 for s in fuel)
+
+
+def test_old_prices_are_listed_with_their_age_but_do_not_move_the_national_median() -> None:
+    old = {**_st("old", 51.51, -0.12, 100.0), "age_h": 200.0}
+    new = {**_st("new", 51.52, -0.11, 150.0), "age_h": 3.0}
+    d = ha_publish.fuel_device({"E10": [old, new]})
+    nat = next(s for s in d.sensors if s.key == "national_e10")
+    assert nat.state == 150.0 and nat.attributes["stations"] == 1 and nat.attributes["listed"] == 2
+    tile = next(s for s in d.sensors if s.key.startswith("tile_e10_"))
+    assert [r["age_h"] for r in tile.attributes["stations"]] == [200.0, 3.0]
+    assert all(set(r) == set(ha_publish.STATION_KEYS) for r in tile.attributes["stations"])  # no ids or flags

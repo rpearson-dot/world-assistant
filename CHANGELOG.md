@@ -11,7 +11,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - Icons in Unraid's Docker tab: a simple green earth with a USB cable hanging off it, and a coloured band naming each supporting container's role (worker, database, cache, routing, vault). The compose files carry the `net.unraid.docker.icon` labels, the api also gets a `net.unraid.docker.webui` link to `/status`, and the icons are served by the api at `/icons/<name>.png` without a token. Sources in `deploy/unraid/`.
 
 ### Fixed
-- The Fuel dashboard looks within 10 km by default instead of 5, which found nothing in places where the nearest priced station is further away.
+- Fuel in Home Assistant showed only the 944 stations (of about 7,900) that had updated their price in the last 48 hours, because most stations only report when a price changes. It now publishes every price up to 30 days old (`WA_HA_FUEL_MAX_AGE_H`), each with its age. The Fuel dashboard looks within 10 km and at prices up to a week old by default (`radius_km` and `max_age_h` at the top of each card) and marks prices more than two days old with ⚠️. The national median still uses only prices under 48 hours old.
 - Home Assistant no longer loses the attributes of busy fuel and road-event map tiles. A tile whose
   data would pass the recorder's 16 KB limit is now split across several sensors (`…_p2`, `…_p3`);
   the dashboards read them all.
