@@ -86,6 +86,22 @@ async def _candidates(
         return result.mappings().all()
 
 
+async def all_stations(
+    engine: AsyncEngine, fuel: str, max_age_h: float | None = 48.0
+) -> list[dict[str, Any]]:
+    """Every open station with a current price for `fuel`, nationwide, without any home point."""
+    rows = await _candidates(engine, fuel, (49.5, -8.7, 61.0, 2.0), max_age_h)
+    now = datetime.now(UTC)
+    out = []
+    for r in rows:
+        hit = _hit(r, fuel, 0.0, now)
+        out.append({"id": hit.node_id, "name": hit.name, "brand": hit.brand,
+                    "postcode": hit.postcode, "lat": round(hit.lat, 5), "lon": round(hit.lon, 5),
+                    "pence": hit.pence, "motorway": hit.motorway_services, "supermarket": hit.supermarket,
+                    "age_h": None if hit.price_age_hours is None else round(hit.price_age_hours, 1)})  # fmt: skip
+    return out
+
+
 def brand_key(brand: str | None) -> str:
     """Case, spacing and apostrophes don't matter: SAINSBURYS, Sainsbury's and sainsburys are one."""
     return re.sub(r"[\u2019']", "", (brand or "").strip().casefold())

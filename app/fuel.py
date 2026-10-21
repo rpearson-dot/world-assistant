@@ -10,8 +10,10 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import text
 
 from app.auth import require_token
+from app.integrations.fuelfinder.normalise import canonical_fuel
 from app.integrations.fuelfinder.queries import (
     FuelHit,
+    all_stations,
     along_corridor,
     brand_options,
     compare_cheapest,
@@ -102,6 +104,20 @@ async def near(
         fuel, hits, brands=brands, supermarkets=supermarkets, fill_litres=fill_litres, limit=limit,
         place=name, lat=lat, lon=lon, radius_km=radius_km,
     )
+
+
+@router.get("/all")
+async def everywhere(
+    request: Request,
+    fuel: str = FUEL,
+    max_age_hours: float | None = Query(48.0, ge=0, description="ignore prices older than this; 0 = any age"),
+) -> dict[str, Any]:
+    """Every station with a current price, nationwide and unranked (for Home Assistant to filter)."""
+    code = canonical_fuel(fuel)
+    if code is None:
+        raise HTTPException(422, f"unknown fuel {fuel!r}")
+    stations = await all_stations(request.app.state.engine, code, max_age_hours or None)
+    return {"fuel": code, "count": len(stations), "stations": stations}
 
 
 @router.get("/along/{corridor_id}")

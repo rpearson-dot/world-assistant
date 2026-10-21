@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import math
+import statistics
 from typing import Any
 
 import httpx
@@ -22,7 +24,7 @@ FUELS = ("E10", "B7_STANDARD")
 FUEL_NAMES = {"E10": "Petrol (E10)", "B7_STANDARD": "Diesel"}
 
 
-def pollen_device(data: dict[str, Any]) -> Device:
+def pollen_device(data: dict[str, Any], place_id: str = "") -> Device:
     dates = data.get("dates") or []
     risk = data.get("allergy_risk") or []
     risk_level = data.get("allergy_risk_level") or []
@@ -45,25 +47,43 @@ def pollen_device(data: dict[str, Any]) -> Device:
                               levels[0] if levels else None, icon="mdi:grass", state_class="measurement",
                               attributes={"label": labels[0] if labels else None, "levels": levels,
                                           "labels": labels, "dates": dates}))  # fmt: skip
-    return Device("pollen", "Pollen", sensors)
+    return Device(f"pollen_{slug(place_id)}" if place_id else "pollen", f"Pollen: {place}" if place else "Pollen", sensors)
 
 
-def fuel_device(results: dict[str, dict[str, Any]]) -> Device:
+TILE_DEG = 0.5  # fuel stations are grouped into tiles of this size so each sensor stays small
+
+
+def _tile(lat: float, lon: float) -> tuple[int, int]:
+    return math.floor(lat / TILE_DEG), math.floor(lon / TILE_DEG)
+
+
+def fuel_device(results: dict[str, list[dict[str, Any]]]) -> Device:
+    """Every station with a price, nationwide. One sensor per fuel and map tile (state: how many
+    stations), with the stations and their coordinates in attributes, plus a national summary per
+    fuel. Home Assistant filters by its own zones; nothing here knows where you are."""
     sensors: list[Sensor] = []
-    for fuel, data in results.items():
-        best = data.get("cheapest_overall") or {}
-        stations = [
-            {"station": s.get("trading_name"), "brand": s.get("brand_name"), "pence": s.get("pence"),
-             "distance_km": s.get("distance_km"), "postcode": s.get("postcode")}
-            for s in (data.get("stations") or [])[:5]
-        ]  # fmt: skip
+    for fuel, stations in results.items():
+        label = FUEL_NAMES.get(fuel, fuel)
+        prices = sorted(s["pence"] for s in stations if s.get("pence") is not None)
+        cheapest = min(stations, key=lambda s: s["pence"], default=None)
         sensors.append(Sensor(
-            f"cheapest_{slug(fuel)}", f"Cheapest {FUEL_NAMES.get(fuel, fuel)}", best.get("pence"),
+            f"national_{slug(fuel)}", f"{label}: national median", statistics.median(prices) if prices else None,
             icon="mdi:gas-station", unit="p", state_class="measurement",
-            attributes={"station": best.get("trading_name"), "brand": best.get("brand_name"),
-                        "postcode": best.get("postcode"), "distance_km": best.get("distance_km"),
-                        "price_age_hours": best.get("price_age_hours"), "nearest": stations},
+            attributes={"stations": len(stations), "cheapest_pence": cheapest and cheapest["pence"],
+                        "cheapest_station": cheapest and cheapest["name"],
+                        "cheapest_postcode": cheapest and cheapest["postcode"]},
         ))  # fmt: skip
+        tiles: dict[tuple[int, int], list[dict[str, Any]]] = {}
+        for st in stations:
+            tiles.setdefault(_tile(st["lat"], st["lon"]), []).append(st)
+        for (ti, tj), rows in sorted(tiles.items()):
+            rows.sort(key=lambda r: r["pence"])
+            sensors.append(Sensor(
+                f"tile_{slug(fuel)}_{ti}_{tj}".replace("-", "m"), f"{label} tile {ti}/{tj}", len(rows),
+                icon="mdi:map-marker-radius", state_class="measurement",
+                attributes={"fuel": fuel, "lat_from": ti * TILE_DEG, "lon_from": tj * TILE_DEG,
+                            "size_deg": TILE_DEG, "stations": rows},
+            ))  # fmt: skip
     return Device("fuel", "Fuel prices", sensors)
 
 
@@ -109,12 +129,13 @@ def roads_device(status: dict[str, Any]) -> Device:
     return Device("roads", "Roads", sensors)
 
 
-def events_device(data: dict[str, Any]) -> Device:
+def events_device(data: dict[str, Any], place_id: str = "") -> Device:
     events = data.get("events") or []
     first = events[0] if events else {}
     rows = [{"name": e.get("name"), "date": e.get("date"), "venue": e.get("venue"),
              "type": e.get("type"), "source": e.get("source")} for e in events[:5]]  # fmt: skip
-    return Device("events", "Events nearby", [
+    place = data.get("place")
+    return Device(f"events_{slug(place_id)}" if place_id else "events", f"Events: {place}" if place else "Events nearby", [
         Sensor("upcoming", "Events coming up", data.get("count", len(events)), icon="mdi:calendar-star",
                state_class="measurement", attributes={"days": data.get("days"), "next": rows,
                                                       "place": data.get("place")}),
@@ -139,11 +160,20 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
             log.info("home assistant: skipping %s (%s: %s)", name, type(exc).__name__, exc)
 
-    async def pollen() -> Device:
-        return pollen_device(await _get(c, "/v1/pollen/near"))
+    places = []
+    try:
+        places = await _get(c, "/v1/places")
+    except httpx.HTTPError as exc:
+        log.info("home assistant: no places (%s)", type(exc).__name__)
+
+    async def pollen(place: dict[str, Any]) -> Device:
+        return pollen_device(await _get(c, "/v1/pollen/near", place=place["id"]), place["id"])
+
+    async def events(place: dict[str, Any]) -> Device:
+        return events_device(await _get(c, "/v1/events/near", place=place["id"]), place["id"])
 
     async def fuel() -> Device:
-        return fuel_device({f: await _get(c, "/v1/fuel/near", fuel=f, limit=5) for f in FUELS})
+        return fuel_device({f: (await _get(c, "/v1/fuel/all", fuel=f))["stations"] for f in FUELS})
 
     async def trains() -> Device:
         pairs = []
@@ -157,11 +187,11 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
     async def roads() -> Device:
         return roads_device(await _get(c, "/v1/status"))
 
-    async def events() -> Device:
-        return events_device(await _get(c, "/v1/events/near"))
-
-    for name, build in (("pollen", pollen), ("fuel", fuel), ("trains", trains),
-                        ("roads", roads), ("events", events)):  # fmt: skip
+    jobs = [("fuel", fuel), ("trains", trains), ("roads", roads)]
+    for pl in places:
+        jobs.append((f"pollen {pl['id']}", lambda pl=pl: pollen(pl)))
+        jobs.append((f"events {pl['id']}", lambda pl=pl: events(pl)))
+    for name, build in jobs:
         await attempt(name, build)
     return devices
 
