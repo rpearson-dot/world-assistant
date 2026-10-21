@@ -4,7 +4,7 @@
 
 Reads the buses the tracker still remembers (its last 40 trips and the live ones), works out which
 reached the target in time using the same rule the poller uses, and saves the ones not already saved.
-Safe to repeat: a bus already on record is skipped. It changes nothing else, not even the stored state.
+Safe to repeat: a bus already on record keeps its row, and its slot is corrected. It changes nothing else, not even the stored state.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ async def backfill(engine: AsyncEngine, tid: str, day: date | None = None, now: 
     if not cfg.target:
         return {"ok": False, "message": "this tracker has no target"}
     slots = list(found[0]) if found else []
-    state = {**(row["state"] or {}), "reported": [], "terminal": {}}  # a copy: the stored state is not saved back
+    state = {**(row["state"] or {}), "reported": [], "claimed": [], "terminal": {}}  # a copy: the stored state is not saved back
     hits = compute_hits(cfg, state, now or time.time(), the_day, tz, slots)
     async with engine.begin() as conn:
         await store.ensure_day(conn, tid, the_day, slots)

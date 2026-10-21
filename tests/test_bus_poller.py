@@ -106,6 +106,23 @@ def test_bus_before_deadline_is_a_hit_with_its_slot() -> None:
     assert hits[0]["slot"] == "07:30" and hits[0]["delay_min"] == 0 and not hits[0]["via_return"]
 
 
+def test_bunched_buses_each_claim_their_own_slot(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.integrations.bus import poller
+
+    def run(offsets: list[int]) -> list[dict[str, Any]]:
+        found = [{"vehicle": f"V{i}", "board_ts": T0 + m * 60, "arrive_ts": T0 + (m + 15) * 60, "via_return": False}
+                 for i, m in enumerate(offsets)]  # fmt: skip
+        monkeypatch.setattr(poller, "target_hits", lambda *a, **k: found)
+        return poller.compute_hits(TrackerConfig.model_validate(cfg_dict()), {}, T0 + 3600, DAY, TZ,
+                                   ["07:14", "07:26", "07:38", "07:49"])  # fmt: skip
+
+    # boarded 07:14, 07:26, 07:27: the third is nearest to 07:26 but that is taken, so it gets 07:38
+    out = run([14, 26, 27])
+    assert [h["slot"] for h in out] == ["07:14", "07:26", "07:38"]
+    # a bus with nothing free in reach is still a hit, with no slot
+    assert run([100])[0]["slot"] is None
+
+
 def test_bus_after_deadline_is_not_a_hit() -> None:
     board = T0 + 65 * 60  # 08:05 local; arrives 08:20, after the 08:10 deadline
     hits = drive({"AAAA0001": board, "AAAA0002": board + 600, "AAAA0003": board + 900, "AAAA0009": board + 1200},

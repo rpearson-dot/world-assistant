@@ -73,11 +73,15 @@ def compute_hits(
     if not tcfg:
         return []
     hits = target_hits(state, now, tcfg, local_epoch(local_day, cfg.earliest, tz), local_epoch(local_day, cfg.deadline, tz))
-    for h in hits:
+    claimed: set[str] = set(state.setdefault("claimed", []))
+    for h in sorted(hits, key=lambda x: x["board_ts"]):  # earliest bus first; each claims one slot
         board_local = datetime.fromtimestamp(h["board_ts"], tz)
-        slot = nearest_slot(slots, board_local.strftime("%H:%M"))
+        slot = nearest_slot(slots, board_local.strftime("%H:%M"), claimed)
+        if slot:
+            claimed.add(slot)
         h["slot"] = slot
         h["delay_min"] = round(board_local.hour * 60 + board_local.minute - to_minutes(slot), 1) if slot else None
+    state["claimed"] = sorted(claimed)
     return hits
 
 
@@ -98,6 +102,7 @@ def process_poll(
     ):  # new day: forget yesterday's reports and pending terminal buses
         state["day"] = day_key
         state["reported"] = []
+        state["claimed"] = []
         state["terminal"] = {}
         state["turned"] = []
     update_trips(state, preds, lookup.pos_of, now)

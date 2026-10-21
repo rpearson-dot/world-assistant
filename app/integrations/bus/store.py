@@ -187,7 +187,7 @@ async def save_hits(conn: AsyncConnection, tid: str, day: date, hits: list[dict[
     await conn.execute(
         text(
             "INSERT INTO bus_target_hit (tracker, day, vehicle, board_at, arrive_at, slot, delay_min, via_return) "
-            "VALUES (:t, :d, :v, to_timestamp(:b), to_timestamp(:a), :sl, :dm, :vr) ON CONFLICT DO NOTHING"
+            "VALUES (:t, :d, :v, to_timestamp(:b), to_timestamp(:a), :sl, :dm, :vr) ON CONFLICT (tracker, day, vehicle, board_at) DO UPDATE SET slot = EXCLUDED.slot, delay_min = EXCLUDED.delay_min"
         ),
         [
             {
