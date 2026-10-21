@@ -8,29 +8,60 @@ The worker reads this service's own API every few minutes (so Home Assistant alw
 what the web pages show) and publishes retained messages to the broker. Home Assistant needs only
 its normal MQTT integration, pointed at the same broker.
 
-## Where the places live
+## Home Assistant's home zone, not World Assistant's default place
 
 World Assistant's "default place" belongs to its own web pages. Nothing sent to Home Assistant uses
-it. Home Assistant has its own locations (zones), so it does the filtering:
+it. Home Assistant has its own locations (zones), and anything that depends on where you are follows
+`zone.home` (or another zone you choose), by one of two routes:
 
-- **Fuel** is published for the whole country. You filter by distance from any zone in a template.
-- **Pollen and events** can only be fetched for a point, so they are published for each place saved
-  in World Assistant (`/places`). Save a place for each Home Assistant location you want them for;
-  each appears as its own device.
-- **Road closures and speed restrictions** are published nationwide with their positions, like fuel. The roads dashboard shows the ones near a Home Assistant zone (`zone.home` unless you change it).
-- **Trains and buses** are not location-based and are published as they are.
+| Data | How it gets to Home Assistant |
+|---|---|
+| **Fuel prices**, **road closures and speed restrictions** | Published nationwide over MQTT with positions; the dashboards filter by distance from the zone. |
+| **Pollen**, **events** | Fetched by Home Assistant itself from World Assistant, passing the zone's coordinates (these can only be looked up for one point at a time). Needs the one-off setup below. |
+| **Trains and buses** | Not location-based. Published over MQTT as they are. |
 
 ## What appears
+
+Over MQTT (retained, with discovery):
 
 | Device | Sensors |
 |---|---|
 | **Fuel prices** | `<fuel>: national median` (with the cheapest station in attributes), and one `<fuel> tile` sensor per half-degree map square (roughly 55 by 35 km). A tile's state is how many stations it holds; its attributes list every station with price, brand, postcode and coordinates, cheapest first. Petrol (E10) and diesel. |
-| **Pollen: `<place>`** | `Allergy risk` (0 to 10, today; the forecast is in its attributes), `Allergy risk label`, and one `Pollen: <name>` sensor per allergen. |
-| **Events: `<place>`** | `Events coming up` (count for the next seven days) and `Next event`, with the next five in attributes. |
 | **Trains and buses** | For each departure board you have set up: `<board>: next departure` (minutes; the next services are in attributes) and `<board>: delayed or cancelled` (a count). Bus tracker sensors keep their own device (see [bus.md](bus.md)). |
 | **Roads** | `Live road events`, one `<corridor>: active works` sensor per enabled National Highways corridor, and one `Road events tile` sensor per half-degree map square that has any. A tile's attributes list its closures and speed restrictions (unplanned ones, plus planned works starting within a week) with road, direction, description, times and positions. |
 
-If a data source is not set up (no pollen key, no events key), that device is simply left out.
+From the World Assistant package (REST, hourly), once set up:
+
+| Entity | What it is |
+|---|---|
+| `sensor.wa_pollen_allergy_risk` | Allergy risk today, 0 to 10. The forecast and every allergen's levels are in its attributes. |
+| `sensor.wa_pollen_alder`, `_birch`, `_grasses`, `_mugwort`, `_olive`, `_ragweed` | Each allergen's level today (0 to 4), so each has its own history. |
+| `sensor.wa_events_upcoming` | How many events in the next 7 days within 8 km; the list is in its attributes. |
+| `sensor.wa_events_next` | The next event's name, with date, venue and distance in attributes. |
+
+If a data source is not set up (no pollen key, no events key), that part is simply empty.
+
+## Setting up pollen and events (once)
+
+These use a file in this repository: [`homeassistant/packages/world_assistant.yaml`](../homeassistant/packages/world_assistant.yaml).
+
+1. In `configuration.yaml`, make sure packages are on:
+   ```yaml
+   homeassistant:
+     packages: !include_dir_named packages
+   ```
+2. Copy the file to `/config/packages/world_assistant.yaml`.
+3. In `/config/secrets.yaml`, add one line with the contents of `api_token.txt` (the token never goes in the package):
+   ```yaml
+   wa_authorization: "Bearer <contents of api_token.txt>"
+   ```
+4. In the package, replace `WA-HOST:8010` (it appears twice) with your server's address and port
+   (`WA_API_PORT`, default 8010). Change `radius_km=8&days=7` for events if you like.
+5. Developer tools > YAML > Check configuration, then Restart Home Assistant.
+
+World Assistant sees the zone's coordinates only as parameters of each request, as it would from your
+browser. It doesn't store them or use any saved place. Pollen is cached for four hours on the server,
+so Home Assistant asking hourly costs nothing extra against the provider's fair-use limit.
 
 ## Settings
 
@@ -52,8 +83,8 @@ a stopped worker shows as unavailable rather than as old numbers that look curre
 One dashboard per data source lives in [`homeassistant/dashboards/`](../homeassistant/dashboards):
 `pollen.yaml`, `fuel.yaml`, `trains-buses.yaml`, `roads.yaml` and `events.yaml`. They use only
 Home Assistant's built-in cards (no HACS), and find their entities by name, so they need no editing
-for boards, corridors or places. The fuel dashboard has a `zone`, a radius and a fuel at the top of
-each card.
+for boards or corridors. The fuel and roads dashboards have a `zone` and a radius at the top of each
+card (both default to `zone.home`). The pollen and events dashboards need the package above.
 
 To add one:
 
@@ -103,16 +134,16 @@ Show it on a dashboard with an entities card for the price and a Markdown card f
 `lat` and `lon`, so a map card can plot them too. Large attributes are not kept in history (Home
 Assistant skips attributes over 16 KB when recording), which suits live prices.
 
-Other entities, e.g. a card per location:
+Other entities, for a small "today" card:
 
 ```yaml
 type: entities
 title: Today
 entities:
-  - sensor.wa_pollen_home_allergy_risk_label
+  - sensor.wa_pollen_allergy_risk
   - sensor.wa_fuel_national_e10
   - sensor.wa_roads_live_events
-  - sensor.wa_events_home_next_event
+  - sensor.wa_events_next
 ```
 
 Check the exact ids under Settings > Devices & services > MQTT. For a departure board, a Markdown card:
@@ -136,19 +167,19 @@ Tell me when the pollen risk is high and I have not taken an antihistamine:
 alias: Pollen warning
 trigger:
   - platform: numeric_state
-    entity_id: sensor.wa_pollen_home_allergy_risk
+    entity_id: sensor.wa_pollen_allergy_risk
     above: 6
 action:
   - service: notify.notify
     data:
-      message: "Pollen risk is {{ states('sensor.wa_pollen_home_allergy_risk_label') }} today."
+      message: "Pollen risk is {{ state_attr('sensor.wa_pollen_allergy_risk', 'allergy_risk_label')[0] }} today."
 ```
 
 ## Rebuilding Home Assistant around this
 
 1. Install the MQTT integration in Home Assistant (broker address, same as `WA_MQTT_HOST`).
 2. Let the worker run for one cycle (`WA_HA_INTERVAL_MIN` minutes). The devices appear.
-3. Build dashboards and automations on the `sensor.wa_*` entities. Replace older template sensors,
+3. Add the package for pollen and events (above), then the dashboards. Build automations on the `sensor.wa_*` entities. Replace older template sensors,
    REST sensors and add-ons that fetched the same data by other routes.
 4. To remove an entity you no longer want, publish an empty retained message to its discovery topic:
    `mosquitto_pub -h <broker> -t homeassistant/sensor/wa_<device>_<sensor>/config -n -r`.
@@ -157,8 +188,9 @@ action:
 
 ## Privacy
 
-Messages carry place names you saved, station names and postcodes, and event venues. Fuel stations
-come with their (public) coordinates. Your own coordinates are never published, and World Assistant
-never learns your Home Assistant zones: the filtering happens inside Home Assistant. Anyone who can
-read your broker can read all of this; if the broker is open to your whole network, set a username
-and the `mqtt_password` secret.
+MQTT messages carry station names and postcodes, road names, and bus and train services. Fuel
+stations and road events come with their (public) positions. Your own coordinates are never
+published, and World Assistant never learns your Home Assistant zones other than as the
+`lat`/`lon` of the pollen and events requests Home Assistant sends (not stored). Anyone who can read
+your broker can read the published data; if the broker is open to your whole network, set a username
+and the `mqtt_password` secret. The API token sits only in Home Assistant's `secrets.yaml`.

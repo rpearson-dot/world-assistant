@@ -50,7 +50,7 @@ flowchart LR
 | `wa-redis` | Redis, private to the stack and password protected (`redis_password`). Used for the shared upstream rate limiter, short caches and the worker heartbeat. Nothing is saved to disk. Keys are prefixed `wa:`. |
 | `valhalla` | Optional routing engine (separate compose file). Only reachable inside the stack. |
 | `openbao` | Optional key vault run beside the app (separate compose file), with an optional auto-unseal helper. See [openbao.md](openbao.md). |
-| MQTT | An existing broker you provide. The worker publishes bus-tracker summaries and the pollen, fuel, train, road and event sensors to it with Home Assistant discovery, so sensors appear without YAML (see [home-assistant.md](home-assistant.md)). |
+| MQTT | An existing broker you provide. The worker publishes bus-tracker summaries and the fuel, train and road sensors to it with Home Assistant discovery, so sensors appear without YAML. Pollen and events are fetched by Home Assistant itself for its home zone (see [home-assistant.md](home-assistant.md)). |
 
 Outside the containers, on the server: `scripts/deploy.sh` (back up, update, check), and the optional
 nightly `scripts/auto-deploy.sh` ([runbook](runbook.md)). The api cannot restart containers; the

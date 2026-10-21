@@ -1,0 +1,92 @@
+# World Assistant: pollen and events for Home Assistant's own home zone (zone.home).
+#
+# These depend on where you are, so Home Assistant asks World Assistant, passing zone.home's
+# coordinates. Nothing is stored in World Assistant. Set it up once (see docs/home-assistant.md):
+#   1. Enable packages in configuration.yaml:   homeassistant:
+#                                                 packages: !include_dir_named packages
+#   2. Copy this file to /config/packages/world_assistant.yaml
+#   3. Add to /config/secrets.yaml:             wa_authorization: "Bearer <contents of api_token.txt>"
+#   4. Replace WA-HOST:8010 below (two places) with your server's address and port.
+#   5. Developer tools > YAML > Check configuration, then Restart.
+
+rest:
+  - resource_template: >-
+      http://WA-HOST:8010/v1/pollen/near?lat={{ state_attr('zone.home', 'latitude') }}&lon={{ state_attr('zone.home', 'longitude') }}
+    scan_interval: 3600  # World Assistant caches pollen for hours; no need to ask more often
+    timeout: 30
+    headers:
+      Authorization: !secret wa_authorization
+    sensor:
+      - name: WA pollen allergy risk
+        unique_id: wa_pollen_allergy_risk
+        value_template: "{{ value_json.allergy_risk[0] if value_json.allergy_risk else 'unknown' }}"
+        unit_of_measurement: "/10"
+        state_class: measurement
+        icon: mdi:flower-pollen
+        json_attributes: [dates, allergy_risk, allergy_risk_level, allergy_risk_label, allergens, source]
+
+  - resource_template: >-
+      http://WA-HOST:8010/v1/events/near?lat={{ state_attr('zone.home', 'latitude') }}&lon={{ state_attr('zone.home', 'longitude') }}&radius_km=8&days=7&limit=20
+    scan_interval: 3600
+    timeout: 30
+    headers:
+      Authorization: !secret wa_authorization
+    sensor:
+      - name: WA events upcoming
+        unique_id: wa_events_upcoming
+        value_template: "{{ value_json.count | default(0) }}"
+        state_class: measurement
+        icon: mdi:calendar-star
+        json_attributes: [events, days, radius_km, sources]
+      - name: WA events next
+        unique_id: wa_events_next
+        value_template: "{{ value_json.events[0].name if value_json.events else 'Nothing listed' }}"
+        icon: mdi:ticket
+        json_attributes_path: "$.events[0]"
+        json_attributes: [date, venue, town, distance_km, price, type]
+
+# One sensor per allergen, so each gets its own history line.
+template:
+  - sensor:
+      - name: WA pollen alder
+        unique_id: wa_pollen_alder
+        state_class: measurement
+        state: >-
+          {% set a = state_attr('sensor.wa_pollen_allergy_risk', 'allergens') | default([], true)
+             | selectattr('name', 'search', '(?i)^alder') | list %}
+          {{ a[0].levels[0] if a and a[0].levels and a[0].levels[0] is not none else 'unknown' }}
+      - name: WA pollen birch
+        unique_id: wa_pollen_birch
+        state_class: measurement
+        state: >-
+          {% set a = state_attr('sensor.wa_pollen_allergy_risk', 'allergens') | default([], true)
+             | selectattr('name', 'search', '(?i)^birch') | list %}
+          {{ a[0].levels[0] if a and a[0].levels and a[0].levels[0] is not none else 'unknown' }}
+      - name: WA pollen grasses
+        unique_id: wa_pollen_grasses
+        state_class: measurement
+        state: >-
+          {% set a = state_attr('sensor.wa_pollen_allergy_risk', 'allergens') | default([], true)
+             | selectattr('name', 'search', '(?i)^grass') | list %}
+          {{ a[0].levels[0] if a and a[0].levels and a[0].levels[0] is not none else 'unknown' }}
+      - name: WA pollen mugwort
+        unique_id: wa_pollen_mugwort
+        state_class: measurement
+        state: >-
+          {% set a = state_attr('sensor.wa_pollen_allergy_risk', 'allergens') | default([], true)
+             | selectattr('name', 'search', '(?i)^mugwort') | list %}
+          {{ a[0].levels[0] if a and a[0].levels and a[0].levels[0] is not none else 'unknown' }}
+      - name: WA pollen olive
+        unique_id: wa_pollen_olive
+        state_class: measurement
+        state: >-
+          {% set a = state_attr('sensor.wa_pollen_allergy_risk', 'allergens') | default([], true)
+             | selectattr('name', 'search', '(?i)^olive') | list %}
+          {{ a[0].levels[0] if a and a[0].levels and a[0].levels[0] is not none else 'unknown' }}
+      - name: WA pollen ragweed
+        unique_id: wa_pollen_ragweed
+        state_class: measurement
+        state: >-
+          {% set a = state_attr('sensor.wa_pollen_allergy_risk', 'allergens') | default([], true)
+             | selectattr('name', 'search', '(?i)^ragweed') | list %}
+          {{ a[0].levels[0] if a and a[0].levels and a[0].levels[0] is not none else 'unknown' }}

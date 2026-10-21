@@ -38,7 +38,7 @@ views:
         title: Your corridors
         content: |
           Everything open nationwide right now: **{{ states('sensor.wa_roads_live_events') }}** events.
-          {% set rows = states.sensor | sort(attribute='entity_id') | selectattr('entity_id', 'search', '^sensor\.wa_roads_corridor_') | list %}
+          {% set rows = states.sensor | sort(attribute='entity_id') | selectattr('entity_id', 'search', '^sensor[.]wa_roads_corridor_') | list %}
           {% if rows %}
           | Corridor | Active now | Open in total |
           |:--|--:|--:|{% for s in rows %}

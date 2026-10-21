@@ -9,13 +9,6 @@ import pytest
 from app import ha, ha_publish, mqtt
 from app.ha import Device, Sensor
 
-POLLEN = {
-    "place": "Home", "source": "pollen.example", "dates": ["2026-10-21", "2026-10-22"],
-    "allergy_risk": [3.5, 4.0], "allergy_risk_level": [2, 2], "allergy_risk_label": ["Low", "Low"],
-    "allergens": [{"id": "grass", "name": "Grass", "levels": [0, 1], "labels": ["None", "Low"]},
-                  {"id": "birch tree", "name": "Birch", "levels": [None, 1], "labels": [None, "Low"]}],
-}  # fmt: skip
-
 
 def test_slug_is_topic_safe() -> None:
     assert ha.slug("Birch Tree/Pollen!") == "birch_tree_pollen"
@@ -43,15 +36,6 @@ def test_states_are_retained_and_none_is_empty() -> None:
 
 def test_removals_clear_the_config() -> None:
     assert ha.removals("homeassistant", "d", ["a"]) == [("homeassistant/sensor/wa_d_a/config", "", True)]
-
-
-def test_pollen_device() -> None:
-    d = ha_publish.pollen_device(POLLEN, "home-2")
-    assert d.id == "pollen_home_2" and d.name == "Pollen: Home"
-    by = {s.key: s for s in d.sensors}
-    assert by["allergy_risk"].state == 3.5 and by["allergy_risk_label"].state == "Low"
-    assert by["pollen_grass"].state == 0 and by["pollen_birch_tree"].state is None
-    assert by["pollen_grass"].attributes["levels"] == [0, 1]
 
 
 def _st(i: str, lat: float, lon: float, pence: float) -> dict[str, Any]:
@@ -94,16 +78,6 @@ def test_roads_device_skips_disabled_corridors() -> None:
     assert d.sensors[0].state == 1 and d.sensors[1].state == 5
 
 
-def test_events_device() -> None:
-    data = {"count": 2, "days": 7, "place": "Home",
-            "events": [{"name": "Gig", "date": "2026-10-25", "venue": "Hall"}, {"name": "Fair"}]}  # fmt: skip
-    dev = ha_publish.events_device(data, "work")
-    assert dev.id == "events_work"
-    up, nxt = dev.sensors
-    assert up.state == 2 and nxt.state == "Gig" and nxt.attributes["venue"] == "Hall"
-    assert ha_publish.events_device({}).sensors[1].state is None
-
-
 def _client(routes: dict[str, Any]) -> httpx.AsyncClient:
     def handler(req: httpx.Request) -> httpx.Response:
         body = routes.get(req.url.path)
@@ -115,24 +89,22 @@ def _client(routes: dict[str, Any]) -> httpx.AsyncClient:
 
 
 @pytest.mark.asyncio
-async def test_collect_publishes_per_saved_place_and_skips_failures() -> None:
+async def test_collect_asks_for_nothing_location_specific_and_skips_failures() -> None:
     seen: list[tuple[str, dict[str, str]]] = []
 
     def handler(req: httpx.Request) -> httpx.Response:
         seen.append((req.url.path, dict(req.url.params)))
-        bodies = {"/v1/places": [{"id": "home", "name": "Home"}, {"id": "work", "name": "Work"}],
-                  "/v1/pollen/near": POLLEN, "/v1/status": {"corridors": [], "events_live": []},
+        bodies = {"/v1/status": {"corridors": [], "events_live": []},
                   "/v1/tfl/boards": [{"id": "b", "name": "B"}]}  # fmt: skip
         body = bodies.get(req.url.path)
         return httpx.Response(200, json=body) if body is not None else httpx.Response(503)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://api") as c:
         devices = await ha_publish.collect(c)
-    assert [d.id for d in devices] == ["trains", "roads", "pollen_home", "pollen_work"]
-    assert {p.get("place") for path, p in seen if path == "/v1/pollen/near"} == {"home", "work"}
-    # nothing asks for the default place or sends coordinates
-    assert not any({"lat", "lon"} & set(p) for _, p in seen)
-    assert not any(path in ("/v1/pollen/near", "/v1/events/near") and "place" not in p for path, p in seen)
+    assert [d.id for d in devices] == ["trains", "roads"]  # fuel 503s; the dead board and map are skipped
+    paths = {p for p, _ in seen}
+    assert not paths & {"/v1/places", "/v1/pollen/near", "/v1/events/near"}  # HA fetches those itself
+    assert not any({"lat", "lon", "place"} & set(q) for _, q in seen)  # and we never send a location
 
 
 @pytest.mark.asyncio

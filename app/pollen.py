@@ -43,14 +43,21 @@ async def _place(request: Request, place: str) -> tuple[str, float, float]:
 async def near(
     request: Request,
     place: str | None = Query(None, description="id of a saved place; default: home"),
+    lat: float | None = Query(None, ge=49.5, le=61.0, description="with lon: use this point, not a place"),
+    lon: float | None = Query(None, ge=-8.7, le=2.0),
     hourly: bool = Query(False, description="include the hourly allergy risk for each day"),
 ) -> dict[str, Any]:
     """Pollen levels by allergen for today and the next three days, plus the allergy risk."""
     s = get_settings()
     if not s.pollen_api_key:
         raise HTTPException(503, "pollen is not set up: add the pollen_api_key secret")
-    place = await place_or_default(request, place)
-    name, lat, lon = await _place(request, place)
+    if (lat is None) != (lon is None):
+        raise HTTPException(422, "give both lat and lon, or neither")
+    if lat is not None and lon is not None:
+        place, name = None, "your location"  # a point from the caller (Home Assistant): no place needed
+    else:
+        place = await place_or_default(request, place)
+        name, lat, lon = await _place(request, place)
     today = datetime.now(ZoneInfo(s.local_tz)).date()
     key = cache_key(lat, lon, s.pollen_country, today)
     redis = request.app.state.redis
@@ -70,7 +77,8 @@ async def near(
         with contextlib.suppress(Exception):  # the cache is optional
             await redis.set(key, json.dumps(out), ex=CACHE_SECONDS)
         with contextlib.suppress(Exception):  # history is a bonus; never fail the request for it
-            await record(request.app.state.engine, place, today, fc)
+            if place:
+                await record(request.app.state.engine, place, today, fc)
         out["cached"] = False
     if not hourly:
         out = {k: v for k, v in out.items() if k != "allergy_risk_hourly"}

@@ -154,3 +154,39 @@ def test_endpoint_without_key_is_503(monkeypatch: pytest.MonkeyPatch, tmp_path) 
     monkeypatch.setattr(config, "SECRETS_DIR", tmp_path)
     r = TestClient(app).get("/v1/pollen/near?place=home", headers={"Authorization": "Bearer s3cret"})
     assert r.status_code == 503
+
+
+def test_endpoint_takes_a_point_instead_of_a_place(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from app import pollen
+    from app.main import app
+
+    monkeypatch.setenv("API_TOKEN", "s3cret")
+    monkeypatch.setenv("POLLEN_API_KEY", "k")
+    asked: list[tuple[float, float]] = []
+
+    class Fake:
+        async def __aenter__(self) -> Self:
+            return self
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+        async def forecast(self, lat: float, lon: float, today: date, **kw: Any) -> dict[str, Any]:
+            asked.append((lat, lon))
+            return parse_forecast(RAW, today)
+
+    async def no_place(*a: Any, **k: Any) -> Any:
+        raise AssertionError("a point needs no saved place")
+
+    monkeypatch.setattr(pollen, "_client", lambda request: Fake())
+    monkeypatch.setattr(pollen, "_place", no_place)
+    monkeypatch.setattr(pollen, "place_or_default", no_place)
+    app.state.redis = _FakeRedis()
+    c = TestClient(app)
+    h = {"Authorization": "Bearer s3cret"}
+    ok = c.get("/v1/pollen/near?lat=51.5074&lon=-0.1278", headers=h)
+    assert ok.status_code == 200 and ok.json()["place"] == "your location"
+    assert asked == [(51.5074, -0.1278)]
+    assert c.get("/v1/pollen/near?lat=51.5", headers=h).status_code == 422  # both or neither
