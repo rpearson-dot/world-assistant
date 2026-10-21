@@ -11,6 +11,7 @@ from arq.connections import RedisSettings
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import get_settings
+from app.ha_publish import ha_sync
 from app.integrations.bus.poller import poll_bus
 from app.integrations.fuelfinder.sync import fuel_sync_prices, fuel_sync_stations
 from app.integrations.nationalhighways.capture import capture_job
@@ -46,6 +47,7 @@ async def heartbeat(ctx: dict[str, Any]) -> None:
 
 _LIVE_MIN = max(1, min(60, get_settings().nh_live_interval_min))
 _FUEL_MIN = max(5, min(60, get_settings().fuel_price_interval_min))
+_HA_MIN = max(1, min(60, get_settings().ha_interval_min))
 _PLANNED_HOURS = max(1, min(24, get_settings().nh_planned_interval_hours))
 
 
@@ -59,6 +61,7 @@ class WorkerSettings:
         fuel_sync_prices,
         poll_bus,
         pollen_sync,
+        ha_sync,
     ]
     cron_jobs: ClassVar[list] = [
         cron(heartbeat, minute=set(range(0, 60, 5))),
@@ -75,6 +78,8 @@ class WorkerSettings:
         cron(fuel_sync_stations, hour={3}, minute={20}, timeout=900, max_tries=1),
         # Pollen: every 4 hours (the service's fair-use guidance); builds the 90-day history.
         cron(pollen_sync, hour={1, 5, 9, 13, 17, 21}, minute={25}, timeout=300, max_tries=1),
+        # Home Assistant sensors. WA_HA_INTERVAL_MIN (default 5) must divide into the hour sensibly.
+        cron(ha_sync, minute=set(range(1, 60, _HA_MIN)), timeout=120, max_tries=1),
         cron(
             poll_planned,
             hour=set(range(0, 24, _PLANNED_HOURS)),
