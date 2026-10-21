@@ -183,3 +183,15 @@ def test_a_picture_is_sent_once_until_it_changes() -> None:
     assert images(run(pts)) == []  # unchanged: not re-sent
     assert len(images(run([{**pts[0], "allergy_risk_label": ["high"]}]))) == 1  # changed: sent again
     assert any(m[0].startswith("world_assistant/pollen/tile_") for m in run(pts))  # the tile sensors still go every time
+
+
+def test_pollen_points_are_mappable_sensors() -> None:
+    pt = {"lat": 52.25, "lon": -1.75, "dates": ["2026-10-21", "2026-10-22"], "allergy_risk": [4, 5],
+          "allergy_risk_label": ["moderate", "high"], "changed_at": None,
+          "allergens": [{"name": "Birch", "levels": [1, 2], "labels": ["low", "moderate"]},
+                        {"name": "Grasses", "levels": [3, 3], "labels": ["high", "high"]}]}  # fmt: skip
+    d = ha_publish.pollen_device([pt])
+    s = next(x for x in d.sensors if x.key == "point_52p25_m1p75")
+    assert s.state == 4 and s.attributes["latitude"] == 52.25 and s.attributes["longitude"] == -1.75
+    assert s.attributes["Grasses"] == "high, high" and s.attributes["Birch"] == "low, moderate"
+    assert list(s.attributes).index("Grasses") < list(s.attributes).index("Birch")  # worst first

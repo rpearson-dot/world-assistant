@@ -56,9 +56,10 @@ def test_home_assistant_pollen_tiles_carry_positions_and_no_home() -> None:
         {"lat": 56.5, "lon": -3.5, "dates": ["d"], "allergy_risk": [1], "allergy_risk_label": ["None"], "allergens": []},
     ]  # fmt: skip
     d = ha_publish.pollen_device(pts)
-    assert d.id == "pollen" and sorted(s.state for s in d.sensors) == [1, 2]
-    assert all("-" not in s.key and s.key.startswith("tile_") for s in d.sensors)
-    rows = [r for s in d.sensors for r in s.attributes["points"]]
+    tiles = [s for s in d.sensors if s.key.startswith("tile_")]
+    assert d.id == "pollen" and sorted(s.state for s in tiles) == [1, 2]
+    assert len(d.sensors) == len(tiles) + 3 and all("-" not in s.key for s in d.sensors)  # plus one sensor per point
+    rows = [r for s in tiles for r in s.attributes["points"]]
     assert {(r["lat"], r["lon"]) for r in rows} == {(51.5, -0.5), (51.5, -1.5), (56.5, -3.5)}
     birch = next(r for r in rows if r["allergens"])
     assert birch["allergens"] == [{"name": "Birch", "levels": [1]}] and birch["risk"] == [3]
