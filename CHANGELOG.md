@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- Every dataset with coordinates as GeoJSON, one layer each, for drawing on a single map: `GET /v1/map/layers` and `GET /v1/map/geojson` cover saved places, Home Assistant locations, road corridors, open road events, motorway signs, fuel stations and the pollen lattice ([docs/map.md](docs/map.md)). Nothing draws them yet.
+
 ### Fixed
 - Dashboard cards showed a red "Configuration error" where a note sat in the card's footer: Home Assistant accepts only `buttons` and `graph` there. The notes on the Leaf and Trains and buses dashboards are now cards of their own, and a test rejects any other footer type.
 

@@ -26,6 +26,7 @@ from app.ha_locations import router as ha_locations_router
 from app.ha_routes import router as ha_routes_router
 from app.icons import router as icons_router
 from app.logging import configure_logging
+from app.map_layers import router as map_router
 from app.places import page_router as places_page_router
 from app.places import router as places_router
 from app.pollen import page_router as pollen_page_router
@@ -69,6 +70,7 @@ app.include_router(events_page_router)
 app.include_router(pollen_router)
 app.include_router(pollen_page_router)
 app.include_router(places_router)
+app.include_router(map_router)
 app.include_router(fuel_router)
 app.include_router(bus_router)
 app.include_router(assistant_router)
