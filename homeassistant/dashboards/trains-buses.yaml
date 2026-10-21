@@ -24,4 +24,4 @@ views:
           {% set ns = namespace(found=false) %}
           {% for s in states.sensor | sort(attribute='entity_id') if s.entity_id.startswith('sensor.wa_bus_') and (s.entity_id.endswith('_last_bus') or s.entity_id.endswith('_summary')) %}{% set ns.found = true %}
           - **{{ s.name }}**: {{ s.state }}{% endfor %}
-          {% if not ns.found %}No bus tracker is publishing right now (it only runs in its polling window).{% endif %}
+          {% if not ns.found %}No bus tracker is set up yet (World Assistant, Bus page). Trackers poll only in their morning window, but today's answer stays here afterwards.{% endif %}

@@ -227,3 +227,25 @@ def test_old_prices_are_listed_with_their_age_but_do_not_move_the_national_media
     tile = next(s for s in d.sensors if s.key.startswith("tile_e10_"))
     assert [r["age_h"] for r in tile.attributes["stations"]] == [200.0, 3.0]
     assert all(set(r) == set(ha_publish.STATION_KEYS) for r in tile.attributes["stations"])  # no ids or flags
+
+
+def test_bus_tracker_publishes_the_days_answer_even_outside_the_polling_window() -> None:
+    target = {"day": "2026-10-21", "earliest": "07:00", "deadline": "09:00", "tracking_now": False,
+              "scheduled": ["07:10", "07:40", "08:10"], "pending": ["08:10"],
+              "hits": [{"slot": "07:10", "arrive_at": "2026-10-21T06:20:00+00:00"},
+                       {"slot": "07:40", "arrive_at": "2026-10-21T06:52:00+00:00"}],
+              "last_bus": {"slot": "07:40", "arrive_at": "2026-10-21T06:52:00+00:00"},
+              "summary": "The last bus got there at 07:52."}  # fmt: skip
+    d = ha_publish.bus_device("main", [{"key": "home", "label": "Home stop"}], target, None)
+    by = {s.key: s for s in d.sensors}
+    assert d.id == "bus_main" and ha.unique_id(d.id, "last_bus") == "wa_bus_main_last_bus"  # same ids as before
+    assert by["last_bus"].state == "07:52" and by["hits_today"].state == 2 and by["pending_slots"].state == 1
+    assert by["summary"].state.startswith("The last bus") and by["active_buses"].state == 0
+    assert by["next_home"].state is None  # nothing live outside the window
+
+
+def test_bus_tracker_without_a_target_still_shows_live_buses() -> None:
+    live = {"active": [{"vehicle": "X1"}], "next": {"home": [{"minutes": 4}, {"minutes": 11}]}}
+    d = ha_publish.bus_device("main", [{"key": "home", "label": "Home stop"}], None, live)
+    by = {s.key: s for s in d.sensors}
+    assert "last_bus" not in by and by["active_buses"].state == 1 and by["next_home"].state == 4

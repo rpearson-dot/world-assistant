@@ -16,6 +16,7 @@ import json
 import logging
 import math
 import statistics
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -188,6 +189,51 @@ def trains_device(boards: list[tuple[dict[str, Any], dict[str, Any]]]) -> Device
     return Device("trains", "Trains and buses", sensors)
 
 
+def _local_hhmm(stamp: Any) -> str | None:
+    """A timestamp from the API as the local clock time, e.g. 08:12."""
+    from zoneinfo import ZoneInfo
+
+    try:
+        return datetime.fromisoformat(str(stamp)).astimezone(ZoneInfo(get_settings().local_tz)).strftime("%H:%M")
+    except (TypeError, ValueError):
+        return None
+
+
+def bus_device(
+    tid: str, stops: list[dict[str, Any]], target: dict[str, Any] | None, live: dict[str, Any] | None
+) -> Device:
+    """One bus tracker: the day's answer from the stored results (so it stays up to date after the
+    polling window closes) and, while the tracker is polling, the buses being followed and the next
+    arrivals. Names match the ones the poller used to publish itself, so existing entities carry on."""
+    sensors: list[Sensor] = []
+    if target is not None:
+        last = target.get("last_bus")
+        hhmm = _local_hhmm(last.get("arrive_at")) if last else None
+        sensors += [
+            Sensor("last_bus", "Last bus to target", hhmm or "none", icon="mdi:bus-clock",
+                   attributes={"deadline": target.get("deadline"), "earliest": target.get("earliest"),
+                               "day": target.get("day"), "tracking_now": target.get("tracking_now"),
+                               "last": last}),
+            Sensor("hits_today", "Buses reaching target today", len(target.get("hits") or []),
+                   icon="mdi:bus-multiple", state_class="measurement"),
+            Sensor("pending_slots", "Scheduled buses not yet seen", len(target.get("pending") or []),
+                   icon="mdi:bus-alert", state_class="measurement",
+                   attributes={"scheduled": target.get("scheduled"), "pending": target.get("pending")}),
+            Sensor("summary", "Target summary", (target.get("summary") or "")[:250], icon="mdi:text"),
+        ]  # fmt: skip
+    active = (live or {}).get("active") or []
+    sensors.append(Sensor("active_buses", "Buses being followed", len(active), icon="mdi:bus",
+                          state_class="measurement", attributes={"buses": active}))  # fmt: skip
+    nxt = (live or {}).get("next") or {}
+    for st in stops:
+        rows = nxt.get(st.get("key")) or []
+        sensors.append(Sensor(
+            f"next_{st.get('key')}", f"Next bus: {st.get('label')}", rows[0].get("minutes") if rows else None,
+            icon="mdi:bus-stop", unit="min", state_class="measurement", attributes={"next": rows},
+        ))  # fmt: skip
+    return Device(f"bus_{tid}", f"Bus tracker {tid}", sensors)
+
+
 def roads_device(status: dict[str, Any], events: list[dict[str, Any]] | None = None) -> Device:
     """Corridor counts, plus every live closure and speed restriction nationwide in map tiles
     (with positions) so Home Assistant can show the ones near its own zones."""
@@ -229,7 +275,8 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
 
     async def attempt(name: str, build: Any) -> None:
         try:
-            devices.append(await build())
+            built = await build()
+            devices.extend(built if isinstance(built, list) else [built])
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
             log.info("home assistant: skipping %s (%s: %s)", name, type(exc).__name__, exc)
 
@@ -260,7 +307,27 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
     async def events() -> Device:
         return events_device(await _get(c, "/v1/ha/locations/events"))
 
-    for name, build in (("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events)):
+    async def bus() -> list[Device]:
+        out: list[Device] = []
+        for t in await _get(c, "/v1/bus/trackers"):
+            if not t.get("enabled"):
+                continue
+            tid = t["id"]
+            try:
+                cfg = (await _get(c, f"/v1/bus/trackers/{tid}"))["config"]
+                target = await _get(c, f"/v1/bus/trackers/{tid}/target") if cfg.get("target") else None
+                live = None
+                if target is None or target.get("tracking_now"):  # the arrivals feed is only asked while polling
+                    try:
+                        live = await _get(c, f"/v1/bus/trackers/{tid}/live")
+                    except httpx.HTTPError:
+                        live = None
+                out.append(bus_device(tid, cfg.get("stops") or [], target, live))
+            except httpx.HTTPError as exc:  # one dead tracker must not hide the rest
+                log.info("home assistant: bus tracker %s skipped (%s)", tid, type(exc).__name__)
+        return out
+
+    for name, build in (("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
         await attempt(name, build)
     return devices
 

@@ -11,7 +11,6 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from app import mqtt
 from app.config import get_settings
 from app.integrations.bus import store
 from app.integrations.bus.config import TrackerConfig
@@ -241,29 +240,12 @@ async def poll_bus(ctx: dict[str, Any]) -> str:
 
         limiter = SlidingWindowLimiter(ctx["redis"], "tfl", 250 if key else 30)
         results = []
-        settings_ = settings
-        announced: set[str] = ctx.setdefault("bus_announced", set())
-
-        async def publisher(tid: str, cfg: TrackerConfig, snap: dict[str, dict[str, Any]]) -> None:
-            if not settings_.mqtt_enabled:
-                return
-            prefix = settings_.mqtt_topic_prefix
-            msgs = []
-            sig = f"{tid}:{cfg.model_dump_json()}"
-            if (
-                sig not in announced
-            ):  # Home Assistant discovery, once per worker start / config change
-                msgs += mqtt.discovery_messages(prefix, settings_.mqtt_discovery_prefix, tid,
-                                                [(x.key, x.label) for x in cfg.stops])  # fmt: skip
-            msgs += mqtt.state_messages(prefix, tid, snap)
-            if await mqtt.publish(msgs):
-                announced.add(sig)
 
         async with TflClient(key, limiter=limiter) as client:
             for row in due:
                 try:
                     results.append(
-                        f"{row['id']}: {await poll_one(engine, client, row, now, publisher)}"
+                        f"{row['id']}: {await poll_one(engine, client, row, now)}"
                     )
                 except (TflError, RateLimitExceeded) as exc:
                     log.warning("bus poll %s failed: %s", row["id"], exc)

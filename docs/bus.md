@@ -61,19 +61,21 @@ Polling runs every 30 s inside the poll window (`WA_BUS_POLL_ENABLED`, `WA_LOCAL
 
 ## Home Assistant (MQTT)
 
-While polling, the worker publishes retained MQTT messages and Home Assistant discovery
-configs, so these sensors appear on their own under a device "Bus tracker {id}":
+The worker's Home Assistant publisher (every five minutes, with fuel, trains and the rest) turns each
+enabled tracker into a device "Bus tracker {id}", with discovery, so these sensors appear on their own.
+The day's answer comes from the stored results, so it is still there, and kept up to date, after the
+polling window closes; the live values (buses being followed, next arrivals) are only asked for while the
+tracker is polling and show 0 / unknown outside it.
 
 | Sensor | State |
 | --- | --- |
 | `last_bus` | time the last bus reached the target before the deadline (`none` if not yet) |
 | `hits_today`, `pending_slots` | buses confirmed, scheduled buses not yet seen |
-| `active_buses` | buses being followed |
+| `active_buses` | buses being followed (while polling) |
 | `summary` | one-sentence answer, good for voice |
-| `next_{stop key}` | minutes to the next bus at each stop of interest (attributes: next three) |
+| `next_{stop key}` | minutes to the next bus at each stop of interest (attributes: next three; while polling) |
 
 Settings: `WA_MQTT_HOST`, `WA_MQTT_PORT`, `WA_MQTT_USER`, secret `mqtt_password`,
 `WA_MQTT_ENABLED`, `WA_MQTT_TOPIC_PREFIX` (default `world_assistant`),
 `WA_MQTT_DISCOVERY_PREFIX` (default `homeassistant`). If the broker is unreachable, publishing
-backs off for five minutes and polling carries on. Values stay at their last reading outside the
-poll window.
+backs off for five minutes and polling carries on.
