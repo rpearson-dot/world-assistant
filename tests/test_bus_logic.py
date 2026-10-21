@@ -271,3 +271,18 @@ def test_a_bus_seen_at_the_target_before_the_boarding_stop_does_not_count() -> N
     state = trips.new_state()
     run_bus(state, "V1", {"s4": T0 + 300, "s2": T0 + 900}, T0, T0 + 1000)  # an earlier lap passed s4, then s2
     assert events.target_hits(state, T0 + 1500, CFG, T0, T0 + 2000) == []
+
+
+def test_buses_left_over_from_yesterday_are_not_logged_as_ending_early() -> None:
+    """Polling stops at 09:30 and starts again next morning; the old trips must not 'end' mid-route then."""
+    state = trips.new_state()
+    run_bus(state, "V1", {"s2": T0 + 600, "s3": T0 + 900}, T0, T0 + 1000)  # last seen at s3, 3 stops short... of nothing
+    run_bus(state, "V2", {"s2": T0 + 600, "s3": T0 + 900}, T0, T0 + 1000)
+    next_morning = T0 + 24 * 3600
+    trips.update_trips(state, [], POS.get, next_morning)  # the first poll the next day: both are long gone
+    assert events.early_terminations(state, END, NAMES) == []
+    # and a bus that comes back going the other way after the gap is not a 'turned back' either
+    state = trips.new_state()
+    run_bus(state, "V1", {"s2": T0 + 600, "s3": T0 + 900}, T0, T0 + 1000)
+    run_bus(state, "V1", {"i0": next_morning + 300, "i1": next_morning + 500}, next_morning, next_morning + 100)
+    assert events.early_terminations(state, END, NAMES) == []
