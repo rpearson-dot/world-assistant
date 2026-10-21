@@ -6,13 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [0.7.4] - 2026-10-21
 
-## [0.7.3] - 2026-10-21
-
 ### Removed
 - `scripts/pollen-survey.py` (about 100 provider calls, far over the 40 a day the key allows).
 
 ### Fixed
 - Pollen provider limit. The provider allows only 40 requests a day on a key; the nationwide grid (about 150 a day as first built) and the four-hourly saved-place job exceeded it. All pollen requests now draw from one daily budget of 36 (`WA_POLLEN_DAILY_LIMIT`). Stored forecasts are read by date, so a point stays usable for four days; the grid job refreshes the 12 stalest points twice a day (`WA_POLLEN_GRID_CALLS_PER_RUN`), keeping 6 requests back (`WA_POLLEN_RESERVE_CALLS`); the saved-place history job runs once a day.
+
+## [0.7.3] - 2026-10-21
 
 ### Added
 - Extra places for events in Home Assistant. `rest_command.wa_add_location` registers a name and position (`POST /v1/ha/locations`); the worker publishes a `sensor.wa_events_place_<name>` for each over MQTT and the events dashboard lists whichever exist. Capped at 8 (`WA_HA_LOCATIONS_MAX`); each is searched every 12 hours (`WA_HA_LOCATION_REFRESH_H`), about 4 provider requests a day per place; places not renewed within 30 days are dropped, and within 7 days once 75% of the cap is used. Migration 0016.
