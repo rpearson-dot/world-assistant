@@ -22,7 +22,7 @@ from tests.test_pollen import RAW, _FakeRedis
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
-MIGRATIONS = ["0003_nh_storage", "0006_places_trips", "0013_pollen_history"]
+MIGRATIONS = ["0003_nh_storage", "0006_places_trips", "0013_pollen_history", "0017_ha_origin"]
 TABLES = ["pollen_reading", "trip", "place", "nh_sign_message", "nh_sign", "nh_event_corridor", "nh_event",
           "nh_corridor"]  # fmt: skip
 TODAY = date(2026, 10, 21)

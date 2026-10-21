@@ -120,7 +120,7 @@ async def add_route(body: RouteIn, request: Request) -> dict[str, Any]:
         await client.aclose()
     if error:
         return {"ok": True, "built": False, "message": f"Saved {body.from_name} to {body.to_name}, but the route "
-                f"could not be built yet ({error}). It is retried when routes are rebuilt."}  # fmt: skip
+                f"could not be built yet ({error}). Add it again once the routing engine is running."}  # fmt: skip
     first = built[0]
     return {"ok": True, "built": True, "routes": built,
             "message": f"{body.from_name} to {body.to_name}: {first['distance_km']} km, about {first['duration_min']} min "

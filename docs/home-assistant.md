@@ -103,8 +103,8 @@ helpers (`WA place`, `WA place name`, `WA route from`, `WA route to`) and four s
   as above, with the name taken from the zone, or from `WA place name` for a bare position.
 - **Add a route** / **Remove route** (`script.wa_add_route`, `script.wa_remove_route`): From and To are each a
   zone or a position. World Assistant saves them as two places and a trip in each direction, builds the
-  route with the routing engine (so it needs the routing stack, see the runbook; saving works without it
-  and the route is built later), and the route's corridor shows up as a `Roads` sensor, so closures along
+  route with the routing engine (so it needs the routing stack, see the runbook; without it the route is saved but not built, and
+  pressing Add route again once the engine is running builds it), and the route's corridor shows up as a `Roads` sensor, so closures along
   your regular drive appear on the Roads dashboard. Routing is local, so a route costs no outside
   requests, but the number is still capped: `WA_HA_ROUTES_MAX` (default 12) trips, each direction counting
   as one. Adding the same two ends again updates the route.
