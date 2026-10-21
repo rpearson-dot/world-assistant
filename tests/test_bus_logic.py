@@ -254,3 +254,20 @@ def test_starting_the_next_lap_is_not_an_early_end() -> None:
     run_bus(state, "V1", {"s0": T0 + 60, "s1": T0 + 300, "s2": T0 + 600}, T0, T0 + 700)
     run_bus(state, "V1", {"s0": T0 + 2000, "s1": T0 + 2300}, T0 + 1900, T0 + 2100)  # back at the origin: a new lap
     assert events.early_terminations(state, END, NAMES) == []
+
+
+def test_the_direction_label_does_not_decide_whether_a_bus_counts() -> None:
+    """Real data: TfL labelled the trips that run board -> target 'inbound' while set-up had stored
+    'outbound'; every bus was ignored. The stops are side-specific, so the label must not matter."""
+    state = trips.new_state()
+    run_bus(state, "V1", {"s2": T0 + 600, "s3": T0 + 1000, "s4": T0 + 1300}, T0, T0 + 1400)
+    for wrong in ("inbound", "outbound"):
+        fresh = {**state, "reported": []}
+        hits = events.target_hits(fresh, T0 + 1500, {**CFG, "direction": wrong}, T0, T0 + 1400)
+        assert [h["vehicle"] for h in hits] == ["V1"], wrong
+
+
+def test_a_bus_seen_at_the_target_before_the_boarding_stop_does_not_count() -> None:
+    state = trips.new_state()
+    run_bus(state, "V1", {"s4": T0 + 300, "s2": T0 + 900}, T0, T0 + 1000)  # an earlier lap passed s4, then s2
+    assert events.target_hits(state, T0 + 1500, CFG, T0, T0 + 2000) == []

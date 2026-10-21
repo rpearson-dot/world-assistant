@@ -64,6 +64,23 @@ class Lookup:
         return w[0] if w else None
 
 
+def compute_hits(
+    cfg: TrackerConfig, state: dict[str, Any], now: float, local_day: date, tz: ZoneInfo, slots: list[str]
+) -> list[dict[str, Any]]:  # fmt: skip
+    """Buses that reached the target in time and have not been reported yet, each with the scheduled
+    slot it matches and how late it left. Mutates `state` (it remembers what it has reported)."""
+    tcfg = cfg.target_cfg()
+    if not tcfg:
+        return []
+    hits = target_hits(state, now, tcfg, local_epoch(local_day, cfg.earliest, tz), local_epoch(local_day, cfg.deadline, tz))
+    for h in hits:
+        board_local = datetime.fromtimestamp(h["board_ts"], tz)
+        slot = nearest_slot(slots, board_local.strftime("%H:%M"))
+        h["slot"] = slot
+        h["delay_min"] = round(board_local.hour * 60 + board_local.minute - to_minutes(slot), 1) if slot else None
+    return hits
+
+
 def process_poll(
     cfg: TrackerConfig,
     state: dict[str, Any],
@@ -88,21 +105,7 @@ def process_poll(
     anomalies += turnarounds(state, cfg.place_of)
     anomalies += early_terminations(state, lookup.end_pos, lookup.names)
     obs = segment_observations(state, now, cfg.segment_pairs())
-    hits: list[dict[str, Any]] = []
-    tcfg = cfg.target_cfg()
-    if tcfg:
-        earliest = local_epoch(local_day, cfg.earliest, tz)
-        deadline = local_epoch(local_day, cfg.deadline, tz)
-        hits = target_hits(state, now, tcfg, earliest, deadline)
-        for h in hits:
-            board_local = datetime.fromtimestamp(h["board_ts"], tz)
-            slot = nearest_slot(slots, board_local.strftime("%H:%M"))
-            h["slot"] = slot
-            h["delay_min"] = (
-                round((board_local.hour * 60 + board_local.minute - to_minutes(slot)), 1)
-                if slot
-                else None
-            )
+    hits = compute_hits(cfg, state, now, local_day, tz, slots)
     return {"anomalies": anomalies, "observations": obs, "hits": hits}
 
 

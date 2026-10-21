@@ -65,23 +65,24 @@ def target_hits(
             and arrive_ts is not None
             and arrive_ts < now
             and board_ts >= earliest_ts
-            and arrive_ts < deadline_ts
+            and board_ts < arrive_ts < deadline_ts
         )
 
     trips = all_trips(state)
     for trip in trips:
-        if trip["dir"] != cfg.get("direction", "outbound"):
-            continue
+        # No check on the trip's direction label: the stops are specific to one side of the road, so a bus
+        # seen at the boarding stop is going the right way. (A stop that TfL lists in both directions made the
+        # label disagree with the one chosen at set-up, and every bus was ignored.)
         vehicle, stops = trip["vehicle"], _by_sid(trip)
         board_ts = (stops.get(board) or {}).get("expected")
         if board_ts is None:
             continue
         if before and (stops.get(before) or {}).get("expected") is not None:
-            terminal[vehicle] = {"board_ts": board_ts, "before_ts": stops[before]["expected"]}
+            terminal[vehicle] = {"board_ts": board_ts, "before_ts": stops[before]["expected"], "dir": trip["dir"]}
         elif cfg.get("either_side") and alight_return:  # no need to have been seen at the stop before
             seen = [x["expected"] for x in trip["stops"] if x.get("expected") is not None]
             if seen:
-                terminal[vehicle] = {"board_ts": board_ts, "before_ts": max(seen)}
+                terminal[vehicle] = {"board_ts": board_ts, "before_ts": max(seen), "dir": trip["dir"]}
         key = f"{vehicle}@{int(board_ts)}"
         if key in reported:
             continue
@@ -94,13 +95,13 @@ def target_hits(
 
     if alight_return:
         for trip in trips:
-            if trip["dir"] == cfg.get("direction", "outbound"):
-                continue
             vehicle = trip["vehicle"]
             cand = terminal.get(vehicle)
             return_ts = (_by_sid(trip).get(alight_return) or {}).get("expected")
             if cand is None or return_ts is None:
                 continue
+            if trip["dir"] == cand.get("dir", cfg.get("direction", "outbound")):
+                continue  # still the same run: it has to have turned round to be on the other side
             key = f"{vehicle}@{int(cand['board_ts'])}"
             gap = return_ts - cand["before_ts"]
             if key in reported or gap < 0 or gap > TERMINAL_MAX_GAP_S:
