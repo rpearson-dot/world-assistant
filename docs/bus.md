@@ -70,9 +70,8 @@ Polling runs every 30 s inside the poll window (`WA_BUS_POLL_ENABLED`, `WA_LOCAL
 ## Changing the times
 
 The deadline (08:10 by default), the earliest departure and the time to stop showing the chance are
-settings, not fixed. Change them on the Bus page, with `PUT /v1/bus/trackers/{id}`, or from Home
-Assistant (see below). `POST /v1/bus/settings` with any of `deadline`, `earliest`, `show_until` (as
-`HH:MM`, plus `tracker` when you have more than one) changes only those, without resetting the route, the
+settings, not fixed. Change them from Home Assistant (below), with `POST /v1/bus/settings` (any of
+`deadline`, `earliest`, `show_until`, as `HH:MM`, plus `tracker` when you have more than one) changes only those, without resetting the route, the
 timetable or the history; it answers `{"ok", "message"}`. Results already recorded keep the deadline they
 were recorded under, so after a change the chance mixes old and new days for a while.
 

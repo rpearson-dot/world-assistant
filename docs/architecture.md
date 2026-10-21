@@ -109,7 +109,7 @@ trip's corridor with the road numbers it uses. Stored events are then re-tagged.
 | `nh_sign`, `nh_sign_message` | Message signs; history, written only when the text changes |
 | `nh_corridor` | Corridor centrelines (manual, draft or routed) |
 | `fuel_station`, `fuel_price`, `fuel_price_change` | Stations; current prices; price-change history |
-| `place`, `trip`, `vehicle` | User data; the trip row also holds route summary |
+| `place`, `trip`, `vehicle` | User data; the trip row also holds route summary. `place.origin` and `trip.origin` are `home-assistant` for ones Home Assistant added (ids start `ha-`), empty for the rest |
 | `tfl_board` | Saved train boards (station plus filter, and which source reads it) |
 | `bus_tracker`, `bus_stop`, `bus_segment_obs`, `bus_anomaly`, `bus_target_day`, `bus_target_hit`, `bus_timetable` | The bus tracker: configuration, stop timings, anomalies and whether each day's bus made the target |
 | `ha_location` | Extra places Home Assistant asked to watch for events, with a last-renewed time (they expire) |

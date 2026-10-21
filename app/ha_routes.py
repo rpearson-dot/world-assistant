@@ -58,7 +58,7 @@ def place_id(name: str) -> str:
 
 
 def trip_id(a: str, b: str) -> str:
-    return f"{a}-to-{b[3:]}"  # both already start "ha-"; at most 3+16+4+13 = 36 characters
+    return f"{a}-to-{b[3:]}"  # both already start "ha-"; at most 3+16+4+16 = 39 characters, within the 41 a place or trip id may have
 
 
 async def _count(request: Request) -> int:

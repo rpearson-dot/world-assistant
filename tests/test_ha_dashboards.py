@@ -319,3 +319,70 @@ def test_bus_package_sends_only_the_time_that_changed() -> None:
     action = next(a for a in doc["automation"][0]["actions"] if "action" in a and a["action"] == "rest_command.wa_bus_settings")
     for v in action["data"].values():
         env.from_string(v)
+
+
+def _script_vars(name: str, ents: dict[str, tuple[str, dict[str, Any]]]) -> dict[str, Any]:
+    """Render a manage-package script's `variables` step in order, as Home Assistant would."""
+    doc = yaml.load((PACKAGES / "world_assistant_manage.yaml").read_text(encoding="utf-8"), Loader=_HaLoader)
+    step = next(x for x in doc["script"][name]["sequence"] if "variables" in x)
+    env = _env(ents)
+    out: dict[str, Any] = {}
+    for key, template in step["variables"].items():
+        out[key] = env.from_string(template).render(**out)
+    return out
+
+
+ZONES = {
+    "zone.work": ("zoning", {"latitude": 51.5, "longitude": -0.12, "friendly_name": "Work"}),
+    "zone.school": ("zoning", {"latitude": 51.4, "longitude": -0.2, "friendly_name": "School"}),
+}
+
+
+def test_manage_scripts_read_a_zone_or_a_position() -> None:
+    ents = {**ZONES, "input_text.wa_place": ("zone.work", {}), "input_text.wa_place_name": ("", {})}
+    v = _script_vars("wa_add_location", ents)
+    assert (float(v["lat"]), float(v["lon"]), v["place_name"]) == (51.5, -0.12, "Work")  # name comes from the zone
+    ents["input_text.wa_place"] = ("52.48, -1.9", {})
+    ents["input_text.wa_place_name"] = ("Mum's house", {})
+    v = _script_vars("wa_add_location", ents)
+    assert (float(v["lat"]), float(v["lon"]), v["place_name"]) == (52.48, -1.9, "Mum's house")
+    ents["input_text.wa_place"] = ("nonsense", {})
+    v = _script_vars("wa_add_location", ents)
+    assert float(v["lat"]) == 0  # the script then tells the user it could not read a position
+
+
+def test_manage_route_script_reads_both_ends() -> None:
+    ents = {**ZONES, "input_text.wa_route_from": ("zone.work", {}), "input_text.wa_route_to": ("51.37, -0.25", {})}
+    v = _script_vars("wa_add_route", ents)
+    assert (float(v["from_lat"]), float(v["to_lat"]), float(v["to_lon"])) == (51.5, 51.37, -0.25)
+    assert v["from_name"] == "Work" and v["to_name"] == "51.37, -0.25"
+    ents["input_text.wa_route_to"] = ("", {})
+    assert float(_script_vars("wa_add_route", ents)["to_lat"]) == 0
+
+
+def test_manage_rest_commands_send_valid_json_even_for_awkward_names() -> None:
+    import json
+
+    env = _jinja().Environment()
+    env.policies["json.dumps_function"] = json.dumps
+    doc = yaml.load((PACKAGES / "world_assistant_manage.yaml").read_text(encoding="utf-8"), Loader=_HaLoader)
+    cmd = doc["rest_command"]["wa_add_route"]
+    assert cmd["url"] == "<secret>" and cmd["headers"]["Authorization"] == "<secret>"
+    body = json.loads(env.from_string(cmd["payload"]).render(
+        from_name='Mum\'s "house"', from_lat=51.5, from_lon=-0.1, to_name="Work", to_lat=51.4, to_lon=-0.2))  # fmt: skip
+    assert body["from_name"] == 'Mum\'s "house"' and body["to_lat"] == 51.4
+    gone = json.loads(env.from_string(doc["rest_command"]["wa_remove_route"]["payload"]).render(from_name="A", to_name="B"))
+    assert gone == {"from_name": "A", "to_name": "B"}
+
+
+def test_manage_dashboard_lists_what_is_set_up() -> None:
+    ents = {
+        "sensor.wa_events_place_mum_s_house": ("3", {"friendly_name": "Mum's house", "place": "Mum's house"}),
+        "sensor.wa_roads_corridor_trip_ha_home_to_work": ("1", {"friendly_name": "Home to Work: active works"}),
+        "sensor.wa_events_locations": ("1", {"max": 8}),
+    }
+    card = next(c for c in yaml.safe_load((ROOT / "homeassistant" / "dashboards" / "manage.yaml").read_text(encoding="utf-8"))["views"][0]["cards"] if c["type"] == "markdown")
+    out = _env(ents, user="Anyone").from_string(card["content"]).render()
+    assert "Mum's house: 3 events" in out and "Home to Work: 1 active works" in out and "Watching 1 of 8 places" in out
+    empty = _env({}, user="Anyone").from_string(card["content"]).render()
+    assert empty.count("- none") == 2
