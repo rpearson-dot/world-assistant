@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-21
+
 ### Added
 - This is a new public repository. The project's earlier history (releases 0.1.0 to 0.5.0) stays in a private archive; the first release from here is 0.6.0.
 - Documentation brought up to date for a public repository: a README that explains the purpose of the project, current architecture, schema and code layout, data credits and licences, and what automatic updates trust. Issue and pull request templates, and `docs/repo-settings.md` (branch protection for `main` and the other repository settings). Examples and tests use central-London coordinates, never real home ones.
