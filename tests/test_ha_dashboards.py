@@ -133,10 +133,29 @@ def test_fuel_card_shows_each_viewer_prices_where_that_viewer_is() -> None:
         "person.sam": ("home", {"friendly_name": "Sam", "latitude": 51.5, "longitude": -0.12}),
         "sensor.wa_fuel_tile_e10_1_m1": ("2", {"stations": [near_home, near_alex]}),
     }
-    out = lambda who: _env(ents, user=who).from_string(_card("fuel")).render()
+    out = lambda who: _env(ents, user=who).from_string(_card("fuel", 1)).render()
     alex, sam = out("Alex"), out("Sam")
     assert "Away BP" in alex and "Home Shell" not in alex and "your location" in alex  # 100 miles away
     assert "Home Shell" in sam and "Away BP" not in sam and "Home" in sam
+    assert "petrol" in sam and "diesel" not in sam
+
+
+def test_fuel_card_follows_the_fuel_dropdown() -> None:
+    stn = {"name": "Diesel Stop", "brand": "X", "postcode": "D1", "lat": 51.51, "lon": -0.12, "pence": 140.0}
+    ents = {
+        "zone.home": ("zoning", {"latitude": 51.5, "longitude": -0.12, "friendly_name": "Home"}),
+        "sensor.wa_fuel_tile_b7_standard_1_m1": ("1", {"stations": [stn]}),
+        "input_select.wa_fuel_type": ("Diesel", {}),
+    }
+    card = _card("fuel", 1)
+    assert "Diesel Stop" in _env(ents, user="Anyone").from_string(card).render()
+    ents["input_select.wa_fuel_type"] = ("Petrol (E10)", {})
+    assert "Diesel Stop" not in _env(ents, user="Anyone").from_string(card).render()
+
+
+def test_fuel_package_offers_petrol_and_diesel() -> None:
+    doc = yaml.safe_load((PACKAGES / "world_assistant_fuel.yaml").read_text(encoding="utf-8"))
+    assert doc["input_select"]["wa_fuel_type"]["options"] == ["Petrol (E10)", "Diesel"]
 
 
 def test_events_package_asks_for_the_home_zone_and_keeps_the_token_secret() -> None:

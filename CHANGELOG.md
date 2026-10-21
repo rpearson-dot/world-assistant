@@ -8,6 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - The Unraid icons' cable is now a green USB data cable with a USB-A plug (it looked like a power lead).
 
 ### Added
+- A fuel dropdown on the Fuel dashboard (Petrol or Diesel) in place of the two fixed cards: one price card follows it. Needs the new `homeassistant/packages/world_assistant_fuel.yaml`.
 - Icons in Unraid's Docker tab: a simple green earth with a USB cable hanging off it, and a coloured band naming each supporting container's role (worker, database, cache, routing, vault). The compose files carry the `net.unraid.docker.icon` labels, the api also gets a `net.unraid.docker.webui` link to `/status`, and the icons are served by the api at `/icons/<name>.png` without a token. Sources in `deploy/unraid/`.
 
 ### Fixed

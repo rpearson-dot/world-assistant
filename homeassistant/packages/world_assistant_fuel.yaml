@@ -1,0 +1,10 @@
+# The fuel type shown on the Fuel dashboard. Add this file to your packages folder.
+# Pick Petrol or Diesel from the dropdown at the top of the dashboard.
+input_select:
+  wa_fuel_type:
+    name: Fuel type
+    icon: mdi:gas-station
+    options:
+      - Petrol (E10)
+      - Diesel
+    initial: Petrol (E10)
