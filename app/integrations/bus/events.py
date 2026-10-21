@@ -78,6 +78,10 @@ def target_hits(
             continue
         if before and (stops.get(before) or {}).get("expected") is not None:
             terminal[vehicle] = {"board_ts": board_ts, "before_ts": stops[before]["expected"]}
+        elif cfg.get("either_side") and alight_return:  # no need to have been seen at the stop before
+            seen = [x["expected"] for x in trip["stops"] if x.get("expected") is not None]
+            if seen:
+                terminal[vehicle] = {"board_ts": board_ts, "before_ts": max(seen)}
         key = f"{vehicle}@{int(board_ts)}"
         if key in reported:
             continue
@@ -224,3 +228,92 @@ def sentence(last: dict[str, Any] | None, deadline: str, tz: tzinfo) -> str:
     delay = last.get("delay_min")
     extra = f", about {abs(delay):.0f} min {'late' if delay > 0 else 'early'}" if delay else ""
     return f"The last bus before {deadline} reached the target stop at {when}{extra}."
+
+
+def outlook(
+    *, slots: Sequence[str], hit_slots: Sequence[str], reliability: Sequence[dict[str, Any]],
+    now_minutes: int, show_until: str, weekday_ok: bool, min_days: int = 3,
+) -> dict[str, Any]:  # fmt: skip
+    """The chance each remaining scheduled bus gets there by the deadline, from how often that
+    slot has made it before. Not relevant (and no numbers) at weekends or after `show_until`.
+    A slot with fewer than `min_days` recorded days borrows the rate across all slots."""
+    rel = {r["slot"]: r for r in reliability}
+    total = sum(r["days_scheduled"] for r in reliability)
+    pooled = sum(r["days_hit"] for r in reliability) / total if total else None
+    out: dict[str, Any] = {"relevant": False, "reason": None, "slots": [], "next_slot": None,
+                           "chance": None, "days": 0, "basis": None, "pooled_chance": None if pooled is None else round(pooled * 100),
+                           "days_recorded": max((r["days_scheduled"] for r in reliability), default=0)}  # fmt: skip
+    if not weekday_ok:
+        out["reason"] = "weekend"
+        return out
+    if now_minutes > to_minutes(show_until):
+        out["reason"] = "after " + show_until
+        return out
+    for slot in slots:
+        if to_minutes(slot) < now_minutes - 1 or slot in hit_slots:
+            continue
+        r = rel.get(slot)
+        if r and r["days_scheduled"] >= min_days:
+            p, n, basis = r["days_hit"] / r["days_scheduled"], r["days_scheduled"], "this departure"
+        elif pooled is not None:
+            p, n, basis = pooled, total, "all departures"
+        else:
+            p, n, basis = None, 0, None
+        out["slots"].append({"slot": slot, "chance": None if p is None else round(p * 100),
+                             "days": n, "basis": basis})  # fmt: skip
+    if not out["slots"]:
+        out["reason"] = "no more buses that could make it"
+        return out
+    first = out["slots"][0]
+    out.update(relevant=True, next_slot=first["slot"], chance=first["chance"], days=first["days"], basis=first["basis"])
+    return out
+
+
+def result_log(
+    day_slots: Sequence[tuple[str, Sequence[str]]], hits: Sequence[dict[str, Any]], today: str, now_minutes: int
+) -> dict[str, Any]:  # fmt: skip
+    """Success and failure for every scheduled bus, newest day first. `day_slots` is
+    (date, slots); `hits` carry date, slot, arrive (local HH:MM) and delay_min. A slot with no bus
+    is a failure once RESOLVE_AFTER_MIN has passed; until then it is pending."""
+    by = {(h["date"], h["slot"]): h for h in hits if h.get("slot")}
+    days: list[dict[str, Any]] = []
+    ok = bad = 0
+    for date, slots in sorted(day_slots, reverse=True):
+        rows = []
+        for slot in slots:
+            h = by.get((date, slot))
+            if h:
+                rows.append({"slot": slot, "result": "success", "arrived": h.get("arrive"), "delay_min": h.get("delay_min")})
+                ok += 1
+            elif date == today and now_minutes <= to_minutes(slot) + RESOLVE_AFTER_MIN:
+                rows.append({"slot": slot, "result": "pending"})
+            else:
+                rows.append({"slot": slot, "result": "failure"})
+                bad += 1
+        days.append({"date": date, "buses": rows})
+    return {"success": ok, "failure": bad, "success_rate": round(100 * ok / (ok + bad)) if ok + bad else None, "days": days}
+
+
+EARLY_MARGIN = 2  # a bus last seen at least this many stops short of the end of its route ended early
+
+
+def early_terminations(
+    state: dict[str, Any], end_pos: dict[str, int], names: dict[str, str], margin: int = EARLY_MARGIN
+) -> list[dict[str, Any]]:  # fmt: skip
+    """Buses that ended a trip short of the end of the route, each reported once: where they were last
+    seen and when, and whether they turned back (and where they next appeared) or just stopped
+    appearing in the feed. Drains the state's list of trips that have ended."""
+    ended, state["ended"] = list(state.get("ended") or []), []
+    out: list[dict[str, Any]] = []
+    for e in ended:
+        end = end_pos.get(e["dir"])
+        if e["reason"] == "lap" or end is None or end - e["pos"] < margin:
+            continue
+        nxt = e.get("next") or {}
+        out.append({
+            "vehicle": e["vehicle"], "type": "early_termination", "sid": e["sid"], "stop": names.get(e["sid"]) or None,
+            "direction": e["dir"], "at": e.get("at"), "stops_before_end": end - e["pos"],
+            "kind": "turned back" if e["reason"] == "reversed" else "stopped reporting",
+            "resumed_sid": nxt.get("sid"), "resumed_stop": names.get(nxt.get("sid") or "") or None, "resumed_at": nxt.get("at"),
+        })  # fmt: skip
+    return out

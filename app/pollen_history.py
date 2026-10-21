@@ -134,7 +134,7 @@ async def pollen_sync(ctx: dict[str, Any]) -> Any:
         engine: AsyncEngine = ctx["engine"]
         today = datetime.now(ZoneInfo(settings.local_tz)).date()
         async with engine.connect() as conn:
-            places = (await conn.execute(text("SELECT id, lat, lon FROM place ORDER BY id"))).all()
+            places = (await conn.execute(text("SELECT id, lat, lon FROM place WHERE origin IS DISTINCT FROM 'home-assistant' ORDER BY id"))).all()
         fetched: dict[tuple[float, float], dict[str, Any]] = {}
         stored = 0
         limiter = PollenLimiter(ctx["redis"], settings.pollen_daily_limit)

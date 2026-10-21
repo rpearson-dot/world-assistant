@@ -195,3 +195,128 @@ def test_pollen_points_are_mappable_sensors() -> None:
     assert s.state == 4 and s.attributes["latitude"] == 52.25 and s.attributes["longitude"] == -1.75
     assert s.attributes["Grasses"] == "high, high" and s.attributes["Birch"] == "low, moderate"
     assert list(s.attributes).index("Grasses") < list(s.attributes).index("Birch")  # worst first
+
+
+def test_an_oversized_tile_is_split_so_attributes_stay_under_the_recorder_limit() -> None:
+    import json
+
+    events = [
+        {"id": str(i), "kind": "roadworks", "detail": "x" * 400, "roads": ["M6"], "lat": 54.6, "lon": -3.2, "pts": [[54.6, -3.2]] * 6}
+        for i in range(80)
+    ]
+    d = ha_publish.roads_device({"corridors": []}, events)
+    tiles = [s for s in d.sensors if s.key.startswith("tile_")]
+    assert len(tiles) > 1 and "_p" not in tiles[0].key and tiles[1].key.endswith("_p2")
+    assert sum(t.state for t in tiles) == 80
+    assert all(len(json.dumps(t.attributes)) < 16384 for t in tiles)
+    stations = [
+        {"lat": 51.5, "lon": -0.1, "pence": 140 + i % 9, "name": "S" * 40, "brand": "B" * 20, "postcode": "SW1A 1AA"}
+        for i in range(400)
+    ]
+    fuel = [s for s in ha_publish.fuel_device({"e10": stations}).sensors if s.key.startswith("tile_e10_")]
+    assert len(fuel) > 1 and sum(s.state for s in fuel) == 400
+    assert all(len(json.dumps(s.attributes)) < 16384 for s in fuel)
+
+
+def test_old_prices_are_listed_with_their_age_but_do_not_move_the_national_median() -> None:
+    old = {**_st("old", 51.51, -0.12, 100.0), "age_h": 200.0}
+    new = {**_st("new", 51.52, -0.11, 150.0), "age_h": 3.0}
+    d = ha_publish.fuel_device({"E10": [old, new]})
+    nat = next(s for s in d.sensors if s.key == "national_e10")
+    assert nat.state == 150.0 and nat.attributes["stations"] == 1 and nat.attributes["listed"] == 2
+    tile = next(s for s in d.sensors if s.key.startswith("tile_e10_"))
+    assert [r["age_h"] for r in tile.attributes["stations"]] == [200.0, 3.0]
+    assert all(set(r) == set(ha_publish.STATION_KEYS) for r in tile.attributes["stations"])  # no ids or flags
+
+
+def test_bus_tracker_publishes_the_days_answer_even_outside_the_polling_window() -> None:
+    target = {"day": "2026-10-21", "earliest": "07:00", "deadline": "09:00", "tracking_now": False,
+              "scheduled": ["07:10", "07:40", "08:10"], "pending": ["08:10"],
+              "hits": [{"slot": "07:10", "arrive_at": "2026-10-21T06:20:00+00:00"},
+                       {"slot": "07:40", "arrive_at": "2026-10-21T06:52:00+00:00"}],
+              "last_bus": {"slot": "07:40", "arrive_at": "2026-10-21T06:52:00+00:00"},
+              "summary": "The last bus got there at 07:52."}  # fmt: skip
+    d = ha_publish.bus_device("main", [{"key": "home", "label": "Home stop"}], target, None)
+    by = {s.key: s for s in d.sensors}
+    assert d.id == "bus_main" and ha.unique_id(d.id, "last_bus") == "wa_bus_main_last_bus"  # same ids as before
+    assert by["last_bus"].state == "07:52" and by["hits_today"].state == 2 and by["pending_slots"].state == 1
+    assert by["summary"].state.startswith("The last bus") and by["active_buses"].state == 0
+    assert by["next_home"].state is None  # nothing live outside the window
+
+
+def test_bus_tracker_without_a_target_still_shows_live_buses() -> None:
+    live = {"active": [{"vehicle": "X1"}], "next": {"home": [{"minutes": 4}, {"minutes": 11}]}}
+    d = ha_publish.bus_device("main", [{"key": "home", "label": "Home stop"}], None, live)
+    by = {s.key: s for s in d.sensors}
+    assert "last_bus" not in by and by["active_buses"].state == 1 and by["next_home"].state == 4
+
+
+def test_bus_chance_follows_the_bus_that_is_actually_next_and_goes_quiet_after_the_cutoff() -> None:
+    slots = [{"slot": "07:23", "chance": 90, "days": 10, "basis": "this departure"},
+             {"slot": "07:46", "chance": 50, "days": 10, "basis": "this departure"}]  # fmt: skip
+    target = {"day": "2026-10-21", "deadline": "08:10", "board": "board", "hits": [], "pending": ["07:23", "07:46"],
+              "scheduled": ["07:23", "07:46"], "summary": "No bus yet.",
+              "outlook": {"relevant": True, "slots": slots, "days_recorded": 10}}  # fmt: skip
+    live = {"active": [], "next": {"board": [{"minutes": 20, "expected": "2026-10-21T06:45:00Z"}]}}  # 07:45 local
+    d = ha_publish.bus_device("main", [{"key": "board", "label": "Worcester Park"}], target, live)
+    by = {s.key: s for s in d.sensors}
+    assert by["chance"].state == 50 and by["chance"].attributes["bus"] == "07:46"  # the 07:46, not the earlier one
+    assert by["next_board"].state == 20
+    quiet = {**target, "outlook": {"relevant": False, "reason": "after 08:00", "slots": []}}
+    by = {s.key: s for s in ha_publish.bus_device("main", [], quiet, None).sensors}
+    assert by["chance"].state is None and by["chance"].attributes["reason"] == "after 08:00"
+
+
+def test_bus_record_sensor_carries_the_success_rate_and_recent_days() -> None:
+    log = {"success": 8, "failure": 2, "success_rate": 80, "window_days": 30,
+           "days": [{"date": "2026-10-21", "buses": [{"slot": "07:11", "result": "success", "arrived": "07:25"},
+                                                    {"slot": "07:46", "result": "failure"}]}]}  # fmt: skip
+    d = ha_publish.bus_device("main", [], None, None, log)
+    rec = next(s for s in d.sensors if s.key == "record")
+    assert rec.state == 80 and rec.attributes["failure"] == 2
+    assert rec.attributes["recent_days"][0]["buses"] == ["07:11 success (07:25)", "07:46 failure"]
+
+
+def test_bus_ended_early_sensor_lists_today_with_place_and_time() -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from app.config import get_settings
+
+    today = datetime.now(ZoneInfo(get_settings().local_tz)).date().isoformat()
+    bus = {"time": "07:41", "kind": "turned back", "stop": "Malden Road", "stops_before_end": 4,
+           "resumed_at_stop": "Worcester Park", "resumed_at_time": "07:55"}  # fmt: skip
+    ended = {"days": [{"date": today, "count": 1, "in_target_window": 1, "buses": [bus]},
+                      {"date": "2026-01-01", "count": 0, "buses": []}]}  # fmt: skip
+    by = {s.key: s for s in ha_publish.bus_device("main", [], None, None, None, ended).sensors}
+    sensor = by["ended_early"]
+    assert sensor.state == 1
+    assert sensor.attributes["today"] == ["07:41 turned back at Malden Road (4 stops short), next seen at Worcester Park 07:55"]
+    assert ha_publish.bus_device("main", [], None, None, None, {"days": []}).sensors[0].state == 0
+
+
+@pytest.mark.asyncio
+async def test_collecting_a_bus_tracker_end_to_end_survives_a_failing_log() -> None:
+    def handler(req: httpx.Request) -> httpx.Response:
+        path = req.url.path
+        if path == "/v1/bus/trackers":
+            return httpx.Response(200, json=[{"id": "main", "enabled": True}])
+        if path == "/v1/bus/trackers/main":
+            return httpx.Response(200, json={"config": {"stops": [{"key": "board", "label": "Worcester Park"}], "target": {"board": "board"}}})
+        if path.endswith("/target"):
+            return httpx.Response(200, json={"day": "2026-10-21", "deadline": "08:10", "board": "board", "hits": [], "pending": [],
+                                             "scheduled": [], "summary": "x", "outlook": {"relevant": False, "reason": "weekend", "slots": []}})
+        if path.endswith("/live"):
+            return httpx.Response(200, json={"active": [], "next": {"board": [{"minutes": 5, "towards": "Kingston"}]}})
+        if path.endswith("/log"):
+            return httpx.Response(500)
+        if path.endswith("/terminations"):
+            return httpx.Response(200, json={"days": []})
+        return httpx.Response(404)
+
+    async with httpx.AsyncClient(base_url="http://api", transport=httpx.MockTransport(handler)) as c:
+        devices = await ha_publish.collect(c)
+    bus = next(d for d in devices if d.id == "bus_main")
+    keys = {s.key for s in bus.sensors}
+    assert {"chance", "ended_early", "next_board", "active_buses"} <= keys  # the log failing only drops the record
+    assert "record" not in keys

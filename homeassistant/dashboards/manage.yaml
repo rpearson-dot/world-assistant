@@ -1,0 +1,65 @@
+# Add and remove places to watch for events, and routes, without editing any files.
+# Needs homeassistant/packages/world_assistant_manage.yaml (see docs/home-assistant.md).
+title: World Assistant
+views:
+  - title: Manage
+    path: manage
+    icon: mdi:map-marker-plus
+    cards:
+      - type: entities
+        title: Watch events at a place
+        footer:
+          type: buttons
+          entities:
+            - entity: script.wa_add_location
+              name: Watch
+              icon: mdi:map-marker-plus
+              show_name: true
+              tap_action:
+                action: toggle
+            - entity: script.wa_remove_location
+              name: Stop watching
+              icon: mdi:map-marker-minus
+              show_name: true
+              tap_action:
+                action: toggle
+        entities:
+          - entity: input_text.wa_place
+          - entity: input_text.wa_place_name
+          - type: section
+            label: Type a zone (zone.work) or a position (52.48, -1.9). Give a name when it is not a zone.
+      - type: entities
+        title: Add a route
+        footer:
+          type: buttons
+          entities:
+            - entity: script.wa_add_route
+              name: Add route
+              icon: mdi:routes
+              show_name: true
+              tap_action:
+                action: toggle
+            - entity: script.wa_remove_route
+              name: Remove route
+              icon: mdi:routes-clock
+              show_name: true
+              tap_action:
+                action: toggle
+        entities:
+          - entity: input_text.wa_route_from
+          - entity: input_text.wa_route_to
+          - type: section
+            label: Each end is a zone or a position. Both directions are added, and closures along the road show on the Roads dashboard.
+      - type: markdown
+        title: Currently set up
+        content: |
+          {% set places = states.sensor | selectattr('entity_id', 'search', '^sensor[.]wa_events_place_') | sort(attribute='name') | list %}
+          {% set routes = states.sensor | selectattr('entity_id', 'search', '^sensor[.]wa_roads_corridor_trip_ha_') | sort(attribute='name') | list %}
+          **Places watched for events**
+          {% for p in places %}- {{ p.attributes.place or p.name }}: {{ p.state }} events{% else %}- none{% endfor %}
+
+          **Routes added here**
+          {% for r in routes %}- {{ r.name | replace(': active works', '') }}: {{ r.state }} active works{% else %}- none{% endfor %}
+          {% set li = 'sensor.wa_events_locations' %}{% if states(li) not in ['unknown', 'unavailable'] %}
+
+          Watching {{ states(li) }} of {{ state_attr(li, 'max') }} places.{% endif %}

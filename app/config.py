@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     ha_location_refresh_h: int = 12  # how often each place's events are searched again
     ha_location_radius_km: float = 8.0
     ha_location_days: int = 7
+    ha_fuel_max_age_h: float = 720.0  # fuel prices up to this old are published; the dashboards show each price's age
+    ha_routes_max: int = 12  # trips (one direction each) Home Assistant may add; they are routed locally, so no provider cost
 
     # National Highways allows 10 calls per subscription key per minute.
     # Stay under it so retries and clock skew never trip the upstream limit.

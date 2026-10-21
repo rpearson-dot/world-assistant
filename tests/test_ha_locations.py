@@ -13,7 +13,6 @@ import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -111,9 +110,8 @@ async def test_add_renew_cap_and_expire(table: None) -> None:
     try:
         for i in range(8):
             await ha_locations.add_location(ha_locations.LocationIn(name=f"Place {i}", lat=52.0, lon=-1.0), request)
-        with pytest.raises(HTTPException) as exc:
-            await ha_locations.add_location(ha_locations.LocationIn(name="One too many", lat=52.0, lon=-1.0), request)
-        assert exc.value.status_code == 409
+        refused = await ha_locations.add_location(ha_locations.LocationIn(name="One too many", lat=52.0, lon=-1.0), request)
+        assert refused["ok"] is False and "maximum of 8" in refused["message"]
         again = await ha_locations.add_location(ha_locations.LocationIn(name="Place 3", lat=52.5, lon=-1.0), request)
         assert again["entity"] == "sensor.wa_events_place_place_3"  # renewing is allowed at the cap
         listing = await ha_locations.list_locations(request)
@@ -123,8 +121,7 @@ async def test_add_renew_cap_and_expire(table: None) -> None:
         listing = await ha_locations.list_locations(request)
         assert [r["id"] for r in listing["locations"]] == ["place_3"]
         assert listing["limits"]["ttl_days"] == 30  # pressure over
-        assert (await ha_locations.delete_by_name(ha_locations.NameIn(name="Place 3"), request)) == {"deleted": "place_3"}
-        with pytest.raises(HTTPException):
-            await ha_locations.delete_by_name(ha_locations.NameIn(name="Place 3"), request)
+        assert (await ha_locations.delete_by_name(ha_locations.NameIn(name="Place 3"), request))["ok"] is True
+        assert (await ha_locations.delete_by_name(ha_locations.NameIn(name="Place 3"), request))["ok"] is False
     finally:
         await engine.dispose()

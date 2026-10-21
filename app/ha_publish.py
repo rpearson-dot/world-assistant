@@ -12,9 +12,11 @@ answer into sensors (app/ha.py) and sends them over MQTT. One domain failing nev
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import math
 import statistics
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -28,9 +30,28 @@ log = logging.getLogger("wa.ha")
 
 FUELS = ("E10", "B7_STANDARD")
 FUEL_NAMES = {"E10": "Petrol (E10)", "B7_STANDARD": "Diesel"}
+FRESH_H = 48.0  # the national median uses only prices this recent; older ones are still listed, with their age
+STATION_KEYS = ("name", "brand", "postcode", "lat", "lon", "pence", "age_h")  # what a tile keeps of a station
 
 
 TILE_DEG = 0.5  # fuel stations are grouped into tiles of this size so each sensor stays small
+
+
+MAX_ATTR_BYTES = 12000  # Home Assistant's recorder drops attributes over 16384 bytes; stay well under
+
+
+def _chunks(rows: list[dict[str, Any]], limit: int = MAX_ATTR_BYTES) -> list[list[dict[str, Any]]]:
+    """Split a tile's rows so each part's JSON stays under `limit` bytes (one part when it already does)."""
+    out: list[list[dict[str, Any]]] = [[]]
+    size = 0
+    for r in rows:
+        n = len(json.dumps(r, default=str)) + 2
+        if out[-1] and size + n > limit:
+            out.append([])
+            size = 0
+        out[-1].append(r)
+        size += n
+    return out
 
 
 def _tile(lat: float, lon: float) -> tuple[int, int]:
@@ -44,26 +65,29 @@ def fuel_device(results: dict[str, list[dict[str, Any]]]) -> Device:
     sensors: list[Sensor] = []
     for fuel, stations in results.items():
         label = FUEL_NAMES.get(fuel, fuel)
-        prices = sorted(s["pence"] for s in stations if s.get("pence") is not None)
-        cheapest = min(stations, key=lambda s: s["pence"], default=None)
+        fresh = [s for s in stations if s.get("age_h") is None or s["age_h"] <= FRESH_H]
+        prices = sorted(s["pence"] for s in fresh if s.get("pence") is not None)
+        cheapest = min(fresh, key=lambda s: s["pence"], default=None)
         sensors.append(Sensor(
             f"national_{slug(fuel)}", f"{label}: national median", statistics.median(prices) if prices else None,
             icon="mdi:gas-station", unit="p", state_class="measurement",
-            attributes={"stations": len(stations), "cheapest_pence": cheapest and cheapest["pence"],
+            attributes={"stations": len(fresh), "listed": len(stations), "cheapest_pence": cheapest and cheapest["pence"],
                         "cheapest_station": cheapest and cheapest["name"],
                         "cheapest_postcode": cheapest and cheapest["postcode"]},
         ))  # fmt: skip
         tiles: dict[tuple[int, int], list[dict[str, Any]]] = {}
         for st in stations:
-            tiles.setdefault(_tile(st["lat"], st["lon"]), []).append(st)
+            tiles.setdefault(_tile(st["lat"], st["lon"]), []).append({k: st.get(k) for k in STATION_KEYS})
         for (ti, tj), rows in sorted(tiles.items()):
             rows.sort(key=lambda r: r["pence"])
-            sensors.append(Sensor(
-                f"tile_{slug(fuel)}_{ti}_{tj}".replace("-", "m"), f"{label} tile {ti}/{tj}", len(rows),
-                icon="mdi:map-marker-radius", state_class="measurement",
-                attributes={"fuel": fuel, "lat_from": ti * TILE_DEG, "lon_from": tj * TILE_DEG,
-                            "size_deg": TILE_DEG, "stations": rows},
-            ))  # fmt: skip
+            for part, chunk in enumerate(_chunks(rows)):
+                sensors.append(Sensor(
+                    f"tile_{slug(fuel)}_{ti}_{tj}".replace("-", "m") + (f"_p{part + 1}" if part else ""),
+                    f"{label} tile {ti}/{tj}" + (f" part {part + 1}" if part else ""), len(chunk),
+                    icon="mdi:map-marker-radius", state_class="measurement",
+                    attributes={"fuel": fuel, "lat_from": ti * TILE_DEG, "lon_from": tj * TILE_DEG,
+                                "size_deg": TILE_DEG, "stations": chunk},
+                ))  # fmt: skip
     return Device("fuel", "Fuel prices", sensors)
 
 
@@ -165,6 +189,105 @@ def trains_device(boards: list[tuple[dict[str, Any], dict[str, Any]]]) -> Device
     return Device("trains", "Trains and buses", sensors)
 
 
+def _local_hhmm(stamp: Any) -> str | None:
+    """A timestamp from the API as the local clock time, e.g. 08:12."""
+    from zoneinfo import ZoneInfo
+
+    try:
+        return datetime.fromisoformat(str(stamp)).astimezone(ZoneInfo(get_settings().local_tz)).strftime("%H:%M")
+    except (TypeError, ValueError):
+        return None
+
+
+def _minutes_of_day(stamp: Any) -> int | None:
+    hhmm = _local_hhmm(stamp)
+    return None if hhmm is None else int(hhmm[:2]) * 60 + int(hhmm[3:])
+
+
+def bus_device(
+    tid: str, stops: list[dict[str, Any]], target: dict[str, Any] | None, live: dict[str, Any] | None,
+    log: dict[str, Any] | None = None, ended: dict[str, Any] | None = None,
+) -> Device:  # fmt: skip
+    """One bus tracker. The day's answer, the chance of making the deadline and the success/failure
+    record come from stored results (so they stay up to date outside the polling window); the buses
+    being followed and the next arrivals come from the live arrivals feed. Names match what the poller
+    used to publish itself, so existing entities carry on."""
+    from app.integrations.bus.events import nearest_slot
+
+    sensors: list[Sensor] = []
+    nxt = (live or {}).get("next") or {}
+    if target is not None:
+        last = target.get("last_bus")
+        hhmm = _local_hhmm(last.get("arrive_at")) if last else None
+        sensors += [
+            Sensor("last_bus", "Last bus to target", hhmm or "none", icon="mdi:bus-clock",
+                   attributes={"deadline": target.get("deadline"), "earliest": target.get("earliest"),
+                               "day": target.get("day"), "tracking_now": target.get("tracking_now"),
+                               "last": last}),
+            Sensor("hits_today", "Buses reaching target today", len(target.get("hits") or []),
+                   icon="mdi:bus-multiple", state_class="measurement"),
+            Sensor("pending_slots", "Scheduled buses not yet seen", len(target.get("pending") or []),
+                   icon="mdi:bus-alert", state_class="measurement",
+                   attributes={"scheduled": target.get("scheduled"), "pending": target.get("pending")}),
+            Sensor("summary", "Target summary", (target.get("summary") or "")[:250], icon="mdi:text"),
+        ]  # fmt: skip
+        o = target.get("outlook") or {}
+        pick = (o.get("slots") or [None])[0]
+        board_rows = nxt.get(target.get("board")) or []
+        if o.get("relevant") and board_rows and board_rows[0].get("expected"):  # the bus that is actually next
+            m = _local_hhmm(board_rows[0]["expected"])
+            slot = nearest_slot([x["slot"] for x in o["slots"]], m) if m else None
+            pick = next((x for x in o["slots"] if x["slot"] == slot), pick)
+        sensors.append(Sensor(
+            "chance", f"Chance of reaching the target by {target.get('deadline')}",
+            pick["chance"] if o.get("relevant") and pick else None, icon="mdi:percent", unit="%",
+            state_class="measurement",
+            attributes={"relevant": o.get("relevant"), "reason": o.get("reason"), "bus": pick and pick["slot"],
+                        "based_on_days": pick and pick["days"], "based_on": pick and pick["basis"],
+                        "deadline": target.get("deadline"), "days_recorded": o.get("days_recorded"),
+                        "later_buses": (o.get("slots") or [])[1:5]},
+        ))  # fmt: skip
+    if log is not None:
+        recent = [{"date": d["date"], "buses": [f"{b['slot']} {b['result']}" + (f" ({b['arrived']})" if b.get("arrived") else "")
+                                                for b in d["buses"]]} for d in (log.get("days") or [])[:7]]
+        sensors.append(Sensor(
+            "record", "Target success rate", log.get("success_rate"), icon="mdi:chart-line", unit="%",
+            state_class="measurement",
+            attributes={"success": log.get("success"), "failure": log.get("failure"),
+                        "window_days": log.get("window_days"), "recent_days": recent},
+        ))  # fmt: skip
+    if ended is not None:
+        from zoneinfo import ZoneInfo
+
+        today = datetime.now(ZoneInfo(get_settings().local_tz)).date().isoformat()
+        days = ended.get("days") or []
+        todays = next((d for d in days if d["date"] == today), {"buses": [], "count": 0})
+
+        def line(b: dict[str, Any]) -> str:
+            where = b.get("stop") or "an unknown stop"
+            back = f", next seen at {b['resumed_at_stop']} {b['resumed_at_time']}" if b.get("resumed_at_stop") else ""
+            return f"{b['time']} {b['kind']} at {where} ({b.get('stops_before_end')} stops short){back}"
+
+        sensors.append(Sensor(
+            "ended_early", "Buses that ended early today", todays["count"], icon="mdi:bus-alert",
+            state_class="measurement",
+            attributes={"today": [line(b) for b in todays["buses"]],
+                        "in_target_window_today": todays.get("in_target_window", 0),
+                        "recent_days": [{"date": d["date"], "count": d["count"], "buses": [line(b) for b in d["buses"]]}
+                                        for d in days[:7]]},
+        ))  # fmt: skip
+    active = (live or {}).get("active") or []
+    sensors.append(Sensor("active_buses", "Buses being followed", len(active), icon="mdi:bus",
+                          state_class="measurement", attributes={"buses": active}))  # fmt: skip
+    for st in stops:
+        rows = nxt.get(st.get("key")) or []
+        sensors.append(Sensor(
+            f"next_{st.get('key')}", f"Next bus: {st.get('label')}", rows[0].get("minutes") if rows else None,
+            icon="mdi:bus-stop", unit="min", state_class="measurement", attributes={"next": rows},
+        ))  # fmt: skip
+    return Device(f"bus_{tid}", f"Bus tracker {tid}", sensors)
+
+
 def roads_device(status: dict[str, Any], events: list[dict[str, Any]] | None = None) -> Device:
     """Corridor counts, plus every live closure and speed restriction nationwide in map tiles
     (with positions) so Home Assistant can show the ones near its own zones."""
@@ -183,12 +306,14 @@ def roads_device(status: dict[str, Any], events: list[dict[str, Any]] | None = N
         if e.get("lat") is not None and e.get("lon") is not None:
             tiles.setdefault(_tile(e["lat"], e["lon"]), []).append(e)
     for (ti, tj), rows in sorted(tiles.items()):
-        sensors.append(Sensor(
-            f"tile_{ti}_{tj}".replace("-", "m"), f"Road events tile {ti}/{tj}", len(rows),
-            icon="mdi:map-marker-alert", state_class="measurement",
-            attributes={"lat_from": ti * TILE_DEG, "lon_from": tj * TILE_DEG, "size_deg": TILE_DEG,
-                        "events": rows},
-        ))  # fmt: skip
+        for part, chunk in enumerate(_chunks(rows)):
+            sensors.append(Sensor(
+                f"tile_{ti}_{tj}".replace("-", "m") + (f"_p{part + 1}" if part else ""),
+                f"Road events tile {ti}/{tj}" + (f" part {part + 1}" if part else ""), len(chunk),
+                icon="mdi:map-marker-alert", state_class="measurement",
+                attributes={"lat_from": ti * TILE_DEG, "lon_from": tj * TILE_DEG, "size_deg": TILE_DEG,
+                            "events": chunk},
+            ))  # fmt: skip
     return Device("roads", "Roads", sensors)
 
 
@@ -204,7 +329,8 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
 
     async def attempt(name: str, build: Any) -> None:
         try:
-            devices.append(await build())
+            built = await build()
+            devices.extend(built if isinstance(built, list) else [built])
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
             log.info("home assistant: skipping %s (%s: %s)", name, type(exc).__name__, exc)
 
@@ -212,7 +338,7 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
         return pollen_device((await _get(c, "/v1/pollen/grid"))["points"])
 
     async def fuel() -> Device:
-        return fuel_device({f: (await _get(c, "/v1/fuel/all", fuel=f))["stations"] for f in FUELS})
+        return fuel_device({f: (await _get(c, "/v1/fuel/all", fuel=f, max_age_hours=get_settings().ha_fuel_max_age_h))["stations"] for f in FUELS})
 
     async def trains() -> Device:
         pairs = []
@@ -235,7 +361,35 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
     async def events() -> Device:
         return events_device(await _get(c, "/v1/ha/locations/events"))
 
-    for name, build in (("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events)):
+    async def bus() -> list[Device]:
+        out: list[Device] = []
+        for t in await _get(c, "/v1/bus/trackers"):
+            if not t.get("enabled"):
+                continue
+            tid = t["id"]
+            try:
+                cfg = (await _get(c, f"/v1/bus/trackers/{tid}"))["config"]
+                target = await _get(c, f"/v1/bus/trackers/{tid}/target") if cfg.get("target") else None
+                try:  # the arrivals feed is asked every time, so the next bus is there at any hour
+                    live = await _get(c, f"/v1/bus/trackers/{tid}/live")
+                except httpx.HTTPError:
+                    live = None
+                record = None
+                if target is not None:
+                    try:
+                        record = await _get(c, f"/v1/bus/trackers/{tid}/log", days=30)
+                    except httpx.HTTPError:
+                        record = None
+                try:
+                    ended = await _get(c, f"/v1/bus/trackers/{tid}/terminations", days=7)
+                except httpx.HTTPError:
+                    ended = None
+                out.append(bus_device(tid, cfg.get("stops") or [], target, live, record, ended))
+            except httpx.HTTPError as exc:  # one dead tracker must not hide the rest
+                log.info("home assistant: bus tracker %s skipped (%s)", tid, type(exc).__name__)
+        return out
+
+    for name, build in (("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
         await attempt(name, build)
     return devices
 

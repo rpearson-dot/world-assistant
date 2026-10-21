@@ -36,7 +36,7 @@ Over MQTT (retained, with discovery):
 
 | Device | Sensors |
 |---|---|
-| **Fuel prices** | `<fuel>: national median` (with the cheapest station in attributes), and one `<fuel> tile` sensor per half-degree map square (roughly 55 by 35 km). A tile's state is how many stations it holds; its attributes list every station with price, brand, postcode and coordinates, cheapest first. Petrol (E10) and diesel. |
+| **Fuel prices** | `<fuel>: national median` (with the cheapest station in attributes), and one `<fuel> tile` sensor per half-degree map square (roughly 55 by 35 km). A tile's state is how many stations it holds; its attributes list every station with price, brand, postcode and coordinates, cheapest first. Petrol (E10) and diesel. Prices up to 30 days old are published (`WA_HA_FUEL_MAX_AGE_H`), each with its age in hours (`age_h`), because most stations only report a price when it changes; a tile too big for Home Assistant's 16 KB attribute limit is split into `…_p2`, `…_p3`. The national median uses only prices under 48 hours old. The Fuel dashboard shows prices up to a week old within 16 km by default and marks ones older than two days with ⚠️; change `radius_km` and `max_age_h` at the top of the card. A dropdown at the top picks Petrol or Diesel (add `homeassistant/packages/world_assistant_fuel.yaml` to your packages folder; the choice is shared by everyone who opens the dashboard). |
 | **Trains and buses** | For each departure board you have set up: `<board>: next departure` (minutes; the next services are in attributes) and `<board>: delayed or cancelled` (a count). Bus tracker sensors keep their own device (see [bus.md](bus.md)). |
 | **Roads** | `Live road events`, one `<corridor>: active works` sensor per enabled National Highways corridor, and one `Road events tile` sensor per half-degree map square that has any. A tile's attributes list its closures and speed restrictions (unplanned ones, plus planned works starting within a week) with road, direction, description, times and positions. |
 
@@ -92,6 +92,31 @@ time out:
 
 Only the place's name and position are stored (table `ha_location`).
 
+### Adding places and routes from Home Assistant (the Manage dashboard)
+
+`homeassistant/dashboards/manage.yaml` and `homeassistant/packages/world_assistant_manage.yaml` put the
+two things above, and routes, behind buttons, so nothing needs a terminal. The package adds four text
+helpers (`WA place`, `WA place name`, `WA route from`, `WA route to`) and four scripts. Type a **zone**
+(`zone.work`) or a **position** (`52.48, -1.9`) into a helper, then press the button:
+
+- **Watch events at a place** / **Stop watching** (`script.wa_add_location`, `script.wa_remove_location`):
+  as above, with the name taken from the zone, or from `WA place name` for a bare position.
+- **Add a route** / **Remove route** (`script.wa_add_route`, `script.wa_remove_route`): From and To are each a
+  zone or a position. World Assistant saves them as two places and a trip in each direction, builds the
+  route with the routing engine (so it needs the routing stack, see the runbook; without it the route is saved but not built, and
+  pressing Add route again once the engine is running builds it), and the route's corridor shows up as a `Roads` sensor, so closures along
+  your regular drive appear on the Roads dashboard. Routing is local, so a route costs no outside
+  requests, but the number is still capped: `WA_HA_ROUTES_MAX` (default 12) trips, each direction counting
+  as one. Adding the same two ends again updates the route.
+
+Every script ends with a notification saying what happened (the route's distance and time, a refusal
+because a cap was reached, or why a position could not be read); the API answers `{"ok", "message"}`
+rather than an error code for these reasons. Places and trips made this way are marked
+(`place.origin`/`trip.origin` = `home-assistant`, ids start `ha-`), so they never touch anything made on
+the web pages, the daily pollen history ignores them, and removing a route removes only its own
+places, trips and corridor. The dashboard's "Currently set up" card lists what exists. The routes need
+two more secrets (below).
+
 ### How the pollen grid works
 
 The pollen provider answers one point at a time and, importantly, allows only **40 requests a day** on a key. So everything shares one daily budget of 36 requests (`WA_POLLEN_DAILY_LIMIT`; the day is the UTC date), and the worker keeps a lattice of points over Britain (1 degree apart, about 51 points on land; `WA_POLLEN_GRID_DEG`) in the `pollen_grid` table. Because each fetch covers four days (today and three more), a stored point stays useful for up to four days: lookups read the entry for today's date. At 03:40 and 15:40 the worker refreshes the 12 stalest points (`WA_POLLEN_GRID_CALLS_PER_RUN`), pausing 10 seconds between calls, so every point is refreshed roughly every two days. It stops early when only 6 requests of the day's budget are left (`WA_POLLEN_RESERVE_CALLS`, kept for saved places and live lookups), and gives up if the provider fails four times in a row. Anything asking for pollen at a point (`/v1/pollen/near?lat=..&lon=..`, or Home Assistant's tiles) is answered from the nearest stored point within 150 km that still covers today, falling back to a live fetch otherwise (which uses budget). `GET /v1/pollen/grid` returns the lattice, each cut to start today. Each stored point records when its forecast last changed (`changed_at`), which shows how often the provider really updates.
@@ -106,7 +131,12 @@ Neither needs any per-person setup, and neither package writes a secret into its
      packages: !include_dir_named packages
    ```
 2. Copy `homeassistant/packages/world_assistant_pollen.yaml` and
-   `homeassistant/packages/world_assistant_events.yaml` to `/config/packages/`.
+   `homeassistant/packages/world_assistant_events.yaml` to `/config/packages/`. Optional, for the matching
+   dashboards: `world_assistant_fuel.yaml` (the Petrol/Diesel dropdown), `world_assistant_manage.yaml`
+   (add places and routes; needs the events package too) and `world_assistant_bus.yaml` (change the bus
+   tracker's times). The events, bus and routes packages each carry a small automation or script, so if your
+   `configuration.yaml` has `automation:` or `script:` of its own, make sure they are lists/maps that
+   packages can merge into (the usual `!include automations.yaml` works).
 3. In `/config/secrets.yaml`, add these lines (the address is your server's and `WA_API_PORT`, default
    8010; the token is the contents of `api_token.txt`):
    ```yaml
@@ -115,6 +145,9 @@ Neither needs any per-person setup, and neither package writes a secret into its
    wa_locations_delete_url: "http://192.168.1.10:8010/v1/ha/locations/delete"
    wa_authorization: "Bearer <contents of api_token.txt>"
    ```
+   and, for the optional packages, `wa_routes_url` (`…/v1/ha/routes`), `wa_routes_delete_url`
+   (`…/v1/ha/routes/delete`) and `wa_bus_settings_url` (`…/v1/bus/settings`) in the same way. Home Assistant
+   will not start a config with a missing secret, so add every secret a package you copied refers to.
 4. Developer tools > YAML > Check configuration, then Restart Home Assistant.
 5. Add the dashboards (below).
 
@@ -133,6 +166,8 @@ use any saved place. Pollen is answered from the stored grid, so the pollen prov
 | `WA_HA_INTERVAL_MIN` | `5` | How often the worker publishes. |
 | `WA_POLLEN_DAILY_LIMIT`, `WA_POLLEN_GRID_CALLS_PER_RUN`, `WA_POLLEN_RESERVE_CALLS` | `36`, `12`, `6` | The pollen request budget (above). |
 | `WA_HA_LOCATIONS_MAX` | `8` | Most extra places for events (below). |
+| `WA_HA_ROUTES_MAX` | `12` | Most trips Home Assistant may add (each direction is one). |
+| `WA_HA_FUEL_MAX_AGE_H` | `720` | Fuel prices up to this old (hours) are published, each with its age. |
 | `WA_HA_LOCATION_TTL_DAYS` | `30` | A place not renewed for this long is dropped. |
 | `WA_HA_LOCATION_PRESSURE_TTL_DAYS` | `7` | The shorter time-out once 75% of the cap is used. |
 | `WA_HA_LOCATION_REFRESH_H` | `12` | How often each place's events are searched again. |
@@ -149,9 +184,9 @@ a stopped worker shows as unavailable rather than as old numbers that look curre
 Ready-made dashboards use only Home Assistant's built-in cards (no HACS):
 
 - In [`homeassistant/dashboards/`](../homeassistant/dashboards): `fuel.yaml`, `trains-buses.yaml`,
-  `roads.yaml`, `events.yaml` and `pollen.yaml`. They find their entities by name, so they need no editing for
+  `roads.yaml`, `events.yaml`, `pollen.yaml` and `manage.yaml`. They find their entities by name, so they need no editing for
   boards or corridors. Fuel and roads have a `zone` and a radius at the top of each card, used when
-  a viewer has no matching person. Events needs the events package; the pollen history graph needs the static pollen package.
+  a viewer has no matching person. Fuel has a Petrol/Diesel dropdown (the fuel package). Manage needs the manage package. Events needs the events package; the pollen history graph needs the static pollen package.
 - `pollen.yaml` shows the pollen map (`image.wa_pollen_map`), a tappable map of the forecast points (the card lists the 51 points of the default 1 degree lattice; change `WA_POLLEN_GRID_DEG` and its list needs regenerating), the viewer's own pollen this week (from the nearest grid point), and a history graph of the home location's allergy risk and allergens.
 
 Fuel, roads and pollen show each viewer their own location's data, as described above.

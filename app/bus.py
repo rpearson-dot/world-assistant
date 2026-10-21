@@ -9,14 +9,21 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 
 from app.auth import require_token
 from app.config import get_settings
 from app.integrations.bus import store
 from app.integrations.bus.config import TrackerConfig
-from app.integrations.bus.events import condition_summary, sentence, slot_reliability
+from app.integrations.bus.events import (
+    condition_summary,
+    outlook,
+    result_log,
+    sentence,
+    slot_reliability,
+    to_minutes,
+)
 from app.integrations.bus.poller import Lookup, in_window
 from app.integrations.bus.setup import SetupError, build_config, describe
 from app.integrations.tfl.client import TflClient, TflError
@@ -61,6 +68,51 @@ class SetupIn(BaseModel):
     earliest: str = Field("07:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     deadline: str = Field("08:10", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     name: str = "main"
+
+
+_HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
+
+
+class SettingsIn(BaseModel):
+    tracker: str | None = Field(None, description="which tracker; optional when there is only one")
+    deadline: str | None = Field(None, pattern=_HHMM, description="arrive by this time, e.g. 08:10")
+    earliest: str | None = Field(None, pattern=_HHMM)
+    show_until: str | None = Field(None, pattern=_HHMM, description="stop showing the chance after this time")
+
+    @field_validator("tracker", "deadline", "earliest", "show_until", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, v: Any) -> Any:  # Home Assistant sends "" for the fields it is not changing
+        return None if isinstance(v, str) and not v.strip() else v
+
+
+@router.post("/settings")
+async def change_settings(request: Request, body: SettingsIn) -> dict[str, Any]:
+    """Change the times of a tracker without touching its route or history. Meant for Home Assistant,
+    so it answers {"ok", "message"} rather than an error code. History already recorded keeps the
+    deadline it was recorded under; the new one applies from the next scheduled bus."""
+    changes = body.model_dump(exclude_none=True, exclude={"tracker"})
+    if not changes:
+        return {"ok": False, "message": "nothing to change"}
+    async with request.app.state.engine.begin() as conn:
+        rows = await store.list_trackers(conn)
+        if body.tracker:
+            tid = body.tracker
+        elif len(rows) == 1:
+            tid = rows[0]["id"]
+        else:
+            return {"ok": False, "message": "say which tracker: " + ", ".join(r["id"] for r in rows) if rows else "no bus tracker is set up"}
+        row = await store.get_tracker(conn, tid)
+        if not row:
+            return {"ok": False, "message": f"no tracker called {tid!r}"}
+        cfg = {**row["config"], **changes}
+        try:
+            TrackerConfig.model_validate(cfg)
+        except ValueError as exc:
+            return {"ok": False, "message": str(exc)}
+        if to_minutes(cfg.get("earliest", "07:00")) >= to_minutes(cfg.get("deadline", "08:10")):
+            return {"ok": False, "message": "the earliest time must be before the deadline"}
+        await store.update_config(conn, tid, cfg)
+    return {"ok": True, "tracker": tid, "message": "updated " + ", ".join(f"{k} {v}" for k, v in changes.items()), **changes}
 
 
 @router.get("/lines/{line}/stops")
@@ -191,11 +243,24 @@ async def live(request: Request, tid: str) -> dict[str, Any]:
     return {"as_of": now, "active": active, "next": next_at}
 
 
+async def _history(request: Request, tid: str, since: Any) -> tuple[list[Any], list[Any]]:
+    async with request.app.state.engine.connect() as conn:
+        day_rows = (await conn.execute(
+            text("SELECT day, slots FROM bus_target_day WHERE tracker = :t AND day >= :s ORDER BY day"),
+            {"t": tid, "s": since})).all()  # fmt: skip
+        hit_rows = (await conn.execute(
+            text("SELECT day, slot, arrive_at, delay_min FROM bus_target_hit "
+                 "WHERE tracker = :t AND day >= :s AND slot IS NOT NULL"),
+            {"t": tid, "s": since})).all()  # fmt: skip
+    return list(day_rows), list(hit_rows)
+
+
 @router.get("/trackers/{tid}/target")
 async def target(
     request: Request, tid: str, day: str | None = Query(None, pattern=r"^\d{4}-\d\d-\d\d$")
 ) -> dict[str, Any]:
-    """The run to the target stop: which buses made it before the deadline, and which is the last."""
+    """The run to the target stop: which buses made it before the deadline, and which is the last.
+    `outlook` is the chance each remaining bus gets there by the deadline (weekday mornings only)."""
     _, cfg = await _load(request, tid)
     if not cfg.target:
         raise HTTPException(409, "this tracker has no target configured")
@@ -214,12 +279,82 @@ async def target(
     slots = list(d[0]) if d else []
     pending = [s for s in slots if s not in hit_slots]
     last = hits[-1] if hits else None
+    since = (now - timedelta(days=HISTORY_DAYS)).date()
+    day_rows, hit_rows = await _history(request, tid, since)
+    by_day: dict[str, list[str]] = {}
+    for hday, slot, _a, _d in hit_rows:
+        by_day.setdefault(hday.isoformat(), []).append(slot)
+    reliability = slot_reliability(
+        [{"date": dd.isoformat(), "slots": list(ss), "hit_slots": by_day.get(dd.isoformat(), [])} for dd, ss in day_rows],
+        now.date().isoformat(), now.hour * 60 + now.minute,
+    )  # fmt: skip
+    chance = outlook(
+        slots=slots, hit_slots=sorted(hit_slots), reliability=reliability,
+        now_minutes=now.hour * 60 + now.minute, show_until=cfg.show_until,
+        weekday_ok=not (cfg.weekdays_only and now.weekday() > 4),
+    )  # fmt: skip
     return {
         "day": the_day, "earliest": cfg.earliest, "deadline": cfg.deadline,
-        "tracking_now": in_window(cfg, now), "scheduled": slots, "pending": pending,
-        "hits": hits, "last_bus": last,
+        "board": cfg.target.board, "tracking_now": in_window(cfg, now), "scheduled": slots, "pending": pending,
+        "hits": hits, "last_bus": last, "outlook": chance,
         "summary": sentence(last, cfg.deadline, tz),
     }  # fmt: skip
+
+
+@router.get("/trackers/{tid}/log")
+async def log(request: Request, tid: str, days: int = Query(HISTORY_DAYS, ge=1, le=90)) -> dict[str, Any]:
+    """Success and failure of every scheduled bus on every recorded day: did a bus from the boarding
+    stop reach the target (either side of the road) before the deadline?"""
+    _, cfg = await _load(request, tid)
+    tz = _tz()
+    now = datetime.now(tz)
+    day_rows, hit_rows = await _history(request, tid, (now - timedelta(days=days)).date())
+    hits = [
+        {"date": hday.isoformat(), "slot": slot, "arrive": arrive.astimezone(tz).strftime("%H:%M") if arrive else None,
+         "delay_min": delay}
+        for hday, slot, arrive, delay in hit_rows
+    ]  # fmt: skip
+    out = result_log([(dd.isoformat(), list(ss)) for dd, ss in day_rows], hits, now.date().isoformat(),
+                     now.hour * 60 + now.minute)  # fmt: skip
+    return {"deadline": cfg.deadline, "window_days": days, **out}
+
+
+def _clock(epoch_s: Any, tz: ZoneInfo) -> str | None:
+    try:
+        return datetime.fromtimestamp(float(epoch_s), tz).strftime("%H:%M")
+    except (TypeError, ValueError):
+        return None
+
+
+@router.get("/trackers/{tid}/terminations")
+async def terminations(request: Request, tid: str, days: int = Query(7, ge=1, le=60)) -> dict[str, Any]:
+    """A daily log of buses that ended a trip short of the end of the route while the tracker was
+    watching: where they were last seen and when, whether they turned back (and where they next
+    appeared) or just stopped appearing. Newest day first."""
+    _, cfg = await _load(request, tid)
+    tz = _tz()
+    now = datetime.now(tz)
+    since = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    async with request.app.state.engine.connect() as conn:
+        rows = (await conn.execute(
+            text("SELECT at, vehicle, detail FROM bus_anomaly WHERE tracker = :t AND type = 'early_termination' "
+                 "AND at >= :s ORDER BY at"),
+            {"t": tid, "s": since})).all()  # fmt: skip
+    lo, hi = to_minutes(cfg.earliest), to_minutes(cfg.deadline)
+    by_day: dict[str, list[dict[str, Any]]] = {}
+    for at, vehicle, d in rows:
+        seen = _clock(d.get("at"), tz) or at.astimezone(tz).strftime("%H:%M")
+        resumed = _clock(d.get("resumed_at"), tz)
+        mins = to_minutes(seen)
+        by_day.setdefault(at.astimezone(tz).date().isoformat(), []).append({
+            "time": seen, "vehicle": vehicle, "kind": d.get("kind"), "direction": d.get("direction"),
+            "stop": d.get("stop"), "stops_before_end": d.get("stops_before_end"),
+            "resumed_at_stop": d.get("resumed_stop"), "resumed_at_time": resumed,
+            "in_target_window": lo <= mins <= hi,
+        })  # fmt: skip
+    out = [{"date": k, "count": len(v), "in_target_window": sum(1 for e in v if e["in_target_window"]), "buses": v}
+           for k, v in sorted(by_day.items(), reverse=True)]  # fmt: skip
+    return {"window": {"earliest": cfg.earliest, "deadline": cfg.deadline}, "days": out}
 
 
 @router.get("/trackers/{tid}/reliability")

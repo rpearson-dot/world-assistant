@@ -1,38 +1,30 @@
 # Fuel prices near whoever is looking: the viewer's own Home Assistant person, using the app's
-# location while they are away, otherwise the zone below. Change zone, radius_km and the fuel at the
-# top of each card. (The person's name must match the Home Assistant user's name.)
+# location while they are away, otherwise the zone below. Change zone, radius_km and max_age_h at the
+# top of the card. The fuel comes from the dropdown, which needs homeassistant/packages/world_assistant_fuel.yaml.
+# (The person's name must match the Home Assistant user's name.)
 title: Fuel
 views:
   - title: Fuel
     path: fuel
     icon: mdi:gas-station
     cards:
+      - type: entities
+        title: Fuel
+        entities:
+          - entity: input_select.wa_fuel_type
       - type: markdown
-        title: Cheapest petrol (E10) near you
+        title: Cheapest near you
         content: |
-          {% set zone = 'zone.home' %}{% set radius_km = 5 %}{% set fuel = 'e10' %}
+          {% set zone = 'zone.home' %}{% set radius_km = 16 %}{% set max_age_h = 168 %}{% set fuel = 'b7_standard' if 'iesel' in states('input_select.wa_fuel_type') else 'e10' %}{% set fuel_name = 'diesel' if fuel == 'b7_standard' else 'petrol (E10)' %}
           {% set me = states.person | selectattr('name', 'eq', user) | list %}{% set p = me[0] if me else none %}{% set away = p is not none and p.state not in ['home', 'unknown', 'unavailable'] and p.attributes.latitude is defined and p.attributes.latitude is not none and (p.attributes.gps_accuracy | default(0) | float(0)) <= 1000 %}{% set z = p if away else states[zone] %}{% set where = 'your location' if away else z.name %}
           {% set ns = namespace(r=[]) %}
-          {% for t in states.sensor if t.entity_id.startswith('sensor.wa_fuel_tile_' ~ fuel ~ '_') %}{% for s in t.attributes.stations | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, s.lat, s.lon) %}{% if d is not none and d < radius_km %}{% set ns.r = ns.r + [[s.pence, s.name, s.brand, s.postcode, d]] %}{% endif %}{% endfor %}{% endfor %}
-          {% if ns.r %}Within {{ radius_km }} km of {{ where }}: {{ ns.r | length }} stations.
+          {% for t in states.sensor if t.entity_id.startswith('sensor.wa_fuel_tile_' ~ fuel ~ '_') %}{% for s in t.attributes.stations | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, s.lat, s.lon) %}{% if d is not none and d < radius_km and (s.get('age_h') is none or s.get('age_h') <= max_age_h) %}{% set ns.r = ns.r + [[s.pence, s.name, s.brand, s.postcode, d, s.get('age_h')]] %}{% endif %}{% endfor %}{% endfor %}
+          {% if ns.r %}Cheapest {{ fuel_name }} within {{ radius_km }} km of {{ where }}, prices up to {{ max_age_h }} h old: {{ ns.r | length }} stations. ⚠️ marks a price more than two days old.
 
-          | Price | Station | Distance |
-          |--:|:--|--:|{% for r in ns.r | sort(attribute='0') %}{% if loop.index <= 10 %}
-          | **{{ r[0] }}p** | {{ r[1] }}, {{ r[2] }} {{ r[3] }} | {{ '%.1f' % r[4] }} km |{% endif %}{% endfor %}
-          {% else %}No stations with a current price within {{ radius_km }} km of {{ where }}.{% endif %}
-      - type: markdown
-        title: Cheapest diesel near you
-        content: |
-          {% set zone = 'zone.home' %}{% set radius_km = 5 %}{% set fuel = 'b7_standard' %}
-          {% set me = states.person | selectattr('name', 'eq', user) | list %}{% set p = me[0] if me else none %}{% set away = p is not none and p.state not in ['home', 'unknown', 'unavailable'] and p.attributes.latitude is defined and p.attributes.latitude is not none and (p.attributes.gps_accuracy | default(0) | float(0)) <= 1000 %}{% set z = p if away else states[zone] %}{% set where = 'your location' if away else z.name %}
-          {% set ns = namespace(r=[]) %}
-          {% for t in states.sensor if t.entity_id.startswith('sensor.wa_fuel_tile_' ~ fuel ~ '_') %}{% for s in t.attributes.stations | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, s.lat, s.lon) %}{% if d is not none and d < radius_km %}{% set ns.r = ns.r + [[s.pence, s.name, s.brand, s.postcode, d]] %}{% endif %}{% endfor %}{% endfor %}
-          {% if ns.r %}Within {{ radius_km }} km of {{ where }}: {{ ns.r | length }} stations.
-
-          | Price | Station | Distance |
-          |--:|:--|--:|{% for r in ns.r | sort(attribute='0') %}{% if loop.index <= 10 %}
-          | **{{ r[0] }}p** | {{ r[1] }}, {{ r[2] }} {{ r[3] }} | {{ '%.1f' % r[4] }} km |{% endif %}{% endfor %}
-          {% else %}No stations with a current price within {{ radius_km }} km of {{ where }}.{% endif %}
+          | Price | Station | Distance | Price age |
+          |--:|:--|--:|--:|{% for r in ns.r | sort(attribute='0') %}{% if loop.index <= 10 %}
+          | **{{ r[0] }}p** | {{ r[1] }}, {{ r[2] }} {{ r[3] }} | {{ '%.1f' % r[4] }} km | {% if r[5] is none %}?{% elif r[5] < 48 %}{{ r[5] | round(0) | int }} h{% else %}⚠️ {{ (r[5] / 24) | round(0) | int }} d{% endif %} |{% endif %}{% endfor %}
+          {% else %}No {{ fuel_name }} stations with a price from the last {{ max_age_h }} h within {{ radius_km }} km of {{ where }}.{% endif %}
       - type: markdown
         title: Nationally
         content: |

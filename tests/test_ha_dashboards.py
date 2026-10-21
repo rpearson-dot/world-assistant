@@ -28,7 +28,7 @@ def _jinja() -> Any:
 
 
 def test_the_static_dashboards_are_here() -> None:
-    assert {p.stem for p in DASHBOARDS} == {"pollen", "fuel", "trains-buses", "roads", "events"}
+    assert {p.stem for p in DASHBOARDS} == {"pollen", "fuel", "trains-buses", "roads", "events", "manage"}
 
 
 @pytest.mark.parametrize("path", DASHBOARDS, ids=lambda p: p.stem)
@@ -133,10 +133,29 @@ def test_fuel_card_shows_each_viewer_prices_where_that_viewer_is() -> None:
         "person.sam": ("home", {"friendly_name": "Sam", "latitude": 51.5, "longitude": -0.12}),
         "sensor.wa_fuel_tile_e10_1_m1": ("2", {"stations": [near_home, near_alex]}),
     }
-    out = lambda who: _env(ents, user=who).from_string(_card("fuel")).render()
+    out = lambda who: _env(ents, user=who).from_string(_card("fuel", 1)).render()
     alex, sam = out("Alex"), out("Sam")
     assert "Away BP" in alex and "Home Shell" not in alex and "your location" in alex  # 100 miles away
     assert "Home Shell" in sam and "Away BP" not in sam and "Home" in sam
+    assert "petrol" in sam and "diesel" not in sam
+
+
+def test_fuel_card_follows_the_fuel_dropdown() -> None:
+    stn = {"name": "Diesel Stop", "brand": "X", "postcode": "D1", "lat": 51.51, "lon": -0.12, "pence": 140.0}
+    ents = {
+        "zone.home": ("zoning", {"latitude": 51.5, "longitude": -0.12, "friendly_name": "Home"}),
+        "sensor.wa_fuel_tile_b7_standard_1_m1": ("1", {"stations": [stn]}),
+        "input_select.wa_fuel_type": ("Diesel", {}),
+    }
+    card = _card("fuel", 1)
+    assert "Diesel Stop" in _env(ents, user="Anyone").from_string(card).render()
+    ents["input_select.wa_fuel_type"] = ("Petrol (E10)", {})
+    assert "Diesel Stop" not in _env(ents, user="Anyone").from_string(card).render()
+
+
+def test_fuel_package_offers_petrol_and_diesel() -> None:
+    doc = yaml.safe_load((PACKAGES / "world_assistant_fuel.yaml").read_text(encoding="utf-8"))
+    assert doc["input_select"]["wa_fuel_type"]["options"] == ["Petrol (E10)", "Diesel"]
 
 
 def test_events_package_asks_for_the_home_zone_and_keeps_the_token_secret() -> None:
@@ -253,3 +272,117 @@ def test_events_package_commands_render_valid_json() -> None:
     rem = doc["rest_command"]["wa_remove_location"]
     assert json.loads(env.from_string(rem["payload"]).render(name="x")) == {"name": "x"}
     assert add["headers"]["Authorization"] == "<secret>" and rem["url"] == "<secret>"
+
+
+def test_bus_card_shows_next_bus_chance_and_record() -> None:
+    ents = {
+        "sensor.wa_bus_main_summary": ("The last bus got there at 07:52.", {"friendly_name": "Bus tracker main Target summary"}),
+        "sensor.wa_bus_main_last_bus": ("07:52", {}),
+        "sensor.wa_bus_main_next_board": ("4", {"friendly_name": "Next bus: Worcester Park", "next": [
+            {"minutes": 4, "towards": "Kingston"}, {"minutes": 11, "towards": "Kingston"}]}),
+        "sensor.wa_bus_main_chance": ("80", {"deadline": "08:10", "bus": "07:46", "based_on_days": 9, "based_on": "this departure",
+                                              "later_buses": [{"slot": "07:55", "chance": 60}], "relevant": True, "days_recorded": 9}),
+        "sensor.wa_bus_main_record": ("75", {"window_days": 30, "success": 15, "failure": 5,
+                                              "recent_days": [{"date": "2026-10-21", "buses": ["07:11 success (07:25)", "07:46 failure"]}]}),
+    }  # fmt: skip
+    card = next(c for c in yaml.safe_load((ROOT / "homeassistant" / "dashboards" / "trains-buses.yaml").read_text(encoding="utf-8"))["views"][0]["cards"] if c.get("title") == "Bus tracker")
+    out = _env(ents, user="Anyone").from_string(card["content"]).render()
+    assert "Next bus at Worcester Park" in out and "4 min, then 11" in out and "towards Kingston" in out
+    assert "80% for the 07:46 bus" in out and "07:55: 60%" in out
+    assert "75% made it (15 reached it, 5 did not)" in out and "07:46 failure" in out
+    ents["sensor.wa_bus_main_ended_early"] = ("1", {"today": ["07:41 turned back at Malden Road (4 stops short), next seen at Worcester Park 07:55"],
+                                                    "recent_days": [{"date": "2026-10-20", "count": 2, "buses": ["07:30 stopped reporting at X (3 stops short)"]}]})
+    import datetime
+
+    env = _env(ents, user="Anyone")
+    env.globals["now"] = lambda: datetime.datetime(2026, 10, 21, 7, 0, tzinfo=datetime.UTC)
+    early = env.from_string(card["content"]).render()
+    assert "Buses that ended early today**: 1" in early and "turned back at Malden Road" in early
+    assert "2026-10-20: 2; 07:30 stopped reporting at X" in early
+    ents["sensor.wa_bus_main_chance"] = ("unknown", {"relevant": False, "reason": "after 08:00", "deadline": "08:10"})
+    env = _env(ents, user="Anyone")
+    env.globals["now"] = lambda: datetime.datetime(2026, 10, 21, 7, 0, tzinfo=datetime.UTC)
+    quiet = env.from_string(card["content"]).render()
+    assert "not shown (after 08:00)" in quiet and "80%" not in quiet
+
+
+def test_bus_package_sends_only_the_time_that_changed() -> None:
+    env = _jinja().Environment()
+    doc = yaml.load((PACKAGES / "world_assistant_bus.yaml").read_text(encoding="utf-8"), Loader=_HaLoader)
+    assert set(doc["input_datetime"]) == {"wa_bus_deadline", "wa_bus_earliest", "wa_bus_show_until"}
+    cmd = doc["rest_command"]["wa_bus_settings"]
+    assert cmd["url"] == "<secret>" and cmd["headers"]["Authorization"] == "<secret>"
+    import json
+
+    body = json.loads(env.from_string(cmd["payload"]).render(deadline="08:30", earliest="", show_until=""))
+    assert body == {"deadline": "08:30", "earliest": "", "show_until": ""}  # the server ignores blanks
+    action = next(a for a in doc["automation"][0]["actions"] if "action" in a and a["action"] == "rest_command.wa_bus_settings")
+    for v in action["data"].values():
+        env.from_string(v)
+
+
+def _script_vars(name: str, ents: dict[str, tuple[str, dict[str, Any]]]) -> dict[str, Any]:
+    """Render a manage-package script's `variables` step in order, as Home Assistant would."""
+    doc = yaml.load((PACKAGES / "world_assistant_manage.yaml").read_text(encoding="utf-8"), Loader=_HaLoader)
+    step = next(x for x in doc["script"][name]["sequence"] if "variables" in x)
+    env = _env(ents)
+    out: dict[str, Any] = {}
+    for key, template in step["variables"].items():
+        out[key] = env.from_string(template).render(**out)
+    return out
+
+
+ZONES = {
+    "zone.work": ("zoning", {"latitude": 51.5, "longitude": -0.12, "friendly_name": "Work"}),
+    "zone.school": ("zoning", {"latitude": 51.4, "longitude": -0.2, "friendly_name": "School"}),
+}
+
+
+def test_manage_scripts_read_a_zone_or_a_position() -> None:
+    ents = {**ZONES, "input_text.wa_place": ("zone.work", {}), "input_text.wa_place_name": ("", {})}
+    v = _script_vars("wa_add_location", ents)
+    assert (float(v["lat"]), float(v["lon"]), v["place_name"]) == (51.5, -0.12, "Work")  # name comes from the zone
+    ents["input_text.wa_place"] = ("52.48, -1.9", {})
+    ents["input_text.wa_place_name"] = ("Mum's house", {})
+    v = _script_vars("wa_add_location", ents)
+    assert (float(v["lat"]), float(v["lon"]), v["place_name"]) == (52.48, -1.9, "Mum's house")
+    ents["input_text.wa_place"] = ("nonsense", {})
+    v = _script_vars("wa_add_location", ents)
+    assert float(v["lat"]) == 0  # the script then tells the user it could not read a position
+
+
+def test_manage_route_script_reads_both_ends() -> None:
+    ents = {**ZONES, "input_text.wa_route_from": ("zone.work", {}), "input_text.wa_route_to": ("51.37, -0.25", {})}
+    v = _script_vars("wa_add_route", ents)
+    assert (float(v["from_lat"]), float(v["to_lat"]), float(v["to_lon"])) == (51.5, 51.37, -0.25)
+    assert v["from_name"] == "Work" and v["to_name"] == "51.37, -0.25"
+    ents["input_text.wa_route_to"] = ("", {})
+    assert float(_script_vars("wa_add_route", ents)["to_lat"]) == 0
+
+
+def test_manage_rest_commands_send_valid_json_even_for_awkward_names() -> None:
+    import json
+
+    env = _jinja().Environment()
+    env.policies["json.dumps_function"] = json.dumps
+    doc = yaml.load((PACKAGES / "world_assistant_manage.yaml").read_text(encoding="utf-8"), Loader=_HaLoader)
+    cmd = doc["rest_command"]["wa_add_route"]
+    assert cmd["url"] == "<secret>" and cmd["headers"]["Authorization"] == "<secret>"
+    body = json.loads(env.from_string(cmd["payload"]).render(
+        from_name='Mum\'s "house"', from_lat=51.5, from_lon=-0.1, to_name="Work", to_lat=51.4, to_lon=-0.2))  # fmt: skip
+    assert body["from_name"] == 'Mum\'s "house"' and body["to_lat"] == 51.4
+    gone = json.loads(env.from_string(doc["rest_command"]["wa_remove_route"]["payload"]).render(from_name="A", to_name="B"))
+    assert gone == {"from_name": "A", "to_name": "B"}
+
+
+def test_manage_dashboard_lists_what_is_set_up() -> None:
+    ents = {
+        "sensor.wa_events_place_mum_s_house": ("3", {"friendly_name": "Mum's house", "place": "Mum's house"}),
+        "sensor.wa_roads_corridor_trip_ha_home_to_work": ("1", {"friendly_name": "Home to Work: active works"}),
+        "sensor.wa_events_locations": ("1", {"max": 8}),
+    }
+    card = next(c for c in yaml.safe_load((ROOT / "homeassistant" / "dashboards" / "manage.yaml").read_text(encoding="utf-8"))["views"][0]["cards"] if c["type"] == "markdown")
+    out = _env(ents, user="Anyone").from_string(card["content"]).render()
+    assert "Mum's house: 3 events" in out and "Home to Work: 1 active works" in out and "Watching 1 of 8 places" in out
+    empty = _env({}, user="Anyone").from_string(card["content"]).render()
+    assert empty.count("- none") == 2

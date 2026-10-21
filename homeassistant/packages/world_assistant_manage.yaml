@@ -1,0 +1,156 @@
+# Add and remove places to watch for events, and routes (for road closures), from Home Assistant.
+# Use the "World Assistant" dashboard (homeassistant/dashboards/manage.yaml), or call the scripts.
+# Needs the events package too (it holds the rest_commands for places) and these in secrets.yaml:
+#   wa_routes_url:        "http://<nas address>:8010/v1/ha/routes"
+#   wa_routes_delete_url: "http://<nas address>:8010/v1/ha/routes/delete"
+# A "position" below is either a zone's entity id (zone.work) or "latitude, longitude" (52.48, -1.9).
+
+input_text:
+  wa_place_name:
+    name: WA place name (optional)
+    max: 60
+    icon: mdi:tag
+  wa_place:
+    name: WA place (zone or lat, lon)
+    max: 100
+    icon: mdi:map-marker
+  wa_route_from:
+    name: WA route from (zone or lat, lon)
+    max: 100
+    icon: mdi:map-marker-radius
+  wa_route_to:
+    name: WA route to (zone or lat, lon)
+    max: 100
+    icon: mdi:flag-checkered
+
+rest_command:
+  wa_add_route:
+    url: !secret wa_routes_url
+    method: post
+    headers:
+      Authorization: !secret wa_authorization
+    content_type: application/json
+    payload: '{"from_name": {{ from_name | tojson }}, "from_lat": {{ from_lat }}, "from_lon": {{ from_lon }}, "to_name": {{ to_name | tojson }}, "to_lat": {{ to_lat }}, "to_lon": {{ to_lon }}}'
+    timeout: 60
+  wa_remove_route:
+    url: !secret wa_routes_delete_url
+    method: post
+    headers:
+      Authorization: !secret wa_authorization
+    content_type: application/json
+    payload: '{"from_name": {{ from_name | tojson }}, "to_name": {{ to_name | tojson }}}'
+    timeout: 30
+
+script:
+  wa_add_location:
+    alias: WA watch events at a place
+    icon: mdi:map-marker-plus
+    mode: single
+    sequence:
+      - variables:
+          src: "{{ states('input_text.wa_place') | trim }}"
+          lat: "{{ state_attr(src, 'latitude') if src.startswith('zone.') else ((src.split(',')[0] | float(0)) if ',' in src else 0) }}"
+          lon: "{{ state_attr(src, 'longitude') if src.startswith('zone.') else ((src.split(',')[1] | float(0)) if ',' in src else 0) }}"
+          place_name: "{{ (states('input_text.wa_place_name') | trim) or state_attr(src, 'friendly_name') or '' }}"
+      - if:
+          - condition: template
+            value_template: "{{ (lat | float(0)) == 0 or (lon | float(0)) == 0 or not place_name }}"
+        then:
+          - action: persistent_notification.create
+            data:
+              title: World Assistant
+              message: "Could not read a position and a name. Put a zone (zone.work) or latitude, longitude in WA place, and a name if it is not a zone."
+          - stop: No position
+      - action: rest_command.wa_add_location
+        data:
+          name: "{{ place_name }}"
+          lat: "{{ lat }}"
+          lon: "{{ lon }}"
+        response_variable: result
+      - action: persistent_notification.create
+        data:
+          title: World Assistant
+          message: "{{ result.content.message if result.content is mapping else 'Sent.' }}"
+
+  wa_remove_location:
+    alias: WA stop watching a place
+    icon: mdi:map-marker-minus
+    mode: single
+    sequence:
+      - variables:
+          src: "{{ states('input_text.wa_place') | trim }}"
+          place_name: "{{ (states('input_text.wa_place_name') | trim) or state_attr(src, 'friendly_name') or '' }}"
+      - if:
+          - condition: template
+            value_template: "{{ not place_name }}"
+        then:
+          - action: persistent_notification.create
+            data:
+              title: World Assistant
+              message: "Give the place's name (or its zone) to stop watching it."
+          - stop: No name
+      - action: rest_command.wa_remove_location
+        data:
+          name: "{{ place_name }}"
+        response_variable: result
+      - action: persistent_notification.create
+        data:
+          title: World Assistant
+          message: "{{ result.content.message if result.content is mapping else 'Sent.' }}"
+
+  wa_add_route:
+    alias: WA add a route
+    icon: mdi:routes
+    mode: single
+    sequence:
+      - variables:
+          a: "{{ states('input_text.wa_route_from') | trim }}"
+          b: "{{ states('input_text.wa_route_to') | trim }}"
+          from_lat: "{{ state_attr(a, 'latitude') if a.startswith('zone.') else ((a.split(',')[0] | float(0)) if ',' in a else 0) }}"
+          from_lon: "{{ state_attr(a, 'longitude') if a.startswith('zone.') else ((a.split(',')[1] | float(0)) if ',' in a else 0) }}"
+          to_lat: "{{ state_attr(b, 'latitude') if b.startswith('zone.') else ((b.split(',')[0] | float(0)) if ',' in b else 0) }}"
+          to_lon: "{{ state_attr(b, 'longitude') if b.startswith('zone.') else ((b.split(',')[1] | float(0)) if ',' in b else 0) }}"
+          from_name: "{{ state_attr(a, 'friendly_name') or a }}"
+          to_name: "{{ state_attr(b, 'friendly_name') or b }}"
+      - if:
+          - condition: template
+            value_template: "{{ (from_lat | float(0)) == 0 or (from_lon | float(0)) == 0 or (to_lat | float(0)) == 0 or (to_lon | float(0)) == 0 }}"
+        then:
+          - action: persistent_notification.create
+            data:
+              title: World Assistant
+              message: "Could not read both ends. Use a zone (zone.work) or latitude, longitude for From and To."
+          - stop: No position
+      - action: rest_command.wa_add_route
+        data:
+          from_name: "{{ from_name }}"
+          from_lat: "{{ from_lat }}"
+          from_lon: "{{ from_lon }}"
+          to_name: "{{ to_name }}"
+          to_lat: "{{ to_lat }}"
+          to_lon: "{{ to_lon }}"
+        response_variable: result
+      - action: persistent_notification.create
+        data:
+          title: World Assistant
+          message: "{{ result.content.message if result.content is mapping else 'Sent.' }}"
+
+  wa_remove_route:
+    alias: WA remove a route
+    icon: mdi:routes-clock
+    mode: single
+    sequence:
+      - variables:
+          a: "{{ states('input_text.wa_route_from') | trim }}"
+          b: "{{ states('input_text.wa_route_to') | trim }}"
+          from_name: "{{ state_attr(a, 'friendly_name') or a }}"
+          to_name: "{{ state_attr(b, 'friendly_name') or b }}"
+      - action: rest_command.wa_remove_route
+        data:
+          from_name: "{{ from_name }}"
+          to_name: "{{ to_name }}"
+        response_variable: result
+      - action: persistent_notification.create
+        data:
+          title: World Assistant
+          message: "{{ result.content.message if result.content is mapping else 'Sent.' }}"

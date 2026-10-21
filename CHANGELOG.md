@@ -8,7 +8,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - The Unraid icons' cable is now a green USB data cable with a USB-A plug (it looked like a power lead).
 
 ### Added
+- Add routes and places to watch for events from Home Assistant: a Manage dashboard with four helpers and four scripts (`world_assistant_manage.yaml`, `manage.yaml`), backed by `POST /v1/ha/routes` (two positions, saved as places and a trip each way, routed locally and capped by `WA_HA_ROUTES_MAX`, default 12) and `POST /v1/ha/routes/delete`. A route's corridor becomes a roads sensor. Home Assistant's places and trips are marked (`place.origin`, `trip.origin`, migration 0017; ids start `ha-`) and never touch the ones made on the web pages. New secrets `wa_routes_url` and `wa_routes_delete_url`.
+- Bus tracker: the deadline, earliest departure and the time to stop showing the chance are settings you can change without resetting anything: `POST /v1/bus/settings`, the Bus page, or three time helpers on the Trains and buses dashboard (new `homeassistant/packages/world_assistant_bus.yaml`, secret `wa_bus_settings_url`).
+- Bus tracker: a daily log of buses that end a trip early while watched (`/v1/bus/trackers/{id}/terminations`, an `ended_early` sensor and a section of the Bus tracker card): where each was last seen, when, whether it turned back or stopped reporting, and where it next appeared.
+- Bus tracker: the chance the next bus gets to the target by the deadline (from how often that departure made it over the last 30 days; weekday mornings only, hidden after `show_until`, default 08:00), a success/failure log of every scheduled bus (`/v1/bus/trackers/{id}/log`), and `chance` and `record` sensors in Home Assistant. Reaching the stop on either side of the road now counts (`either_side`, on by default), and the Bus tracker card on the Trains and buses dashboard shows the next bus at your stop, the chance, the last bus and the recent record.
+- A fuel dropdown on the Fuel dashboard (Petrol or Diesel) in place of the two fixed cards: one price card follows it. Needs the new `homeassistant/packages/world_assistant_fuel.yaml`.
 - Icons in Unraid's Docker tab: a simple green earth with a USB cable hanging off it, and a coloured band naming each supporting container's role (worker, database, cache, routing, vault). The compose files carry the `net.unraid.docker.icon` labels, the api also gets a `net.unraid.docker.webui` link to `/status`, and the icons are served by the api at `/icons/<name>.png` without a token. Sources in `deploy/unraid/`.
+
+### Fixed
+- Bus tracker sensors in Home Assistant were only published by the poller during its 05:00-11:00 window, once per worker start, so they were missing after re-adding MQTT and went quiet the rest of the day. They now come from the regular Home Assistant publisher, with the day's answer (last bus, buses seen, summary) available at any hour; the live values still only update while polling. Entity ids are unchanged (`sensor.wa_bus_<tracker>_…`).
+- Fuel in Home Assistant showed only the 944 stations (of about 7,900) that had updated their price in the last 48 hours, because most stations only report when a price changes. It now publishes every price up to 30 days old (`WA_HA_FUEL_MAX_AGE_H`), each with its age. The Fuel dashboard looks within 16 km and at prices up to a week old by default (`radius_km` and `max_age_h` at the top of each card) and marks prices more than two days old with ⚠️. The national median still uses only prices under 48 hours old.
+- Home Assistant no longer loses the attributes of busy fuel and road-event map tiles. A tile whose
+  data would pass the recorder's 16 KB limit is now split across several sensors (`…_p2`, `…_p3`);
+  the dashboards read them all.
+- The events package survives the home zone not being loaded at start-up (it asked with an empty
+  location and stayed empty for an hour). It now re-checks a minute after start-up, and a failed
+  request shows as unknown instead of 0.
+
 
 ## [0.7.4] - 2026-10-21
 

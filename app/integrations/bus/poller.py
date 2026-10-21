@@ -11,11 +11,11 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from app import mqtt
 from app.config import get_settings
 from app.integrations.bus import store
 from app.integrations.bus.config import TrackerConfig
 from app.integrations.bus.events import (
+    early_terminations,
     nearest_slot,
     segment_observations,
     sentence,
@@ -50,7 +50,9 @@ class Lookup:
     def __init__(self, rows: list[dict[str, Any]]) -> None:
         self.by_sid: dict[str, tuple[str, int]] = {}
         self.names: dict[str, str] = {}
+        self.end_pos: dict[str, int] = {}  # position of the last stop of each direction
         for r in rows:
+            self.end_pos[r["direction"]] = max(self.end_pos.get(r["direction"], 0), r["pos"])
             self.by_sid.setdefault(r["sid"], (r["direction"], r["pos"]))
             self.names.setdefault(r["sid"], r["name"] or "")
 
@@ -84,6 +86,7 @@ def process_poll(
     update_trips(state, preds, lookup.pos_of, now)
     anomalies = detect_anomalies(state, lookup.dir_of)
     anomalies += turnarounds(state, cfg.place_of)
+    anomalies += early_terminations(state, lookup.end_pos, lookup.names)
     obs = segment_observations(state, now, cfg.segment_pairs())
     hits: list[dict[str, Any]] = []
     tcfg = cfg.target_cfg()
@@ -241,29 +244,12 @@ async def poll_bus(ctx: dict[str, Any]) -> str:
 
         limiter = SlidingWindowLimiter(ctx["redis"], "tfl", 250 if key else 30)
         results = []
-        settings_ = settings
-        announced: set[str] = ctx.setdefault("bus_announced", set())
-
-        async def publisher(tid: str, cfg: TrackerConfig, snap: dict[str, dict[str, Any]]) -> None:
-            if not settings_.mqtt_enabled:
-                return
-            prefix = settings_.mqtt_topic_prefix
-            msgs = []
-            sig = f"{tid}:{cfg.model_dump_json()}"
-            if (
-                sig not in announced
-            ):  # Home Assistant discovery, once per worker start / config change
-                msgs += mqtt.discovery_messages(prefix, settings_.mqtt_discovery_prefix, tid,
-                                                [(x.key, x.label) for x in cfg.stops])  # fmt: skip
-            msgs += mqtt.state_messages(prefix, tid, snap)
-            if await mqtt.publish(msgs):
-                announced.add(sig)
 
         async with TflClient(key, limiter=limiter) as client:
             for row in due:
                 try:
                     results.append(
-                        f"{row['id']}: {await poll_one(engine, client, row, now, publisher)}"
+                        f"{row['id']}: {await poll_one(engine, client, row, now)}"
                     )
                 except (TflError, RateLimitExceeded) as exc:
                     log.warning("bus poll %s failed: %s", row["id"], exc)

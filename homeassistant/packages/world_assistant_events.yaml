@@ -6,8 +6,8 @@
 rest:
   - resource: !secret wa_events_url
     params:
-      lat: "{{ state_attr('zone.home', 'latitude') }}"
-      lon: "{{ state_attr('zone.home', 'longitude') }}"
+      lat: "{{ state_attr('zone.home', 'latitude') | default(0, true) }}"
+      lon: "{{ state_attr('zone.home', 'longitude') | default(0, true) }}"
       radius_km: "8"
       days: "7"
       limit: "20"
@@ -18,16 +18,32 @@ rest:
     sensor:
       - name: WA events home upcoming
         unique_id: wa_events_home_upcoming
-        value_template: "{{ value_json.count | default(0) }}"
+        value_template: "{{ value_json.count if value_json is mapping and value_json.count is defined else none }}"
         state_class: measurement
         icon: mdi:calendar-star
         json_attributes: [events, days, radius_km, sources]
       - name: WA events home next
         unique_id: wa_events_home_next
-        value_template: "{{ value_json.events[0].name if value_json.events else 'Nothing listed' }}"
+        value_template: "{{ (value_json.events[0].name if value_json.events else 'Nothing listed') if value_json is mapping and value_json.events is defined else none }}"
         icon: mdi:ticket
         json_attributes_path: "$.events[0]"
         json_attributes: [date, venue, town, distance_km, price, type]
+
+# The home zone is not loaded yet when Home Assistant starts, so the first request can be wasted.
+# This asks again a minute after start-up, once the zone exists.
+automation:
+  - alias: WA events refresh after start-up
+    id: wa_events_refresh_after_start
+    triggers:
+      - trigger: homeassistant
+        event: start
+    actions:
+      - delay: "00:01:00"
+      - action: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.wa_events_home_upcoming
+            - sensor.wa_events_home_next
 
 # Extra places to watch for events (besides zone.home). Call these from Developer tools > Actions, or
 # from an automation (see docs/home-assistant.md). World Assistant caps the number and drops places

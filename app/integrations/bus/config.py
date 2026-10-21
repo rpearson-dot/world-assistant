@@ -4,7 +4,7 @@ about a particular journey is built into the code or the repository."""
 from __future__ import annotations
 
 import re
-from typing import Self
+from typing import Any, Self
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -38,6 +38,11 @@ class Target(BaseModel):
         description="stop just before `alight`; confirms a bus that terminated really came from there",
     )
     direction: str = Field("outbound", pattern="^(outbound|inbound)$")
+    either_side: bool = Field(
+        True,
+        description="reaching the stop on either side of the road counts: a bus that goes on to the "
+        "opposite-side stop (`alight_return`) shortly after its last seen stop is a success too",
+    )
 
 
 class TrackerConfig(BaseModel):
@@ -54,6 +59,10 @@ class TrackerConfig(BaseModel):
     )
     earliest: str = Field("07:00", pattern=_HHMM)
     deadline: str = Field("08:10", pattern=_HHMM)
+    show_until: str = Field(
+        "08:00", pattern=_HHMM,
+        description="after this time of day the chance of making the deadline is no longer shown",
+    )
     min_travel_min: int = Field(12, ge=0, le=180)
     poll_start: str = Field("06:30", pattern=_HHMM)
     poll_end: str = Field("09:30", pattern=_HHMM)
@@ -65,7 +74,7 @@ class TrackerConfig(BaseModel):
         if len(set(keys)) != len(keys):
             raise ValueError("stop keys must be unique")
         known = set(keys)
-        refs = list(self.target.model_dump(exclude={"direction"}).values()) if self.target else []
+        refs = list(self.target.model_dump(exclude={"direction", "either_side"}).values()) if self.target else []
         refs += [k for pair in self.segments or [] for k in pair]
         missing = sorted({r for r in refs if r is not None and r not in known})
         if missing:
@@ -90,7 +99,7 @@ class TrackerConfig(BaseModel):
         ]
         return [(self.sid(a), self.sid(b)) for a, b in keys]
 
-    def target_cfg(self) -> dict[str, str | None] | None:
+    def target_cfg(self) -> dict[str, Any] | None:
         """The shape events.target_hits expects, with stop ids rather than keys."""
         if not self.target:
             return None
@@ -101,4 +110,5 @@ class TrackerConfig(BaseModel):
             "alight_return": self.sid(t.alight_return) if t.alight_return else None,
             "before_alight": self.sid(t.before_alight) if t.before_alight else None,
             "direction": t.direction,
+            "either_side": t.either_side,
         }

@@ -84,16 +84,16 @@ async def add_location(body: LocationIn, request: Request) -> dict[str, Any]:
         raise HTTPException(422, "the name needs letters or digits")
     rows, lim = await _load(request)
     if loc_id not in {r["id"] for r in rows} and len(rows) >= lim["max"]:
-        raise HTTPException(
-            409, f"already watching the maximum of {lim['max']} places ({', '.join(r['name'] for r in rows)}): "
-                 "remove one first, or wait for one to time out")  # fmt: skip
+        return {"ok": False, "message": f"Already watching the maximum of {lim['max']} places "
+                f"({', '.join(r['name'] for r in rows)}). Remove one first, or wait for one to time out.",
+                "limits": lim}  # fmt: skip
     async with request.app.state.engine.begin() as conn:
         await conn.execute(text(
             """INSERT INTO ha_location (id, name, lat, lon, radius_km) VALUES (:id, :name, :lat, :lon, :r)
                ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, lat = EXCLUDED.lat, lon = EXCLUDED.lon,
                  radius_km = EXCLUDED.radius_km, last_seen = now()"""),
             {"id": loc_id, "name": body.name, "lat": body.lat, "lon": body.lon, "r": body.radius_km})  # fmt: skip
-    return {"id": loc_id, "name": body.name, "entity": f"sensor.wa_events_place_{loc_id}", "limits": limits(len(rows) + (loc_id not in {r["id"] for r in rows}))}  # fmt: skip
+    return {"ok": True, "message": f"Watching events near {body.name}.", "id": loc_id, "name": body.name, "entity": f"sensor.wa_events_place_{loc_id}", "limits": limits(len(rows) + (loc_id not in {r["id"] for r in rows}))}  # fmt: skip
 
 
 @router.post("/delete")
@@ -110,8 +110,8 @@ async def _delete(request: Request, loc_id: str) -> dict[str, Any]:
     async with request.app.state.engine.begin() as conn:
         res = await conn.execute(text("DELETE FROM ha_location WHERE id = :id"), {"id": loc_id})
     if not res.rowcount:
-        raise HTTPException(404, "no such location")
-    return {"deleted": loc_id}
+        return {"ok": False, "message": "That place is not being watched."}
+    return {"ok": True, "message": "Stopped watching that place.", "deleted": loc_id}
 
 
 @router.get("/events")
