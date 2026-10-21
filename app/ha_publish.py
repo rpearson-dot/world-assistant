@@ -1,8 +1,9 @@
-"""Publish World Assistant data to Home Assistant: pollen, fuel, trains and buses, and roads.
+"""Publish World Assistant data to Home Assistant: pollen, fuel, trains and buses, roads, and events.
 
 Nationwide data (pollen, fuel, roads) goes out with positions and Home Assistant filters it for
-whoever is looking; nothing here knows a location. Events are fetched by Home Assistant for its
-home zone (homeassistant/packages/world_assistant_events.yaml).
+whoever is looking; nothing here knows a location. Events for Home Assistant's home zone are fetched by Home Assistant
+(homeassistant/packages/world_assistant_events.yaml); the extra places it asks for (app/ha_locations.py)
+are published here, one sensor each.
 
 The worker reads the service's own API (so the numbers match the web pages exactly), turns each
 answer into sensors (app/ha.py) and sends them over MQTT. One domain failing never stops the others.
@@ -113,6 +114,29 @@ def pollen_device(points: list[dict[str, Any]]) -> Device:
     return Device("pollen", "Pollen", sensors, images)
 
 
+def events_device(data: dict[str, Any]) -> Device:
+    """Events near each extra place Home Assistant asked for (not its home zone, which it fetches
+    itself). One sensor per place, found by the dashboard by name, plus a summary of the cap."""
+    lim = data.get("limits") or {}
+    sensors = [Sensor(
+        "locations", "Watched places", lim.get("count", 0), icon="mdi:map-marker-multiple", state_class="measurement",
+        attributes={k: lim.get(k) for k in ("max", "pressure_at", "ttl_days", "refresh_hours", "provider_calls_per_day")},
+    )]  # fmt: skip
+    for loc in data.get("locations") or []:
+        rows = [{"name": e.get("name"), "date": e.get("date"), "doors_open": e.get("doors_open"),
+                 "venue": e.get("venue"), "town": e.get("town"), "distance_km": e.get("distance_km"),
+                 "price": e.get("price"), "type": e.get("type"), "source": e.get("source")}
+                for e in loc.get("events") or []]  # fmt: skip
+        sensors.append(Sensor(
+            f"place_{ha.slug(str(loc['id']))}", f"Events near {loc['name']}", loc.get("count", len(rows)),
+            icon="mdi:calendar-star", state_class="measurement",
+            attributes={"place": loc["name"], "latitude": loc.get("lat"), "longitude": loc.get("lon"),
+                        "radius_km": loc.get("radius_km"), "days": loc.get("days"),
+                        "expires_at": loc.get("expires_at"), "errors": loc.get("errors"), "events": rows},
+        ))  # fmt: skip
+    return Device("events", "Events", sensors)
+
+
 def trains_device(boards: list[tuple[dict[str, Any], dict[str, Any]]]) -> Device:
     """boards: (board row, its departures answer)."""
     sensors: list[Sensor] = []
@@ -208,7 +232,10 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
             events = []
         return roads_device(status, events)
 
-    for name, build in (("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads)):
+    async def events() -> Device:
+        return events_device(await _get(c, "/v1/ha/locations/events"))
+
+    for name, build in (("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events)):
         await attempt(name, build)
     return devices
 
@@ -253,12 +280,19 @@ async def ha_sync(ctx: dict[str, Any]) -> int:
         return 0
     fp = _fingerprint(devices)
     first = ctx.get("ha_fingerprint") != fp
+    keys = {d.id: [x.key for x in d.sensors] for d in devices}
+    gone: list[mqtt.Message] = []
+    if first:  # sensors that existed at the last discovery but not now (an expired place): remove them
+        for dev, old in (ctx.get("ha_keys") or {}).items():
+            if dev in keys:
+                gone += ha.clear(s.mqtt_topic_prefix, s.mqtt_discovery_prefix, dev, [k for k in old if k not in keys[dev]])
     expire = max(1, s.ha_interval_min) * 60 * 3
     sent: dict[str, str] = ctx.setdefault("ha_images", {})
     before = dict(sent)
-    ok = await mqtt.publish(messages(devices, with_discovery=first, expire_after=expire, sent_images=sent))
+    ok = await mqtt.publish(gone + messages(devices, with_discovery=first, expire_after=expire, sent_images=sent))
     if ok:
         ctx["ha_fingerprint"] = fp
+        ctx["ha_keys"] = keys
     else:
         ctx["ha_images"] = before  # not sent: try again next time
     return sum(len(d.sensors) for d in devices) if ok else 0

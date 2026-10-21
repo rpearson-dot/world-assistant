@@ -58,6 +58,40 @@ From the events package (REST, hourly), for the home zone:
 
 If a data source is not set up (no pollen key, no events key), that part is simply empty.
 
+### Extra places for events
+
+Your home zone's events come straight from Home Assistant. For anywhere else (a parent's house, a
+holiday), ask World Assistant to watch it. From Developer tools > Actions (or an automation):
+
+```yaml
+action: rest_command.wa_add_location
+data:
+  name: Mum's house
+  lat: 52.48
+  lon: -1.9
+  # radius_km: 12   (optional)
+```
+
+Within one publish cycle a `sensor.wa_events_place_mum_s_house` appears (state: number of events; the
+list is in its attributes), and the events dashboard's "Other places" card lists every
+`sensor.wa_events_place_*` it finds, so nothing in the dashboard needs editing. A zone works too:
+`lat: "{{ state_attr('zone.work', 'latitude') }}"`. `rest_command.wa_remove_location` (with `name`)
+takes one away.
+
+Each place costs one search on each events source every three hours, so the number is capped and places
+time out:
+
+- At most `WA_HA_LOCATIONS_MAX` (8) places. Adding a ninth is refused with a message listing the others;
+  adding a name that already exists renews it.
+- A place disappears (sensor and all) if it is not renewed for 30 days. Once six of the eight are in use
+  the time-out drops to 7 days, so forgotten places clear sooner.
+- To keep one, renew it. A weekly automation that calls `rest_command.wa_add_location` for the places you
+  care about does it.
+- Searches are cached for the refresh interval, so opening the dashboard costs nothing. The
+  `sensor.wa_events_locations` sensor shows how many are used and the estimated provider requests a day.
+
+Only the place's name and position are stored (table `ha_location`).
+
 ### How the pollen grid works
 
 The pollen provider answers one point at a time and asks for no more than about one call every four hours per point. So the worker fetches a fixed lattice of points over Britain (1 degree apart, about 51 points on land; `WA_POLLEN_GRID_DEG`) at 02:40, 10:40 and 18:40, pausing 10 seconds between calls, and stores them in the `pollen_grid` table. It stops if the provider fails four times in a row and tries again at the next run. Anything asking for pollen at a point (`/v1/pollen/near?lat=..&lon=..`, or Home Assistant's tiles) is answered from the nearest stored point within 150 km and under 24 hours old, falling back to a live fetch otherwise. `GET /v1/pollen/grid` returns the whole lattice. Each stored point records when its forecast last changed (`changed_at`), which shows whether the provider updates every four hours or daily.
@@ -73,10 +107,12 @@ Neither needs any per-person setup, and neither package writes a secret into its
    ```
 2. Copy `homeassistant/packages/world_assistant_pollen.yaml` and
    `homeassistant/packages/world_assistant_events.yaml` to `/config/packages/`.
-3. In `/config/secrets.yaml`, add two lines (the address is your server's and `WA_API_PORT`, default
+3. In `/config/secrets.yaml`, add these lines (the address is your server's and `WA_API_PORT`, default
    8010; the token is the contents of `api_token.txt`):
    ```yaml
    wa_events_url: "http://192.168.1.10:8010/v1/events/near"
+   wa_locations_url: "http://192.168.1.10:8010/v1/ha/locations"
+   wa_locations_delete_url: "http://192.168.1.10:8010/v1/ha/locations/delete"
    wa_authorization: "Bearer <contents of api_token.txt>"
    ```
 4. Developer tools > YAML > Check configuration, then Restart Home Assistant.
@@ -95,6 +131,11 @@ use any saved place. Pollen is answered from the stored grid, so the pollen prov
 | `WA_MQTT_ENABLED` | `true` | Turns all MQTT publishing off, including the bus tracker. |
 | `WA_HA_PUBLISH` | `true` | Turns off just these sensors. |
 | `WA_HA_INTERVAL_MIN` | `5` | How often the worker publishes. |
+| `WA_HA_LOCATIONS_MAX` | `8` | Most extra places for events (below). |
+| `WA_HA_LOCATION_TTL_DAYS` | `30` | A place not renewed for this long is dropped. |
+| `WA_HA_LOCATION_PRESSURE_TTL_DAYS` | `7` | The shorter time-out once 75% of the cap is used. |
+| `WA_HA_LOCATION_REFRESH_H` | `3` | How often each place's events are searched again. |
+| `WA_HA_LOCATION_RADIUS_KM`, `WA_HA_LOCATION_DAYS` | `8`, `7` | How far and how many days, for extra places. |
 | `WA_HA_API_URL` | `http://api:8000` | Where the worker finds the API. |
 | `WA_MQTT_TOPIC_PREFIX` | `world_assistant` | State topics are `<prefix>/<device>/<sensor>`. |
 | `WA_MQTT_DISCOVERY_PREFIX` | `homeassistant` | Must match the MQTT integration in Home Assistant. |

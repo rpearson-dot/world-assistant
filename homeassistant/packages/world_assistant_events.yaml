@@ -28,3 +28,26 @@ rest:
         icon: mdi:ticket
         json_attributes_path: "$.events[0]"
         json_attributes: [date, venue, town, distance_km, price, type]
+
+# Extra places to watch for events (besides zone.home). Call these from Developer tools > Actions, or
+# from an automation (see docs/home-assistant.md). World Assistant caps the number and drops places
+# that are not renewed, so renew the ones you care about (adding the same name again renews it).
+#   secrets.yaml also needs:  wa_locations_url: "http://<nas address>:8010/v1/ha/locations"
+#                             wa_locations_delete_url: "http://<nas address>:8010/v1/ha/locations/delete"
+rest_command:
+  wa_add_location:
+    url: !secret wa_locations_url
+    method: post
+    headers:
+      Authorization: !secret wa_authorization
+    content_type: application/json
+    payload: '{"name": {{ name | tojson }}, "lat": {{ lat }}, "lon": {{ lon }}{% if radius_km is defined %}, "radius_km": {{ radius_km }}{% endif %}}'
+    timeout: 30
+  wa_remove_location:
+    url: !secret wa_locations_delete_url
+    method: post
+    headers:
+      Authorization: !secret wa_authorization
+    content_type: application/json
+    payload: '{"name": {{ name | tojson }}}'
+    timeout: 30

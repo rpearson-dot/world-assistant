@@ -113,3 +113,12 @@ def states(prefix: str, device: Device) -> list[Message]:
 def removals(disc_prefix: str, device_id: str, keys: list[str]) -> list[Message]:
     """Empty retained config messages: Home Assistant deletes the entity."""
     return [(f"{disc_prefix}/sensor/{unique_id(device_id, k)}/config", "", True) for k in keys]
+
+
+def clear(prefix: str, disc_prefix: str, device_id: str, keys: list[str]) -> list[Message]:
+    """Remove sensors that no longer exist: delete the entity, and the retained state and attributes."""
+    out = removals(disc_prefix, device_id, keys)
+    for k in keys:
+        out.append((state_topic(prefix, device_id, k), "", True))
+        out.append((state_topic(prefix, device_id, f"{k}/attributes"), "", True))
+    return out
