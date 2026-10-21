@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import Any
 
 STALE_SECONDS = 300  # silent this long and the trip is finished
+MAX_GAP_FOR_END = 600  # a trip silent for longer than this (overnight, say) did not 'end' at a place: no log entry
 PASSED_ETA = 120  # seconds: a vanished prediction this close counts as passed
 MAX_RECENT = 40
 
@@ -100,7 +101,8 @@ def update_trips(
         if trip is None or new_trip:
             if trip is not None:
                 _record(trip, trip.get("pending"))
-                _end(state, trip, "reversed" if info["dir"] != trip["dir"] else "lap", info)
+                if now - trip["last_seen"] <= MAX_GAP_FOR_END:
+                    _end(state, trip, "reversed" if info["dir"] != trip["dir"] else "lap", info)
                 _retire(state, trip)
             trip = {"vehicle": vehicle, "dir": info["dir"], "last_pos": info["pos"],
                     "last_seen": now, "stops": [], "pending": None}  # fmt: skip
@@ -135,7 +137,8 @@ def update_trips(
             del trips[vehicle]
             state["evaluated"].pop(vehicle, None)
     for trip in finished:
-        _end(state, trip, "gone", None)
+        if now - trip["last_seen"] <= MAX_GAP_FOR_END:
+            _end(state, trip, "gone", None)
         _retire(state, trip)
     return finished
 
