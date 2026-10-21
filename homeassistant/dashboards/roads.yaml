@@ -1,4 +1,5 @@
-# National Highways works and incidents on your corridors. Finds every corridor; nothing to edit.
+# Road closures and speed restrictions near a Home Assistant zone (National Highways), plus your
+# World Assistant corridors. Change zone and radius_km at the top of the first two cards.
 title: Roads
 views:
   - title: Roads
@@ -6,16 +7,40 @@ views:
     icon: mdi:road-variant
     cards:
       - type: markdown
-        title: Corridors
+        title: Closures near home
         content: |
-          {% set live = states('sensor.wa_roads_live_events') %}
-          Everything open right now: **{{ live }}** events.
+          {% set zone = 'zone.home' %}{% set radius_km = 15 %}{% set what = 'closure' %}
+          {% set z = states[zone] %}
+          {% set ns = namespace(r=[]) %}
+          {% for t in states.sensor if t.entity_id.startswith('sensor.wa_roads_tile_') %}{% for e in t.attributes.events | default([]) if e.kind == what %}{% set m = namespace(d=none) %}{% for p in e.pts %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, p[0], p[1]) %}{% if d is not none and (m.d is none or d < m.d) %}{% set m.d = d %}{% endif %}{% endfor %}{% if m.d is not none and m.d < radius_km %}{% set ns.r = ns.r + [[m.d, e]] %}{% endif %}{% endfor %}{% endfor %}
+          {% if ns.r %}**{{ ns.r | length }}** within {{ radius_km }} km of {{ z.name }}, nearest first.
 
+          | | Road | Where | Away | When |
+          |:-:|:--|:--|--:|:--|{% for r in ns.r | sort(attribute='0') %}{% set e = r[1] %}
+          | {{ '🔴' if e.scope == 'unplanned' else '🚧' }} | **{{ e.roads | join(', ') }}** {{ e.direction or '' }} | {{ e.description or e.detail or e.cause or 'closure' }} | {{ '%.1f' % r[0] }} km | {{ 'now' if e.status == 'active' else (e.status or '') }}{{ ', until ' ~ as_datetime(e.end).strftime('%a %d %b %H:%M') if e.end else '' }} |{% endfor %}
+
+          🔴 unplanned (incident) · 🚧 planned works
+          {% else %}✅ No closures within {{ radius_km }} km of {{ z.name }}.{% endif %}
+      - type: markdown
+        title: Speed restrictions near home
+        content: |
+          {% set zone = 'zone.home' %}{% set radius_km = 15 %}{% set what = 'speed' %}
+          {% set z = states[zone] %}
+          {% set ns = namespace(r=[]) %}
+          {% for t in states.sensor if t.entity_id.startswith('sensor.wa_roads_tile_') %}{% for e in t.attributes.events | default([]) if e.kind == what %}{% set m = namespace(d=none) %}{% for p in e.pts %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, p[0], p[1]) %}{% if d is not none and (m.d is none or d < m.d) %}{% set m.d = d %}{% endif %}{% endfor %}{% if m.d is not none and m.d < radius_km %}{% set ns.r = ns.r + [[m.d, e]] %}{% endif %}{% endfor %}{% endfor %}
+          {% if ns.r %}**{{ ns.r | length }}** within {{ radius_km }} km of {{ z.name }}, nearest first.
+
+          | Limit | Road | Where | Away |
+          |:-:|:--|:--|--:|{% for r in ns.r | sort(attribute='0') %}{% set e = r[1] %}
+          | {{ e.limit_mph ~ ' mph' if e.limit_mph else 'varies' }} | **{{ e.roads | join(', ') }}** {{ e.direction or '' }} | {{ e.description or e.detail or '' }} | {{ '%.1f' % r[0] }} km |{% endfor %}
+          {% else %}✅ No speed restrictions within {{ radius_km }} km of {{ z.name }}.{% endif %}
+      - type: markdown
+        title: Your corridors
+        content: |
+          Everything open nationwide right now: **{{ states('sensor.wa_roads_live_events') }}** events.
+          {% set rows = states.sensor | sort(attribute='entity_id') | selectattr('entity_id', 'search', '^sensor\.wa_roads_corridor_') | list %}
+          {% if rows %}
           | Corridor | Active now | Open in total |
-          |:--|--:|--:|{% for s in states.sensor | sort(attribute='entity_id') if s.entity_id.startswith('sensor.wa_roads_corridor_') %}
+          |:--|--:|--:|{% for s in rows %}
           | {{ s.name | replace('Roads ', '') | replace(': active works', '') }} | {{ '🟠 ' if s.state | int(0) > 0 else '🟢 ' }}{{ s.state }} | {{ s.attributes.live_events }} |{% endfor %}
-      - type: entities
-        title: At a glance
-        entities:
-          - entity: sensor.wa_roads_live_events
-            name: Live road events
+          {% else %}No corridors set up in World Assistant.{% endif %}

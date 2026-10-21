@@ -121,3 +121,12 @@ async def test_status_reports_jobs_events_and_corridors(
         assert len(client.get("/v1/status/jobs?limit=5", headers=auth).json()) == 2
     finally:
         await engine.dispose()
+
+
+def test_sample_keeps_both_ends_and_caps_length() -> None:
+    from app.status import _sample
+
+    pts = [[float(i), 0.0] for i in range(100)]
+    out = _sample(pts, 6)
+    assert len(out) == 6 and out[0] == pts[0] and out[-1] == pts[-1]
+    assert _sample(pts[:3], 6) == pts[:3]

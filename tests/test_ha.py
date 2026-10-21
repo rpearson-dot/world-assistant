@@ -172,3 +172,15 @@ async def test_ha_sync_off_when_disabled(monkeypatch: pytest.MonkeyPatch) -> Non
         assert await ha_publish.ha_sync({}) == 0
     finally:
         get_settings.cache_clear()
+
+
+def test_roads_device_publishes_event_tiles() -> None:
+    ev = [{"id": "a", "kind": "closure", "lat": 51.5, "lon": -0.1, "pts": [[51.5, -0.1]]},
+          {"id": "b", "kind": "speed", "lat": 51.51, "lon": -0.11, "pts": [[51.51, -0.11]]},
+          {"id": "c", "kind": "closure", "lat": 55.9, "lon": -3.2, "pts": [[55.9, -3.2]]}]  # fmt: skip
+    d = ha_publish.roads_device({"corridors": [], "events_live": [{"n": 3}]}, ev)
+    tiles = [s for s in d.sensors if s.key.startswith("tile_")]
+    assert sorted(t.state for t in tiles) == [1, 2]
+    assert all("-" not in t.key for t in tiles)
+    assert {e["id"] for t in tiles for e in t.attributes["events"]} == {"a", "b", "c"}
+    assert [s.key for s in d.sensors if not s.key.startswith("tile_")] == ["live_events"]

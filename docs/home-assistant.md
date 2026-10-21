@@ -17,7 +17,8 @@ it. Home Assistant has its own locations (zones), so it does the filtering:
 - **Pollen and events** can only be fetched for a point, so they are published for each place saved
   in World Assistant (`/places`). Save a place for each Home Assistant location you want them for;
   each appears as its own device.
-- **Trains, buses and roads** are not location-based and are published as they are.
+- **Road closures and speed restrictions** are published nationwide with their positions, like fuel. The roads dashboard shows the ones near a Home Assistant zone (`zone.home` unless you change it).
+- **Trains and buses** are not location-based and are published as they are.
 
 ## What appears
 
@@ -27,7 +28,7 @@ it. Home Assistant has its own locations (zones), so it does the filtering:
 | **Pollen: `<place>`** | `Allergy risk` (0 to 10, today; the forecast is in its attributes), `Allergy risk label`, and one `Pollen: <name>` sensor per allergen. |
 | **Events: `<place>`** | `Events coming up` (count for the next seven days) and `Next event`, with the next five in attributes. |
 | **Trains and buses** | For each departure board you have set up: `<board>: next departure` (minutes; the next services are in attributes) and `<board>: delayed or cancelled` (a count). Bus tracker sensors keep their own device (see [bus.md](bus.md)). |
-| **Roads** | One `<corridor>: active works` sensor per enabled National Highways corridor, and `Live road events`. |
+| **Roads** | `Live road events`, one `<corridor>: active works` sensor per enabled National Highways corridor, and one `Road events tile` sensor per half-degree map square that has any. A tile's attributes list its closures and speed restrictions (unplanned ones, plus planned works starting within a week) with road, direction, description, times and positions. |
 
 If a data source is not set up (no pollen key, no events key), that device is simply left out.
 

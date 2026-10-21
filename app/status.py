@@ -170,6 +170,58 @@ async def events(
         )
 
 
+def _sample(points: list[list[float]], n: int = 6) -> list[list[float]]:
+    """At most n points spread along a line, always including both ends."""
+    if len(points) <= n:
+        return points
+    step = (len(points) - 1) / (n - 1)
+    return [points[round(i * step)] for i in range(n)]
+
+
+@router.get("/events/map")
+async def events_map(
+    request: Request,
+    planned_days: int = Query(7, ge=0, le=60, description="planned works starting within this many days"),
+) -> dict[str, Any]:
+    """Every live road event nationwide with where it is, for a client that filters by its own
+    location (Home Assistant). Unplanned events always; planned only if they start soon."""
+    async with request.app.state.engine.connect() as conn:
+        rows = _rows(
+            await conn.execute(
+                text(
+                    """
+                    SELECT record_id, scope, kind, status, start_time, end_time, limit_mph, detail,
+                           cause, roads, segments
+                    FROM nh_event
+                    WHERE cleared_at IS NULL
+                      AND (end_time IS NULL OR end_time > now())
+                      AND (scope = 'unplanned'
+                           OR start_time IS NULL
+                           OR start_time < now() + make_interval(days => :days))
+                    ORDER BY start_time DESC NULLS LAST
+                    """
+                ),
+                {"days": planned_days},
+            )
+        )
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        segs = r.pop("segments") or []
+        pts = [p for sg in segs for p in (sg.get("points") or [])]
+        if not pts:
+            continue
+        first = segs[0]
+        out.append({
+            "id": r["record_id"], "scope": r["scope"], "kind": r["kind"], "status": r["status"],
+            "start": r["start_time"], "end": r["end_time"], "limit_mph": r["limit_mph"],
+            "detail": r["detail"], "cause": r["cause"], "roads": r["roads"],
+            "description": first.get("description"), "direction": first.get("direction"),
+            "lat": round(pts[0][0], 5), "lon": round(pts[0][1], 5),
+            "pts": [[round(a, 4), round(b, 4)] for a, b in _sample(pts)],
+        })  # fmt: skip
+    return {"count": len(out), "events": out}
+
+
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
