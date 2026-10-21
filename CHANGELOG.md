@@ -5,7 +5,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [Unreleased]
 
 ### Added
-- Pollen and events follow Home Assistant's own home zone. `/v1/pollen/near` and `/v1/events/near` accept `lat` and `lon` (instead of a place); a Home Assistant package (`homeassistant/packages/world_assistant.yaml`) fetches them for `zone.home` hourly, with a sensor per allergen so each has its own history. The per-place pollen and events devices over MQTT are gone, and the pollen and events dashboards now use the package. See docs/home-assistant.md.
+- Pollen, events, fuel and roads in Home Assistant follow where you are: the Home Assistant mobile app's location when you are away from home and it reports one, otherwise `zone.home`. A new `sensor.wa_location` in the package (one edit: your `person` entity) drives the dashboards and the requests.
+- Pollen and events follow Home Assistant's own location. `/v1/pollen/near` and `/v1/events/near` accept `lat` and `lon` (instead of a place); a Home Assistant package (`homeassistant/packages/world_assistant.yaml`) fetches them for `zone.home` hourly, with a sensor per allergen so each has its own history. The per-place pollen and events devices over MQTT are gone, and the pollen and events dashboards now use the package. See docs/home-assistant.md.
 - Road closures and speed restrictions in Home Assistant. The worker publishes every live National Highways event nationwide, with positions, in map tiles, and the roads dashboard lists the closures and speed restrictions near Home Assistant's own `zone.home` (changeable at the top of each card). New `GET /v1/status/events/map` (unplanned events, and planned works starting within `planned_days`, default 7).
 
 ## [0.7.1] - 2026-10-21

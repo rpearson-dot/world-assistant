@@ -1,4 +1,4 @@
-# What's on near Home Assistant's home zone (8 km, next 7 days). Needs
+# What's on near you (the app's location when away, else the home zone) (8 km, next 7 days). Needs
 # homeassistant/packages/world_assistant.yaml; change the radius and days there.
 title: Events
 views:
