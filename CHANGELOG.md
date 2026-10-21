@@ -4,6 +4,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- Ready-made Home Assistant dashboards, one per data source (pollen, fuel, trains and buses, roads, events) in `homeassistant/dashboards/`, using only built-in cards. See docs/home-assistant.md.
+
+### Fixed
+- Home Assistant sensors now also send `default_entity_id`, because Home Assistant is retiring `object_id` in MQTT discovery. Entities already created keep their ids.
+
 ## [0.7.0] - 2026-10-21
 
 ### Added

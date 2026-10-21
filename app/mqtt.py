@@ -54,7 +54,8 @@ def discovery_messages(
     out: list[Message] = []
     for name, label, extra in bus_sensors(cfg_stops):
         uid = f"wa_bus_{tid}_{name}"
-        payload = {"name": label, "unique_id": uid, "object_id": uid, "device": device,
+        payload = {"name": label, "unique_id": uid, "object_id": uid, "default_entity_id": f"sensor.{uid}",
+                   "device": device,
                    "state_topic": bus_topic(prefix, tid, name),
                    "json_attributes_topic": bus_topic(prefix, tid, f"{name}/attributes"), **extra}  # fmt: skip
         out.append((f"{disc_prefix}/sensor/{uid}/config", json.dumps(payload), True))

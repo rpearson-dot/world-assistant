@@ -1,0 +1,38 @@
+# Fuel prices near a Home Assistant zone. Change ZONE, RADIUS_KM and the fuel in each card.
+title: Fuel
+views:
+  - title: Fuel
+    path: fuel
+    icon: mdi:gas-station
+    cards:
+      - type: markdown
+        title: Cheapest petrol (E10) near home
+        content: |
+          {% set zone = 'zone.home' %}{% set radius_km = 5 %}{% set fuel = 'e10' %}
+          {% set z = states[zone] %}
+          {% set ns = namespace(r=[]) %}
+          {% for t in states.sensor if t.entity_id.startswith('sensor.wa_fuel_tile_' ~ fuel ~ '_') %}{% for s in t.attributes.stations | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, s.lat, s.lon) %}{% if d is not none and d < radius_km %}{% set ns.r = ns.r + [[s.pence, s.name, s.brand, s.postcode, d]] %}{% endif %}{% endfor %}{% endfor %}
+          {% if ns.r %}Within {{ radius_km }} km of {{ z.name }}: {{ ns.r | length }} stations.
+
+          | Price | Station | Distance |
+          |--:|:--|--:|{% for r in ns.r | sort(attribute='0') %}{% if loop.index <= 10 %}
+          | **{{ r[0] }}p** | {{ r[1] }}, {{ r[2] }} {{ r[3] }} | {{ '%.1f' % r[4] }} km |{% endif %}{% endfor %}
+          {% else %}No stations with a current price within {{ radius_km }} km of {{ z.name }}.{% endif %}
+      - type: markdown
+        title: Cheapest diesel near home
+        content: |
+          {% set zone = 'zone.home' %}{% set radius_km = 5 %}{% set fuel = 'b7_standard' %}
+          {% set z = states[zone] %}
+          {% set ns = namespace(r=[]) %}
+          {% for t in states.sensor if t.entity_id.startswith('sensor.wa_fuel_tile_' ~ fuel ~ '_') %}{% for s in t.attributes.stations | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, s.lat, s.lon) %}{% if d is not none and d < radius_km %}{% set ns.r = ns.r + [[s.pence, s.name, s.brand, s.postcode, d]] %}{% endif %}{% endfor %}{% endfor %}
+          {% if ns.r %}Within {{ radius_km }} km of {{ z.name }}: {{ ns.r | length }} stations.
+
+          | Price | Station | Distance |
+          |--:|:--|--:|{% for r in ns.r | sort(attribute='0') %}{% if loop.index <= 10 %}
+          | **{{ r[0] }}p** | {{ r[1] }}, {{ r[2] }} {{ r[3] }} | {{ '%.1f' % r[4] }} km |{% endif %}{% endfor %}
+          {% else %}No stations with a current price within {{ radius_km }} km of {{ z.name }}.{% endif %}
+      - type: markdown
+        title: Nationally
+        content: |
+          {% for fuel in ['e10', 'b7_standard'] %}{% set s = states['sensor.wa_fuel_national_' ~ fuel] %}{% if s %}
+          - **{{ 'Petrol (E10)' if fuel == 'e10' else 'Diesel' }}**: median {{ s.state }}p across {{ s.attributes.stations }} stations; cheapest {{ s.attributes.cheapest_pence }}p at {{ s.attributes.cheapest_station }} ({{ s.attributes.cheapest_postcode }}){% endif %}{% endfor %}

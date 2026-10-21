@@ -1,0 +1,20 @@
+# What's on near each World Assistant place. Finds every place; nothing to edit.
+title: Events
+views:
+  - title: Events
+    path: events
+    icon: mdi:calendar-star
+    cards:
+      - type: markdown
+        title: Coming up
+        content: |
+          {% set ns = namespace(found=false) %}
+          {% for s in states.sensor | sort(attribute='entity_id') if s.entity_id.startswith('sensor.wa_events_') and s.entity_id.endswith('_upcoming') %}{% set ns.found = true %}
+          ## {{ s.attributes.place }}
+          {{ s.state }} events in the next {{ s.attributes.days }} days.
+          {% if s.attributes.next %}
+          | Date | Event | Venue |
+          |:--|:--|:--|{% for e in s.attributes.next %}
+          | {{ e.date or '' }} | {{ e.name }} | {{ e.venue or '' }} |{% endfor %}
+          {% endif %}{% endfor %}
+          {% if not ns.found %}No event data yet. Save a place in World Assistant and wait a few minutes.{% endif %}

@@ -1,0 +1,21 @@
+# National Highways works and incidents on your corridors. Finds every corridor; nothing to edit.
+title: Roads
+views:
+  - title: Roads
+    path: roads
+    icon: mdi:road-variant
+    cards:
+      - type: markdown
+        title: Corridors
+        content: |
+          {% set live = states('sensor.wa_roads_live_events') %}
+          Everything open right now: **{{ live }}** events.
+
+          | Corridor | Active now | Open in total |
+          |:--|--:|--:|{% for s in states.sensor | sort(attribute='entity_id') if s.entity_id.startswith('sensor.wa_roads_corridor_') %}
+          | {{ s.name | replace('Roads ', '') | replace(': active works', '') }} | {{ '🟠 ' if s.state | int(0) > 0 else '🟢 ' }}{{ s.state }} | {{ s.attributes.live_events }} |{% endfor %}
+      - type: entities
+        title: At a glance
+        entities:
+          - entity: sensor.wa_roads_live_events
+            name: Live road events

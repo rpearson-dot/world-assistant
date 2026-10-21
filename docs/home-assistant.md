@@ -46,6 +46,22 @@ If a data source is not set up (no pollen key, no events key), that device is si
 Each sensor tells Home Assistant to mark it `unavailable` if nothing arrives for three intervals, so
 a stopped worker shows as unavailable rather than as old numbers that look current.
 
+## Ready-made dashboards
+
+One dashboard per data source lives in [`homeassistant/dashboards/`](../homeassistant/dashboards):
+`pollen.yaml`, `fuel.yaml`, `trains-buses.yaml`, `roads.yaml` and `events.yaml`. They use only
+Home Assistant's built-in cards (no HACS), and find their entities by name, so they need no editing
+for boards, corridors or places. The fuel dashboard has a `zone`, a radius and a fuel at the top of
+each card.
+
+To add one:
+
+1. Settings > Dashboards > Add dashboard > New dashboard from scratch. Name it (for example "Pollen").
+2. Open it, then the pencil (top right) > the three dots > Raw configuration editor.
+3. Delete what is there, paste the whole file, Save.
+
+Repeat for each.
+
 ## Filtering by a Home Assistant location
 
 Fuel stations near a zone, as a template sensor (Settings > Devices & services > Helpers > Template,
