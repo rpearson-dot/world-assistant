@@ -249,3 +249,29 @@ def test_bus_tracker_without_a_target_still_shows_live_buses() -> None:
     d = ha_publish.bus_device("main", [{"key": "home", "label": "Home stop"}], None, live)
     by = {s.key: s for s in d.sensors}
     assert "last_bus" not in by and by["active_buses"].state == 1 and by["next_home"].state == 4
+
+
+def test_bus_chance_follows_the_bus_that_is_actually_next_and_goes_quiet_after_the_cutoff() -> None:
+    slots = [{"slot": "07:23", "chance": 90, "days": 10, "basis": "this departure"},
+             {"slot": "07:46", "chance": 50, "days": 10, "basis": "this departure"}]  # fmt: skip
+    target = {"day": "2026-10-21", "deadline": "08:10", "board": "board", "hits": [], "pending": ["07:23", "07:46"],
+              "scheduled": ["07:23", "07:46"], "summary": "No bus yet.",
+              "outlook": {"relevant": True, "slots": slots, "days_recorded": 10}}  # fmt: skip
+    live = {"active": [], "next": {"board": [{"minutes": 20, "expected": "2026-10-21T06:45:00Z"}]}}  # 07:45 local
+    d = ha_publish.bus_device("main", [{"key": "board", "label": "Worcester Park"}], target, live)
+    by = {s.key: s for s in d.sensors}
+    assert by["chance"].state == 50 and by["chance"].attributes["bus"] == "07:46"  # the 07:46, not the earlier one
+    assert by["next_board"].state == 20
+    quiet = {**target, "outlook": {"relevant": False, "reason": "after 08:00", "slots": []}}
+    by = {s.key: s for s in ha_publish.bus_device("main", [], quiet, None).sensors}
+    assert by["chance"].state is None and by["chance"].attributes["reason"] == "after 08:00"
+
+
+def test_bus_record_sensor_carries_the_success_rate_and_recent_days() -> None:
+    log = {"success": 8, "failure": 2, "success_rate": 80, "window_days": 30,
+           "days": [{"date": "2026-10-21", "buses": [{"slot": "07:11", "result": "success", "arrived": "07:25"},
+                                                    {"slot": "07:46", "result": "failure"}]}]}  # fmt: skip
+    d = ha_publish.bus_device("main", [], None, None, log)
+    rec = next(s for s in d.sensors if s.key == "record")
+    assert rec.state == 80 and rec.attributes["failure"] == 2
+    assert rec.attributes["recent_days"][0]["buses"] == ["07:11 success (07:25)", "07:46 failure"]

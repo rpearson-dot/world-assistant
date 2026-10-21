@@ -16,7 +16,13 @@ from app.auth import require_token
 from app.config import get_settings
 from app.integrations.bus import store
 from app.integrations.bus.config import TrackerConfig
-from app.integrations.bus.events import condition_summary, sentence, slot_reliability
+from app.integrations.bus.events import (
+    condition_summary,
+    outlook,
+    result_log,
+    sentence,
+    slot_reliability,
+)
 from app.integrations.bus.poller import Lookup, in_window
 from app.integrations.bus.setup import SetupError, build_config, describe
 from app.integrations.tfl.client import TflClient, TflError
@@ -191,11 +197,24 @@ async def live(request: Request, tid: str) -> dict[str, Any]:
     return {"as_of": now, "active": active, "next": next_at}
 
 
+async def _history(request: Request, tid: str, since: Any) -> tuple[list[Any], list[Any]]:
+    async with request.app.state.engine.connect() as conn:
+        day_rows = (await conn.execute(
+            text("SELECT day, slots FROM bus_target_day WHERE tracker = :t AND day >= :s ORDER BY day"),
+            {"t": tid, "s": since})).all()  # fmt: skip
+        hit_rows = (await conn.execute(
+            text("SELECT day, slot, arrive_at, delay_min FROM bus_target_hit "
+                 "WHERE tracker = :t AND day >= :s AND slot IS NOT NULL"),
+            {"t": tid, "s": since})).all()  # fmt: skip
+    return list(day_rows), list(hit_rows)
+
+
 @router.get("/trackers/{tid}/target")
 async def target(
     request: Request, tid: str, day: str | None = Query(None, pattern=r"^\d{4}-\d\d-\d\d$")
 ) -> dict[str, Any]:
-    """The run to the target stop: which buses made it before the deadline, and which is the last."""
+    """The run to the target stop: which buses made it before the deadline, and which is the last.
+    `outlook` is the chance each remaining bus gets there by the deadline (weekday mornings only)."""
     _, cfg = await _load(request, tid)
     if not cfg.target:
         raise HTTPException(409, "this tracker has no target configured")
@@ -214,12 +233,44 @@ async def target(
     slots = list(d[0]) if d else []
     pending = [s for s in slots if s not in hit_slots]
     last = hits[-1] if hits else None
+    since = (now - timedelta(days=HISTORY_DAYS)).date()
+    day_rows, hit_rows = await _history(request, tid, since)
+    by_day: dict[str, list[str]] = {}
+    for hday, slot, _a, _d in hit_rows:
+        by_day.setdefault(hday.isoformat(), []).append(slot)
+    reliability = slot_reliability(
+        [{"date": dd.isoformat(), "slots": list(ss), "hit_slots": by_day.get(dd.isoformat(), [])} for dd, ss in day_rows],
+        now.date().isoformat(), now.hour * 60 + now.minute,
+    )  # fmt: skip
+    chance = outlook(
+        slots=slots, hit_slots=sorted(hit_slots), reliability=reliability,
+        now_minutes=now.hour * 60 + now.minute, show_until=cfg.show_until,
+        weekday_ok=not (cfg.weekdays_only and now.weekday() > 4),
+    )  # fmt: skip
     return {
         "day": the_day, "earliest": cfg.earliest, "deadline": cfg.deadline,
-        "tracking_now": in_window(cfg, now), "scheduled": slots, "pending": pending,
-        "hits": hits, "last_bus": last,
+        "board": cfg.target.board, "tracking_now": in_window(cfg, now), "scheduled": slots, "pending": pending,
+        "hits": hits, "last_bus": last, "outlook": chance,
         "summary": sentence(last, cfg.deadline, tz),
     }  # fmt: skip
+
+
+@router.get("/trackers/{tid}/log")
+async def log(request: Request, tid: str, days: int = Query(HISTORY_DAYS, ge=1, le=90)) -> dict[str, Any]:
+    """Success and failure of every scheduled bus on every recorded day: did a bus from the boarding
+    stop reach the target (either side of the road) before the deadline?"""
+    _, cfg = await _load(request, tid)
+    tz = _tz()
+    now = datetime.now(tz)
+    day_rows, hit_rows = await _history(request, tid, (now - timedelta(days=days)).date())
+    hits = [
+        {"date": hday.isoformat(), "slot": slot, "arrive": arrive.astimezone(tz).strftime("%H:%M") if arrive else None,
+         "delay_min": delay}
+        for hday, slot, arrive, delay in hit_rows
+    ]  # fmt: skip
+    out = result_log([(dd.isoformat(), list(ss)) for dd, ss in day_rows], hits, now.date().isoformat(),
+                     now.hour * 60 + now.minute)  # fmt: skip
+    return {"deadline": cfg.deadline, "window_days": days, **out}
 
 
 @router.get("/trackers/{tid}/reliability")

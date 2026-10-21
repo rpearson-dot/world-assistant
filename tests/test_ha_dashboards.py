@@ -272,3 +272,24 @@ def test_events_package_commands_render_valid_json() -> None:
     rem = doc["rest_command"]["wa_remove_location"]
     assert json.loads(env.from_string(rem["payload"]).render(name="x")) == {"name": "x"}
     assert add["headers"]["Authorization"] == "<secret>" and rem["url"] == "<secret>"
+
+
+def test_bus_card_shows_next_bus_chance_and_record() -> None:
+    ents = {
+        "sensor.wa_bus_main_summary": ("The last bus got there at 07:52.", {"friendly_name": "Bus tracker main Target summary"}),
+        "sensor.wa_bus_main_last_bus": ("07:52", {}),
+        "sensor.wa_bus_main_next_board": ("4", {"friendly_name": "Next bus: Worcester Park", "next": [
+            {"minutes": 4, "towards": "Kingston"}, {"minutes": 11, "towards": "Kingston"}]}),
+        "sensor.wa_bus_main_chance": ("80", {"deadline": "08:10", "bus": "07:46", "based_on_days": 9, "based_on": "this departure",
+                                              "later_buses": [{"slot": "07:55", "chance": 60}], "relevant": True, "days_recorded": 9}),
+        "sensor.wa_bus_main_record": ("75", {"window_days": 30, "success": 15, "failure": 5,
+                                              "recent_days": [{"date": "2026-10-21", "buses": ["07:11 success (07:25)", "07:46 failure"]}]}),
+    }  # fmt: skip
+    card = next(c for c in yaml.safe_load((ROOT / "homeassistant" / "dashboards" / "trains-buses.yaml").read_text(encoding="utf-8"))["views"][0]["cards"] if c.get("title") == "Bus tracker")
+    out = _env(ents, user="Anyone").from_string(card["content"]).render()
+    assert "Next bus at Worcester Park" in out and "4 min, then 11" in out and "towards Kingston" in out
+    assert "80% for the 07:46 bus" in out and "07:55: 60%" in out
+    assert "75% made it (15 reached it, 5 did not)" in out and "07:46 failure" in out
+    ents["sensor.wa_bus_main_chance"] = ("unknown", {"relevant": False, "reason": "after 08:00", "deadline": "08:10"})
+    quiet = _env(ents, user="Anyone").from_string(card["content"]).render()
+    assert "not shown (after 08:00)" in quiet and "80%" not in quiet

@@ -154,3 +154,69 @@ def test_condition_summary() -> None:
     assert events.to_minutes("08:10") == 490
     with pytest.raises(ValueError):
         events.to_minutes("bad")
+
+
+def test_either_side_of_the_road_counts_without_being_seen_at_the_stop_before() -> None:
+    def run(cfg: dict[str, Any]) -> list[dict[str, Any]]:
+        state = trips.new_state()
+        run_bus(state, "V1", {"s2": T0 + 600, "s3": T0 + 900}, T0, T0 + 1000)
+        run_bus(state, "V1", {"i1": T0 + 1100, "i2": T0 + 1500}, T0 + 1000, T0 + 1200)
+        return events.target_hits(state, T0 + 1300, cfg, T0, T0 + 1400)
+
+    no_before = {"board": "s2", "alight": "s4", "alight_return": "i1", "before_alight": None}
+    assert run({**no_before, "either_side": True})[0]["via_return"] is True
+    assert run({**no_before, "either_side": False}) == []  # the strict rule still needs the stop before
+    far = {**no_before, "either_side": True}
+    state = trips.new_state()
+    run_bus(state, "V1", {"s2": T0 + 600}, T0, T0 + 700)  # last seen long before it appears on the other side
+    run_bus(state, "V1", {"i1": T0 + 3000}, T0 + 2900, T0 + 3000)
+    assert events.target_hits(state, T0 + 3100, far, T0, T0 + 4000) == []
+
+
+def test_chance_comes_from_how_often_each_departure_made_it_and_is_hidden_after_0800() -> None:
+    rel = [
+        {"slot": "07:23", "days_scheduled": 10, "days_hit": 9, "miss_rate": 0.1},
+        {"slot": "07:46", "days_scheduled": 10, "days_hit": 5, "miss_rate": 0.5},
+        {"slot": "07:55", "days_scheduled": 1, "days_hit": 0, "miss_rate": 1.0},
+    ]
+    kw: dict[str, Any] = {"slots": ["07:23", "07:46", "07:55"], "hit_slots": [], "reliability": rel,
+                          "show_until": "08:00", "weekday_ok": True}  # fmt: skip
+    o = events.outlook(now_minutes=7 * 60 + 20, **kw)
+    assert o["relevant"] and o["next_slot"] == "07:23" and o["chance"] == 90 and o["basis"] == "this departure"
+    assert [x["chance"] for x in o["slots"]] == [90, 50, 67]  # 07:55 has one day: borrows the overall 14 of 21
+    assert o["slots"][2]["basis"] == "all departures"
+    later = events.outlook(now_minutes=7 * 60 + 30, **kw)
+    assert later["next_slot"] == "07:46" and later["chance"] == 50  # 07:23 has gone
+    assert events.outlook(now_minutes=8 * 60 + 1, **kw) == {**events.outlook(now_minutes=8 * 60 + 1, **kw), "relevant": False, "chance": None, "slots": []}
+    assert events.outlook(now_minutes=8 * 60 + 1, **kw)["reason"] == "after 08:00"
+    assert events.outlook(now_minutes=7 * 60, **{**kw, "weekday_ok": False})["reason"] == "weekend"
+    done = events.outlook(now_minutes=7 * 60, **{**kw, "hit_slots": ["07:23"]})
+    assert done["next_slot"] == "07:46"  # a departure that already made it is not "next"
+    none = events.outlook(now_minutes=7 * 60, **{**kw, "reliability": []})
+    assert none["relevant"] and none["chance"] is None  # no history yet: no number
+
+
+def test_result_log_records_success_failure_and_pending() -> None:
+    days = [("2026-10-20", ["07:11", "07:46"]), ("2026-10-21", ["07:11", "07:46", "07:55"])]
+    hits = [{"date": "2026-10-20", "slot": "07:11", "arrive": "07:25", "delay_min": 1.0},
+            {"date": "2026-10-21", "slot": "07:46", "arrive": "08:02", "delay_min": None}]  # fmt: skip
+    out = events.result_log(days, hits, "2026-10-21", 7 * 60 + 50)
+    assert [d["date"] for d in out["days"]] == ["2026-10-21", "2026-10-20"]  # newest first
+    today = {b["slot"]: b["result"] for b in out["days"][0]["buses"]}
+    assert today == {"07:11": "failure", "07:46": "success", "07:55": "pending"}  # 07:55 is under 30 min old
+    yesterday = {b["slot"]: b["result"] for b in out["days"][1]["buses"]}
+    assert yesterday == {"07:11": "success", "07:46": "failure"}
+    assert (out["success"], out["failure"], out["success_rate"]) == (2, 2, 50)
+    assert events.result_log([], [], "2026-10-21", 0)["success_rate"] is None
+
+
+def test_tracker_config_defaults_to_either_side_and_a_0800_cutoff() -> None:
+    from app.integrations.bus.config import TrackerConfig
+
+    cfg = TrackerConfig.model_validate({
+        "line": "213",
+        "stops": [{"key": "a", "sid": "490000001A", "label": "A"}, {"key": "b", "sid": "490000002B", "label": "B"}],
+        "target": {"board": "a", "alight": "b"},
+    })  # fmt: skip
+    assert cfg.show_until == "08:00" and cfg.target is not None and cfg.target.either_side is True
+    assert cfg.target_cfg()["either_side"] is True  # type: ignore[index]

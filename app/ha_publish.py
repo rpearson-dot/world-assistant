@@ -199,13 +199,23 @@ def _local_hhmm(stamp: Any) -> str | None:
         return None
 
 
+def _minutes_of_day(stamp: Any) -> int | None:
+    hhmm = _local_hhmm(stamp)
+    return None if hhmm is None else int(hhmm[:2]) * 60 + int(hhmm[3:])
+
+
 def bus_device(
-    tid: str, stops: list[dict[str, Any]], target: dict[str, Any] | None, live: dict[str, Any] | None
-) -> Device:
-    """One bus tracker: the day's answer from the stored results (so it stays up to date after the
-    polling window closes) and, while the tracker is polling, the buses being followed and the next
-    arrivals. Names match the ones the poller used to publish itself, so existing entities carry on."""
+    tid: str, stops: list[dict[str, Any]], target: dict[str, Any] | None, live: dict[str, Any] | None,
+    log: dict[str, Any] | None = None,
+) -> Device:  # fmt: skip
+    """One bus tracker. The day's answer, the chance of making the deadline and the success/failure
+    record come from stored results (so they stay up to date outside the polling window); the buses
+    being followed and the next arrivals come from the live arrivals feed. Names match what the poller
+    used to publish itself, so existing entities carry on."""
+    from app.integrations.bus.events import nearest_slot
+
     sensors: list[Sensor] = []
+    nxt = (live or {}).get("next") or {}
     if target is not None:
         last = target.get("last_bus")
         hhmm = _local_hhmm(last.get("arrive_at")) if last else None
@@ -221,10 +231,34 @@ def bus_device(
                    attributes={"scheduled": target.get("scheduled"), "pending": target.get("pending")}),
             Sensor("summary", "Target summary", (target.get("summary") or "")[:250], icon="mdi:text"),
         ]  # fmt: skip
+        o = target.get("outlook") or {}
+        pick = (o.get("slots") or [None])[0]
+        board_rows = nxt.get(target.get("board")) or []
+        if o.get("relevant") and board_rows and board_rows[0].get("expected"):  # the bus that is actually next
+            m = _local_hhmm(board_rows[0]["expected"])
+            slot = nearest_slot([x["slot"] for x in o["slots"]], m) if m else None
+            pick = next((x for x in o["slots"] if x["slot"] == slot), pick)
+        sensors.append(Sensor(
+            "chance", f"Chance of reaching the target by {target.get('deadline')}",
+            pick["chance"] if o.get("relevant") and pick else None, icon="mdi:percent", unit="%",
+            state_class="measurement",
+            attributes={"relevant": o.get("relevant"), "reason": o.get("reason"), "bus": pick and pick["slot"],
+                        "based_on_days": pick and pick["days"], "based_on": pick and pick["basis"],
+                        "deadline": target.get("deadline"), "days_recorded": o.get("days_recorded"),
+                        "later_buses": (o.get("slots") or [])[1:5]},
+        ))  # fmt: skip
+    if log is not None:
+        recent = [{"date": d["date"], "buses": [f"{b['slot']} {b['result']}" + (f" ({b['arrived']})" if b.get("arrived") else "")
+                                                for b in d["buses"]]} for d in (log.get("days") or [])[:7]]
+        sensors.append(Sensor(
+            "record", "Target success rate", log.get("success_rate"), icon="mdi:chart-line", unit="%",
+            state_class="measurement",
+            attributes={"success": log.get("success"), "failure": log.get("failure"),
+                        "window_days": log.get("window_days"), "recent_days": recent},
+        ))  # fmt: skip
     active = (live or {}).get("active") or []
     sensors.append(Sensor("active_buses", "Buses being followed", len(active), icon="mdi:bus",
                           state_class="measurement", attributes={"buses": active}))  # fmt: skip
-    nxt = (live or {}).get("next") or {}
     for st in stops:
         rows = nxt.get(st.get("key")) or []
         sensors.append(Sensor(
@@ -316,13 +350,12 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
             try:
                 cfg = (await _get(c, f"/v1/bus/trackers/{tid}"))["config"]
                 target = await _get(c, f"/v1/bus/trackers/{tid}/target") if cfg.get("target") else None
-                live = None
-                if target is None or target.get("tracking_now"):  # the arrivals feed is only asked while polling
-                    try:
-                        live = await _get(c, f"/v1/bus/trackers/{tid}/live")
-                    except httpx.HTTPError:
-                        live = None
-                out.append(bus_device(tid, cfg.get("stops") or [], target, live))
+                try:  # the arrivals feed is asked every time, so the next bus is there at any hour
+                    live = await _get(c, f"/v1/bus/trackers/{tid}/live")
+                except httpx.HTTPError:
+                    live = None
+                log = await _get(c, f"/v1/bus/trackers/{tid}/log", days=30) if target is not None else None
+                out.append(bus_device(tid, cfg.get("stops") or [], target, live, log))
             except httpx.HTTPError as exc:  # one dead tracker must not hide the rest
                 log.info("home assistant: bus tracker %s skipped (%s)", tid, type(exc).__name__)
         return out
