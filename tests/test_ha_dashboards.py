@@ -286,9 +286,23 @@ def test_home_pollen_sensors_read_the_nearest_point_to_the_home_zone() -> None:
 
 
 def test_pollen_card_shows_each_viewer_the_forecast_nearest_them() -> None:
-    card = _card("pollen", 1)
+    card = _card("pollen", 2)
     alex = _env(POLLEN_ENTS, user="Alex").from_string(card).render()
     sam = _env(POLLEN_ENTS, user="Sam").from_string(card).render()
     assert "very high" in alex and "your location" in alex and "low" not in alex.split("**")[1]
     assert "**low**" in sam and "**very high**" not in sam
     assert "Birch" in sam and "🟩" in sam
+
+
+def test_pollen_map_card_lists_every_lattice_point() -> None:
+    from pathlib import Path
+
+    import yaml
+
+    from app.ha_publish import pollen_point_key
+    from app.pollen_grid import grid_points
+
+    cfg = yaml.safe_load(Path("homeassistant/dashboards/pollen.yaml").read_text())
+    card = next(c for v in cfg["views"] for c in v["cards"] if c["type"] == "map")
+    want = {f"sensor.wa_pollen_{pollen_point_key(a, b)}" for a, b in grid_points(1.0)}
+    assert set(card["entities"]) == want  # regenerate the list if the lattice changes

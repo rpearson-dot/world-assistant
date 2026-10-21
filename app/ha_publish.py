@@ -69,6 +69,27 @@ def fuel_device(results: dict[str, list[dict[str, Any]]]) -> Device:
 POLLEN_TILE_DEG = 2.0  # pollen lattice points are about a degree apart; a tile holds a few
 
 
+def pollen_point_key(lat: float, lon: float) -> str:
+    """Stable sensor key for a lattice point, e.g. 52.25, -1.75 -> point_52p25_m1p75."""
+    return "point_" + f"{round(lat, 3)}_{round(lon, 3)}".replace("-", "m").replace(".", "p")
+
+
+def _pollen_point(p: dict[str, Any]) -> Sensor:
+    """One forecast point as a sensor with latitude/longitude, so Home Assistant's map card shows it
+    and opening it lists the allergy risk and each allergen for the coming days."""
+    dates = p.get("dates") or []
+    risk = p.get("allergy_risk") or []
+    labels = p.get("allergy_risk_label") or []
+    attrs: dict[str, Any] = {"latitude": p["lat"], "longitude": p["lon"], "friendly_name": f"Pollen {p['lat']}, {p['lon']}",
+                             "allergy_risk": (labels[0] if labels else None), "dates": ", ".join(str(d) for d in dates),
+                             "risk_by_day": ", ".join(str(r) for r in risk), "changed_at": p.get("changed_at")}  # fmt: skip
+    for a in sorted(p.get("allergens") or [], key=lambda a: -(((a.get("levels") or [0])[0]) or 0)):
+        lv = a.get("labels") or [("none", "low", "moderate", "high", "very high")[min(4, int(x or 0))] for x in a.get("levels") or []]
+        attrs[str(a.get("name"))] = ", ".join(lv)  # worst first; one entry per day, today first
+    return Sensor(pollen_point_key(p["lat"], p["lon"]), f"Pollen {p['lat']}, {p['lon']}", (risk[0] if risk else None),
+                  icon="mdi:flower-pollen", state_class="measurement", attributes=attrs)  # fmt: skip
+
+
 def pollen_device(points: list[dict[str, Any]]) -> Device:
     """The nationwide pollen forecast, in tiles of lattice points with positions, so Home Assistant
     picks the point nearest each viewer. Nothing here knows where anyone is."""
@@ -85,6 +106,7 @@ def pollen_device(points: list[dict[str, Any]]) -> Device:
                state_class="measurement", attributes={"points": rows, "size_deg": POLLEN_TILE_DEG})
         for (ti, tj), rows in sorted(tiles.items())
     ]  # fmt: skip
+    sensors += [_pollen_point(p) for p in points]  # one per lattice point, so each can be opened on a map
     images = []
     if points:
         images.append(ha.Image("map", "Pollen map", render_svg(points).encode("utf-8")))

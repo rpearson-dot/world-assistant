@@ -5,6 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [Unreleased]
 
 ### Added
+- Each pollen forecast point is a Home Assistant sensor with a position (`sensor.wa_pollen_point_<lat>_<lon>`), and the pollen dashboard has a map card of them: tap a marker for the allergy risk and each allergen by day.
 - Nationwide pollen. The worker fetches a lattice of about 51 points across Britain three times a day (gently, 10 s apart; setting `WA_POLLEN_GRID_DEG`), stores it (`pollen_grid`, migration 0015) and publishes it to Home Assistant as pollen tiles plus a colour-coded map image (`image.wa_pollen_map`). New `GET /v1/pollen/grid`; `/v1/pollen/near?lat&lon` answers from the nearest stored point, so the provider never sees anyone's location.
 - Pollen dashboard: the map, each viewer's pollen this week, and a history graph for the home location, fed by a static package (`homeassistant/packages/world_assistant_pollen.yaml`, no setup or secrets).
 - `scripts/pollen-survey.py`: a one-off survey of how finely the pollen provider's forecast varies across Britain (about 100 calls, run with `docker compose exec -T api python - < scripts/pollen-survey.py`), to decide how many points a nationwide pollen grid needs.

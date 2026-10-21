@@ -40,7 +40,7 @@ Over MQTT (retained, with discovery):
 | **Trains and buses** | For each departure board you have set up: `<board>: next departure` (minutes; the next services are in attributes) and `<board>: delayed or cancelled` (a count). Bus tracker sensors keep their own device (see [bus.md](bus.md)). |
 | **Roads** | `Live road events`, one `<corridor>: active works` sensor per enabled National Highways corridor, and one `Road events tile` sensor per half-degree map square that has any. A tile's attributes list its closures and speed restrictions (unplanned ones, plus planned works starting within a week) with road, direction, description, times and positions. |
 
-| **Pollen** | One `Pollen tile` sensor per 2 degree map square (state: the number of grid points it holds; attributes: each point's position, allergy risk and allergen levels for four days), and `image.wa_pollen_map`, a colour-coded map of Britain's allergy risk. The map is only re-sent when the forecast changes. |
+| **Pollen** | One `Pollen <lat>, <lon>` sensor per forecast point (`sensor.wa_pollen_point_<lat>_<lon>`, state: allergy risk today; attributes: position, each allergen's level per day, worst first), shown as markers on the dashboard's map card (tap one for its breakdown). Also one `Pollen tile` sensor per 2 degree map square (state: the number of grid points it holds; attributes: each point's position, allergy risk and allergen levels for four days), and `image.wa_pollen_map`, a colour-coded map of Britain's allergy risk. The map is only re-sent when the forecast changes. |
 
 From the static pollen package (`homeassistant/packages/world_assistant_pollen.yaml`), for your home zone:
 
@@ -122,7 +122,7 @@ Ready-made dashboards use only Home Assistant's built-in cards (no HACS):
   `roads.yaml`, `events.yaml` and `pollen.yaml`. They find their entities by name, so they need no editing for
   boards or corridors. Fuel and roads have a `zone` and a radius at the top of each card, used when
   a viewer has no matching person. Events needs the generated package; the pollen history graph needs the static pollen package.
-- `pollen.yaml` shows the pollen map (`image.wa_pollen_map`), the viewer's own pollen this week (from the nearest grid point), and a history graph of the home location's allergy risk and allergens.
+- `pollen.yaml` shows the pollen map (`image.wa_pollen_map`), a tappable map of the forecast points (the card lists the 51 points of the default 1 degree lattice; change `WA_POLLEN_GRID_DEG` and its list needs regenerating), the viewer's own pollen this week (from the nearest grid point), and a history graph of the home location's allergy risk and allergens.
 
 Fuel, roads, events and pollen show each viewer their own location's data, as described above.
 
