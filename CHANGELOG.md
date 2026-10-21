@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-10-21
+
 ### Added
 - Bus tracker records where along the route each run first appears in the TfL feed (anomaly type `first_seen`: stop, position, seconds ahead). It is bookkeeping, left out of `/anomalies` unless asked for with `?type=first_seen`.
 
