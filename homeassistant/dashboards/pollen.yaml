@@ -1,26 +1,49 @@
-# Pollen. Finds every World Assistant place that has pollen sensors; no entity ids to edit.
+# Pollen for Home Assistant's home zone. Needs homeassistant/packages/world_assistant.yaml.
 title: Pollen
 views:
   - title: Pollen
     path: pollen
     icon: mdi:flower-pollen
     cards:
+      - type: gauge
+        entity: sensor.wa_pollen_allergy_risk
+        name: Allergy risk today
+        min: 0
+        max: 10
+        needle: true
+        severity:
+          green: 0
+          yellow: 3
+          red: 6
       - type: markdown
         title: Pollen this week
         content: |
           {% set bars = ['⬜', '🟩', '🟨', '🟧', '🟥'] %}
-          {% set ns = namespace(found=false) %}
-          {% for r in states.sensor if r.entity_id.startswith('sensor.wa_pollen_') and r.entity_id.endswith('_allergy_risk') %}
-          {% set base = r.entity_id[:-13] %}
-          {% set dates = r.attributes.dates or [] %}
-          {% set ns.found = true %}
-          ## {{ r.attributes.place }}
-          Allergy risk today: **{{ r.attributes.label or 'unknown' }}** ({{ r.state }}/10)
+          {% set dates = state_attr('sensor.wa_pollen_allergy_risk', 'dates') or [] %}
+          {% set allergens = state_attr('sensor.wa_pollen_allergy_risk', 'allergens') or [] %}
+          {% if dates %}Allergy risk today: **{{ (state_attr('sensor.wa_pollen_allergy_risk', 'allergy_risk_label') or ['unknown'])[0] or 'unknown' }}** ({{ states('sensor.wa_pollen_allergy_risk') }}/10)
 
           | |{% for d in dates %} {{ as_datetime(d).strftime('%a') }} |{% endfor %}
-          |:--|{% for d in dates %}:-:|{% endfor %}{% for s in states.sensor | sort(attribute='entity_id') if s.entity_id.startswith(base ~ '_pollen_') %}
-          | **{{ s.entity_id[(base ~ '_pollen_') | length:] | replace('_', ' ') | title }}** |{% for lv in (s.attributes.levels or []) %} {{ bars[lv | int(0)] if lv is not none else '▫️' }} |{% endfor %}{% endfor %}
+          |:--|{% for d in dates %}:-:|{% endfor %}{% for a in allergens %}
+          | **{{ a.name }}** |{% for lv in (a.levels or []) %} {{ bars[lv | int(0)] if lv is not none else '▫️' }} |{% endfor %}{% endfor %}
 
           ⬜ none 🟩 low 🟨 moderate 🟧 high 🟥 very high
-          {% endfor %}
-          {% if not ns.found %}No pollen data yet. Save a place in World Assistant and wait a few minutes.{% endif %}
+          {% else %}No pollen data yet. Check the World Assistant package is installed (docs/home-assistant.md).{% endif %}
+      - type: history-graph
+        title: Last 30 days
+        hours_to_show: 720
+        entities:
+          - entity: sensor.wa_pollen_allergy_risk
+            name: Allergy risk
+          - entity: sensor.wa_pollen_alder
+            name: Alder
+          - entity: sensor.wa_pollen_birch
+            name: Birch
+          - entity: sensor.wa_pollen_grasses
+            name: Grasses
+          - entity: sensor.wa_pollen_mugwort
+            name: Mugwort
+          - entity: sensor.wa_pollen_olive
+            name: Olive
+          - entity: sensor.wa_pollen_ragweed
+            name: Ragweed

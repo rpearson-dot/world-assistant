@@ -1,4 +1,8 @@
-"""Publish World Assistant data to Home Assistant: pollen, fuel, trains and buses, roads, events.
+"""Publish World Assistant data to Home Assistant: fuel, trains and buses, and roads.
+
+Pollen and events depend on where you are, so Home Assistant fetches those itself with its own
+home zone (homeassistant/packages/world_assistant.yaml); nothing here knows a location.
+
 
 The worker reads the service's own API (so the numbers match the web pages exactly), turns each
 answer into sensors (app/ha.py) and sends them over MQTT. One domain failing never stops the others.
@@ -22,32 +26,6 @@ log = logging.getLogger("wa.ha")
 
 FUELS = ("E10", "B7_STANDARD")
 FUEL_NAMES = {"E10": "Petrol (E10)", "B7_STANDARD": "Diesel"}
-
-
-def pollen_device(data: dict[str, Any], place_id: str = "") -> Device:
-    dates = data.get("dates") or []
-    risk = data.get("allergy_risk") or []
-    risk_level = data.get("allergy_risk_level") or []
-    risk_label = data.get("allergy_risk_label") or []
-    place = data.get("place")
-    sensors = [
-        Sensor("allergy_risk", "Allergy risk", risk[0] if risk else None, icon="mdi:flower-pollen",
-               unit="/10", state_class="measurement",
-               attributes={"place": place, "label": risk_label[0] if risk_label else None,
-                           "dates": dates, "forecast": risk, "labels": risk_label,
-                           "source": data.get("source")}),
-        Sensor("allergy_risk_label", "Allergy risk label", risk_label[0] if risk_label else None,
-               icon="mdi:flower-pollen-outline", attributes={"levels": risk_level, "dates": dates}),
-    ]  # fmt: skip
-    for a in data.get("allergens") or []:
-        levels = a.get("levels") or []
-        labels = a.get("labels") or []
-        key = f"pollen_{slug(a.get('id') or a.get('name') or 'x')}"
-        sensors.append(Sensor(key, f"Pollen: {a.get('name') or a.get('id')}",
-                              levels[0] if levels else None, icon="mdi:grass", state_class="measurement",
-                              attributes={"label": labels[0] if labels else None, "levels": levels,
-                                          "labels": labels, "dates": dates}))  # fmt: skip
-    return Device(f"pollen_{slug(place_id)}" if place_id else "pollen", f"Pollen: {place}" if place else "Pollen", sensors)
 
 
 TILE_DEG = 0.5  # fuel stations are grouped into tiles of this size so each sensor stays small
@@ -142,21 +120,6 @@ def roads_device(status: dict[str, Any], events: list[dict[str, Any]] | None = N
     return Device("roads", "Roads", sensors)
 
 
-def events_device(data: dict[str, Any], place_id: str = "") -> Device:
-    events = data.get("events") or []
-    first = events[0] if events else {}
-    rows = [{"name": e.get("name"), "date": e.get("date"), "venue": e.get("venue"),
-             "type": e.get("type"), "source": e.get("source")} for e in events[:5]]  # fmt: skip
-    place = data.get("place")
-    return Device(f"events_{slug(place_id)}" if place_id else "events", f"Events: {place}" if place else "Events nearby", [
-        Sensor("upcoming", "Events coming up", data.get("count", len(events)), icon="mdi:calendar-star",
-               state_class="measurement", attributes={"days": data.get("days"), "next": rows,
-                                                      "place": data.get("place")}),
-        Sensor("next_event", "Next event", first.get("name"), icon="mdi:ticket",
-               attributes={"date": first.get("date"), "venue": first.get("venue")}),
-    ])  # fmt: skip
-
-
 async def _get(c: httpx.AsyncClient, path: str, **params: Any) -> Any:
     r = await c.get(path, params=params or None)
     r.raise_for_status()
@@ -172,18 +135,6 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
             devices.append(await build())
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
             log.info("home assistant: skipping %s (%s: %s)", name, type(exc).__name__, exc)
-
-    places = []
-    try:
-        places = await _get(c, "/v1/places")
-    except httpx.HTTPError as exc:
-        log.info("home assistant: no places (%s)", type(exc).__name__)
-
-    async def pollen(place: dict[str, Any]) -> Device:
-        return pollen_device(await _get(c, "/v1/pollen/near", place=place["id"]), place["id"])
-
-    async def events(place: dict[str, Any]) -> Device:
-        return events_device(await _get(c, "/v1/events/near", place=place["id"]), place["id"])
 
     async def fuel() -> Device:
         return fuel_device({f: (await _get(c, "/v1/fuel/all", fuel=f))["stations"] for f in FUELS})
@@ -206,11 +157,7 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
             events = []
         return roads_device(status, events)
 
-    jobs = [("fuel", fuel), ("trains", trains), ("roads", roads)]
-    for pl in places:
-        jobs.append((f"pollen {pl['id']}", lambda pl=pl: pollen(pl)))
-        jobs.append((f"events {pl['id']}", lambda pl=pl: events(pl)))
-    for name, build in jobs:
+    for name, build in (("fuel", fuel), ("trains", trains), ("roads", roads)):
         await attempt(name, build)
     return devices
 

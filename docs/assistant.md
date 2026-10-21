@@ -44,4 +44,4 @@ reach a Tailscale-only address.
 Anywhere a saved place is needed (`/v1/fuel/near`, `/v1/events/near`, `/v1/pollen/near`, `/v1/pollen/history`
 and the `fuel_cheapest`, `events_near` and `pollen` tools) it can be left out and your **home** is used: the
 place of kind `home`, else the one with the id `home`, else the first by name. The `/fuel`, `/events` and
-`/pollen` pages start on it too. Give a place to use another.
+`/pollen` pages start on it too. Give a place to use another. `/v1/pollen/near` and `/v1/events/near` also take `lat` and `lon` (both, instead of a place) for a caller that knows its own location, such as Home Assistant; nothing is saved for those.

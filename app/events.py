@@ -59,6 +59,8 @@ async def _place(request: Request, place: str) -> tuple[str, float, float]:
 async def near(
     request: Request,
     place: str | None = Query(None, description="id of a saved place; default: home"),
+    lat: float | None = Query(None, ge=49.5, le=61.0, description="with lon: use this point, not a place"),
+    lon: float | None = Query(None, ge=-8.7, le=2.0),
     radius_km: float = Query(8.0, gt=0, le=50),
     days: int = Query(7, ge=1, le=60, description="how many days ahead, starting today"),
     type: str | None = Query(None, description=f"one of {', '.join(EVENT_CODES)}"),
@@ -75,8 +77,13 @@ async def near(
         raise HTTPException(
             503, "no events source is set up: add skiddle_api_key and/or ticketmaster_api_key"
         )
-    place = await place_or_default(request, place)
-    name, lat, lon = await _place(request, place)
+    if (lat is None) != (lon is None):
+        raise HTTPException(422, "give both lat and lon, or neither")
+    if lat is not None and lon is not None:
+        name = "your location"  # a point from the caller (Home Assistant): no place needed
+    else:
+        place = await place_or_default(request, place)
+        name, lat, lon = await _place(request, place)
     zone = ZoneInfo(s.local_tz)
     today = datetime.now(zone).date()
     last = today + timedelta(days=days)
