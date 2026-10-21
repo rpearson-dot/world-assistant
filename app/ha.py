@@ -6,6 +6,7 @@ Every sensor gets a retained discovery config and a retained state + attributes 
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from dataclasses import dataclass, field
@@ -34,10 +35,21 @@ class Sensor:
 
 
 @dataclass(frozen=True)
+class Image:
+    """A picture (an SVG, say) Home Assistant shows as an image entity, sent base64 over MQTT."""
+
+    key: str
+    name: str
+    data: bytes
+    content_type: str = "image/svg+xml"
+
+
+@dataclass(frozen=True)
 class Device:
     id: str
     name: str
     sensors: list[Sensor]
+    images: list[Image] = field(default_factory=list)
 
 
 def state_topic(prefix: str, device: str, key: str) -> str:
@@ -68,6 +80,25 @@ def discovery(prefix: str, disc_prefix: str, device: Device, expire_after: int) 
                 payload[k] = v
         out.append((f"{disc_prefix}/sensor/{uid}/config", json.dumps(payload), True))
     return out
+
+
+def image_discovery(prefix: str, disc_prefix: str, device: Device) -> list[Message]:
+    info = {"identifiers": [f"world_assistant_{device.id}"], "name": device.name,
+            "manufacturer": MANUFACTURER}  # fmt: skip
+    out: list[Message] = []
+    for im in device.images:
+        uid = unique_id(device.id, im.key)
+        payload = {"name": im.name, "unique_id": uid, "device": info, "object_id": uid,
+                   "default_entity_id": f"image.{uid}",
+                   "image_topic": state_topic(prefix, device.id, im.key), "image_encoding": "b64",
+                   "content_type": im.content_type}  # fmt: skip
+        out.append((f"{disc_prefix}/image/{uid}/config", json.dumps(payload), True))
+    return out
+
+
+def image_states(prefix: str, device: Device) -> list[Message]:
+    return [(state_topic(prefix, device.id, im.key), base64.b64encode(im.data).decode("ascii"), True)
+            for im in device.images]  # fmt: skip
 
 
 def states(prefix: str, device: Device) -> list[Message]:

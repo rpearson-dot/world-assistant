@@ -40,7 +40,7 @@ def _jinja() -> Any:
 
 
 def test_the_static_dashboards_are_here() -> None:
-    assert {p.stem for p in DASHBOARDS} == {"fuel", "trains-buses", "roads", "events"}
+    assert {p.stem for p in DASHBOARDS} == {"pollen", "fuel", "trains-buses", "roads", "events"}
 
 
 @pytest.mark.parametrize("path", DASHBOARDS, ids=lambda p: p.stem)
@@ -57,7 +57,7 @@ def test_dashboard_is_valid(path: Path) -> None:
                 env.from_string(card["content"])  # raises on a template syntax error
 
 
-@pytest.mark.parametrize("name", ["fuel", "roads", "events"])
+@pytest.mark.parametrize("name", ["pollen", "fuel", "roads", "events"])
 def test_location_dashboards_follow_the_viewer(name: str) -> None:
     text = (ROOT / "homeassistant" / "dashboards" / f"{name}.yaml").read_text(encoding="utf-8")
     assert "eq', user" in text, "must pick the viewer's own person, not one fixed person"
@@ -80,7 +80,7 @@ def _package(people: list[str] = PEOPLE) -> dict[str, Any]:
 def test_package_has_separate_sensors_for_each_person() -> None:
     env = _jinja().Environment()
     doc = _package()
-    assert len(doc["rest"]) == 4  # pollen and events, for two people
+    assert len(doc["rest"]) == 2  # events, for two people
     for r in doc["rest"]:
         assert r["headers"]["Authorization"] == "<secret>"
         assert "sensor.wa_location_" in r["resource_template"]
@@ -88,12 +88,12 @@ def test_package_has_separate_sensors_for_each_person() -> None:
         env.from_string(r["resource_template"])
     for who in ("alex", "sam"):
         mine = [r for r in doc["rest"] if f"wa_location_{who}" in r["resource_template"]]
-        assert len(mine) == 2
+        assert len(mine) == 1
         assert not any(f"wa_location_{other}" in r["resource_template"] for r in mine for other in {"alex", "sam"} - {who})
         ids = {s["unique_id"] for r in mine for s in r["sensor"]}
-        assert ids == {f"wa_pollen_{who}_allergy_risk", f"wa_events_{who}_upcoming", f"wa_events_{who}_next"}
+        assert ids == {f"wa_events_{who}_upcoming", f"wa_events_{who}_next"}
     tmpl = doc["template"][0]["sensor"]
-    assert len(tmpl) == 2 * (1 + len(SETUP.ALLERGENS))
+    assert [t["unique_id"] for t in tmpl] == ["wa_location_alex", "wa_location_sam"]
     for t in tmpl:
         env.from_string(t["state"])
 
@@ -123,6 +123,10 @@ class _States:
     @property
     def person(self) -> list[Any]:
         return [v for k, v in self.e.items() if k.startswith("person.")]
+
+    @property
+    def zone(self) -> Any:
+        return types.SimpleNamespace(home=self.e.get("zone.home"))
 
     @property
     def sensor(self) -> list[Any]:
@@ -175,7 +179,7 @@ def test_each_persons_location_is_their_phone_when_away_else_the_home_zone() -> 
 
 
 def test_the_person_entity_is_the_one_asked_for() -> None:
-    sam = _package()["template"][0]["sensor"][1 + len(SETUP.ALLERGENS)]  # sam's location sensor
+    sam = _package()["template"][0]["sensor"][1]  # sam's location sensor
     assert sam["unique_id"] == "wa_location_sam" and "person.sam" in sam["state"]
     assert "person.alex" not in sam["state"]
 
@@ -193,21 +197,10 @@ def test_generator_rejects_bad_host_and_duplicates() -> None:
         SETUP.package(["person.alex", "person.alex"], "h:1")
 
 
-def test_generator_writes_both_files(tmp_path: Path) -> None:
+def test_generator_writes_the_package(tmp_path: Path) -> None:
     assert SETUP.main(["--host", "nas:8010", "--out", str(tmp_path), *PEOPLE]) == 0
-    assert (tmp_path / "world_assistant.yaml").exists() and (tmp_path / "pollen.yaml").exists()
+    assert (tmp_path / "world_assistant.yaml").exists() and not (tmp_path / "pollen.yaml").exists()
     assert SETUP.main(["--host", "nas:8010", "--out", str(tmp_path), "nobody"]) == 2
-
-
-def test_pollen_dashboard_graphs_only_sensors_the_package_makes() -> None:
-    doc = yaml.safe_load(SETUP.pollen_dashboard(PEOPLE))
-    assert [v["path"] for v in doc["views"]] == ["pollen", "history-alex", "history-sam"]
-    made = {f"sensor.{t['unique_id']}" for t in _package()["template"][0]["sensor"]}
-    made |= {f"sensor.{s['unique_id']}" for r in _package()["rest"] for s in r["sensor"]}
-    graphed = {e["entity"] for v in doc["views"][1:] for c in v["cards"] for e in c["entities"]}
-    assert graphed and graphed <= made
-    env = _jinja().Environment()
-    env.from_string(doc["views"][0]["cards"][0]["content"])
 
 
 # --- what each viewer sees --------------------------------------------------------------------
@@ -250,3 +243,52 @@ def test_events_card_reads_only_the_viewers_own_sensor() -> None:
     assert "Sam Play" in s and "Alex Gig" not in s
     nobody = _env(ents, user="Guest").from_string(card).render()
     assert "Gig" not in nobody and "Play" not in nobody
+
+
+# --- pollen --------------------------------------------------------------------------------------
+
+POLLEN_PACKAGE = ROOT / "homeassistant" / "packages" / "world_assistant_pollen.yaml"
+
+
+def _point(lat: float, lon: float, risk: float, label: str, birch: int) -> dict[str, Any]:
+    return {"lat": lat, "lon": lon, "dates": ["2026-10-21", "2026-10-22"], "risk": [risk, risk], "label": [label, label],
+            "allergens": [{"name": "Birch", "levels": [birch, birch]}, {"name": "Grasses", "levels": [0, 1]}]}  # fmt: skip
+
+
+POLLEN_ENTS = {
+    "zone.home": ("zoning", {"latitude": 51.5, "longitude": -0.12, "friendly_name": "Home"}),
+    "person.alex": ("Birmingham", {**FAR, "friendly_name": "Alex"}),
+    "person.sam": ("home", {"friendly_name": "Sam", "latitude": 51.5, "longitude": -0.12}),
+    "sensor.wa_pollen_tile_25_m1": ("1", {"points": [_point(51.5, -0.5, 3.0, "low", 1)]}),  # near home
+    "sensor.wa_pollen_tile_26_m1": ("1", {"points": [_point(52.5, -1.5, 8.0, "very high", 4)]}),  # near Alex
+}
+
+
+def test_home_pollen_sensors_read_the_nearest_point_to_the_home_zone() -> None:
+    doc = yaml.load(POLLEN_PACKAGE.read_text(encoding="utf-8"), Loader=_HaLoader)
+    sensors = {t["unique_id"]: t for t in doc["template"][0]["sensor"]}
+    assert set(sensors) == {"wa_pollen_home_allergy_risk", *(f"wa_pollen_home_{n}" for n in ("alder", "birch", "grasses", "mugwort", "olive", "ragweed"))}
+    env = _env(POLLEN_ENTS)
+
+    def run(uid: str) -> str:
+        return env.from_string(sensors[uid]["state"]).render().strip()
+
+    assert run("wa_pollen_home_allergy_risk") == "3.0"  # the point near home, not the one near Alex
+    assert run("wa_pollen_home_birch") == "1" and run("wa_pollen_home_grasses") == "0"
+    assert run("wa_pollen_home_alder") == "unknown"  # not in the forecast
+    far = _env({"zone.home": POLLEN_ENTS["zone.home"], "sensor.wa_pollen_tile_x": ("1", {"points": [_point(57.0, -4.0, 9, "high", 3)]})})
+    assert far.from_string(sensors["wa_pollen_home_allergy_risk"]["state"]).render().strip() == "unknown"  # too far to trust
+    # the dashboard graphs only sensors this package defines
+    dash = yaml.safe_load((ROOT / "homeassistant" / "dashboards" / "pollen.yaml").read_text(encoding="utf-8"))
+    graphed = {e["entity"] for c in dash["views"][0]["cards"] if c["type"] == "history-graph" for e in c["entities"]}
+    assert graphed and {g.removeprefix("sensor.") for g in graphed} <= set(sensors)
+    assert any(c["type"] == "picture-entity" and c["entity"] == "image.wa_pollen_map" for c in dash["views"][0]["cards"])
+
+
+def test_pollen_card_shows_each_viewer_the_forecast_nearest_them() -> None:
+    card = _card("pollen", 1)
+    alex = _env(POLLEN_ENTS, user="Alex").from_string(card).render()
+    sam = _env(POLLEN_ENTS, user="Sam").from_string(card).render()
+    assert "very high" in alex and "your location" in alex and "low" not in alex.split("**")[1]
+    assert "**low**" in sam and "**very high**" not in sam
+    assert "Birch" in sam and "🟩" in sam

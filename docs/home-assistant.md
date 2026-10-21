@@ -26,8 +26,8 @@ How each kind of data gets there:
 
 | Data | How it gets to Home Assistant |
 |---|---|
-| **Fuel prices**, **road closures and speed restrictions** | Published nationwide over MQTT with positions. The dashboards filter by distance from the viewer's position (or the `zone` at the top of each card). Nothing to set up per person. |
-| **Pollen**, **events** | Looked up for one point at a time, so Home Assistant fetches them itself, once per person, passing that person's position. Needs the one-off setup below. |
+| **Fuel prices**, **road closures and speed restrictions**, **pollen** | Published nationwide over MQTT with positions. The dashboards filter by distance from the viewer's position (or the `zone` at the top of each card). Nothing to set up per person. Pollen is a grid of about 50 points across Britain, refreshed three times a day. |
+| **Events** | Looked up for one point at a time, so Home Assistant fetches them itself, once per person, passing that person's position. Needs the one-off setup below. |
 | **Trains and buses** | Not location-based. Published over MQTT as they are. |
 
 ## What appears
@@ -40,19 +40,32 @@ Over MQTT (retained, with discovery):
 | **Trains and buses** | For each departure board you have set up: `<board>: next departure` (minutes; the next services are in attributes) and `<board>: delayed or cancelled` (a count). Bus tracker sensors keep their own device (see [bus.md](bus.md)). |
 | **Roads** | `Live road events`, one `<corridor>: active works` sensor per enabled National Highways corridor, and one `Road events tile` sensor per half-degree map square that has any. A tile's attributes list its closures and speed restrictions (unplanned ones, plus planned works starting within a week) with road, direction, description, times and positions. |
 
+| **Pollen** | One `Pollen tile` sensor per 2 degree map square (state: the number of grid points it holds; attributes: each point's position, allergy risk and allergen levels for four days), and `image.wa_pollen_map`, a colour-coded map of Britain's allergy risk. The map is only re-sent when the forecast changes. |
+
+From the static pollen package (`homeassistant/packages/world_assistant_pollen.yaml`), for your home zone:
+
+| Entity | What it is |
+|---|---|
+| `sensor.wa_pollen_home_allergy_risk` | Allergy risk today (0 to 10) at the grid point nearest `zone.home` (within 150 km, else unknown), with `nearest_km` and `label` in attributes. |
+| `sensor.wa_pollen_home_alder`, `_birch`, `_grasses`, `_mugwort`, `_olive`, `_ragweed` | Each allergen's level today (0 to 4), so each has its own history for the graphs. |
+
 From the generated package (REST, hourly), for each person (`<p>` is the part after `person.`):
 
 | Entity | What it is |
 |---|---|
 | `sensor.wa_location_<p>` | Where that person is: state `phone` or `home zone`, with `latitude` and `longitude` attributes. |
-| `sensor.wa_pollen_<p>_allergy_risk` | Allergy risk today, 0 to 10. The forecast and every allergen's levels are in its attributes. |
-| `sensor.wa_pollen_<p>_alder`, `_birch`, `_grasses`, `_mugwort`, `_olive`, `_ragweed` | Each allergen's level today (0 to 4), so each has its own history. |
 | `sensor.wa_events_<p>_upcoming` | How many events in the next 7 days within 8 km; the list is in its attributes. |
 | `sensor.wa_events_<p>_next` | The next event's name, with date, venue and distance in attributes. |
 
 If a data source is not set up (no pollen key, no events key), that part is simply empty.
 
+### How the pollen grid works
+
+The pollen provider answers one point at a time and asks for no more than about one call every four hours per point. So the worker fetches a fixed lattice of points over Britain (1 degree apart, about 51 points on land; `WA_POLLEN_GRID_DEG`) at 02:40, 10:40 and 18:40, pausing 10 seconds between calls, and stores them in the `pollen_grid` table. It stops if the provider fails four times in a row and tries again at the next run. Anything asking for pollen at a point (`/v1/pollen/near?lat=..&lon=..`, or Home Assistant's tiles) is answered from the nearest stored point within 150 km and under 24 hours old, falling back to a live fetch otherwise. `GET /v1/pollen/grid` returns the whole lattice. Each stored point records when its forecast last changed (`changed_at`), which shows whether the provider updates every four hours or daily.
+
 ## Setting up pollen and events (once)
+
+Pollen needs no per-person setup: copy `homeassistant/packages/world_assistant_pollen.yaml` to `/config/packages/` (steps 3 and 6 below enable packages and restart). It contains no secrets and reads the pollen tiles nearest `zone.home`. The rest of this section is for events.
 
 1. Find each person's entity id in Settings > People (click the person, then the cog; for example
    `person.alex`). Each needs the mobile app signed in as that person, with location tracking on,
@@ -66,7 +79,7 @@ If a data source is not set up (no pollen key, no events key), that part is simp
    ```
    docker run --rm -v "$PWD":/w -w /w python:3-slim python scripts/ha-setup.py --host 192.168.1.10:8010 person.alex person.sam
    ```
-   This writes `ha-out/world_assistant.yaml` and `ha-out/pollen.yaml`. Add `--radius-km` or `--days`
+   This writes `ha-out/world_assistant.yaml` (events and each person's location). Add `--radius-km` or `--days`
    to change how far and how many days of events (default 8 km, 7 days). It writes no secrets.
 3. In Home Assistant's `configuration.yaml`, make sure packages are on:
    ```yaml
@@ -80,14 +93,11 @@ If a data source is not set up (no pollen key, no events key), that part is simp
    wa_authorization: "Bearer <contents of api_token.txt>"
    ```
 6. Developer tools > YAML > Check configuration, then Restart Home Assistant.
-7. Add `pollen.yaml` as a dashboard (below). Re-run the script and replace the file whenever you add
+7. Add the dashboards (below). Re-run the script and replace the file whenever you add
    or remove a person.
 
 The coordinates go to World Assistant only as parameters of each request. It doesn't store them or
-use any saved place. Pollen is looked up for places about 1 km apart and cached for four hours, so
-someone travelling can mean up to one fetch an hour from the pollen provider, in line with its
-fair-use guidance. While a person is away, the pollen provider and the events services (Skiddle,
-Ticketmaster) receive wherever they are, not their home.
+use any saved place. Pollen is answered from the stored grid, so the pollen provider never sees where anyone is. While a person is away, the events services (Skiddle, Ticketmaster) receive wherever they are, not their home.
 
 ## Settings
 
@@ -109,11 +119,10 @@ a stopped worker shows as unavailable rather than as old numbers that look curre
 Ready-made dashboards use only Home Assistant's built-in cards (no HACS):
 
 - In [`homeassistant/dashboards/`](../homeassistant/dashboards): `fuel.yaml`, `trains-buses.yaml`,
-  `roads.yaml` and `events.yaml`. They find their entities by name, so they need no editing for
+  `roads.yaml`, `events.yaml` and `pollen.yaml`. They find their entities by name, so they need no editing for
   boards or corridors. Fuel and roads have a `zone` and a radius at the top of each card, used when
-  a viewer has no matching person. Events needs the generated package.
-- `pollen.yaml`, written by `scripts/ha-setup.py` (it has to know your people, for the history
-  pages). Page one shows the viewer's own pollen this week; there is a history page per person.
+  a viewer has no matching person. Events needs the generated package; the pollen history graph needs the static pollen package.
+- `pollen.yaml` shows the pollen map (`image.wa_pollen_map`), the viewer's own pollen this week (from the nearest grid point), and a history graph of the home location's allergy risk and allergens.
 
 Fuel, roads, events and pollen show each viewer their own location's data, as described above.
 
@@ -211,7 +220,7 @@ action:
 
 1. Install the MQTT integration in Home Assistant (broker address, same as `WA_MQTT_HOST`).
 2. Let the worker run for one cycle (`WA_HA_INTERVAL_MIN` minutes). The devices appear.
-3. Generate and add the package for pollen and events (above), then the dashboards. Build automations on the `sensor.wa_*` entities. Replace older template sensors,
+3. Add the pollen package, and generate and add the package for events (above), then the dashboards. Build automations on the `sensor.wa_*` entities. Replace older template sensors,
    REST sensors and add-ons that fetched the same data by other routes.
 4. To remove an entity you no longer want, publish an empty retained message to its discovery topic:
    `mosquitto_pub -h <broker> -t homeassistant/sensor/wa_<device>_<sensor>/config -n -r`.
@@ -223,7 +232,7 @@ action:
 MQTT messages carry station names and postcodes, road names, and bus and train services. Fuel
 stations and road events come with their (public) positions. Your own coordinates are never
 published, and World Assistant never learns your Home Assistant zones. It receives the point (your home zone, or
-your phone's position when you are away) only as the `lat`/`lon` of the pollen and events requests
+your phone's position when you are away) only as the `lat`/`lon` of the events requests
 Home Assistant sends, and does not store it. Anyone who can read
 your broker can read the published data; if the broker is open to your whole network, set a username
 and the `mqtt_password` secret. The API token sits only in Home Assistant's `secrets.yaml`.

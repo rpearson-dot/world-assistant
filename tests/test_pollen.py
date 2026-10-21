@@ -190,3 +190,41 @@ def test_endpoint_takes_a_point_instead_of_a_place(monkeypatch: pytest.MonkeyPat
     assert ok.status_code == 200 and ok.json()["place"] == "your location"
     assert asked == [(51.5074, -0.1278)]
     assert c.get("/v1/pollen/near?lat=51.5", headers=h).status_code == 422  # both or neither
+
+
+def test_endpoints_answer_from_the_stored_lattice(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import UTC, datetime
+
+    from fastapi.testclient import TestClient
+
+    from app import pollen
+    from app.main import app
+
+    monkeypatch.setenv("API_TOKEN", "s3cret")
+    monkeypatch.setenv("POLLEN_API_KEY", "k")
+    now = datetime.now(UTC)
+    fc = {"dates": ["2026-10-21"], "allergy_risk": [3], "allergy_risk_level": [1], "allergy_risk_label": ["low"],
+          "allergens": [{"id": 1, "name": "Birch", "levels": [1], "labels": ["low"]}, {"id": 2, "name": "Grasses", "levels": [3], "labels": ["high"]}]}  # fmt: skip
+
+    async def stored(engine: Any) -> list[dict[str, Any]]:
+        return [{"lat": 52.5, "lon": -1.5, "forecast": fc, "fetched_at": now, "changed_at": now}]
+
+    class NoLive:
+        async def __aenter__(self) -> Self:
+            raise AssertionError("a stored point should answer without calling the provider")
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    monkeypatch.setattr(pollen, "load_grid", stored)
+    monkeypatch.setattr(pollen, "_client", lambda request: NoLive())
+    app.state.engine = object()
+    app.state.redis = _FakeRedis()
+    c = TestClient(app)
+    h = {"Authorization": "Bearer s3cret"}
+    near = c.get("/v1/pollen/near?lat=52.4&lon=-1.4", headers=h).json()
+    assert near["cached"] is True and near["grid"]["distance_km"] < 20
+    assert [a["name"] for a in near["allergens"]] == ["Grasses", "Birch"]  # worst first
+    grid = c.get("/v1/pollen/grid", headers=h).json()
+    assert grid["count"] == 1 and grid["points"][0]["allergens"][0]["name"] == "Birch"
+    assert c.get("/v1/pollen/grid").status_code == 401

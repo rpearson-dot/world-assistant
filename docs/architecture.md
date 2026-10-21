@@ -50,7 +50,7 @@ flowchart LR
 | `wa-redis` | Redis, private to the stack and password protected (`redis_password`). Used for the shared upstream rate limiter, short caches and the worker heartbeat. Nothing is saved to disk. Keys are prefixed `wa:`. |
 | `valhalla` | Optional routing engine (separate compose file). Only reachable inside the stack. |
 | `openbao` | Optional key vault run beside the app (separate compose file), with an optional auto-unseal helper. See [openbao.md](openbao.md). |
-| MQTT | An existing broker you provide. The worker publishes bus-tracker summaries and the fuel, train and road sensors to it with Home Assistant discovery, so sensors appear without YAML. Pollen and events are fetched by Home Assistant itself for where each person is (the mobile app's location when away, else its home zone) (see [home-assistant.md](home-assistant.md)). |
+| MQTT | An existing broker you provide. The worker publishes bus-tracker summaries and the fuel, train, road and pollen sensors (with a pollen map image) to it with Home Assistant discovery, so sensors appear without YAML. Events are fetched by Home Assistant itself for where each person is (the mobile app's location when away, else its home zone) (see [home-assistant.md](home-assistant.md)). |
 
 Outside the containers, on the server: `scripts/deploy.sh` (back up, update, check), and the optional
 nightly `scripts/auto-deploy.sh` ([runbook](runbook.md)). The api cannot restart containers; the
@@ -64,7 +64,7 @@ app/
   secretstore.py, secretsctl.py                                     where every secret comes from
   status.py, backups.py, backup.py, autodeploy.py                   status page, backups, update switch
   places.py, trips (in places.py), vehicles.py, routing.py, geo.py places, trips, vehicles, Valhalla
-  fuel.py, events.py, pollen.py, pollen_history.py                  fuel, events and pollen (API and pages)
+  fuel.py, events.py, pollen.py, pollen_history.py, pollen_grid.py, pollen_map.py                  fuel, events and pollen (API and pages)
   bus.py, bus_page.py, tfl.py                                       bus tracker, train boards
   assistant.py                                                      /v1/ask and /mcp tools
   mqtt.py, ha.py, ha_publish.py, worker.py, smoke.py, pagestyle.py
@@ -112,6 +112,7 @@ trip's corridor with the road numbers it uses. Stored events are then re-tagged.
 | `place`, `trip`, `vehicle` | User data; the trip row also holds route summary |
 | `tfl_board` | Saved train boards (station plus filter, and which source reads it) |
 | `bus_tracker`, `bus_stop`, `bus_segment_obs`, `bus_anomaly`, `bus_target_day`, `bus_target_hit`, `bus_timetable` | The bus tracker: configuration, stop timings, anomalies and whether each day's bus made the target |
+| `pollen_grid` | Latest forecast for each point of the nationwide pollen lattice, refreshed three times a day |
 | `pollen_reading` | One value per place, day and allergen, kept 90 days (the `/pollen` graphs) |
 | `app_setting` | Small switches set from the status page (automatic updates) and the last update result |
 | `job_run` | One row per scheduled job run (kept 14 days) |

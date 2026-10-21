@@ -1,0 +1,177 @@
+"""A nationwide pollen forecast, fetched on a lattice and kept here.
+
+The provider answers one point at a time, so the worker asks for a lattice of points over Britain
+and Northern Ireland three times a day and stores every answer. Anyone (the web page, the
+assistant, Home Assistant) then gets the answer for any location from the stored points, with no
+call to the provider and no location sent anywhere. `changed_at` records when a point's forecast
+last differed, which shows how often the provider really updates.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import logging
+import math
+from datetime import UTC, datetime, timedelta
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+from app.config import get_settings
+from app.integrations.pollen.client import DEFAULT_BASE, PollenClient, PollenError
+
+log = logging.getLogger("wa.pollen")
+
+# Rough outlines (lat, lon) of Great Britain and Northern Ireland: enough to leave the sea out of
+# the lattice, not for navigation. Islands are covered by their nearest mainland point.
+_GB = [
+    (50.0, -5.75), (50.15, -5.8), (50.3, -5.4), (50.2, -5.0), (50.7, -4.6), (51.2, -4.2), (51.2, -3.5), (51.5, -3.2), (51.7, -5.3),
+    (52.0, -5.2), (52.8, -4.7), (53.3, -4.6), (53.4, -3.1), (54.2, -3.2), (54.9, -3.3), (54.7, -5.0),
+    (55.0, -5.1), (55.8, -5.8), (56.5, -5.7), (57.4, -5.8), (58.6, -5.0), (58.65, -3.1), (57.7, -4.0),
+    (57.7, -3.0), (57.6, -1.8), (56.0, -2.6), (55.8, -2.0), (55.0, -1.4), (54.5, -0.6), (53.6, 0.1),
+    (52.7, 1.8), (51.9, 1.35), (51.4, 1.45), (51.0, 1.4), (50.75, 0.3), (50.75, -1.0), (50.6, -2.0),
+    (50.3, -3.6),
+]  # fmt: skip
+_NI = [(54.0, -6.0), (54.6, -5.5), (55.2, -6.0), (55.2, -7.0), (54.7, -8.0), (54.2, -7.3), (54.0, -6.4)]
+SOURCE = "Austrian Pollen Information Service, www.polleninformation.at"
+PAUSE_S = 10.0  # between provider calls: gentle, the service asks for fair use
+MAX_FAILURES_IN_A_ROW = 4  # then give up until the next run
+MAX_AGE_H = 24  # a stored point older than this is not used
+MAX_KM = 150.0  # and neither is one further than this from the request
+
+
+def _inside(lat: float, lon: float, poly: list[tuple[float, float]]) -> bool:
+    inside = False
+    j = len(poly) - 1
+    for i, (yi, xi) in enumerate(poly):
+        yj, xj = poly[j]
+        if (yi > lat) != (yj > lat) and lon < (xj - xi) * (lat - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def on_land(lat: float, lon: float) -> bool:
+    return _inside(lat, lon, _GB) or _inside(lat, lon, _NI)
+
+
+def grid_points(step: float = 1.0) -> list[tuple[float, float]]:
+    """Cell centres of a lattice with the given spacing in degrees. A cell counts when any of nine
+    spots inside it is on land, so coastal cells are kept."""
+    step = max(0.25, min(3.0, step))
+    pts: list[tuple[float, float]] = []
+    lat = 49.75 + step / 2
+    while lat < 59.0:
+        lon = -8.5 + step / 2
+        while lon < 2.0:
+            spots = [(lat + dy * step / 3, lon + dx * step / 3) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
+            if any(on_land(a, b) for a, b in spots):
+                pts.append((round(lat, 3), round(lon, 3)))
+            lon += step
+        lat += step
+    return pts
+
+
+def km(a: tuple[float, float], b: tuple[float, float]) -> float:
+    p1, p2 = math.radians(a[0]), math.radians(b[0])
+    dl = math.radians(b[1] - a[1])
+    h = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * 6371.0 * math.asin(math.sqrt(h))
+
+
+def fingerprint(forecast: dict[str, Any]) -> str:
+    keep = {k: forecast.get(k) for k in ("dates", "allergens", "allergy_risk")}
+    return hashlib.sha256(json.dumps(keep, sort_keys=True, default=str).encode()).hexdigest()[:12]
+
+
+def nearest(
+    points: list[dict[str, Any]], lat: float, lon: float, now: datetime | None = None
+) -> tuple[dict[str, Any], float] | None:
+    """The closest stored point that is recent and near enough, with its distance in km."""
+    now = now or datetime.now(UTC)
+    best: tuple[dict[str, Any], float] | None = None
+    for p in points:
+        if p.get("fetched_at") and now - p["fetched_at"] > timedelta(hours=MAX_AGE_H):
+            continue
+        d = km((lat, lon), (p["lat"], p["lon"]))
+        if d <= MAX_KM and (best is None or d < best[1]):
+            best = (p, d)
+    return best
+
+
+async def load(engine: AsyncEngine) -> list[dict[str, Any]]:
+    async with engine.connect() as conn:
+        rows = (await conn.execute(text("SELECT lat, lon, forecast, fetched_at, changed_at FROM pollen_grid"))).mappings().all()
+    return [dict(r) for r in rows]
+
+
+async def store(engine: AsyncEngine, lat: float, lon: float, forecast: dict[str, Any]) -> None:
+    """Save a point's forecast; changed_at moves only when the forecast differs from the last one."""
+    clean = {k: v for k, v in forecast.items() if k != "allergy_risk_hourly"}
+    fp = fingerprint(clean)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                """
+                INSERT INTO pollen_grid (lat, lon, forecast, fingerprint, fetched_at, changed_at)
+                VALUES (:lat, :lon, CAST(:f AS jsonb), :fp, now(), now())
+                ON CONFLICT (lat, lon) DO UPDATE SET
+                  forecast = EXCLUDED.forecast, fetched_at = now(),
+                  changed_at = CASE WHEN pollen_grid.fingerprint = EXCLUDED.fingerprint
+                                    THEN pollen_grid.changed_at ELSE now() END,
+                  fingerprint = EXCLUDED.fingerprint
+                """
+            ),
+            {"lat": lat, "lon": lon, "f": json.dumps(clean), "fp": fp},
+        )
+
+
+async def prune(engine: AsyncEngine, keep: set[tuple[float, float]]) -> None:
+    """Drop points that are no longer on the lattice (after a change of spacing)."""
+    async with engine.connect() as conn:
+        have = {(r[0], r[1]) for r in (await conn.execute(text("SELECT lat, lon FROM pollen_grid"))).all()}
+    stale = have - keep
+    if stale:
+        async with engine.begin() as conn:
+            for lat, lon in stale:
+                await conn.execute(text("DELETE FROM pollen_grid WHERE lat = :a AND lon = :b"), {"a": lat, "b": lon})
+
+
+async def pollen_grid_sync(ctx: dict[str, Any], pause: float = PAUSE_S) -> Any:
+    """Worker job: refresh every lattice point. Three times a day is plenty."""
+    from app.jobs import tracked
+    from app.ratelimit import SlidingWindowLimiter
+
+    s = get_settings()
+
+    async def run() -> Any:
+        if not s.pollen_api_key:
+            return "no key"
+        engine: AsyncEngine = ctx["engine"]
+        today = datetime.now(ZoneInfo(s.local_tz)).date()
+        pts = grid_points(s.pollen_grid_step_deg)
+        limiter = SlidingWindowLimiter(ctx["redis"], "pollen", 20)
+        ok = failed = streak = 0
+        async with PollenClient(s.pollen_api_key, s.pollen_base_url or DEFAULT_BASE, limiter=limiter) as c:
+            for lat, lon in pts:
+                if streak >= MAX_FAILURES_IN_A_ROW:
+                    break  # the service is refusing us; try again next run
+                await asyncio.sleep(pause)
+                try:
+                    await store(engine, lat, lon, await c.forecast(lat, lon, today, country=s.pollen_country))
+                    ok += 1
+                    streak = 0
+                except PollenError as exc:
+                    failed += 1
+                    streak += 1
+                    log.warning("pollen grid point (%s, %s) failed: %s", lat, lon, exc)
+        if ok:
+            await prune(engine, set(pts))
+        return {"points": len(pts), "ok": ok, "failed": failed, "gave_up": streak >= MAX_FAILURES_IN_A_ROW}
+
+    return await tracked(ctx["engine"], "pollen_grid_sync", run)
+

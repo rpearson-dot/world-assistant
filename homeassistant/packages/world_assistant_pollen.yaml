@@ -1,0 +1,52 @@
+# World Assistant: pollen at your home zone, as ordinary sensors, so the pollen dashboard can draw
+# a history graph. Static: no secrets, no addresses, no people to list. Setup is in
+# docs/home-assistant.md:
+#   - packages enabled:  under homeassistant: add  packages: !include_dir_named packages
+#   - copy this file to /config/packages/world_assistant_pollen.yaml, check configuration, restart.
+# Each sensor reads the nearest forecast point (within 150 km) to zone.home from the nationwide
+# pollen data World Assistant publishes over MQTT (sensor.wa_pollen_tile_*).
+
+template:
+  - sensor:
+      - name: WA pollen home allergy risk
+        unique_id: wa_pollen_home_allergy_risk
+        unit_of_measurement: "/10"
+        state_class: measurement
+        icon: mdi:flower-pollen
+        state: >-
+          {% set z = states.zone.home %}{% set ns = namespace(best=none, d=1000) %}{% for t in states.sensor if t.entity_id.startswith('sensor.wa_pollen_tile_') %}{% for p in t.attributes.points | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, p.lat, p.lon) %}{% if d is not none and d < ns.d %}{% set ns.d = d %}{% set ns.best = p %}{% endif %}{% endfor %}{% endfor %}{{ ns.best.risk[0] if ns.best and ns.d <= 150 and ns.best.risk and ns.best.risk[0] is not none else 'unknown' }}
+        attributes:
+          nearest_km: >-
+            {% set z = states.zone.home %}{% set ns = namespace(best=none, d=1000) %}{% for t in states.sensor if t.entity_id.startswith('sensor.wa_pollen_tile_') %}{% for p in t.attributes.points | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, p.lat, p.lon) %}{% if d is not none and d < ns.d %}{% set ns.d = d %}{% set ns.best = p %}{% endif %}{% endfor %}{% endfor %}{{ ns.d | round(0) if ns.best else none }}
+          label: >-
+            {% set z = states.zone.home %}{% set ns = namespace(best=none, d=1000) %}{% for t in states.sensor if t.entity_id.startswith('sensor.wa_pollen_tile_') %}{% for p in t.attributes.points | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, p.lat, p.lon) %}{% if d is not none and d < ns.d %}{% set ns.d = d %}{% set ns.best = p %}{% endif %}{% endfor %}{% endfor %}{{ ns.best.label[0] if ns.best and ns.d <= 150 and ns.best.label else none }}
+      - name: WA pollen home alder
+        unique_id: wa_pollen_home_alder
+        state_class: measurement
+        state: >-
+          {% set z = states.zone.home %}{% set ns = namespace(best=none, d=1000) %}{% for t in states.sensor if t.entity_id.startswith('sensor.wa_pollen_tile_') %}{% for p in t.attributes.points | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, p.lat, p.lon) %}{% if d is not none and d < ns.d %}{% set ns.d = d %}{% set ns.best = p %}{% endif %}{% endfor %}{% endfor %}{% set a = (ns.best.allergens if ns.best and ns.d <= 150 else []) | selectattr('name', 'search', '(?i)^alder') | list %}{{ a[0].levels[0] if a and a[0].levels and a[0].levels[0] is not none else 'unknown' }}
+      - name: WA pollen home birch
+        unique_id: wa_pollen_home_birch
+        state_class: measurement
+        state: >-
+          {% set z = states.zone.home %}{% set ns = namespace(best=none, d=1000) %}{% for t in states.sensor if t.entity_id.startswith('sensor.wa_pollen_tile_') %}{% for p in t.attributes.points | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, p.lat, p.lon) %}{% if d is not none and d < ns.d %}{% set ns.d = d %}{% set ns.best = p %}{% endif %}{% endfor %}{% endfor %}{% set a = (ns.best.allergens if ns.best and ns.d <= 150 else []) | selectattr('name', 'search', '(?i)^birch') | list %}{{ a[0].levels[0] if a and a[0].levels and a[0].levels[0] is not none else 'unknown' }}
+      - name: WA pollen home grasses
+        unique_id: wa_pollen_home_grasses
+        state_class: measurement
+        state: >-
+          {% set z = states.zone.home %}{% set ns = namespace(best=none, d=1000) %}{% for t in states.sensor if t.entity_id.startswith('sensor.wa_pollen_tile_') %}{% for p in t.attributes.points | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, p.lat, p.lon) %}{% if d is not none and d < ns.d %}{% set ns.d = d %}{% set ns.best = p %}{% endif %}{% endfor %}{% endfor %}{% set a = (ns.best.allergens if ns.best and ns.d <= 150 else []) | selectattr('name', 'search', '(?i)^grass') | list %}{{ a[0].levels[0] if a and a[0].levels and a[0].levels[0] is not none else 'unknown' }}
+      - name: WA pollen home mugwort
+        unique_id: wa_pollen_home_mugwort
+        state_class: measurement
+        state: >-
+          {% set z = states.zone.home %}{% set ns = namespace(best=none, d=1000) %}{% for t in states.sensor if t.entity_id.startswith('sensor.wa_pollen_tile_') %}{% for p in t.attributes.points | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, p.lat, p.lon) %}{% if d is not none and d < ns.d %}{% set ns.d = d %}{% set ns.best = p %}{% endif %}{% endfor %}{% endfor %}{% set a = (ns.best.allergens if ns.best and ns.d <= 150 else []) | selectattr('name', 'search', '(?i)^mugwo') | list %}{{ a[0].levels[0] if a and a[0].levels and a[0].levels[0] is not none else 'unknown' }}
+      - name: WA pollen home olive
+        unique_id: wa_pollen_home_olive
+        state_class: measurement
+        state: >-
+          {% set z = states.zone.home %}{% set ns = namespace(best=none, d=1000) %}{% for t in states.sensor if t.entity_id.startswith('sensor.wa_pollen_tile_') %}{% for p in t.attributes.points | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, p.lat, p.lon) %}{% if d is not none and d < ns.d %}{% set ns.d = d %}{% set ns.best = p %}{% endif %}{% endfor %}{% endfor %}{% set a = (ns.best.allergens if ns.best and ns.d <= 150 else []) | selectattr('name', 'search', '(?i)^olive') | list %}{{ a[0].levels[0] if a and a[0].levels and a[0].levels[0] is not none else 'unknown' }}
+      - name: WA pollen home ragweed
+        unique_id: wa_pollen_home_ragweed
+        state_class: measurement
+        state: >-
+          {% set z = states.zone.home %}{% set ns = namespace(best=none, d=1000) %}{% for t in states.sensor if t.entity_id.startswith('sensor.wa_pollen_tile_') %}{% for p in t.attributes.points | default([]) %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, p.lat, p.lon) %}{% if d is not none and d < ns.d %}{% set ns.d = d %}{% set ns.best = p %}{% endif %}{% endfor %}{% endfor %}{% set a = (ns.best.allergens if ns.best and ns.d <= 150 else []) | selectattr('name', 'search', '(?i)^ragwe') | list %}{{ a[0].levels[0] if a and a[0].levels and a[0].levels[0] is not none else 'unknown' }}

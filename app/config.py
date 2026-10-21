@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     skiddle_base_url: str = ""  # empty = https://www.skiddle.com/api/v1
     pollen_base_url: str = ""  # empty = https://www.polleninformation.at/api/forecast/public
     pollen_country: str = "GB"  # two-letter country code the pollen service is asked about
+    pollen_grid_step_deg: float = 1.0  # spacing of the nationwide pollen lattice (0.25 to 3)
     nr_base_url: str = ""  # National Rail (Rail Data Marketplace) base URL; empty = the default
     tfl_naive_tz: str = "Europe/London"  # zone for TfL times that carry no offset
     valhalla_url: str = "http://valhalla:8002"

@@ -17,6 +17,8 @@ from app.config import get_settings
 from app.integrations.pollen.client import ATTRIBUTION, DEFAULT_BASE, PollenClient, PollenError
 from app.pagestyle import themed
 from app.places import place_or_default
+from app.pollen_grid import load as load_grid
+from app.pollen_grid import nearest
 from app.pollen_history import CACHE_SECONDS, KEEP_DAYS, cache_key, history, record
 from app.ratelimit import SlidingWindowLimiter
 
@@ -39,6 +41,23 @@ async def _place(request: Request, place: str) -> tuple[str, float, float]:
     return row[0], row[1], row[2]
 
 
+@router.get("/grid")
+async def grid(request: Request) -> dict[str, Any]:
+    """The stored forecast for every point of the nationwide lattice (what Home Assistant filters)."""
+    points = await load_grid(request.app.state.engine)
+    out = []
+    for p in points:
+        f = p["forecast"]
+        out.append({
+            "lat": p["lat"], "lon": p["lon"], "fetched_at": p["fetched_at"], "changed_at": p["changed_at"],
+            "dates": f.get("dates"), "allergy_risk": f.get("allergy_risk"),
+            "allergy_risk_label": f.get("allergy_risk_label"),
+            "allergens": [{"name": a.get("name"), "levels": a.get("levels"), "labels": a.get("labels")}
+                          for a in f.get("allergens") or []],
+        })  # fmt: skip
+    return {"source": ATTRIBUTION, "count": len(out), "points": out}
+
+
 @router.get("/near")
 async def near(
     request: Request,
@@ -55,6 +74,16 @@ async def near(
         raise HTTPException(422, "give both lat and lon, or neither")
     if lat is not None and lon is not None:
         place, name = None, "your location"  # a point from the caller (Home Assistant): no place needed
+        with contextlib.suppress(Exception):  # the stored lattice is an optimisation; fall back to a live fetch
+            hit = nearest(await load_grid(request.app.state.engine), lat, lon)
+            if hit:
+                point, dist = hit
+                fc = point["forecast"]
+                out = {"source": ATTRIBUTION, **fc, "cached": True,
+                       "grid": {"distance_km": round(dist), "fetched_at": point["fetched_at"],
+                                "changed_at": point["changed_at"]}}  # fmt: skip
+                allergens = sorted(fc.get("allergens") or [], key=lambda a: -((a.get("levels") or [0])[0] or 0))
+                return {"place": name, **out, "allergens": allergens}
     else:
         place = await place_or_default(request, place)
         name, lat, lon = await _place(request, place)
