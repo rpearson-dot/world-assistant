@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-21
+
 ### Added
 - Ready-made Home Assistant dashboards, one per data source (pollen, fuel, trains and buses, roads, events) in `homeassistant/dashboards/`, using only built-in cards. See docs/home-assistant.md.
 
