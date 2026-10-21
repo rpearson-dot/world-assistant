@@ -8,7 +8,7 @@ The worker reads this service's own API every few minutes (so Home Assistant alw
 what the web pages show) and publishes retained messages to the broker. Home Assistant needs only
 its normal MQTT integration, pointed at the same broker.
 
-## Where you are, for each person
+## Where you are, for each person (fuel, roads, pollen)
 
 World Assistant's "default place" belongs to its own web pages. Nothing sent to Home Assistant uses
 it. Anything that depends on where you are is worked out **per person**, so each viewer sees data
@@ -27,7 +27,7 @@ How each kind of data gets there:
 | Data | How it gets to Home Assistant |
 |---|---|
 | **Fuel prices**, **road closures and speed restrictions**, **pollen** | Published nationwide over MQTT with positions. The dashboards filter by distance from the viewer's position (or the `zone` at the top of each card). Nothing to set up per person. Pollen is a grid of about 50 points across Britain, refreshed three times a day. |
-| **Events** | Looked up for one point at a time, so Home Assistant fetches them itself, once per person, passing that person's position. Needs the one-off setup below. |
+| **Events** | Looked up for one point at a time, so Home Assistant fetches them itself for `zone.home` (hourly) and the dashboard shows what is on near home. Needs the one-off setup below. Events do not follow the viewer. |
 | **Trains and buses** | Not location-based. Published over MQTT as they are. |
 
 ## What appears
@@ -49,13 +49,12 @@ From the static pollen package (`homeassistant/packages/world_assistant_pollen.y
 | `sensor.wa_pollen_home_allergy_risk` | Allergy risk today (0 to 10) at the grid point nearest `zone.home` (within 150 km, else unknown), with `nearest_km` and `label` in attributes. |
 | `sensor.wa_pollen_home_alder`, `_birch`, `_grasses`, `_mugwort`, `_olive`, `_ragweed` | Each allergen's level today (0 to 4), so each has its own history for the graphs. |
 
-From the generated package (REST, hourly), for each person (`<p>` is the part after `person.`):
+From the events package (REST, hourly), for the home zone:
 
 | Entity | What it is |
 |---|---|
-| `sensor.wa_location_<p>` | Where that person is: state `phone` or `home zone`, with `latitude` and `longitude` attributes. |
-| `sensor.wa_events_<p>_upcoming` | How many events in the next 7 days within 8 km; the list is in its attributes. |
-| `sensor.wa_events_<p>_next` | The next event's name, with date, venue and distance in attributes. |
+| `sensor.wa_events_home_upcoming` | How many events in the next 7 days within 8 km of `zone.home`; the list is in its attributes. |
+| `sensor.wa_events_home_next` | The next event's name, with date, venue and distance in attributes. |
 
 If a data source is not set up (no pollen key, no events key), that part is simply empty.
 
@@ -65,39 +64,28 @@ The pollen provider answers one point at a time and asks for no more than about 
 
 ## Setting up pollen and events (once)
 
-Pollen needs no per-person setup: copy `homeassistant/packages/world_assistant_pollen.yaml` to `/config/packages/` (steps 3 and 6 below enable packages and restart). It contains no secrets and reads the pollen tiles nearest `zone.home`. The rest of this section is for events.
+Neither needs any per-person setup, and neither package writes a secret into its file.
 
-1. Find each person's entity id in Settings > People (click the person, then the cog; for example
-   `person.alex`). Each needs the mobile app signed in as that person, with location tracking on,
-   if you want their position while away.
-2. On the NAS, from the project folder, generate the files (use your server's address and port,
-   `WA_API_PORT`, default 8010):
-   ```
-   python3 scripts/ha-setup.py --host 192.168.1.10:8010 person.alex person.sam
-   ```
-   If the NAS has no `python3`, run it in a container instead:
-   ```
-   docker run --rm -v "$PWD":/w -w /w python:3-slim python scripts/ha-setup.py --host 192.168.1.10:8010 person.alex person.sam
-   ```
-   This writes `ha-out/world_assistant.yaml` (events and each person's location). Add `--radius-km` or `--days`
-   to change how far and how many days of events (default 8 km, 7 days). It writes no secrets.
-3. In Home Assistant's `configuration.yaml`, make sure packages are on:
+1. In Home Assistant's `configuration.yaml`, make sure packages are on:
    ```yaml
    homeassistant:
      packages: !include_dir_named packages
    ```
-4. Copy `world_assistant.yaml` to `/config/packages/world_assistant.yaml`.
-5. In `/config/secrets.yaml`, add one line with the contents of `api_token.txt` (the token never goes
-   in the package):
+2. Copy `homeassistant/packages/world_assistant_pollen.yaml` and
+   `homeassistant/packages/world_assistant_events.yaml` to `/config/packages/`.
+3. In `/config/secrets.yaml`, add two lines (the address is your server's and `WA_API_PORT`, default
+   8010; the token is the contents of `api_token.txt`):
    ```yaml
+   wa_events_url: "http://192.168.1.10:8010/v1/events/near"
    wa_authorization: "Bearer <contents of api_token.txt>"
    ```
-6. Developer tools > YAML > Check configuration, then Restart Home Assistant.
-7. Add the dashboards (below). Re-run the script and replace the file whenever you add
-   or remove a person.
+4. Developer tools > YAML > Check configuration, then Restart Home Assistant.
+5. Add the dashboards (below).
 
-The coordinates go to World Assistant only as parameters of each request. It doesn't store them or
-use any saved place. Pollen is answered from the stored grid, so the pollen provider never sees where anyone is. While a person is away, the events services (Skiddle, Ticketmaster) receive wherever they are, not their home.
+To change how far or how many days of events (default 8 km, 7 days), edit `radius_km` and `days` in the events package.
+
+The home zone's coordinates go to World Assistant only as parameters of each events request. It doesn't store them or
+use any saved place. Pollen is answered from the stored grid, so the pollen provider never sees where anyone is. The events services (Skiddle, Ticketmaster) receive your home zone's position.
 
 ## Settings
 
@@ -121,10 +109,10 @@ Ready-made dashboards use only Home Assistant's built-in cards (no HACS):
 - In [`homeassistant/dashboards/`](../homeassistant/dashboards): `fuel.yaml`, `trains-buses.yaml`,
   `roads.yaml`, `events.yaml` and `pollen.yaml`. They find their entities by name, so they need no editing for
   boards or corridors. Fuel and roads have a `zone` and a radius at the top of each card, used when
-  a viewer has no matching person. Events needs the generated package; the pollen history graph needs the static pollen package.
+  a viewer has no matching person. Events needs the events package; the pollen history graph needs the static pollen package.
 - `pollen.yaml` shows the pollen map (`image.wa_pollen_map`), a tappable map of the forecast points (the card lists the 51 points of the default 1 degree lattice; change `WA_POLLEN_GRID_DEG` and its list needs regenerating), the viewer's own pollen this week (from the nearest grid point), and a history graph of the home location's allergy risk and allergens.
 
-Fuel, roads, events and pollen show each viewer their own location's data, as described above.
+Fuel, roads and pollen show each viewer their own location's data, as described above.
 
 To add one:
 
@@ -137,8 +125,7 @@ Repeat for each.
 ## Filtering by a Home Assistant location
 
 Fuel stations near a zone, as a template sensor (Settings > Devices & services > Helpers > Template,
-or in `configuration.yaml`). Change `zone.home` for any zone (or `sensor.wa_location_<person>` for where
-that person is) and `5` for the radius in km:
+or in `configuration.yaml`). Change `zone.home` for any zone and `5` for the radius in km:
 
 ```yaml
 template:
@@ -184,7 +171,7 @@ entities:
   - sensor.wa_pollen_alex_allergy_risk
   - sensor.wa_fuel_national_e10
   - sensor.wa_roads_live_events
-  - sensor.wa_events_alex_next
+  - sensor.wa_events_home_next
 ```
 
 Check the exact ids under Settings > Devices & services > MQTT. For a departure board, a Markdown card:
@@ -220,7 +207,7 @@ action:
 
 1. Install the MQTT integration in Home Assistant (broker address, same as `WA_MQTT_HOST`).
 2. Let the worker run for one cycle (`WA_HA_INTERVAL_MIN` minutes). The devices appear.
-3. Add the pollen package, and generate and add the package for events (above), then the dashboards. Build automations on the `sensor.wa_*` entities. Replace older template sensors,
+3. Add the pollen and events packages (above), then the dashboards. Build automations on the `sensor.wa_*` entities. Replace older template sensors,
    REST sensors and add-ons that fetched the same data by other routes.
 4. To remove an entity you no longer want, publish an empty retained message to its discovery topic:
    `mosquitto_pub -h <broker> -t homeassistant/sensor/wa_<device>_<sensor>/config -n -r`.

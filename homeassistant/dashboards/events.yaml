@@ -1,5 +1,5 @@
-# What's on near whoever is looking. Needs the per-person sensors from scripts/ha-setup.py (see
-# docs/home-assistant.md). The viewer's Home Assistant person name must match their user name.
+# What's on near the home zone. Needs homeassistant/packages/world_assistant_events.yaml
+# (see docs/home-assistant.md).
 title: Events
 views:
   - title: Events
@@ -7,15 +7,13 @@ views:
     icon: mdi:calendar-star
     cards:
       - type: markdown
-        title: Coming up near you
+        title: Coming up near home
         content: |
-          {% set me = states.person | selectattr('name', 'eq', user) | list %}
-          {% set s = me[0].entity_id.split('.')[1] if me else '' %}
-          {% set e = 'sensor.wa_events_' ~ s ~ '_upcoming' %}
+          {% set e = 'sensor.wa_events_home_upcoming' %}
           {% set events = state_attr(e, 'events') %}
-          {% if events %}{{ states(e) }} in the next {{ state_attr(e, 'days') or 7 }} days, {{ user }}.
+          {% if events %}{{ states(e) }} in the next {{ state_attr(e, 'days') or 7 }} days within {{ state_attr(e, 'radius_km') or 8 }} km of {{ state_attr('zone.home', 'friendly_name') }}.
 
           | Date | Event | Venue | Away | Price |
           |:--|:--|:--|--:|:--|{% for ev in events %}
           | {{ ev.date or '' }}{{ ' ' ~ ev.doors_open if ev.doors_open else '' }} | **{{ ev.name }}** | {{ ev.venue or '' }}{{ ', ' ~ ev.town if ev.town else '' }} | {{ ('%.1f km' % ev.distance_km) if ev.distance_km is not none else '' }} | {{ ev.price or '' }} |{% endfor %}
-          {% else %}Nothing listed near you, or no event data for "{{ user }}" yet. Is the World Assistant package installed, and does a person with that name exist? (docs/home-assistant.md){% endif %}
+          {% else %}Nothing listed near home yet. Is the events package installed? (docs/home-assistant.md){% endif %}

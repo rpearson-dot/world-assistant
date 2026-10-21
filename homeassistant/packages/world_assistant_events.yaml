@@ -1,0 +1,30 @@
+# World Assistant events near Home Assistant's home zone. Setup is in docs/home-assistant.md:
+#   - packages enabled:  under homeassistant: add  packages: !include_dir_named packages
+#   - secrets.yaml has:  wa_events_url: "http://<nas address>:8010/v1/events/near"
+#                        wa_authorization: "Bearer <contents of api_token.txt>"
+# The point sent is zone.home's, whatever it is set to in Home Assistant. World Assistant stores nothing.
+rest:
+  - resource: !secret wa_events_url
+    params:
+      lat: "{{ state_attr('zone.home', 'latitude') }}"
+      lon: "{{ state_attr('zone.home', 'longitude') }}"
+      radius_km: "8"
+      days: "7"
+      limit: "20"
+    scan_interval: 3600
+    timeout: 30
+    headers:
+      Authorization: !secret wa_authorization
+    sensor:
+      - name: WA events home upcoming
+        unique_id: wa_events_home_upcoming
+        value_template: "{{ value_json.count | default(0) }}"
+        state_class: measurement
+        icon: mdi:calendar-star
+        json_attributes: [events, days, radius_km, sources]
+      - name: WA events home next
+        unique_id: wa_events_home_next
+        value_template: "{{ value_json.events[0].name if value_json.events else 'Nothing listed' }}"
+        icon: mdi:ticket
+        json_attributes_path: "$.events[0]"
+        json_attributes: [date, venue, town, distance_km, price, type]

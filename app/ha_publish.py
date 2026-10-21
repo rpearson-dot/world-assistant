@@ -1,8 +1,8 @@
 """Publish World Assistant data to Home Assistant: pollen, fuel, trains and buses, and roads.
 
 Nationwide data (pollen, fuel, roads) goes out with positions and Home Assistant filters it for
-whoever is looking; nothing here knows a location. Events are still fetched by Home Assistant for
-each person (scripts/ha-setup.py).
+whoever is looking; nothing here knows a location. Events are fetched by Home Assistant for its
+home zone (homeassistant/packages/world_assistant_events.yaml).
 
 The worker reads the service's own API (so the numbers match the web pages exactly), turns each
 answer into sensors (app/ha.py) and sends them over MQTT. One domain failing never stops the others.
