@@ -137,6 +137,35 @@ def nearest_slot(slots: Sequence[str], hhmm: str, taken: Collection[str] = ()) -
     return best if best_diff is not None and best_diff <= MATCH_TOLERANCE_MIN else None
 
 
+def assign_slots(boards: Sequence[int], slots: Sequence[str], taken: Collection[str] = ()) -> list[str | None]:
+    """Match buses to scheduled departures in order. `boards` are the minutes-of-day each bus left the
+    boarding stop, earliest first; buses on one route do not overtake, so the n-th bus gets a later slot
+    than the (n-1)-th. Picks the most matches first (a bus is unmatched only if no free slot is within
+    the tolerance and the order allows), then the smallest total gap. Slots in `taken` are not offered."""
+    free = sorted((s for s in slots if s not in taken), key=to_minutes)
+    n, m, unmatched = len(boards), len(free), 10_000
+    inf = float("inf")
+    dp = [[0.0] * (m + 1) for _ in range(n + 1)]  # dp[i][j]: best cost for the first i buses and first j slots
+    for i in range(1, n + 1):
+        dp[i][0] = i * unmatched
+        for j in range(1, m + 1):
+            gap = abs(to_minutes(free[j - 1]) - boards[i - 1])
+            pair = dp[i - 1][j - 1] + gap if gap <= MATCH_TOLERANCE_MIN else inf
+            dp[i][j] = min(dp[i][j - 1], dp[i - 1][j] + unmatched, pair)
+    out: list[str | None] = [None] * n
+    i, j = n, m
+    while i > 0 and j > 0:
+        gap = abs(to_minutes(free[j - 1]) - boards[i - 1])
+        if gap <= MATCH_TOLERANCE_MIN and dp[i][j] == dp[i - 1][j - 1] + gap:
+            out[i - 1] = free[j - 1]
+            i, j = i - 1, j - 1
+        elif dp[i][j] == dp[i][j - 1]:
+            j -= 1
+        else:
+            i -= 1
+    return out
+
+
 def slots_in_window(
     times: Sequence[str], earliest: str, deadline: str, min_travel_min: int
 ) -> list[str]:

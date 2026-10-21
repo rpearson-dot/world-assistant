@@ -412,15 +412,18 @@ async def conditions(request: Request, tid: str) -> list[dict[str, Any]]:
 
 @router.get("/trackers/{tid}/anomalies")
 async def anomalies(
-    request: Request, tid: str, limit: int = Query(50, ge=1, le=500)
+    request: Request, tid: str, limit: int = Query(50, ge=1, le=500), type: str | None = None
 ) -> list[dict[str, Any]]:
+    """Recent anomalies. The bookkeeping `first_seen` entries are left out unless asked for with `?type=first_seen`."""
     await _load(request, tid)
     async with request.app.state.engine.connect() as conn:
         res = await conn.execute(
             text(
-                "SELECT at, vehicle, type, detail FROM bus_anomaly WHERE tracker = :t ORDER BY at DESC LIMIT :n"
+                "SELECT at, vehicle, type, detail FROM bus_anomaly WHERE tracker = :t "
+                "AND (CAST(:ty AS text) IS NULL AND type <> 'first_seen' OR type = CAST(:ty AS text)) "
+                "ORDER BY at DESC LIMIT :n"
             ),
-            {"t": tid, "n": limit},
+            {"t": tid, "n": limit, "ty": type},
         )
         return [dict(r._mapping) for r in res]  # fmt: skip
 

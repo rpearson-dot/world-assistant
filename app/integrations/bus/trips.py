@@ -108,6 +108,9 @@ def update_trips(
                     "last_seen": now, "stops": [], "pending": None}  # fmt: skip
             trips[vehicle] = trip
             state["evaluated"].pop(vehicle, None)
+            state.setdefault("firsts", []).append(  # where along the route the feed first showed this run
+                {"vehicle": vehicle, "dir": info["dir"], "sid": info["sid"], "pos": info["pos"],
+                 "eta": info["eta"], "at": now})  # fmt: skip
         trip.update(dir=info["dir"], last_pos=info["pos"], last_seen=now)
         pending = trip.get("pending")
         current = {
@@ -141,6 +144,14 @@ def update_trips(
             _end(state, trip, "gone", None)
         _retire(state, trip)
     return finished
+
+
+def first_sightings(state: dict[str, Any], names: dict[str, str]) -> list[dict[str, Any]]:
+    """Where and when each new run first appeared in the feed (type 'first_seen'), reported once. Kept for
+    working out how far ahead the feed shows a bus and the order buses left the terminus; not shown to users."""
+    firsts, state["firsts"] = state.get("firsts") or [], []
+    return [{"vehicle": f["vehicle"], "type": "first_seen", "dir": f["dir"], "sid": f["sid"], "stop": names.get(f["sid"]),
+             "pos": f["pos"], "eta_s": f["eta"], "seen_at": f["at"]} for f in firsts]  # fmt: skip
 
 
 def all_trips(state: dict[str, Any]) -> list[dict[str, Any]]:

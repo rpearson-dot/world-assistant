@@ -4,8 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- Bus tracker records where along the route each run first appears in the TfL feed (anomaly type `first_seen`: stop, position, seconds ahead). It is bookkeeping, left out of `/anomalies` unless asked for with `?type=first_seen`.
+
 ### Fixed
-- Bus tracker: each bus now claims the nearest scheduled departure that no earlier bus has claimed, so two bunched buses no longer count as one and leave a neighbouring departure marked as missed. Re-running the backfill corrects the slot of buses already on record.
+- Bus tracker: each bus now claims the nearest scheduled departure that no earlier bus has claimed, so two bunched buses no longer count as one and leave a neighbouring departure marked as missed. Buses are also matched to departures in order (they do not overtake, so a late bus cannot take a slot ahead of the bus in front). Re-running the backfill corrects the slot of buses already on record.
 
 ## [0.7.5] - 2026-10-21
 
