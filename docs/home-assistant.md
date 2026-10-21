@@ -78,7 +78,7 @@ list is in its attributes), and the events dashboard's "Other places" card lists
 `lat: "{{ state_attr('zone.work', 'latitude') }}"`. `rest_command.wa_remove_location` (with `name`)
 takes one away.
 
-Each place costs one search on each events source every three hours, so the number is capped and places
+Each place costs one search on each events source every twelve hours, so the number is capped and places
 time out:
 
 - At most `WA_HA_LOCATIONS_MAX` (8) places. Adding a ninth is refused with a message listing the others;
@@ -134,7 +134,7 @@ use any saved place. Pollen is answered from the stored grid, so the pollen prov
 | `WA_HA_LOCATIONS_MAX` | `8` | Most extra places for events (below). |
 | `WA_HA_LOCATION_TTL_DAYS` | `30` | A place not renewed for this long is dropped. |
 | `WA_HA_LOCATION_PRESSURE_TTL_DAYS` | `7` | The shorter time-out once 75% of the cap is used. |
-| `WA_HA_LOCATION_REFRESH_H` | `3` | How often each place's events are searched again. |
+| `WA_HA_LOCATION_REFRESH_H` | `12` | How often each place's events are searched again. |
 | `WA_HA_LOCATION_RADIUS_KM`, `WA_HA_LOCATION_DAYS` | `8`, `7` | How far and how many days, for extra places. |
 | `WA_HA_API_URL` | `http://api:8000` | Where the worker finds the API. |
 | `WA_MQTT_TOPIC_PREFIX` | `world_assistant` | State topics are `<prefix>/<device>/<sensor>`. |

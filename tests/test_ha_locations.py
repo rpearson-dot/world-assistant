@@ -26,7 +26,7 @@ def _settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("WA_HA_LOCATIONS_MAX", "8")
     monkeypatch.setenv("WA_HA_LOCATION_TTL_DAYS", "30")
     monkeypatch.setenv("WA_HA_LOCATION_PRESSURE_TTL_DAYS", "7")
-    monkeypatch.setenv("WA_HA_LOCATION_REFRESH_H", "3")
+    monkeypatch.setenv("WA_HA_LOCATION_REFRESH_H", "12")
     monkeypatch.setenv("SKIDDLE_API_KEY", "k")
     monkeypatch.setenv("TICKETMASTER_API_KEY", "k")
     get_settings.cache_clear()
@@ -43,7 +43,7 @@ def test_the_timeout_shortens_when_the_cap_is_three_quarters_used() -> None:
 
 def test_the_cost_in_provider_calls_is_stated() -> None:
     lim = ha_locations.limits(4)
-    assert lim["max"] == 8 and lim["provider_calls_per_day"] == 4 * 8 * 2  # places x searches a day x sources
+    assert lim["max"] == 8 and lim["provider_calls_per_day"] == 4 * 2 * 2  # places x searches a day x sources
 
 
 def test_events_device_has_a_sensor_per_place_plus_a_summary() -> None:
