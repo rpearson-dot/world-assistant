@@ -1,0 +1,156 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import Any
+
+import pytest
+
+from app.integrations.bus import events, trips
+
+OUT = ["s0", "s1", "s2", "s3", "s4", "s5"]  # outbound: s2 = boarding stop, s4 = target stop
+IN = ["i0", "i1", "i2"]  # inbound; i1 is the return-side stop by the target
+POS = {sid: ("outbound", i) for i, sid in enumerate(OUT)} | {
+    sid: ("inbound", i) for i, sid in enumerate(IN)
+}
+CFG = {"board": "s2", "alight": "s4", "alight_return": "i1", "before_alight": "s3"}
+T0 = datetime(2026, 10, 20, 6, 0, tzinfo=UTC).timestamp()  # arbitrary base time
+
+
+def iso(ts: float) -> str:
+    return datetime.fromtimestamp(ts, UTC).isoformat().replace("+00:00", "Z")
+
+
+def pred(vehicle: str, sid: str, expected: float, now: float) -> dict[str, Any]:
+    return {"vehicleId": vehicle, "naptanId": sid, "timeToStation": max(int(expected - now), 0),
+            "expectedArrival": iso(expected)}  # fmt: skip
+
+
+def run_bus(state: dict[str, Any], vehicle: str, arrivals: dict[str, float], start: float, end: float,
+            step: float = 30.0, anoms: list[dict[str, Any]] | None = None) -> None:  # fmt: skip
+    """Simulate polls: each poll the bus reports a prediction for every stop it has yet to reach
+    (TfL's behaviour: one row per upcoming stop), the same way the real feed does."""
+    now = start
+    while now <= end:
+        rows = [pred(vehicle, sid, t, now) for sid, t in arrivals.items() if t > now - 5]
+        trips.update_trips(state, rows, POS.get, now)
+        if anoms is not None:
+            anoms += trips.detect_anomalies(state, lambda sid: POS[sid][0])
+        now += step
+
+
+def test_soonest_prediction_only_and_stops_reached() -> None:
+    state = trips.new_state()
+    arrivals = {"s0": T0 + 60, "s1": T0 + 300, "s2": T0 + 600, "s3": T0 + 900, "s4": T0 + 1200}
+    anoms: list[dict[str, Any]] = []
+    run_bus(state, "V1", arrivals, T0, T0 + 1300, anoms=anoms)
+    trip = state["trips"]["V1"]
+    assert [s["sid"] for s in trip["stops"]] == [
+        "s0",
+        "s1",
+        "s2",
+        "s3",
+    ]  # s4 still pending/vanishing
+    assert trip["stops"][0]["pos"] == 0
+    # one bus, many rows per poll, but only one trip and no spurious reverse moves
+    assert len(state["trips"]) == 1
+    assert [a["type"] for a in anoms] == ["trip_start"]  # evaluated once, no reverse movements
+
+
+def test_vanished_close_prediction_counts_and_stale_trip_finishes() -> None:
+    state = trips.new_state()
+    run_bus(state, "V1", {"s3": T0 + 100, "s4": T0 + 400}, T0, T0 + 400)
+    # bus disappears from the feed; the last prediction was < 120 s away
+    for k in range(1, 4):
+        trips.update_trips(state, [], POS.get, T0 + 400 + k * 30)
+    assert [s["sid"] for s in state["trips"]["V1"]["stops"]][-1] == "s4"
+    done = trips.update_trips(state, [], POS.get, T0 + 400 + 400)
+    assert [t["vehicle"] for t in done] == ["V1"] and "V1" not in state["trips"]
+    assert state["recent"][-1]["vehicle"] == "V1"
+
+
+def test_direction_change_starts_a_new_trip() -> None:
+    state = trips.new_state()
+    run_bus(state, "V1", {"s4": T0 + 100, "s5": T0 + 200}, T0, T0 + 150)
+    run_bus(state, "V1", {"i1": T0 + 400, "i2": T0 + 500}, T0 + 330, T0 + 420)
+    assert state["trips"]["V1"]["dir"] == "inbound"
+    assert state["recent"][-1]["dir"] == "outbound"
+
+
+def test_unknown_stops_are_ignored() -> None:
+    state = trips.new_state()
+    trips.update_trips(state, [pred("V9", "zzz", T0 + 60, T0)], POS.get, T0)
+    assert state["trips"] == {}
+
+
+def test_segment_observations_only_when_confirmed() -> None:
+    state = trips.new_state()
+    run_bus(
+        state,
+        "V1",
+        {"s1": T0 + 100, "s2": T0 + 400, "s3": T0 + 700, "s4": T0 + 1000},
+        T0,
+        T0 + 1100,
+    )
+    pairs = [("s1", "s2"), ("s2", "s3"), ("s3", "s4")]
+    obs = events.segment_observations(state, T0 + 800, pairs)
+    assert [(o["from"], o["to"], o["seconds"]) for o in obs] == [
+        ("s1", "s2", 300),
+        ("s2", "s3", 300),
+    ]
+    # s4's time is still in the future at T0+800, so the last leg isn't confirmed yet
+    assert len(events.segment_observations(state, T0 + 1500, pairs)) == 3
+
+
+def test_target_hit_before_deadline_and_not_after() -> None:
+    state = trips.new_state()
+    run_bus(state, "V1", {"s2": T0 + 600, "s3": T0 + 1000, "s4": T0 + 1300}, T0, T0 + 1400)
+    now = T0 + 1500
+    hits = events.target_hits(state, now, CFG, earliest_ts=T0, deadline_ts=T0 + 1400)
+    assert [(h["vehicle"], h["via_return"]) for h in hits] == [("V1", False)]
+    assert events.target_hits(state, now, CFG, T0, T0 + 1400) == []  # reported once
+    late = trips.new_state()
+    run_bus(late, "V2", {"s2": T0 + 600, "s3": T0 + 1000, "s4": T0 + 1300}, T0, T0 + 1400)
+    assert events.target_hits(late, now, CFG, T0, T0 + 1200) == []  # arrived after the deadline
+    early = trips.new_state()
+    run_bus(early, "V3", {"s2": T0 + 600, "s3": T0 + 1000, "s4": T0 + 1300}, T0, T0 + 1400)
+    assert (
+        events.target_hits(early, now, CFG, T0 + 700, T0 + 1400) == []
+    )  # left before the earliest time
+
+
+def test_bus_that_terminates_short_counts_via_return_stop() -> None:
+    state = trips.new_state()
+    run_bus(state, "V1", {"s2": T0 + 600, "s3": T0 + 900}, T0, T0 + 1000)
+    run_bus(state, "V1", {"i1": T0 + 1100, "i2": T0 + 1500}, T0 + 1000, T0 + 1200)
+    hits = events.target_hits(state, T0 + 1300, CFG, T0, T0 + 1400)
+    assert [(h["vehicle"], h["via_return"]) for h in hits] == [("V1", True)]
+
+
+def test_slots_matching_and_reliability() -> None:
+    times = ["06:50", "07:11", "07:23", "07:46", "08:00", "08:10"]
+    # with a 08:10 deadline and a 12 minute minimum journey, only departures up to 07:58 can make it
+    slots = events.slots_in_window(times, "07:00", "08:10", 12)
+    assert slots == ["07:11", "07:23", "07:46"]
+    assert events.nearest_slot(slots, "07:20") == "07:23"
+    assert events.nearest_slot(slots, "09:30") is None
+    days = [
+        {"date": "2026-10-19", "slots": slots, "hit_slots": ["07:11", "07:23"]},
+        {"date": "2026-10-20", "slots": slots, "hit_slots": ["07:11"]},
+    ]
+    # 07:30 today: 07:23 isn't a miss yet (needs 30 min), 07:46 certainly isn't
+    rel = {r["slot"]: r for r in events.slot_reliability(days, "2026-10-20", 7 * 60 + 30)}
+    assert rel["07:23"]["days_scheduled"] == 1 and rel["07:23"]["miss_rate"] == 0.0
+    assert rel["07:46"]["days_scheduled"] == 1 and rel["07:46"]["miss_rate"] == 1.0
+    rel = {r["slot"]: r for r in events.slot_reliability(days, "2026-10-20", 8 * 60)}
+    assert rel["07:23"]["days_scheduled"] == 2 and rel["07:23"]["miss_rate"] == 0.5
+
+
+def test_condition_summary() -> None:
+    now = 10_000.0
+    obs = [{"observed_at": now - 7200, "seconds": 600}, {"observed_at": now - 600, "seconds": 480}]
+    c = events.condition_summary(obs, now)
+    assert c["day_avg_min"] == 9.0 and c["recent_avg_min"] == 8.0 and c["delta_min"] == -1.0
+    assert events.condition_summary([], now)["delta_min"] is None
+    assert events.to_minutes("08:10") == 490
+    with pytest.raises(ValueError):
+        events.to_minutes("bad")

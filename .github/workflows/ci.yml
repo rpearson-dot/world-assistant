@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:   # the automatic-update workflow starts CI on main after it merges
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wa
+          POSTGRES_PASSWORD: wa
+          POSTGRES_DB: wa_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U wa" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      WA_TEST_DATABASE_URL: postgresql+psycopg://wa:wa@localhost:5432/wa_test
+      WA_TEST_REDIS_URL: redis://localhost:6379/15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install locked dev dependencies
+        run: pip install --require-hashes --no-deps -r requirements-dev.lock
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: python -m pytest -q
+
+  image:
+    # Proves the image builds (no push). Releases are built by release.yml.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: false
+          load: true
+          tags: world-assistant:ci
+      - name: Image starts and reports its version
+        run: |
+          docker run --rm --entrypoint python world-assistant:ci -c "import app.main, app.worker; print('imports ok')"
+          docker run --rm --entrypoint id world-assistant:ci -u | grep -qx 10001
+
+  stack:
+    # The whole thing, as it runs on the NAS: real compose stack on PostGIS, migrations, every page and
+    # endpoint, a backup round trip, and the pages in a real browser. Pollers are off (no internet APIs).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install the browser for the page check
+        run: |
+          pip install "playwright==1.49.1"
+          python -m playwright install --with-deps chromium
+      - name: Whole-stack check
+        run: bash scripts/ci-stack.sh
+
+  secrets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high

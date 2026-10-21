@@ -1,0 +1,330 @@
+"""Places and trips API: named locations and the journeys between them."""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+
+from app.auth import require_token
+from app.geo import PostcodeError, lookup_postcode
+from app.pagestyle import themed
+
+router = APIRouter(prefix="/v1", tags=["places"], dependencies=[Depends(require_token)])
+
+_SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}$")
+KINDS = {"home", "work", "other"}
+
+
+def check_slug(value: str) -> str:
+    if not _SLUG.match(value):
+        raise HTTPException(422, "id must be lower-case letters, digits and hyphens")
+    return value
+
+
+class PlaceIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    kind: str = "other"
+    postcode: str | None = None
+    lat: float | None = Field(default=None, ge=49.5, le=61.0)  # UK and its waters
+    lon: float | None = Field(default=None, ge=-8.7, le=2.0)
+
+    @model_validator(mode="after")
+    def _needs_location(self) -> PlaceIn:
+        if self.kind not in KINDS:
+            raise ValueError(f"kind must be one of {sorted(KINDS)}")
+        if self.postcode is None and (self.lat is None or self.lon is None):
+            raise ValueError("give a postcode, or both lat and lon")
+        return self
+
+
+class TripIn(BaseModel):
+    from_place: str
+    to_place: str
+    name: str | None = Field(default=None, max_length=120)
+    enabled: bool = True
+
+
+def _rows(result: Any) -> list[dict[str, Any]]:
+    return [dict(r._mapping) for r in result]
+
+
+async def place_or_default(request: Request, place: str | None) -> str:
+    """The given place id, or the default place when none is given.
+
+    The default is the place of kind "home", else the one with the id "home", else the first by name.
+    """
+    if place:
+        return place
+    async with request.app.state.engine.connect() as conn:
+        row = (
+            await conn.execute(
+                text("SELECT id FROM place ORDER BY (kind = 'home') DESC, (id = 'home') DESC, name LIMIT 1")
+            )
+        ).first()
+    if row is None:
+        raise HTTPException(404, "no places saved yet: add your home on /places")
+    return str(row[0])
+
+
+@router.get("/places")
+async def list_places(request: Request) -> list[dict[str, Any]]:
+    async with request.app.state.engine.connect() as conn:
+        return _rows(
+            await conn.execute(
+                text("SELECT id, name, kind, postcode, lat, lon FROM place ORDER BY name")
+            )
+        )
+
+
+@router.put("/places/{place_id}")
+async def put_place(place_id: str, body: PlaceIn, request: Request) -> dict[str, Any]:
+    check_slug(place_id)
+    postcode, lat, lon = body.postcode, body.lat, body.lon
+    if postcode:
+        try:
+            located = await lookup_postcode(postcode)
+        except PostcodeError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        postcode = located.postcode
+        if lat is None or lon is None:  # explicit coordinates win (a drag-and-drop pin)
+            lat, lon = located.lat, located.lon
+    async with request.app.state.engine.begin() as conn:
+        await conn.execute(
+            text(
+                """
+                INSERT INTO place (id, name, kind, postcode, lat, lon)
+                VALUES (:id, :name, :kind, :postcode, :lat, :lon)
+                ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, kind = EXCLUDED.kind,
+                  postcode = EXCLUDED.postcode, lat = EXCLUDED.lat, lon = EXCLUDED.lon,
+                  updated_at = now()
+                """
+            ),
+            {"id": place_id, "name": body.name, "kind": body.kind,
+             "postcode": postcode, "lat": lat, "lon": lon},
+        )  # fmt: skip
+    return {"id": place_id, "name": body.name, "kind": body.kind,
+            "postcode": postcode, "lat": lat, "lon": lon}  # fmt: skip
+
+
+@router.delete("/places/{place_id}", status_code=204)
+async def delete_place(place_id: str, request: Request) -> None:
+    async with request.app.state.engine.begin() as conn:
+        result = await conn.execute(text("DELETE FROM place WHERE id = :id"), {"id": place_id})
+    if not result.rowcount:
+        raise HTTPException(404, "no such place")
+
+
+@router.get("/trips")
+async def list_trips(request: Request) -> list[dict[str, Any]]:
+    async with request.app.state.engine.connect() as conn:
+        return _rows(
+            await conn.execute(
+                text(
+                    """
+                    SELECT id, name, from_place, to_place, enabled, corridor_id, distance_km,
+                           duration_s, roads, route_built_at
+                    FROM trip ORDER BY name
+                    """
+                )
+            )
+        )
+
+
+@router.put("/trips/{trip_id}")
+async def put_trip(trip_id: str, body: TripIn, request: Request) -> dict[str, Any]:
+    check_slug(trip_id)
+    if body.from_place == body.to_place:
+        raise HTTPException(422, "a trip needs two different places")
+    name = body.name or f"{body.from_place} to {body.to_place}"
+    try:
+        async with request.app.state.engine.begin() as conn:
+            await conn.execute(
+                text(
+                    """
+                    INSERT INTO trip (id, name, from_place, to_place, enabled)
+                    VALUES (:id, :name, :f, :t, :enabled)
+                    ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name,
+                      from_place = EXCLUDED.from_place, to_place = EXCLUDED.to_place,
+                      enabled = EXCLUDED.enabled
+                    """
+                ),
+                {"id": trip_id, "name": name, "f": body.from_place, "t": body.to_place,
+                 "enabled": body.enabled},
+            )  # fmt: skip
+    except IntegrityError as exc:
+        raise HTTPException(
+            422, "both places must exist, and each pair of places can have one trip"
+        ) from exc
+    return {"id": trip_id, "name": name, "from_place": body.from_place,
+            "to_place": body.to_place, "enabled": body.enabled}  # fmt: skip
+
+
+@router.post("/trips/{trip_id}/route")
+async def build_route(trip_id: str, request: Request) -> dict[str, Any]:
+    """Route the trip with Valhalla and (re)build its corridor."""
+    from app.config import get_settings
+    from app.routing import RoutingError, ValhallaClient, build_trips
+
+    client = ValhallaClient(get_settings().valhalla_url)
+    try:
+        return (await build_trips(request.app.state.engine, client, [trip_id]))[0]
+    except RoutingError as exc:
+        status = 404 if str(exc).startswith("no trip") else 502
+        raise HTTPException(status, str(exc)) from exc
+    finally:
+        await client.aclose()
+
+
+@router.delete("/trips/{trip_id}", status_code=204)
+async def delete_trip(trip_id: str, request: Request) -> None:
+    async with request.app.state.engine.begin() as conn:
+        result = await conn.execute(text("DELETE FROM trip WHERE id = :id"), {"id": trip_id})
+    if not result.rowcount:
+        raise HTTPException(404, "no such trip")
+
+
+PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>World Assistant places</title>
+<style>
+/*BASE_CSS*/</style></head><body><main>
+<!--NAV-->
+<h1>Places, trips and vehicles</h1>
+<form id="auth" class="bar"><input id="t" type="password" placeholder="API token" autocomplete="current-password">
+<button class="primary">Load</button></form>
+<p id="msg" class="err"></p>
+
+<div class="card"><h2>Places</h2>
+<table id="places"><tbody></tbody></table>
+<form id="addplace" class="row" style="margin-top:10px">
+  <input id="pname" placeholder="Name (e.g. Brighton)" required>
+  <input id="ppc" placeholder="Postcode" required>
+  <select id="pkind"><option>other</option><option>home</option><option>work</option></select>
+  <button>Add or update place</button>
+</form></div>
+
+<div class="card"><h2>Trips</h2>
+<table id="trips"><tbody></tbody></table>
+<form id="addtrip" class="row" style="margin-top:10px">
+  <select id="tfrom"></select> <span class="muted">to</span> <select id="tto"></select>
+  <button>Add trip</button>
+</form></div>
+
+<div class="card"><h2>Vehicles</h2>
+<table id="vehicles"><tbody></tbody></table>
+<form id="addveh" class="row" style="margin-top:10px">
+  <input id="vname" placeholder="Name, e.g. Toyota Estima" required>
+  <select id="vkind"><option value="fuel">Petrol or diesel</option><option value="ev">Electric</option></select>
+  <span id="vfuelf" class="row"><input id="vmpg" type="number" step="0.1" placeholder="Real-world mpg (UK)">
+    <select id="vfuel"><option>E10</option><option>E5</option><option>B7_STANDARD</option></select></span>
+  <span id="vevf" class="row" hidden><input id="vbat" type="number" step="0.1" placeholder="Battery kWh">
+    <input id="vsoh" type="number" step="1" placeholder="Health %" value="100">
+    <input id="vmpk" type="number" step="0.1" placeholder="Miles per kWh">
+    <input id="vhome" type="number" step="0.1" placeholder="Home pence per kWh"></span>
+  <button>Add vehicle</button>
+</form></div>
+
+<script>
+const tok = document.getElementById('t'), msg = document.getElementById('msg');
+try { tok.value = sessionStorage.getItem('wa_token') || ''; } catch (e) {}
+const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+async function api(method, path, body) {
+  const r = await fetch(path, { method, headers: { Authorization: 'Bearer ' + tok.value,
+    'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) {
+    let d = r.status; try { d = (await r.json()).detail; } catch (e) {}
+    throw new Error(typeof d === 'string' ? d : JSON.stringify(d));
+  }
+  return r.status === 204 ? null : r.json();
+}
+function cell(tr, text) { const td = document.createElement('td'); td.textContent = text; tr.appendChild(td); }
+function delBtn(tr, path) {
+  const td = document.createElement('td'), b = document.createElement('button');
+  b.textContent = 'Delete'; b.onclick = () => run(() => api('DELETE', path)); td.appendChild(b); tr.appendChild(td);
+}
+function routeBtn(tr, t) {
+  const td = document.createElement('td'), b = document.createElement('button');
+  b.textContent = t.corridor_id ? 'Rebuild route' : 'Build route';
+  b.onclick = () => run(() => api('POST', '/v1/trips/' + t.id + '/route')); td.appendChild(b); tr.appendChild(td);
+}
+async function load() {
+  msg.textContent = '';
+  try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
+  const [places, trips, vehicles] = await Promise.all([api('GET', '/v1/places'), api('GET', '/v1/trips'), api('GET', '/v1/vehicles')]);
+  const pb = document.querySelector('#places tbody'); pb.replaceChildren();
+  for (const p of places) {
+    const tr = document.createElement('tr');
+    cell(tr, p.name); cell(tr, p.kind); cell(tr, p.postcode || ''); delBtn(tr, '/v1/places/' + p.id);
+    pb.appendChild(tr);
+  }
+  const tb = document.querySelector('#trips tbody'); tb.replaceChildren();
+  for (const t of trips) {
+    const tr = document.createElement('tr');
+    cell(tr, t.name);
+    cell(tr, t.corridor_id ? (t.distance_km.toFixed(0) + ' km, ' + Math.round(t.duration_s / 60) + ' min, ' + (t.roads || []).join(' ')) : 'route pending');
+    routeBtn(tr, t); delBtn(tr, '/v1/trips/' + t.id);
+    tb.appendChild(tr);
+  }
+  const vb = document.querySelector('#vehicles tbody'); vb.replaceChildren();
+  for (const v of vehicles) {
+    const tr = document.createElement('tr');
+    cell(tr, v.name);
+    cell(tr, v.kind === 'ev' ? (v.battery_kwh + ' kWh at ' + v.soh_percent + '%, ' + v.miles_per_kwh + ' mi/kWh')
+                              : (v.mpg + ' mpg, ' + v.fuel));
+    delBtn(tr, '/v1/vehicles/' + v.id); vb.appendChild(tr);
+  }
+  for (const id of ['tfrom', 'tto']) {
+    const sel = document.getElementById(id); sel.replaceChildren();
+    for (const p of places) { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; sel.appendChild(o); }
+  }
+}
+async function run(fn) {
+  msg.textContent = '';
+  try { await fn(); await load(); } catch (e) { msg.textContent = e.message; }
+}
+document.getElementById('auth').onsubmit = e => { e.preventDefault(); run(() => Promise.resolve()); };
+document.getElementById('addplace').onsubmit = e => {
+  e.preventDefault();
+  const name = document.getElementById('pname').value;
+  run(async () => {
+    await api('PUT', '/v1/places/' + slug(name), { name, postcode: document.getElementById('ppc').value,
+      kind: document.getElementById('pkind').value });
+    e.target.reset();
+  });
+};
+document.getElementById('addtrip').onsubmit = e => {
+  e.preventDefault();
+  const f = document.getElementById('tfrom').value, t = document.getElementById('tto').value;
+  run(() => api('PUT', '/v1/trips/' + f + '-to-' + t, { from_place: f, to_place: t }));
+};
+const num = id => { const v = document.getElementById(id).value; return v === '' ? null : Number(v); };
+document.getElementById('vkind').onchange = e => {
+  document.getElementById('vfuelf').hidden = e.target.value === 'ev';
+  document.getElementById('vevf').hidden = e.target.value !== 'ev';
+};
+document.getElementById('addveh').onsubmit = e => {
+  e.preventDefault();
+  const name = document.getElementById('vname').value, kind = document.getElementById('vkind').value;
+  const body = kind === 'ev'
+    ? { name, kind, battery_kwh: num('vbat'), soh_percent: num('vsoh') || 100, miles_per_kwh: num('vmpk'),
+        home_pence_per_kwh: num('vhome') }
+    : { name, kind, mpg: num('vmpg'), fuel: document.getElementById('vfuel').value };
+  run(async () => { await api('PUT', '/v1/vehicles/' + slug(name), body); e.target.reset(); });
+};
+if (tok.value) run(() => Promise.resolve());
+</script></main></body></html>"""
+
+page_router = APIRouter()
+
+
+@page_router.get("/places", response_class=HTMLResponse, include_in_schema=False)
+async def places_page() -> str:
+    """The page holds no data itself; it asks for the token and calls /v1/places."""
+    return themed(PAGE, "places")

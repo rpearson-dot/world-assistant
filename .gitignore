@@ -1,0 +1,23 @@
+# Secrets and local config
+secrets/
+.env
+*.pem
+*.key
+
+# Third-party feed data captured while developing. Never commit: licence terms
+# ask that the raw feeds are not redistributed.
+samples/
+captures/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Build outputs
+sbom/

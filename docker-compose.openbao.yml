@@ -1,0 +1,52 @@
+# Optional: run OpenBao (the open-source Vault fork) next to the app as its key vault.
+# Set up and manage it with scripts/openbao.sh; see docs/openbao.md.
+#
+# Data lives in ${WA_DATA_DIR}/openbao/file. It is encrypted, but copy it somewhere safe too, and keep
+# the unseal key and root token OFF this server (a password manager is ideal).
+services:
+  openbao:
+    image: openbao/openbao:${OPENBAO_VERSION:-2.6.4}
+    restart: unless-stopped
+    # Skip the image's start-up script: it tries to chown the data folders and fails on Unraid shares.
+    # Run as Unraid's "nobody:users" (99:100) instead; scripts/openbao.sh gives that user the data folder.
+    user: "${OPENBAO_UID:-99}:${OPENBAO_GID:-100}"
+    entrypoint: ["bao"]
+    command: ["server", "-config=/openbao/config"]
+    environment:
+      BAO_ADDR: http://127.0.0.1:8200
+      TZ: ${TZ:-Europe/London}
+    volumes:
+      - ./deploy/openbao:/openbao/config:ro
+      - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/openbao/file:/openbao/file
+    networks: [internal]
+    healthcheck:
+      # "bao status" exits 0 when unsealed and 2 when sealed; only 1 (cannot connect) is a failure.
+      test: ["CMD-SHELL", "bao status >/dev/null 2>&1; [ $$? -ne 1 ]"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Unseals OpenBao by itself after a restart, using the key in secrets/openbao_unseal_key.txt.
+  # Does nothing while that file is empty. Turn it on with: bash scripts/openbao.sh store-key
+  openbao-unseal:
+    image: openbao/openbao:${OPENBAO_VERSION:-2.6.4}
+    restart: unless-stopped
+    user: "${OPENBAO_UID:-99}:${OPENBAO_GID:-100}"
+    depends_on: [openbao]
+    environment:
+      BAO_ADDR: http://openbao:8200
+    volumes:
+      - ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/openbao_unseal_key.txt:/run/unseal_key:ro
+    networks: [internal]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          k=$$(tr -d ' \r\n' < /run/unseal_key 2>/dev/null)
+          if [ -n "$$k" ]; then
+            bao status >/dev/null 2>&1
+            [ $$? -eq 2 ] && bao operator unseal "$$k" >/dev/null 2>&1
+          fi
+          sleep 10
+        done

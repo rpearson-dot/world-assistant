@@ -1,0 +1,24 @@
+# Extra container hardening for the application services. Layer it on top of the base file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.hardened.yml up -d
+#
+# The application only needs to write to /tmp, so the root filesystem is read-only, all
+# Linux capabilities are dropped and privilege escalation is blocked. (The Postgres
+# container is left alone: it needs to write its data directory and change user at start.)
+
+x-hardened: &hardened
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,noexec,nosuid,nodev
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 256
+
+services:
+  migrate:
+    <<: *hardened
+  api:
+    <<: *hardened
+  worker:
+    <<: *hardened

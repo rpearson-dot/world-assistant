@@ -1,0 +1,33 @@
+name: CodeQL
+
+# Code scanning results can only be uploaded if code scanning is available for the repository:
+# always on a public repo, but on a private repo it needs GitHub Advanced Security. So this job
+# is switched off until you turn it on: create a repository variable ENABLE_CODEQL = true
+# (Settings > Secrets and variables > Actions > Variables) after enabling code scanning.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    if: vars.ENABLE_CODEQL == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@48870fdd6b42ee6474ec4207209ff87609271a5e # v4.39.0
+        with:
+          languages: python
+      - uses: github/codeql-action/analyze@48870fdd6b42ee6474ec4207209ff87609271a5e # v4.39.0

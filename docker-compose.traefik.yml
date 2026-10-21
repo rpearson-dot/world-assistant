@@ -1,0 +1,28 @@
+# Optional override: puts the API behind Traefik.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+#
+# Prerequisite: Traefik must be attached to a user-defined Docker network (not
+# the default "bridge"), because Traefik can only reach containers that share a
+# network with it. INFRA_NETWORK in .env names that network. TRAEFIK_ENTRYPOINT
+# must match an entrypoint name in your Traefik static config.
+#
+# Your Traefik publishes HTTPS on host port 44301, so the URL will be
+#   https://<WA_HOST>:44301
+# with WA_HOST resolving to the Unraid IP (a Pi-hole local DNS record works).
+
+services:
+  api:
+    networks: [internal, infra]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${INFRA_NETWORK:-proxynet}"
+      - "traefik.http.routers.world-assistant.rule=Host(`${WA_HOST:-world-assistant.lan}`)"
+      - "traefik.http.routers.world-assistant.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.world-assistant.tls=true"
+      - "traefik.http.services.world-assistant.loadbalancer.server.port=8000"
+
+networks:
+  infra:
+    external: true
+    name: ${INFRA_NETWORK:-proxynet}

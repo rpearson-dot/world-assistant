@@ -1,0 +1,226 @@
+"""Derived facts from tracked trips: leg times, and which buses made the target-stop run.
+
+Pure functions over the plain-dict state from trips.py.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Sequence
+from datetime import tzinfo
+from typing import Any
+
+from app.integrations.bus.trips import all_trips
+
+MATCH_TOLERANCE_MIN = 20  # a bus matches a timetable slot if it left within this of it
+TERMINAL_MAX_GAP_S = 20 * 60  # the return-side stop only counts this soon after the stop before
+RESOLVE_AFTER_MIN = 30  # a slot with no bus is a miss once this long after its scheduled time
+
+
+def _by_sid(trip: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {s["sid"]: s for s in trip["stops"]}
+
+
+def _confirmed(stops: dict[str, dict[str, Any]], sid: str, now: float) -> float | None:
+    """A stop time only counts as confirmed once its predicted time has passed."""
+    s = stops.get(sid)
+    ts = s.get("expected") if s else None
+    return ts if ts is not None and ts < now else None
+
+
+def segment_observations(
+    state: dict[str, Any], now: float, pairs: Sequence[tuple[str, str]]
+) -> list[dict[str, Any]]:
+    """Confirmed travel time between consecutive tracked stops, for every trip seen. Safe to
+    call every poll: the caller stores them with a uniqueness key, so repeats are ignored."""
+    out = []
+    for trip in all_trips(state):
+        stops = _by_sid(trip)
+        for a, b in pairs:
+            t0, t1 = _confirmed(stops, a, now), _confirmed(stops, b, now)
+            if t0 is None or t1 is None:
+                continue
+            seconds = t1 - t0
+            if 0 < seconds <= 3600:  # guard against contaminated data
+                out.append({"vehicle": trip["vehicle"], "from": a, "to": b,
+                            "observed_at": t1, "seconds": seconds})  # fmt: skip
+    return out
+
+
+def target_hits(
+    state: dict[str, Any], now: float, cfg: dict[str, Any], earliest_ts: float, deadline_ts: float
+) -> list[dict[str, Any]]:
+    """Buses that left the boarding stop after `earliest_ts` and were CONFIRMED at the target
+    stop before `deadline_ts`. Some buses terminate short of the target and stop on the
+    return side; those count only if the same vehicle was at the stop before it just beforehand.
+    Returns hits not yet reported today (the state remembers which)."""
+    board, alight = cfg["board"], cfg["alight"]
+    alight_return, before = cfg.get("alight_return"), cfg.get("before_alight")
+    reported: set[str] = set(state.setdefault("reported", []))
+    terminal: dict[str, Any] = state["terminal"]
+    hits: list[dict[str, Any]] = []
+
+    def qualifies(board_ts: float | None, arrive_ts: float | None) -> bool:
+        return (
+            board_ts is not None
+            and arrive_ts is not None
+            and arrive_ts < now
+            and board_ts >= earliest_ts
+            and arrive_ts < deadline_ts
+        )
+
+    trips = all_trips(state)
+    for trip in trips:
+        if trip["dir"] != cfg.get("direction", "outbound"):
+            continue
+        vehicle, stops = trip["vehicle"], _by_sid(trip)
+        board_ts = (stops.get(board) or {}).get("expected")
+        if board_ts is None:
+            continue
+        if before and (stops.get(before) or {}).get("expected") is not None:
+            terminal[vehicle] = {"board_ts": board_ts, "before_ts": stops[before]["expected"]}
+        key = f"{vehicle}@{int(board_ts)}"
+        if key in reported:
+            continue
+        arrive_ts = (stops.get(alight) or {}).get("expected")
+        if qualifies(board_ts, arrive_ts):
+            hits.append({"vehicle": vehicle, "board_ts": board_ts, "arrive_ts": arrive_ts,
+                         "via_return": False})  # fmt: skip
+            reported.add(key)
+            terminal.pop(vehicle, None)
+
+    if alight_return:
+        for trip in trips:
+            if trip["dir"] == cfg.get("direction", "outbound"):
+                continue
+            vehicle = trip["vehicle"]
+            cand = terminal.get(vehicle)
+            return_ts = (_by_sid(trip).get(alight_return) or {}).get("expected")
+            if cand is None or return_ts is None:
+                continue
+            key = f"{vehicle}@{int(cand['board_ts'])}"
+            gap = return_ts - cand["before_ts"]
+            if key in reported or gap < 0 or gap > TERMINAL_MAX_GAP_S:
+                continue
+            if qualifies(cand["board_ts"], return_ts):
+                hits.append({"vehicle": vehicle, "board_ts": cand["board_ts"],
+                             "arrive_ts": return_ts, "via_return": True})  # fmt: skip
+                reported.add(key)
+                del terminal[vehicle]
+
+    for vehicle, cand in list(terminal.items()):  # too old to ever match
+        if now - cand["before_ts"] > 3600:
+            del terminal[vehicle]
+    state["reported"] = sorted(reported)
+    return hits
+
+
+def to_minutes(hhmm: str) -> int:
+    h, m = hhmm.split(":")
+    return int(h) * 60 + int(m)
+
+
+def nearest_slot(slots: Sequence[str], hhmm: str) -> str | None:
+    best, best_diff = None, None
+    target = to_minutes(hhmm)
+    for s in slots:
+        diff = abs(to_minutes(s) - target)
+        if best_diff is None or diff < best_diff:
+            best, best_diff = s, diff
+    return best if best_diff is not None and best_diff <= MATCH_TOLERANCE_MIN else None
+
+
+def slots_in_window(
+    times: Sequence[str], earliest: str, deadline: str, min_travel_min: int
+) -> list[str]:
+    """Scheduled departures worth tracking: from `earliest`, and early enough that the
+    journey could still end before the deadline."""
+    lo, hi = to_minutes(earliest), to_minutes(deadline) - min_travel_min
+    return [t for t in times if lo <= to_minutes(t) <= hi]
+
+
+def slot_reliability(
+    days: Sequence[dict[str, Any]], today: str, now_minutes: int
+) -> list[dict[str, Any]]:
+    """Per scheduled slot over the stored days: how often a bus actually made it. Slots on
+    today's unfinished record count only once enough time has passed to be a real miss."""
+    stats: dict[str, dict[str, int]] = {}
+    for day in days:
+        hit_slots = set(day.get("hit_slots", []))
+        for slot in day.get("slots", []):
+            if (
+                day["date"] == today
+                and slot not in hit_slots
+                and now_minutes <= to_minutes(slot) + RESOLVE_AFTER_MIN
+            ):
+                continue  # still pending today: not a miss yet
+            s = stats.setdefault(slot, {"scheduled": 0, "hit": 0})
+            s["scheduled"] += 1
+            s["hit"] += slot in hit_slots
+    return [
+        {"slot": slot, "days_scheduled": s["scheduled"], "days_hit": s["hit"],
+         "miss_rate": round(1 - s["hit"] / s["scheduled"], 2) if s["scheduled"] else None}
+        for slot, s in sorted(stats.items())
+    ]  # fmt: skip
+
+
+def condition_summary(
+    obs: Sequence[dict[str, Any]], now: float, recent_s: float = 1800
+) -> dict[str, Any]:
+    """Compare the last 30 minutes with the day's average for one leg."""
+    day = [o["seconds"] for o in obs]
+    recent = [o["seconds"] for o in obs if o["observed_at"] >= now - recent_s]
+    day_avg = sum(day) / len(day) if day else None
+    recent_avg = sum(recent) / len(recent) if recent else None
+    delta = (
+        round((recent_avg - day_avg) / 60, 1)
+        if day_avg is not None and recent_avg is not None
+        else None
+    )
+    return {"day_avg_min": round(day_avg / 60, 1) if day_avg is not None else None,
+            "recent_avg_min": round(recent_avg / 60, 1) if recent_avg is not None else None,
+            "delta_min": delta, "day_samples": len(day), "recent_samples": len(recent)}  # fmt: skip
+
+
+def turnarounds(
+    state: dict[str, Any], place_of: Callable[[str], str | None]
+) -> list[dict[str, Any]]:
+    """A bus that turns back short of the end of the route shows up as two stops at the same
+    place in a row, one in each direction (e.g. outbound then inbound at the same road). Report
+    each once, with both times and the gap between them, once the second stop has been reached."""
+    done: set[str] = set(state.setdefault("turned", []))
+    out: list[dict[str, Any]] = []
+    for vehicle, trip in state["trips"].items():
+        if not trip["stops"]:
+            continue
+        first = trip["stops"][0]
+        prev_trip = next(
+            (t for t in reversed(state["recent"]) if t["vehicle"] == vehicle and t["stops"]), None
+        )
+        if prev_trip is None or prev_trip["dir"] == trip["dir"]:
+            continue
+        last = prev_trip["stops"][-1]
+        place = place_of(last["sid"])
+        if place is None or place != place_of(first["sid"]):
+            continue
+        a, b = last.get("expected"), first.get("expected")
+        if a is None or b is None or b < a:
+            continue
+        key = f"{vehicle}@{int(a)}"
+        if key in done:
+            continue
+        done.add(key)
+        out.append({"vehicle": vehicle, "type": "turnaround", "place": place,
+                    "from_sid": last["sid"], "to_sid": first["sid"],
+                    "from_dir": prev_trip["dir"], "to_dir": trip["dir"],
+                    "from_at": a, "to_at": b, "gap_s": round(b - a)})  # fmt: skip
+    state["turned"] = sorted(done)[-200:]
+    return out
+
+
+def sentence(last: dict[str, Any] | None, deadline: str, tz: tzinfo) -> str:
+    if not last:
+        return f"No bus has been confirmed at the target stop before {deadline} yet."
+    when = last["arrive_at"].astimezone(tz).strftime("%H:%M")
+    delay = last.get("delay_min")
+    extra = f", about {abs(delay):.0f} min {'late' if delay > 0 else 'early'}" if delay else ""
+    return f"The last bus before {deadline} reached the target stop at {when}{extra}."

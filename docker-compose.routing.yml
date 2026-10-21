@@ -1,0 +1,26 @@
+# Adds a Valhalla routing engine to the stack (turn routes into corridors).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.routing.yml up -d
+#
+# First start downloads the Great Britain map (~2 GB) and builds routing tiles,
+# which takes a while and a few GB of RAM. Watch it with:
+#   docker compose -f docker-compose.yml -f docker-compose.routing.yml logs -f valhalla
+# It is ready when the log says it is listening on port 8002. Later starts reuse
+# the built tiles. The service is only reachable by the other containers in this
+# stack (as http://valhalla:8002); no port is published to your LAN.
+
+services:
+  valhalla:
+    image: ghcr.io/nilsnolde/docker-valhalla/valhalla:latest
+    restart: unless-stopped
+    networks: [internal]
+    environment:
+      TZ: ${TZ:-Europe/London}
+      tile_urls: ${WA_VALHALLA_PBF_URL:-https://download.geofabrik.de/europe/great-britain-latest.osm.pbf}
+      # Lower this if the first build is killed for lack of memory.
+      server_threads: ${WA_VALHALLA_THREADS:-2}
+      use_tiles_ignore_pbf: "True"
+      build_tar: "True"
+    volumes:
+      # Map, tiles and config live here. Cache pool (SSD) is best.
+      - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/valhalla:/custom_files

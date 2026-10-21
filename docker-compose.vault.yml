@@ -1,0 +1,19 @@
+# Only for the Vault / OpenBao backend (docs/secrets.md). Add it with:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.vault.yml  (in .env)
+# Needs vault_token.txt, or vault_role_id.txt and vault_secret_id.txt, in the secrets directory
+# (scripts/init-secrets.sh creates empty ones). Without this file the base stack needs none of them.
+x-vault: &vault
+  secrets: [vault_token, vault_role_id, vault_secret_id]
+
+services:
+  migrate: *vault
+  api: *vault
+  worker: *vault
+
+secrets:
+  vault_token:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/vault_token.txt
+  vault_role_id:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/vault_role_id.txt
+  vault_secret_id:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/vault_secret_id.txt

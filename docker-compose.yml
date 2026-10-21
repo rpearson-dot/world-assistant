@@ -1,0 +1,190 @@
+name: world-assistant
+
+# Built for Unraid. Redis is part of this stack (password protected). Mosquitto runs on Unraid's
+# default bridge network, where containers cannot resolve each other by name, so this stack
+# reaches it through the host's LAN IP and its published port (set in .env).
+#
+#   docker compose up -d --build
+#       API at http://<unraid-ip>:${WA_API_PORT:-8010}. Touches nothing else.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+#       Same, plus Traefik routing. Needs Traefik on a user-defined network.
+
+x-app: &app
+  build:
+    context: .
+    args:
+      VERSION: ${WA_VERSION:-dev}
+      COMMIT: ${WA_COMMIT:-local}
+  # A released image reference (by digest) in WA_IMAGE skips the local build; see docs/runbook.md
+  image: ${WA_IMAGE:-world-assistant:local}
+  restart: unless-stopped
+  networks: [internal]
+  volumes:
+    # Backups (status page, scripts/deploy.sh). Keep copies somewhere other than this server too.
+    - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/backups:/backups
+  environment:
+    WA_BACKUP_KEEP: ${WA_BACKUP_KEEP:-14}
+    TZ: ${TZ:-Europe/London}
+    WA_ENV: ${WA_ENV:-production}
+    WA_LOG_LEVEL: ${WA_LOG_LEVEL:-INFO}
+    WA_DB_HOST: wa-db
+    # Default: the password-protected Redis in this stack. Leave WA_REDIS_URL unset in .env to use it.
+    WA_REDIS_URL: ${WA_REDIS_URL:-redis://wa-redis:6379/0}
+    WA_MQTT_HOST: ${WA_MQTT_HOST:?set WA_MQTT_HOST in .env}
+    WA_MQTT_PORT: ${WA_MQTT_PORT:-1883}
+    WA_MQTT_USER: ${WA_MQTT_USER:-}
+    WA_NH_RATE_LIMIT_PER_MINUTE: ${WA_NH_RATE_LIMIT_PER_MINUTE:-8}
+    WA_NH_CAPTURE_ENABLED: ${WA_NH_CAPTURE_ENABLED:-true}
+    WA_NH_POLL_ENABLED: ${WA_NH_POLL_ENABLED:-true}
+    WA_FUEL_POLL_ENABLED: ${WA_FUEL_POLL_ENABLED:-true}
+    WA_FUEL_PRICE_INTERVAL_MIN: ${WA_FUEL_PRICE_INTERVAL_MIN:-30}
+    WA_NH_LIVE_INTERVAL_MIN: ${WA_NH_LIVE_INTERVAL_MIN:-10}
+    WA_NH_PLANNED_INTERVAL_HOURS: ${WA_NH_PLANNED_INTERVAL_HOURS:-2}
+    WA_NH_PLANNED_DAYS: ${WA_NH_PLANNED_DAYS:-14}
+    WA_NH_PLANNED_MAX_PAGES: ${WA_NH_PLANNED_MAX_PAGES:-40}
+    WA_NH_CAPTURE_RETENTION_DAYS: ${WA_NH_CAPTURE_RETENTION_DAYS:-3}
+    WA_NH_VMS_BBOX: ${WA_NH_VMS_BBOX:-51.20,-2.05,52.60,-0.30}
+    # Optional key vault (see docs/secrets.md). Default: files only.
+    WA_SECRETS_BACKEND: ${WA_SECRETS_BACKEND:-files}
+    WA_SECRETS_CACHE_SECONDS: ${WA_SECRETS_CACHE_SECONDS:-300}
+    WA_SECRETS_COMMAND: ${WA_SECRETS_COMMAND:-}
+    WA_VAULT_ADDR: ${WA_VAULT_ADDR:-}
+    WA_VAULT_MOUNT: ${WA_VAULT_MOUNT:-secret}
+    WA_VAULT_PATH: ${WA_VAULT_PATH:-world-assistant}
+    WA_VAULT_NAMESPACE: ${WA_VAULT_NAMESPACE:-}
+    WA_VAULT_CA_FILE: ${WA_VAULT_CA_FILE:-}
+  secrets:
+    - postgres_password
+    - nh_subscription_key
+    - nh_subscription_key_secondary
+    - mqtt_password
+    - api_token
+    - fuel_finder_client_id
+    - fuel_finder_client_secret
+    - tfl_app_key
+    - nr_access_token
+    - skiddle_api_key
+    - ticketmaster_api_key
+    - pollen_api_key
+    - redis_password
+
+services:
+  wa-db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: worldassistant
+      POSTGRES_USER: worldassistant
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      TZ: ${TZ:-Europe/London}
+    secrets:
+      - postgres_password
+    volumes:
+      # Keep this on the cache pool (an SSD), not the parity-protected array.
+      - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/pgdata:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      # -h 127.0.0.1 forces a TCP check. On first start Postgres runs a
+      # temporary server that listens only on its internal socket; without -h
+      # the check passes during that phase and dependants connect too early.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U worldassistant -d worldassistant"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  # Private to the stack (no published port) and password protected. It only holds rate-limit counters,
+  # short-lived caches and the worker heartbeat, so nothing is saved to disk.
+  wa-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/London}
+    secrets:
+      - redis_password
+    command:
+      - sh
+      - -c
+      - exec redis-server --save "" --appendonly no --requirepass "$$(cat /run/secrets/redis_password)"
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_password)\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      wa-db:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    ports:
+      - "${WA_API_PORT:-8010}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      wa-redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  worker:
+    <<: *app
+    command: ["arq", "app.worker.WorkerSettings"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      wa-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "arq", "--check", "app.worker.WorkerSettings"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+networks:
+  internal: {}
+
+secrets:
+  # Kept outside this folder by default so the keys never sit in the shared share.
+  postgres_password:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/postgres_password.txt
+  nh_subscription_key:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/nh_subscription_key.txt
+  nh_subscription_key_secondary:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/nh_subscription_key_secondary.txt
+  api_token:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/api_token.txt
+  fuel_finder_client_id:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/fuel_finder_client_id.txt
+  fuel_finder_client_secret:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/fuel_finder_client_secret.txt
+  tfl_app_key:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/tfl_app_key.txt
+  nr_access_token:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/nr_access_token.txt
+  mqtt_password:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/mqtt_password.txt
+  skiddle_api_key:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/skiddle_api_key.txt
+  ticketmaster_api_key:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/ticketmaster_api_key.txt
+  redis_password:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/redis_password.txt
+  pollen_api_key:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/pollen_api_key.txt
