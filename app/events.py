@@ -69,6 +69,24 @@ async def near(
     source: str = Query("all", pattern="^(all|skiddle|ticketmaster)$"),
 ) -> dict[str, Any]:
     """Events from every configured source (Skiddle, Ticketmaster), merged and sorted by date."""
+    if (lat is None) != (lon is None):
+        raise HTTPException(422, "give both lat and lon, or neither")
+    if lat is not None and lon is not None:
+        name = "your location"  # a point from the caller (Home Assistant): no place needed
+    else:
+        place = await place_or_default(request, place)
+        name, lat, lon = await _place(request, place)
+    return await search(
+        request, name, lat, lon, radius_km=radius_km, days=days, type=type, keyword=keyword, limit=limit, source=source
+    )
+
+
+async def search(
+    request: Request, name: str, lat: float, lon: float, *, radius_km: float, days: int, type: str | None,
+    keyword: str | None, limit: int, source: str = "all", cache_seconds: int = CACHE_SECONDS,
+) -> dict[str, Any]:
+    """Events from every configured source (Skiddle, Ticketmaster), merged and sorted by date, cached for
+    cache_seconds. Shared by /near and the Home Assistant locations."""
     s = get_settings()
     wanted = [n for n in ("skiddle", "ticketmaster") if source in ("all", n)]
     have = {"skiddle": bool(s.skiddle_api_key), "ticketmaster": bool(s.ticketmaster_api_key)}
@@ -77,13 +95,6 @@ async def near(
         raise HTTPException(
             503, "no events source is set up: add skiddle_api_key and/or ticketmaster_api_key"
         )
-    if (lat is None) != (lon is None):
-        raise HTTPException(422, "give both lat and lon, or neither")
-    if lat is not None and lon is not None:
-        name = "your location"  # a point from the caller (Home Assistant): no place needed
-    else:
-        place = await place_or_default(request, place)
-        name, lat, lon = await _place(request, place)
     zone = ZoneInfo(s.local_tz)
     today = datetime.now(zone).date()
     last = today + timedelta(days=days)
@@ -136,7 +147,7 @@ async def near(
     }  # fmt: skip
     if not errors:
         with contextlib.suppress(Exception):  # the cache is optional
-            await redis.set(key, json.dumps(out), ex=CACHE_SECONDS)
+            await redis.set(key, json.dumps(out), ex=cache_seconds)
     return {**out, "cached": False}
 
 

@@ -42,7 +42,7 @@ It started as a personal project on a home Unraid server. Nothing in it is speci
 | **Places and trips** | Named places (by postcode or coordinates) and trips between them. Your **home** is the default place everywhere. |
 | **Routing** | Optional self-hosted Valhalla turns a trip into a real road line, which becomes that trip's corridor. |
 | **Vehicles** | Petrol/diesel (mpg) and electric (battery, health, miles per kWh). Trip cost, range check, and whether a cheaper station is worth the detour. |
-| **Buses and trains** | Live bus tracking with on-time statistics, and train departure boards (TfL and National Rail). Departures, fuel prices and road closures are published to Home Assistant over MQTT, and fuel, roads, pollen (a map and a home graph) follow where each person is, and events show what is on near the home zone (the app's location when away, else the home zone) ([how](docs/home-assistant.md)), with ready-made dashboards. |
+| **Buses and trains** | Live bus tracking with on-time statistics, and train departure boards (TfL and National Rail). Departures, fuel prices and road closures are published to Home Assistant over MQTT, and fuel, roads, pollen (a map and a home graph) follow where each person is, and events show what is on near the home zone and any extra places you add (the app's location when away, else the home zone) ([how](docs/home-assistant.md)), with ready-made dashboards. |
 | **Assistant** | The same data as spoken-style answers: `/v1/ask` for Siri Shortcuts and scripts, and `/mcp` for AI assistants that speak the Model Context Protocol. |
 | **Web pages** | `/status`, `/bus`, `/trains`, `/fuel`, `/events`, `/pollen`, `/places`. Small, fast, no accounts. |
 | **Operations** | One-click backups, signed releases, optional automatic updates with rollback, optional bundled key vault. |
@@ -150,6 +150,7 @@ All `/v1/*` routes need `Authorization: Bearer <api_token>`. The interactive ref
 | `GET /v1/trips/{id}/cost?vehicle=` | Energy or fuel needed, range check, cost |
 | `GET /v1/fuel/near`, `/v1/fuel/along/{corridor}` | Cheapest fuel near a place or along a corridor; `vehicle=` ranks by saving after the detour |
 | `GET /v1/events/near` | What is on near a place (`place` defaults to home) or a point (`lat` and `lon`) |
+| `GET/POST /v1/ha/locations`, `GET /v1/ha/locations/events` | Extra places Home Assistant watches for events (capped, they expire) |
 | `GET /v1/pollen/near`, `/v1/pollen/grid`, `/v1/pollen/history` | Pollen forecast (a place, defaulting to home, or a point with `lat` and `lon`) and the recorded history |
 | `GET /v1/tfl/boards`, `/v1/bus/trackers/{id}/…` | Train departure boards and the bus tracker |
 | `POST /v1/ask/{tool}`, `POST /mcp` | Spoken-style answers for Shortcuts, scripts and MCP clients |

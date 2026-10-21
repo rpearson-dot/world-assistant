@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     ha_publish: bool = True
     ha_api_url: str = "http://api:8000"
     ha_interval_min: int = 5
+    # Extra places Home Assistant can ask for events at (on top of its home zone). Each place costs
+    # (24 / refresh) searches a day on every events source, so the number is capped and they time out.
+    ha_locations_max: int = 8
+    ha_location_ttl_days: int = 30  # a place not renewed for this long is dropped
+    ha_location_pressure_ttl_days: int = 7  # the shorter time once 75% of the cap is used
+    ha_location_refresh_h: int = 3  # how often each place's events are searched again
+    ha_location_radius_km: float = 8.0
+    ha_location_days: int = 7
 
     # National Highways allows 10 calls per subscription key per minute.
     # Stay under it so retries and clock skew never trip the upstream limit.

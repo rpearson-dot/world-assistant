@@ -22,6 +22,7 @@ from app.events import page_router as events_page_router
 from app.events import router as events_router
 from app.fuel import page_router as fuel_page_router
 from app.fuel import router as fuel_router
+from app.ha_locations import router as ha_locations_router
 from app.logging import configure_logging
 from app.places import page_router as places_page_router
 from app.places import router as places_router
@@ -59,6 +60,7 @@ app.include_router(status_router)
 app.include_router(autodeploy_router)
 app.include_router(backups_router)
 app.include_router(events_router)
+app.include_router(ha_locations_router)
 app.include_router(events_page_router)
 app.include_router(pollen_router)
 app.include_router(pollen_page_router)

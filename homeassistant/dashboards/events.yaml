@@ -1,5 +1,6 @@
-# What's on near the home zone. Needs homeassistant/packages/world_assistant_events.yaml
-# (see docs/home-assistant.md).
+# What's on near the home zone, then near each extra place added with rest_command.wa_add_location.
+# Needs homeassistant/packages/world_assistant_events.yaml (see docs/home-assistant.md). The place
+# cards are found by name, so adding or removing a place needs no change here.
 title: Events
 views:
   - title: Events
@@ -17,3 +18,19 @@ views:
           |:--|:--|:--|--:|:--|{% for ev in events %}
           | {{ ev.date or '' }}{{ ' ' ~ ev.doors_open if ev.doors_open else '' }} | **{{ ev.name }}** | {{ ev.venue or '' }}{{ ', ' ~ ev.town if ev.town else '' }} | {{ ('%.1f km' % ev.distance_km) if ev.distance_km is not none else '' }} | {{ ev.price or '' }} |{% endfor %}
           {% else %}Nothing listed near home yet. Is the events package installed? (docs/home-assistant.md){% endif %}
+      - type: markdown
+        title: Other places
+        content: |
+          {% set places = states.sensor | selectattr('entity_id', 'search', '^sensor[.]wa_events_place_') | sort(attribute='name') | list %}
+          {% set li = 'sensor.wa_events_locations' %}
+          {% for p in places %}### {{ p.attributes.place or p.name }}
+          {{ p.state }} in the next {{ p.attributes.days or 7 }} days within {{ p.attributes.radius_km or 8 }} km. Kept until {{ as_datetime(p.attributes.expires_at).strftime('%d %b') if p.attributes.expires_at else '?' }} unless renewed.
+          {% if p.attributes.events %}
+          | Date | Event | Venue | Away | Price |
+          |:--|:--|:--|--:|:--|{% for ev in p.attributes.events %}
+          | {{ ev.date or '' }}{{ ' ' ~ ev.doors_open if ev.doors_open else '' }} | **{{ ev.name }}** | {{ ev.venue or '' }}{{ ', ' ~ ev.town if ev.town else '' }} | {{ ('%.1f km' % ev.distance_km) if ev.distance_km is not none else '' }} | {{ ev.price or '' }} |{% endfor %}
+          {% endif %}
+          {% else %}No other places yet. Add one with `rest_command.wa_add_location` (docs/home-assistant.md).
+          {% endfor %}
+          {% if states(li) not in ['unknown', 'unavailable'] %}
+          Watching {{ states(li) }} of {{ state_attr(li, 'max') }} places; unrenewed places are dropped after {{ state_attr(li, 'ttl_days') }} days. About {{ state_attr(li, 'provider_calls_per_day') }} provider requests a day.{% endif %}

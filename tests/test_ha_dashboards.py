@@ -220,3 +220,36 @@ def test_pollen_map_card_lists_every_lattice_point() -> None:
     card = next(c for v in cfg["views"] for c in v["cards"] if c["type"] == "map")
     want = {f"sensor.wa_pollen_{pollen_point_key(a, b)}" for a, b in grid_points(1.0)}
     assert set(card["entities"]) == want  # regenerate the list if the lattice changes
+
+
+def test_events_card_lists_whatever_places_exist() -> None:
+    def place(name: str, ev: str) -> tuple[str, dict[str, Any]]:
+        return ("1", {"friendly_name": f"Events near {name}", "place": name, "days": 7, "radius_km": 8,
+                      "expires_at": "2026-11-20T00:00:00+00:00",
+                      "events": [{"name": ev, "date": "2026-10-25", "distance_km": 1.0}]})  # fmt: skip
+
+    ents = {
+        "sensor.wa_events_place_mum_s_house": place("Mum's house", "Mum Gig"),
+        "sensor.wa_events_place_work": place("Work", "Work Play"),
+        "sensor.wa_events_locations": ("2", {"max": 8, "ttl_days": 30, "provider_calls_per_day": 32}),
+    }
+    out = _env(ents, user="Anyone").from_string(_card("events", 1)).render()
+    assert "Mum's house" in out and "Mum Gig" in out and "Work Play" in out
+    assert "Watching 2 of 8" in out
+    none = _env({}, user="Anyone").from_string(_card("events", 1)).render()
+    assert "No other places yet" in none
+
+
+def test_events_package_commands_render_valid_json() -> None:
+    import json
+
+    env = _jinja().Environment()
+    doc = yaml.load((PACKAGES / "world_assistant_events.yaml").read_text(encoding="utf-8"), Loader=_HaLoader)
+    add = doc["rest_command"]["wa_add_location"]
+    body = json.loads(env.from_string(add["payload"]).render(name='Mum\'s "house"', lat=52.4, lon=-1.9))
+    assert body == {"name": 'Mum\'s "house"', "lat": 52.4, "lon": -1.9}
+    body = json.loads(env.from_string(add["payload"]).render(name="x", lat=1, lon=2, radius_km=12))
+    assert body["radius_km"] == 12
+    rem = doc["rest_command"]["wa_remove_location"]
+    assert json.loads(env.from_string(rem["payload"]).render(name="x")) == {"name": "x"}
+    assert add["headers"]["Authorization"] == "<secret>" and rem["url"] == "<secret>"
