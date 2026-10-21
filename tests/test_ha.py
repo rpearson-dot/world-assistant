@@ -275,3 +275,48 @@ def test_bus_record_sensor_carries_the_success_rate_and_recent_days() -> None:
     rec = next(s for s in d.sensors if s.key == "record")
     assert rec.state == 80 and rec.attributes["failure"] == 2
     assert rec.attributes["recent_days"][0]["buses"] == ["07:11 success (07:25)", "07:46 failure"]
+
+
+def test_bus_ended_early_sensor_lists_today_with_place_and_time() -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from app.config import get_settings
+
+    today = datetime.now(ZoneInfo(get_settings().local_tz)).date().isoformat()
+    bus = {"time": "07:41", "kind": "turned back", "stop": "Malden Road", "stops_before_end": 4,
+           "resumed_at_stop": "Worcester Park", "resumed_at_time": "07:55"}  # fmt: skip
+    ended = {"days": [{"date": today, "count": 1, "in_target_window": 1, "buses": [bus]},
+                      {"date": "2026-01-01", "count": 0, "buses": []}]}  # fmt: skip
+    by = {s.key: s for s in ha_publish.bus_device("main", [], None, None, None, ended).sensors}
+    sensor = by["ended_early"]
+    assert sensor.state == 1
+    assert sensor.attributes["today"] == ["07:41 turned back at Malden Road (4 stops short), next seen at Worcester Park 07:55"]
+    assert ha_publish.bus_device("main", [], None, None, None, {"days": []}).sensors[0].state == 0
+
+
+@pytest.mark.asyncio
+async def test_collecting_a_bus_tracker_end_to_end_survives_a_failing_log() -> None:
+    def handler(req: httpx.Request) -> httpx.Response:
+        path = req.url.path
+        if path == "/v1/bus/trackers":
+            return httpx.Response(200, json=[{"id": "main", "enabled": True}])
+        if path == "/v1/bus/trackers/main":
+            return httpx.Response(200, json={"config": {"stops": [{"key": "board", "label": "Worcester Park"}], "target": {"board": "board"}}})
+        if path.endswith("/target"):
+            return httpx.Response(200, json={"day": "2026-10-21", "deadline": "08:10", "board": "board", "hits": [], "pending": [],
+                                             "scheduled": [], "summary": "x", "outlook": {"relevant": False, "reason": "weekend", "slots": []}})
+        if path.endswith("/live"):
+            return httpx.Response(200, json={"active": [], "next": {"board": [{"minutes": 5, "towards": "Kingston"}]}})
+        if path.endswith("/log"):
+            return httpx.Response(500)
+        if path.endswith("/terminations"):
+            return httpx.Response(200, json={"days": []})
+        return httpx.Response(404)
+
+    async with httpx.AsyncClient(base_url="http://api", transport=httpx.MockTransport(handler)) as c:
+        devices = await ha_publish.collect(c)
+    bus = next(d for d in devices if d.id == "bus_main")
+    keys = {s.key for s in bus.sensors}
+    assert {"chance", "ended_early", "next_board", "active_buses"} <= keys  # the log failing only drops the record
+    assert "record" not in keys

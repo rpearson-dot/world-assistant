@@ -24,7 +24,7 @@ PosOf = Callable[[str], tuple[str, int] | None]  # stop id -> (direction, positi
 
 
 def new_state() -> dict[str, Any]:
-    return {"trips": {}, "recent": [], "evaluated": {}, "terminal": {}, "day": None}
+    return {"trips": {}, "recent": [], "evaluated": {}, "terminal": {}, "day": None, "ended": []}
 
 
 def epoch(iso: Any) -> float | None:
@@ -68,6 +68,20 @@ def _retire(state: dict[str, Any], trip: dict[str, Any]) -> None:
     del state["recent"][:-MAX_RECENT]
 
 
+def _end(state: dict[str, Any], trip: dict[str, Any], reason: str, resumed: dict[str, Any] | None) -> None:
+    """Remember how a trip ended and where it was last seen, for events.early_terminations.
+    reason: "reversed" (the same bus next appears going the other way), "lap" (back at the start),
+    "gone" (it stopped appearing in the feed)."""
+    if not trip["stops"]:
+        return
+    last = trip["stops"][-1]
+    ended = state.setdefault("ended", [])
+    ended.append({"vehicle": trip["vehicle"], "dir": trip["dir"], "sid": last["sid"], "pos": last["pos"],
+                  "at": last.get("expected"), "reason": reason,
+                  "next": {"sid": resumed["sid"], "at": resumed.get("expected")} if resumed else None})  # fmt: skip
+    del ended[:-100]
+
+
 def update_trips(
     state: dict[str, Any], preds: list[dict[str, Any]], pos_of: PosOf, now: float
 ) -> list[dict[str, Any]]:
@@ -86,6 +100,7 @@ def update_trips(
         if trip is None or new_trip:
             if trip is not None:
                 _record(trip, trip.get("pending"))
+                _end(state, trip, "reversed" if info["dir"] != trip["dir"] else "lap", info)
                 _retire(state, trip)
             trip = {"vehicle": vehicle, "dir": info["dir"], "last_pos": info["pos"],
                     "last_seen": now, "stops": [], "pending": None}  # fmt: skip
@@ -120,6 +135,7 @@ def update_trips(
             del trips[vehicle]
             state["evaluated"].pop(vehicle, None)
     for trip in finished:
+        _end(state, trip, "gone", None)
         _retire(state, trip)
     return finished
 

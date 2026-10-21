@@ -292,3 +292,28 @@ def result_log(
                 bad += 1
         days.append({"date": date, "buses": rows})
     return {"success": ok, "failure": bad, "success_rate": round(100 * ok / (ok + bad)) if ok + bad else None, "days": days}
+
+
+EARLY_MARGIN = 2  # a bus last seen at least this many stops short of the end of its route ended early
+
+
+def early_terminations(
+    state: dict[str, Any], end_pos: dict[str, int], names: dict[str, str], margin: int = EARLY_MARGIN
+) -> list[dict[str, Any]]:  # fmt: skip
+    """Buses that ended a trip short of the end of the route, each reported once: where they were last
+    seen and when, and whether they turned back (and where they next appeared) or just stopped
+    appearing in the feed. Drains the state's list of trips that have ended."""
+    ended, state["ended"] = list(state.get("ended") or []), []
+    out: list[dict[str, Any]] = []
+    for e in ended:
+        end = end_pos.get(e["dir"])
+        if e["reason"] == "lap" or end is None or end - e["pos"] < margin:
+            continue
+        nxt = e.get("next") or {}
+        out.append({
+            "vehicle": e["vehicle"], "type": "early_termination", "sid": e["sid"], "stop": names.get(e["sid"]) or None,
+            "direction": e["dir"], "at": e.get("at"), "stops_before_end": end - e["pos"],
+            "kind": "turned back" if e["reason"] == "reversed" else "stopped reporting",
+            "resumed_sid": nxt.get("sid"), "resumed_stop": names.get(nxt.get("sid") or "") or None, "resumed_at": nxt.get("at"),
+        })  # fmt: skip
+    return out

@@ -290,6 +290,32 @@ def test_bus_card_shows_next_bus_chance_and_record() -> None:
     assert "Next bus at Worcester Park" in out and "4 min, then 11" in out and "towards Kingston" in out
     assert "80% for the 07:46 bus" in out and "07:55: 60%" in out
     assert "75% made it (15 reached it, 5 did not)" in out and "07:46 failure" in out
+    ents["sensor.wa_bus_main_ended_early"] = ("1", {"today": ["07:41 turned back at Malden Road (4 stops short), next seen at Worcester Park 07:55"],
+                                                    "recent_days": [{"date": "2026-10-20", "count": 2, "buses": ["07:30 stopped reporting at X (3 stops short)"]}]})
+    import datetime
+
+    env = _env(ents, user="Anyone")
+    env.globals["now"] = lambda: datetime.datetime(2026, 10, 21, 7, 0, tzinfo=datetime.UTC)
+    early = env.from_string(card["content"]).render()
+    assert "Buses that ended early today**: 1" in early and "turned back at Malden Road" in early
+    assert "2026-10-20: 2; 07:30 stopped reporting at X" in early
     ents["sensor.wa_bus_main_chance"] = ("unknown", {"relevant": False, "reason": "after 08:00", "deadline": "08:10"})
-    quiet = _env(ents, user="Anyone").from_string(card["content"]).render()
+    env = _env(ents, user="Anyone")
+    env.globals["now"] = lambda: datetime.datetime(2026, 10, 21, 7, 0, tzinfo=datetime.UTC)
+    quiet = env.from_string(card["content"]).render()
     assert "not shown (after 08:00)" in quiet and "80%" not in quiet
+
+
+def test_bus_package_sends_only_the_time_that_changed() -> None:
+    env = _jinja().Environment()
+    doc = yaml.load((PACKAGES / "world_assistant_bus.yaml").read_text(encoding="utf-8"), Loader=_HaLoader)
+    assert set(doc["input_datetime"]) == {"wa_bus_deadline", "wa_bus_earliest", "wa_bus_show_until"}
+    cmd = doc["rest_command"]["wa_bus_settings"]
+    assert cmd["url"] == "<secret>" and cmd["headers"]["Authorization"] == "<secret>"
+    import json
+
+    body = json.loads(env.from_string(cmd["payload"]).render(deadline="08:30", earliest="", show_until=""))
+    assert body == {"deadline": "08:30", "earliest": "", "show_until": ""}  # the server ignores blanks
+    action = next(a for a in doc["automation"][0]["actions"] if "action" in a and a["action"] == "rest_command.wa_bus_settings")
+    for v in action["data"].values():
+        env.from_string(v)

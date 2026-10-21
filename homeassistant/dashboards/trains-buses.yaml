@@ -18,6 +18,16 @@ views:
           {% else %}No services listed.
           {% endif %}{% endfor %}
           {% if not ns.found %}No boards yet. Set one up in World Assistant (Trains page).{% endif %}
+      - type: entities
+        title: Bus times
+        show_header_toggle: false
+        entities:
+          - entity: input_datetime.wa_bus_deadline
+          - entity: input_datetime.wa_bus_earliest
+          - entity: input_datetime.wa_bus_show_until
+        footer:
+          type: markdown
+          content: Needs homeassistant/packages/world_assistant_bus.yaml. The times World Assistant is using are in the chance line below.
       - type: markdown
         title: Bus tracker
         content: |
@@ -35,6 +45,10 @@ views:
           {% endif %}{% if rec and rec.state not in ['unknown', 'unavailable', 'none'] %}
           **Record, last {{ rec.attributes.window_days }} days**: {{ rec.state }}% made it ({{ rec.attributes.success }} reached it, {{ rec.attributes.failure }} did not)
           {% for d in rec.attributes.recent_days %}- {{ d.date }}: {{ d.buses | join(', ') }}
-          {% endfor %}{% endif %}
+          {% endfor %}{% endif %}{% set early = states[base ~ '_ended_early'] %}{% if early and early.state not in ['unknown', 'unavailable'] %}
+          **Buses that ended early today**: {{ early.state }}{% for l in early.attributes.today %}
+          - {{ l }}{% endfor %}{% for d in early.attributes.recent_days if d.date != now().date().isoformat() %}
+          - {{ d.date }}: {{ d.count }}{% for l in d.buses %}; {{ l }}{% endfor %}{% endfor %}
+          {% endif %}
           {% endfor %}
           {% if not ns.found %}No bus tracker is set up yet (World Assistant, Bus page). Trackers poll in their morning window, but the chance and the record are kept up to date all day.{% endif %}

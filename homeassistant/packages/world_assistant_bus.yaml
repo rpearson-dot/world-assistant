@@ -1,0 +1,63 @@
+# Change the bus tracker's times from Home Assistant: the time you must arrive by (the deadline), the
+# earliest departure that counts, and when to stop showing the chance. The Bus tracker card on the
+# Trains and buses dashboard has the three controls. Needs this in secrets.yaml:
+#   wa_bus_settings_url: "http://<nas address>:8010/v1/bus/settings"
+# (and wa_authorization, as in the events package). A change applies from the next scheduled bus;
+# results already recorded keep the deadline they were recorded under.
+input_datetime:
+  wa_bus_deadline:
+    name: Bus - arrive by
+    has_date: false
+    has_time: true
+    icon: mdi:clock-check
+  wa_bus_earliest:
+    name: Bus - earliest departure
+    has_date: false
+    has_time: true
+    icon: mdi:clock-start
+  wa_bus_show_until:
+    name: Bus - show the chance until
+    has_date: false
+    has_time: true
+    icon: mdi:clock-end
+
+rest_command:
+  wa_bus_settings:
+    url: !secret wa_bus_settings_url
+    method: post
+    headers:
+      Authorization: !secret wa_authorization
+    content_type: application/json
+    payload: '{"deadline": "{{ deadline | default("") }}", "earliest": "{{ earliest | default("") }}", "show_until": "{{ show_until | default("") }}"}'
+    timeout: 30
+
+automation:
+  - alias: WA bus times changed
+    id: wa_bus_times_changed
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: input_datetime.wa_bus_deadline
+        id: deadline
+      - trigger: state
+        entity_id: input_datetime.wa_bus_earliest
+        id: earliest
+      - trigger: state
+        entity_id: input_datetime.wa_bus_show_until
+        id: show_until
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.from_state is not none and trigger.from_state.state not in ['unknown', 'unavailable'] }}"
+    actions:
+      - action: rest_command.wa_bus_settings
+        response_variable: reply
+        data:
+          deadline: "{{ trigger.to_state.state[:5] if trigger.id == 'deadline' else '' }}"
+          earliest: "{{ trigger.to_state.state[:5] if trigger.id == 'earliest' else '' }}"
+          show_until: "{{ trigger.to_state.state[:5] if trigger.id == 'show_until' else '' }}"
+      - condition: template
+        value_template: "{{ reply is defined and not (reply.content.ok | default(false)) }}"
+      - action: persistent_notification.create
+        data:
+          title: Bus times not changed
+          message: "{{ reply.content.message | default('No answer from World Assistant.') }}"

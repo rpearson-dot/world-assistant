@@ -206,7 +206,7 @@ def _minutes_of_day(stamp: Any) -> int | None:
 
 def bus_device(
     tid: str, stops: list[dict[str, Any]], target: dict[str, Any] | None, live: dict[str, Any] | None,
-    log: dict[str, Any] | None = None,
+    log: dict[str, Any] | None = None, ended: dict[str, Any] | None = None,
 ) -> Device:  # fmt: skip
     """One bus tracker. The day's answer, the chance of making the deadline and the success/failure
     record come from stored results (so they stay up to date outside the polling window); the buses
@@ -255,6 +255,26 @@ def bus_device(
             state_class="measurement",
             attributes={"success": log.get("success"), "failure": log.get("failure"),
                         "window_days": log.get("window_days"), "recent_days": recent},
+        ))  # fmt: skip
+    if ended is not None:
+        from zoneinfo import ZoneInfo
+
+        today = datetime.now(ZoneInfo(get_settings().local_tz)).date().isoformat()
+        days = ended.get("days") or []
+        todays = next((d for d in days if d["date"] == today), {"buses": [], "count": 0})
+
+        def line(b: dict[str, Any]) -> str:
+            where = b.get("stop") or "an unknown stop"
+            back = f", next seen at {b['resumed_at_stop']} {b['resumed_at_time']}" if b.get("resumed_at_stop") else ""
+            return f"{b['time']} {b['kind']} at {where} ({b.get('stops_before_end')} stops short){back}"
+
+        sensors.append(Sensor(
+            "ended_early", "Buses that ended early today", todays["count"], icon="mdi:bus-alert",
+            state_class="measurement",
+            attributes={"today": [line(b) for b in todays["buses"]],
+                        "in_target_window_today": todays.get("in_target_window", 0),
+                        "recent_days": [{"date": d["date"], "count": d["count"], "buses": [line(b) for b in d["buses"]]}
+                                        for d in days[:7]]},
         ))  # fmt: skip
     active = (live or {}).get("active") or []
     sensors.append(Sensor("active_buses", "Buses being followed", len(active), icon="mdi:bus",
@@ -354,8 +374,17 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
                     live = await _get(c, f"/v1/bus/trackers/{tid}/live")
                 except httpx.HTTPError:
                     live = None
-                log = await _get(c, f"/v1/bus/trackers/{tid}/log", days=30) if target is not None else None
-                out.append(bus_device(tid, cfg.get("stops") or [], target, live, log))
+                record = None
+                if target is not None:
+                    try:
+                        record = await _get(c, f"/v1/bus/trackers/{tid}/log", days=30)
+                    except httpx.HTTPError:
+                        record = None
+                try:
+                    ended = await _get(c, f"/v1/bus/trackers/{tid}/terminations", days=7)
+                except httpx.HTTPError:
+                    ended = None
+                out.append(bus_device(tid, cfg.get("stops") or [], target, live, record, ended))
             except httpx.HTTPError as exc:  # one dead tracker must not hide the rest
                 log.info("home assistant: bus tracker %s skipped (%s)", tid, type(exc).__name__)
         return out

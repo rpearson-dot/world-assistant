@@ -15,6 +15,7 @@ from app.config import get_settings
 from app.integrations.bus import store
 from app.integrations.bus.config import TrackerConfig
 from app.integrations.bus.events import (
+    early_terminations,
     nearest_slot,
     segment_observations,
     sentence,
@@ -49,7 +50,9 @@ class Lookup:
     def __init__(self, rows: list[dict[str, Any]]) -> None:
         self.by_sid: dict[str, tuple[str, int]] = {}
         self.names: dict[str, str] = {}
+        self.end_pos: dict[str, int] = {}  # position of the last stop of each direction
         for r in rows:
+            self.end_pos[r["direction"]] = max(self.end_pos.get(r["direction"], 0), r["pos"])
             self.by_sid.setdefault(r["sid"], (r["direction"], r["pos"]))
             self.names.setdefault(r["sid"], r["name"] or "")
 
@@ -83,6 +86,7 @@ def process_poll(
     update_trips(state, preds, lookup.pos_of, now)
     anomalies = detect_anomalies(state, lookup.dir_of)
     anomalies += turnarounds(state, cfg.place_of)
+    anomalies += early_terminations(state, lookup.end_pos, lookup.names)
     obs = segment_observations(state, now, cfg.segment_pairs())
     hits: list[dict[str, Any]] = []
     tcfg = cfg.target_cfg()

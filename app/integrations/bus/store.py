@@ -35,6 +35,13 @@ async def upsert_tracker(
     )
 
 
+async def update_config(conn: AsyncConnection, tid: str, config: dict[str, Any]) -> None:
+    """Change a tracker's settings (times, say) without resetting its route, timetable or live state."""
+    await conn.execute(
+        text("UPDATE bus_tracker SET config = CAST(:c AS jsonb) WHERE id = :id"), {"id": tid, "c": _j(config)}
+    )
+
+
 async def list_trackers(conn: AsyncConnection, only_enabled: bool = False) -> list[dict[str, Any]]:
     sql = "SELECT id, config, enabled, state_updated FROM bus_tracker"
     if only_enabled:

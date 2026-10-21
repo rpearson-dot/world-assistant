@@ -220,3 +220,37 @@ def test_tracker_config_defaults_to_either_side_and_a_0800_cutoff() -> None:
     })  # fmt: skip
     assert cfg.show_until == "08:00" and cfg.target is not None and cfg.target.either_side is True
     assert cfg.target_cfg()["either_side"] is True  # type: ignore[index]
+
+
+END = {"outbound": 5, "inbound": 2}  # the last position of each direction in this test route
+NAMES = {"s3": "Third Stop", "s4": "Fourth Stop", "i0": "Back Start", "i1": "Back One"}
+
+
+def test_a_bus_that_turns_back_short_of_the_end_is_logged_with_where_and_when() -> None:
+    state = trips.new_state()
+    run_bus(state, "V1", {"s2": T0 + 600, "s3": T0 + 900}, T0, T0 + 1000)  # outbound, last seen at s3 (2 stops short)
+    run_bus(state, "V1", {"i0": T0 + 1300, "i1": T0 + 1500}, T0 + 1100, T0 + 1250)  # next seen going the other way
+    found = events.early_terminations(state, END, NAMES)
+    assert len(found) == 1
+    e = found[0]
+    assert e["type"] == "early_termination" and e["kind"] == "turned back" and e["vehicle"] == "V1"
+    assert e["stop"] == "Third Stop" and e["stops_before_end"] == 2 and e["direction"] == "outbound"
+    assert e["resumed_stop"] == "Back Start" and e["resumed_at"] is not None and e["at"] is not None
+    assert events.early_terminations(state, END, NAMES) == []  # reported once
+
+
+def test_a_bus_that_stops_reporting_mid_route_is_logged_but_one_finishing_normally_is_not() -> None:
+    state = trips.new_state()
+    run_bus(state, "V1", {"s2": T0 + 600, "s3": T0 + 900}, T0, T0 + 1000)
+    run_bus(state, "V2", {"s3": T0 + 900, "s4": T0 + 1200, "s5": T0 + 1500}, T0 + 600, T0 + 1600)  # ran to the end
+    trips.update_trips(state, [], POS.get, T0 + 2500)  # both silent for longer than STALE_SECONDS
+    found = events.early_terminations(state, END, NAMES)
+    assert [(e["vehicle"], e["kind"]) for e in found] == [("V1", "stopped reporting")]
+    assert found[0]["resumed_stop"] is None
+
+
+def test_starting_the_next_lap_is_not_an_early_end() -> None:
+    state = trips.new_state()
+    run_bus(state, "V1", {"s0": T0 + 60, "s1": T0 + 300, "s2": T0 + 600}, T0, T0 + 700)
+    run_bus(state, "V1", {"s0": T0 + 2000, "s1": T0 + 2300}, T0 + 1900, T0 + 2100)  # back at the origin: a new lap
+    assert events.early_terminations(state, END, NAMES) == []
