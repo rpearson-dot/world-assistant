@@ -99,7 +99,7 @@ services:
   # Private to the stack (no published port) and password protected. It only holds rate-limit counters,
   # short-lived caches and the worker heartbeat, so nothing is saved to disk.
   wa-redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     restart: unless-stopped
     labels:
       net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/cache.png"
