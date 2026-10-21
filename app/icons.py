@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 
 router = APIRouter(tags=["icons"])
 _DIR = Path(__file__).parent / "icons"
-NAMES = {"world-assistant", "worker", "database", "cache", "routing"}
+NAMES = {"world-assistant", "worker", "database", "cache", "routing", "vault"}
 
 
 @router.get("/icons/{name}.png", include_in_schema=False)

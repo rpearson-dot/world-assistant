@@ -7,6 +7,8 @@ services:
   openbao:
     image: openbao/openbao:${OPENBAO_VERSION:-2.6.4}
     restart: unless-stopped
+    labels:
+      net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/vault.png"
     # Skip the image's start-up script: it tries to chown the data folders and fails on Unraid shares.
     # Run as Unraid's "nobody:users" (99:100) instead; scripts/openbao.sh gives that user the data folder.
     user: "${OPENBAO_UID:-99}:${OPENBAO_GID:-100}"
@@ -32,6 +34,8 @@ services:
   openbao-unseal:
     image: openbao/openbao:${OPENBAO_VERSION:-2.6.4}
     restart: unless-stopped
+    labels:
+      net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/vault.png"
     user: "${OPENBAO_UID:-99}:${OPENBAO_GID:-100}"
     depends_on: [openbao]
     environment:

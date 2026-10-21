@@ -1,23 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256"><rect width="256" height="256" rx="52" fill="#14231a"/>
-  <defs><clipPath id="ball"><circle cx="128" cy="108" r="74"/></clipPath></defs>
-  <circle cx="128" cy="108" r="74" fill="#1f3b2a"/>
-  <g clip-path="url(#ball)" fill="#4cc15a">
+  <defs><clipPath id="ball"><circle cx="128" cy="92" r="66"/></clipPath></defs>
+  <circle cx="128" cy="92" r="66" fill="#1f3b2a"/>
+  <g clip-path="url(#ball)" fill="#4cc15a" transform="translate(128 92) scale(.86) translate(-128 -108)">
     <path d="M70 62c14-14 38-18 52-8 6 5 2 12-6 16-9 5-6 14-16 18-11 5-18 14-16 26 2 9-4 14-12 8-14-11-22-38-2-60z"/>
     <path d="M142 118c10-8 26-6 36 4 10 11 14 28 6 42-8 13-22 14-26 4-3-8-12-10-14-20-2-11-6-22-2-30z"/>
     <path d="M150 46c10-6 24-4 32 6 5 6 0 12-8 12-8 0-10 8-18 6-9-2-14-18-6-24z"/>
   </g>
-  <circle cx="128" cy="108" r="74" fill="none" stroke="#4cc15a" stroke-width="10"/>
+  <circle cx="128" cy="92" r="66" fill="none" stroke="#4cc15a" stroke-width="9"/>
 
-  <path d="M128 186 C128 212 96 214 100 232 C103 244 126 240 138 232" fill="none" stroke="#0b140f" stroke-width="12" stroke-linecap="round"/>
-  <path d="M128 186 C128 212 96 214 100 232 C103 244 126 240 138 232" fill="none" stroke="#e9eef2" stroke-width="7" stroke-linecap="round"/>
-  <g transform="translate(140 233) rotate(-30)">
-    <rect x="-3" y="-11" width="30" height="22" rx="3" fill="#0b140f"/>
-    <rect x="-1" y="-9" width="26" height="18" rx="2" fill="#c9d3da"/>
-    <rect x="22" y="-8" width="10" height="16" rx="1" fill="#0b140f"/>
-    <rect x="24" y="-5" width="6" height="3" fill="#e9eef2"/>
-    <rect x="24" y="2" width="6" height="3" fill="#e9eef2"/>
+  <path d="M128 158 C128 180 100 180 104 196 C107 207 124 205 134 198" fill="none" stroke="#0b140f" stroke-width="11" stroke-linecap="round"/>
+  <path d="M128 158 C128 180 100 180 104 196 C107 207 124 205 134 198" fill="none" stroke="#e9eef2" stroke-width="6.5" stroke-linecap="round"/>
+  <g transform="translate(136 197) rotate(-30)">
+    <rect x="-3" y="-10" width="27" height="20" rx="3" fill="#0b140f"/>
+    <rect x="-1" y="-8" width="23" height="16" rx="2" fill="#c9d3da"/>
+    <rect x="20" y="-7" width="9" height="14" rx="1" fill="#0b140f"/>
+    <rect x="22" y="-4.5" width="5.5" height="2.8" fill="#e9eef2"/>
+    <rect x="22" y="1.7" width="5.5" height="2.8" fill="#e9eef2"/>
   </g>
-<g transform="translate(196 196)"><circle r="40" fill="#14231a"/><circle r="34" fill="#12a594"/>
-      <circle cx="-12" cy="12" r="5.5" fill="#fff"/><circle cx="12" cy="-12" r="5.5" fill="#fff"/>
-      <path d="M-12 12C-12 -2 12 8 12 -12" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-dasharray="1 9"/>
-      <path d="M-12 12C-12 -2 12 8 12 -12" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 7"/></g></svg>
+<rect x="24" y="212" width="208" height="34" rx="17" fill="#12a594"/><text x="128" y="236" text-anchor="middle" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-weight="800" font-size="22" letter-spacing="2" fill="#ffffff">ROUTING</text></svg>
