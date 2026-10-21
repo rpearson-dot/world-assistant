@@ -1,4 +1,4 @@
-# Pollen for Home Assistant's home zone. Needs homeassistant/packages/world_assistant.yaml.
+# Pollen for where you are (the app's location when away, else the home zone). Needs homeassistant/packages/world_assistant.yaml.
 title: Pollen
 views:
   - title: Pollen

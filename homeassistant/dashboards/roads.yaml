@@ -1,5 +1,7 @@
-# Road closures and speed restrictions near a Home Assistant zone (National Highways), plus your
-# World Assistant corridors. Change zone and radius_km at the top of the first two cards.
+# Road closures and speed restrictions near you (National Highways): the Home Assistant app's
+# location when away (sensor.wa_location from homeassistant/packages/world_assistant.yaml),
+# otherwise the zone below; plus your World Assistant corridors. Change zone and radius_km at the
+# top of the first two cards.
 title: Roads
 views:
   - title: Roads
@@ -7,33 +9,33 @@ views:
     icon: mdi:road-variant
     cards:
       - type: markdown
-        title: Closures near home
+        title: Closures near you
         content: |
           {% set zone = 'zone.home' %}{% set radius_km = 15 %}{% set what = 'closure' %}
-          {% set z = states[zone] %}
+          {% set z = states['sensor.wa_location'] if states('sensor.wa_location') not in ['unknown', 'unavailable'] else states[zone] %}{% set where = 'your location' if z.entity_id == 'sensor.wa_location' else z.name %}
           {% set ns = namespace(r=[]) %}
           {% for t in states.sensor if t.entity_id.startswith('sensor.wa_roads_tile_') %}{% for e in t.attributes.events | default([]) if e.kind == what %}{% set m = namespace(d=none) %}{% for p in e.pts %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, p[0], p[1]) %}{% if d is not none and (m.d is none or d < m.d) %}{% set m.d = d %}{% endif %}{% endfor %}{% if m.d is not none and m.d < radius_km %}{% set ns.r = ns.r + [[m.d, e]] %}{% endif %}{% endfor %}{% endfor %}
-          {% if ns.r %}**{{ ns.r | length }}** within {{ radius_km }} km of {{ z.name }}, nearest first.
+          {% if ns.r %}**{{ ns.r | length }}** within {{ radius_km }} km of {{ where }}, nearest first.
 
           | | Road | Where | Away | When |
           |:-:|:--|:--|--:|:--|{% for r in ns.r | sort(attribute='0') %}{% set e = r[1] %}
           | {{ '🔴' if e.scope == 'unplanned' else '🚧' }} | **{{ e.roads | join(', ') }}** {{ e.direction or '' }} | {{ e.description or e.detail or e.cause or 'closure' }} | {{ '%.1f' % r[0] }} km | {{ 'now' if e.status == 'active' else (e.status or '') }}{{ ', until ' ~ as_datetime(e.end).strftime('%a %d %b %H:%M') if e.end else '' }} |{% endfor %}
 
           🔴 unplanned (incident) · 🚧 planned works
-          {% else %}✅ No closures within {{ radius_km }} km of {{ z.name }}.{% endif %}
+          {% else %}✅ No closures within {{ radius_km }} km of {{ where }}.{% endif %}
       - type: markdown
-        title: Speed restrictions near home
+        title: Speed restrictions near you
         content: |
           {% set zone = 'zone.home' %}{% set radius_km = 15 %}{% set what = 'speed' %}
-          {% set z = states[zone] %}
+          {% set z = states['sensor.wa_location'] if states('sensor.wa_location') not in ['unknown', 'unavailable'] else states[zone] %}{% set where = 'your location' if z.entity_id == 'sensor.wa_location' else z.name %}
           {% set ns = namespace(r=[]) %}
           {% for t in states.sensor if t.entity_id.startswith('sensor.wa_roads_tile_') %}{% for e in t.attributes.events | default([]) if e.kind == what %}{% set m = namespace(d=none) %}{% for p in e.pts %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, p[0], p[1]) %}{% if d is not none and (m.d is none or d < m.d) %}{% set m.d = d %}{% endif %}{% endfor %}{% if m.d is not none and m.d < radius_km %}{% set ns.r = ns.r + [[m.d, e]] %}{% endif %}{% endfor %}{% endfor %}
-          {% if ns.r %}**{{ ns.r | length }}** within {{ radius_km }} km of {{ z.name }}, nearest first.
+          {% if ns.r %}**{{ ns.r | length }}** within {{ radius_km }} km of {{ where }}, nearest first.
 
           | Limit | Road | Where | Away |
           |:-:|:--|:--|--:|{% for r in ns.r | sort(attribute='0') %}{% set e = r[1] %}
           | {{ e.limit_mph ~ ' mph' if e.limit_mph else 'varies' }} | **{{ e.roads | join(', ') }}** {{ e.direction or '' }} | {{ e.description or e.detail or '' }} | {{ '%.1f' % r[0] }} km |{% endfor %}
-          {% else %}✅ No speed restrictions within {{ radius_km }} km of {{ z.name }}.{% endif %}
+          {% else %}✅ No speed restrictions within {{ radius_km }} km of {{ where }}.{% endif %}
       - type: markdown
         title: Your corridors
         content: |

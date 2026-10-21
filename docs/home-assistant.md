@@ -8,16 +8,24 @@ The worker reads this service's own API every few minutes (so Home Assistant alw
 what the web pages show) and publishes retained messages to the broker. Home Assistant needs only
 its normal MQTT integration, pointed at the same broker.
 
-## Home Assistant's home zone, not World Assistant's default place
+## Where you are: the phone, else the home zone
 
 World Assistant's "default place" belongs to its own web pages. Nothing sent to Home Assistant uses
-it. Home Assistant has its own locations (zones), and anything that depends on where you are follows
-`zone.home` (or another zone you choose), by one of two routes:
+it. Anything that depends on where you are uses one "where am I" sensor in Home Assistant,
+`sensor.wa_location` (defined in the package below):
+
+- **Away from home** and the Home Assistant mobile app is reporting a position (through your
+  `person` entity, accurate to within 1 km): that position, so pollen, fuel, roads and events follow
+  you.
+- **At home**, or no usable position: `zone.home`. Being at home deliberately uses the zone, not the
+  phone's GPS, so the answers don't jitter.
+
+It reaches Home Assistant by one of two routes:
 
 | Data | How it gets to Home Assistant |
 |---|---|
-| **Fuel prices**, **road closures and speed restrictions** | Published nationwide over MQTT with positions; the dashboards filter by distance from the zone. |
-| **Pollen**, **events** | Fetched by Home Assistant itself from World Assistant, passing the zone's coordinates (these can only be looked up for one point at a time). Needs the one-off setup below. |
+| **Fuel prices**, **road closures and speed restrictions** | Published nationwide over MQTT with positions; the dashboards filter by distance from `sensor.wa_location` (or the zone set at the top of each card if the package isn't installed). |
+| **Pollen**, **events** | Fetched by Home Assistant itself from World Assistant, passing `sensor.wa_location`'s coordinates (these can only be looked up for one point at a time). Needs the one-off setup below. |
 | **Trains and buses** | Not location-based. Published over MQTT as they are. |
 
 ## What appears
@@ -34,6 +42,7 @@ From the World Assistant package (REST, hourly), once set up:
 
 | Entity | What it is |
 |---|---|
+| `sensor.wa_location` | Where Home Assistant thinks you are: state `phone` or `home zone`, with `latitude` and `longitude` attributes. |
 | `sensor.wa_pollen_allergy_risk` | Allergy risk today, 0 to 10. The forecast and every allergen's levels are in its attributes. |
 | `sensor.wa_pollen_alder`, `_birch`, `_grasses`, `_mugwort`, `_olive`, `_ragweed` | Each allergen's level today (0 to 4), so each has its own history. |
 | `sensor.wa_events_upcoming` | How many events in the next 7 days within 8 km; the list is in its attributes. |
@@ -57,11 +66,16 @@ These use a file in this repository: [`homeassistant/packages/world_assistant.ya
    ```
 4. In the package, replace `WA-HOST:8010` (it appears twice) with your server's address and port
    (`WA_API_PORT`, default 8010). Change `radius_km=8&days=7` for events if you like.
-5. Developer tools > YAML > Check configuration, then Restart Home Assistant.
+5. Search and replace `person.CHANGE_ME` with your person entity (Settings > People shows it, for
+   example `person.alex`), so the app's location is used while you're away. Leave it as it is to
+   always use `zone.home`.
+6. Developer tools > YAML > Check configuration, then Restart Home Assistant.
 
-World Assistant sees the zone's coordinates only as parameters of each request, as it would from your
-browser. It doesn't store them or use any saved place. Pollen is cached for four hours on the server,
-so Home Assistant asking hourly costs nothing extra against the provider's fair-use limit.
+The coordinates go to World Assistant only as parameters of each request. It doesn't store them or
+use any saved place. Pollen is looked up for places about 1 km apart and cached for four hours, so
+travelling can mean up to one fetch an hour from the pollen provider, in line with its fair-use
+guidance. Remember that while you're away the pollen provider and the events services (Skiddle,
+Ticketmaster) receive wherever you are, rather than your home.
 
 ## Settings
 
@@ -83,8 +97,8 @@ a stopped worker shows as unavailable rather than as old numbers that look curre
 One dashboard per data source lives in [`homeassistant/dashboards/`](../homeassistant/dashboards):
 `pollen.yaml`, `fuel.yaml`, `trains-buses.yaml`, `roads.yaml` and `events.yaml`. They use only
 Home Assistant's built-in cards (no HACS), and find their entities by name, so they need no editing
-for boards or corridors. The fuel and roads dashboards have a `zone` and a radius at the top of each
-card (both default to `zone.home`). The pollen and events dashboards need the package above.
+for boards or corridors. The fuel and roads dashboards have a `zone` (used when the package isn't installed) and a radius
+at the top of each card. The pollen and events dashboards, and the phone location, need the package above.
 
 To add one:
 
@@ -97,7 +111,8 @@ Repeat for each.
 ## Filtering by a Home Assistant location
 
 Fuel stations near a zone, as a template sensor (Settings > Devices & services > Helpers > Template,
-or in `configuration.yaml`). Change `zone.home` for any zone and `5` for the radius in km:
+or in `configuration.yaml`). Change `zone.home` for any zone (or `sensor.wa_location` for where you
+are) and `5` for the radius in km:
 
 ```yaml
 template:
@@ -190,7 +205,8 @@ action:
 
 MQTT messages carry station names and postcodes, road names, and bus and train services. Fuel
 stations and road events come with their (public) positions. Your own coordinates are never
-published, and World Assistant never learns your Home Assistant zones other than as the
-`lat`/`lon` of the pollen and events requests Home Assistant sends (not stored). Anyone who can read
+published, and World Assistant never learns your Home Assistant zones. It receives the point (your home zone, or
+your phone's position when you are away) only as the `lat`/`lon` of the pollen and events requests
+Home Assistant sends, and does not store it. Anyone who can read
 your broker can read the published data; if the broker is open to your whole network, set a username
 and the `mqtt_password` secret. The API token sits only in Home Assistant's `secrets.yaml`.
