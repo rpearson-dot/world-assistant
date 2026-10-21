@@ -4,6 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-21
+
+### Fixed
+- The automatic update job's signature check now matches the release workflow's identity whatever the capitalisation of the repository name. In 0.6.0 it looked for `World-assistant` while releases are signed as `world-assistant`, so every update would have been refused.
+
 ## [0.6.0] - 2026-10-21
 
 ### Added

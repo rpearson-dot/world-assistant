@@ -52,11 +52,12 @@ ever in the repository or the image, and what runs is exactly what CI built.
 | Whole-stack check | CI starts the real stack on PostGIS and requests every page and endpoint on every push, and the same read-only check runs after every deploy. |
 
 Verify a release before deploying it. Each release's notes contain the exact command for that image; it
-looks like this (the repository name is case-sensitive):
+looks like this (use the repository name exactly as it appears there; it is case-sensitive, and the automatic
+update job matches it case-insensitively):
 
 ```bash
 cosign verify ghcr.io/rpearson-dot/world-assistant@sha256:<digest> \
-  --certificate-identity-regexp 'https://github.com/rpearson-dot/World-assistant/.github/workflows/release.yml@.*' \
+  --certificate-identity-regexp 'https://github.com/rpearson-dot/world-assistant/.github/workflows/release.yml@.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 

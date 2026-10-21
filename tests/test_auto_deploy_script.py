@@ -159,6 +159,12 @@ def test_a_newer_release_is_backed_up_installed_and_reported(box: Box) -> None:
     assert rep["result"] == "updated" and rep["from_version"] == "0.5.0" and rep["to_version"] == "0.6.0"
 
 
+def test_the_signature_check_matches_the_repository_name_in_any_case(box: Box) -> None:
+    box.run()
+    verify = next(c for c in box.calls if c.startswith("docker run --rm -v"))
+    assert "(?i)https://github.com/rpearson-dot/world-assistant/.github/workflows/release.yml@.*" in verify
+
+
 def test_a_bad_signature_is_refused_before_anything_changes(box: Box) -> None:
     r = box.run(FAKE_COSIGN_FAIL="1")
     assert r.returncode == 0 and box.reports[-1]["result"] == "refused"
