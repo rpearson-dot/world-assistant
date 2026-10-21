@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-10-21
+
 ### Changed
 - The Unraid icons' cable is now a green USB data cable with a USB-A plug (it looked like a power lead).
 

@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await app.state.engine.dispose()
 
 
-app = FastAPI(title="World Assistant", version="0.7.4", lifespan=lifespan)
+app = FastAPI(title="World Assistant", version="0.7.5", lifespan=lifespan)
 app.include_router(status_router)
 app.include_router(autodeploy_router)
 app.include_router(backups_router)
