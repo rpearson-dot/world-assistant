@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Changed
+- Home Assistant location is now per person. The fixed package file is replaced by `scripts/ha-setup.py`, which writes pollen and events sensors for each person you list (their app location while away, else `zone.home`) plus a pollen dashboard with a history page each. The fuel, roads, events and pollen dashboards show each viewer data for where they are, picking their person by the logged-in user's name. Someone 100 miles from you no longer sees your pollen count or petrol prices.
+
 ## [0.7.2] - 2026-10-21
 
 ### Added
