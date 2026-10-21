@@ -69,6 +69,17 @@ Edit the files in `WA_SECRETS_DIR`, then `docker compose up -d --force-recreate`
 their own view of the files). To rotate the API token, replace `api_token.txt`, recreate, and use
 the new value in the browser.
 
+## Unraid Docker tab icons
+
+The compose files label each container with an icon (`net.unraid.docker.icon`) and the api with a
+WebUI link, so they look native in Unraid's Docker tab. Unraid downloads each icon from the api
+(`http://127.0.0.1:8010/icons/<name>.png`, or your `WA_API_PORT`) when it first sees the container, so
+after an update that adds them, recreate the containers (`docker compose up -d --force-recreate`) and
+refresh the Docker tab. If an icon does not appear, open that address in a browser on the NAS to check
+it loads. Unraid caches icons, and reads label changes only on container creation. The pictures are
+drawn by `deploy/unraid/make_icons.py` (SVG in `deploy/unraid/icons-src/`, rendered to `app/icons/`
+with `deploy/unraid/render_icons.py`).
+
 ## Troubleshooting
 
 | Symptom | Check |

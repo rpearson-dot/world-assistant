@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- Icons in Unraid's Docker tab: a simple green earth with a USB cable hanging off it, with a small badge for each container's role (gear for the worker, database, cache, route). The compose files carry the `net.unraid.docker.icon` labels, the api also gets a `net.unraid.docker.webui` link to `/status`, and the icons are served by the api at `/icons/<name>.png` without a token. Sources in `deploy/unraid/`.
+
 ## [0.7.4] - 2026-10-21
 
 ### Removed
