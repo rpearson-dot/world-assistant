@@ -128,7 +128,7 @@ async def test_sync_job_stores_for_each_place_and_warms_cache(
             return None
 
     monkeypatch.setattr("app.jobs.tracked", fake_tracked)
-    monkeypatch.setattr("app.ratelimit.SlidingWindowLimiter", NoLimit)
+    monkeypatch.setattr("app.pollen_budget.PollenLimiter", NoLimit)
     redis = _FakeRedis()
     try:
         out = await pollen_history.pollen_sync({"engine": engine, "redis": redis})

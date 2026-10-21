@@ -113,7 +113,7 @@ trip's corridor with the road numbers it uses. Stored events are then re-tagged.
 | `tfl_board` | Saved train boards (station plus filter, and which source reads it) |
 | `bus_tracker`, `bus_stop`, `bus_segment_obs`, `bus_anomaly`, `bus_target_day`, `bus_target_hit`, `bus_timetable` | The bus tracker: configuration, stop timings, anomalies and whether each day's bus made the target |
 | `ha_location` | Extra places Home Assistant asked to watch for events, with a last-renewed time (they expire) |
-| `pollen_grid` | Latest forecast for each point of the nationwide pollen lattice, refreshed three times a day |
+| `pollen_grid` | Latest forecast for each point of the nationwide pollen lattice, refreshed a few points at a time, twice a day |
 | `pollen_reading` | One value per place, day and allergen, kept 90 days (the `/pollen` graphs) |
 | `app_setting` | Small switches set from the status page (automatic updates) and the last update result |
 | `job_run` | One row per scheduled job run (kept 14 days) |

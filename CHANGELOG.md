@@ -6,12 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [0.7.3] - 2026-10-21
 
+### Removed
+- `scripts/pollen-survey.py` (about 100 provider calls, far over the 40 a day the key allows).
+
+### Fixed
+- Pollen provider limit. The provider allows only 40 requests a day on a key; the nationwide grid (about 150 a day as first built) and the four-hourly saved-place job exceeded it. All pollen requests now draw from one daily budget of 36 (`WA_POLLEN_DAILY_LIMIT`). Stored forecasts are read by date, so a point stays usable for four days; the grid job refreshes the 12 stalest points twice a day (`WA_POLLEN_GRID_CALLS_PER_RUN`), keeping 6 requests back (`WA_POLLEN_RESERVE_CALLS`); the saved-place history job runs once a day.
+
 ### Added
 - Extra places for events in Home Assistant. `rest_command.wa_add_location` registers a name and position (`POST /v1/ha/locations`); the worker publishes a `sensor.wa_events_place_<name>` for each over MQTT and the events dashboard lists whichever exist. Capped at 8 (`WA_HA_LOCATIONS_MAX`); each is searched every 12 hours (`WA_HA_LOCATION_REFRESH_H`), about 4 provider requests a day per place; places not renewed within 30 days are dropped, and within 7 days once 75% of the cap is used. Migration 0016.
 - Each pollen forecast point is a Home Assistant sensor with a position (`sensor.wa_pollen_point_<lat>_<lon>`), and the pollen dashboard has a map card of them: tap a marker for the allergy risk and each allergen by day.
 - Nationwide pollen. The worker fetches a lattice of about 51 points across Britain three times a day (gently, 10 s apart; setting `WA_POLLEN_GRID_DEG`), stores it (`pollen_grid`, migration 0015) and publishes it to Home Assistant as pollen tiles plus a colour-coded map image (`image.wa_pollen_map`). New `GET /v1/pollen/grid`; `/v1/pollen/near?lat&lon` answers from the nearest stored point, so the provider never sees anyone's location.
 - Pollen dashboard: the map, each viewer's pollen this week, and a history graph for the home location, fed by a static package (`homeassistant/packages/world_assistant_pollen.yaml`, no setup or secrets).
-- `scripts/pollen-survey.py`: a one-off survey of how finely the pollen provider's forecast varies across Britain (about 100 calls, run with `docker compose exec -T api python - < scripts/pollen-survey.py`), to decide how many points a nationwide pollen grid needs.
 
 ### Changed
 - Events in Home Assistant now use `zone.home` and no longer follow each person. `scripts/ha-setup.py` and the per-person location and events sensors are gone, replaced by a static package, `homeassistant/packages/world_assistant_events.yaml` (two secrets, no generator). Entities are `sensor.wa_events_home_upcoming` and `_next`.

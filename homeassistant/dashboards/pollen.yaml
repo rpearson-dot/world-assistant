@@ -82,7 +82,7 @@ views:
           | **{{ a.name }}** |{% for lv in (a.levels or []) %} {{ bars[lv | int(0)] if lv is not none else '▫️' }} |{% endfor %}{% endfor %}
 
           ⬜ none 🟩 low 🟨 moderate 🟧 high 🟥 very high
-          {% else %}No pollen forecast within 150 km of {{ where }} yet. It refreshes three times a day.{% endif %}
+          {% else %}No pollen forecast within 150 km of {{ where }} yet. It refreshes a few points at a time, twice a day.{% endif %}
       - type: history-graph
         title: Last 30 days, home
         hours_to_show: 720
