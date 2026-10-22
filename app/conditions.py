@@ -72,6 +72,11 @@ def nh_item(r: Any) -> dict[str, Any]:
             "detail": r.detail or r.cause, "status": r.status}  # fmt: skip
 
 
+def counts(r: Any) -> bool:
+    """TfL lists some disruptions as 'No impact' (a closure that does not touch traffic, say): not worth reporting."""
+    return (r.severity or "").strip().lower() != "no impact" or bool(r.has_closures)
+
+
 def tfl_item(r: Any) -> dict[str, Any]:
     what = r.sub_category if r.sub_category and r.sub_category.lower() != "unknown" else r.category
     return {"source": "tfl", "id": r.id, "level": tfl_level(r.severity, r.has_closures),
@@ -166,7 +171,7 @@ async def gather(
     items: list[dict[str, Any]] = []
     async with engine.connect() as conn:
         items += [nh_item(r) for r in (await conn.execute(text(NH_SQL), p)).all()]
-        items += [tfl_item(r) for r in (await conn.execute(text(TFL_SQL), {**p, "buffer": buffer_m})).all()]
+        items += [tfl_item(r) for r in (await conn.execute(text(TFL_SQL), {**p, "buffer": buffer_m})).all() if counts(r)]
         if floods:
             items += [flood_item(r) for r in (await conn.execute(text(FLOOD_SQL), {"corridor": corridor})).all()]
     return items

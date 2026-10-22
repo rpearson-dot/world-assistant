@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Changed
+- Trip conditions ignore TfL disruptions it rates "No impact" (unless the road is closed). The TfL probe also shows the shapes of `roadDisruptionLines` and `roadDisruptionImpactAreas`, which the parser does not use yet.
+
 ### Added
 - A tracker for the way back. In bus setup, **Also track the way back** (default 15:00 to 17:30) creates a second tracker, `<name>-return`, from the other side of the stop you got off at to the other side of the stop you got on at, with its own times and record. The worker now also polls 14:00 to 18:59.
 - Live bus positions for the tracker (Bus Open Data Service, needs the `bods_api_key`): GPS position, bearing and destination of the buses being followed, kept 30 days (`GET /v1/bus/trackers/{id}/positions`) and added to events about them. Collected only inside each tracker's own journey window, only for buses TfL shows heading for its stops. A "reported at an earlier stop" event whose bus is still heading the same way is marked as the predictions shifting. `WA_BUS_LIVE_ENABLED=false` turns it off. Migration 0026 ([docs/bus.md](docs/bus.md)).

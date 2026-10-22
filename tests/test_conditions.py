@@ -172,7 +172,7 @@ def test_conditions_on_a_trip(schema: None, monkeypatch: pytest.MonkeyPatch) -> 
         asyncio.run(load(
             engine,
             tfl=[tfl_item("on", ON_ROUTE, hasClosures=True, severity="Serious"),
-                 tfl_item("near", NEARBY), tfl_item("brum", BRUM),
+                 tfl_item("near", NEARBY), tfl_item("brum", BRUM), tfl_item("noimpact", ON_ROUTE, severity="No impact"),
                  tfl_item("soon", ON_ROUTE, startDateTime=stamp(days=3), endDateTime=stamp(days=4)),
                  tfl_item("ended", ON_ROUTE, endDateTime=stamp(days=-1))],
             nh=[nh_row("c1", "closure", stamp(hours=-2)), nh_row("s1", "speed", stamp(days=2), stamp(days=3)),
