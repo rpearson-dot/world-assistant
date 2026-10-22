@@ -28,7 +28,7 @@ def _jinja() -> Any:
 
 
 def test_the_static_dashboards_are_here() -> None:
-    assert {p.stem for p in DASHBOARDS} == {"pollen", "fuel", "trains-buses", "roads", "events", "manage"}
+    assert {p.stem for p in DASHBOARDS} == {"pollen", "fuel", "trains-buses", "roads", "events", "manage", "leaf"}
 
 
 @pytest.mark.parametrize("path", DASHBOARDS, ids=lambda p: p.stem)
@@ -107,7 +107,8 @@ def _env(ents: dict[str, tuple[str, dict[str, Any]]], **ctx: Any) -> Any:
     jinja2 = _jinja()
     st = _States(ents)
     env = jinja2.Environment()
-    env.globals.update(states=st, state_attr=st.attr, distance=_km, as_datetime=__import__("datetime").datetime.fromisoformat, **ctx)
+    env.globals.update(states=st, state_attr=st.attr, distance=_km,
+                       is_state=lambda e, v: st(e) == v, as_datetime=__import__("datetime").datetime.fromisoformat, **ctx)
     env.tests["search"] = lambda v, p: re.search(p, v) is not None
     env.tests["in"] = lambda v, c: v in c
     return env
@@ -386,3 +387,69 @@ def test_manage_dashboard_lists_what_is_set_up() -> None:
     assert "Mum's house: 3 events" in out and "Home to Work: 1 active works" in out and "Watching 1 of 8 places" in out
     empty = _env({}, user="Anyone").from_string(card["content"]).render()
     assert empty.count("- none") == 2
+
+
+# --- the Leaf -----------------------------------------------------------------------------------
+
+LEAF_OK = {
+    "sensor.nissan_leaf_hv66bzd_battery_level": ("81.0757", {}),
+    "sensor.leaf_estimated_range_mi": ("111.7", {}),
+    "sensor.nissan_leaf_hv66bzd_charge_substate": ("onrequest", {}),
+    "binary_sensor.nissan_leaf_hv66bzd_charging_status": ("off", {}),
+    "binary_sensor.nissan_leaf_hv66bzd_charge_port": ("off", {}),
+    "binary_sensor.hv66bzd_12v_battery_voltage_alert": ("off", {}),
+    "binary_sensor.hv66bzd_12v_battery_charging": ("off", {}),
+    "sensor.hv66bzd_12v_battery_voltage": ("12.4", {}),
+    "lock.hv66bzd_vehicle_lock": ("locked", {}),
+    **{f"binary_sensor.hv66bzd_{d}": ("off", {}) for d in
+       ("front_left_door", "front_right_door", "rear_left_door", "rear_right_door", "trunk")},
+    "binary_sensor.nissan_leaf_hv66bzd_cell_voltage_alerts": ("off", {}),
+    "binary_sensor.nissan_leaf_hv66bzd_cell_temperature_alerts": ("off", {}),
+    **{f"sensor.leaf_tyre_pressure_{t}_psi": ("36.0", {}) for t in
+       ("front_left", "front_right", "rear_left", "rear_right")},
+}
+
+
+def _leaf(**over: tuple[str, dict[str, Any]]) -> str:
+    return _env({**LEAF_OK, **over}).from_string(_card("leaf", 1)).render()
+
+
+def test_leaf_says_nothing_to_do_when_all_is_well() -> None:
+    out = _leaf()
+    assert "Nothing to do." in out and "81%" in out and "111.7 miles" in out
+    assert "🔌" not in out and "⚠️" not in out and "🛞" not in out
+
+
+def test_leaf_reports_charging_when_it_is() -> None:
+    out = _leaf(**{
+        "binary_sensor.nissan_leaf_hv66bzd_charging_status": ("on", {}),
+        "binary_sensor.nissan_leaf_hv66bzd_charge_port": ("on", {}),
+        "sensor.nissan_leaf_hv66bzd_time_to_full_charge": ("3h 51m", {}),
+    })
+    assert "Charging, 3h 51m to full." in out and "🔌" not in out  # plugged in and charging: no warning
+
+
+def test_leaf_flags_what_needs_doing() -> None:
+    out = _leaf(**{
+        "binary_sensor.nissan_leaf_hv66bzd_charge_port": ("on", {}),  # plugged in, not charging
+        "sensor.nissan_leaf_hv66bzd_battery_level": ("7", {}),
+        "sensor.leaf_estimated_range_mi": ("7.7", {}),
+        "sensor.hv66bzd_12v_battery_voltage": ("11.6", {}),
+        "lock.hv66bzd_vehicle_lock": ("unlocked", {}),
+        "binary_sensor.hv66bzd_trunk": ("on", {}),
+        "sensor.leaf_tyre_pressure_front_right_psi": ("32.5", {}),
+        "sensor.leaf_tyre_pressure_rear_left_psi": ("41.0", {}),
+    })
+    assert "Plugged in but not charging (onrequest)" in out
+    assert "Charge is 7%, about 7.7 miles" in out
+    assert "12V battery at 11.6V" in out
+    assert "🔓 Unlocked" in out and "🚪 Boot open" in out
+    assert "Front right tyre 32.5 psi" in out and "Rear left tyre 41.0 psi" in out
+    assert "Front left" not in out and "Rear right" not in out  # the two at 36 psi say nothing
+    assert "Nothing to do." not in out
+
+
+def test_leaf_is_quiet_when_a_sensor_is_missing() -> None:
+    """A car asleep or an entity not yet created must not produce a false warning."""
+    out = _env({}).from_string(_card("leaf", 1)).render()
+    assert "Nothing to do." in out and "⚠️" not in out and "🛞" not in out
