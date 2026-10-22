@@ -1,7 +1,7 @@
 """Live buses near a point, anywhere in Great Britain, from the Bus Open Data Service.
 
 Unlike the bus tracker (one TfL route, recorded all morning), this is a snapshot: where every bus that
-reports a position is right now. Nothing is stored. Results are cached for 30 seconds per area, so a map
+reports a position is right now. Nothing is stored. Results are cached for 10 seconds per area, so a map
 being refreshed does not become a stream of calls to BODS.
 """
 

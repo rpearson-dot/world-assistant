@@ -23,7 +23,7 @@ Without a key the endpoint answers 503 and the map layer says why. Nothing else 
 | the `buses` map layer | the same, drawn; off at first, and around a place only |
 
 The radius is capped at 15 km: a box that size around a city is thousands of buses. Results are cached for
-30 seconds per area, so refreshing the map is not a stream of requests to BODS.
+10 seconds per area (the rate BODS refreshes), so refreshing the map is not a stream of requests to BODS.
 
 ## What is in it
 
