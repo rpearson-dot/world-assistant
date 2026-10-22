@@ -31,6 +31,12 @@ Otherwise it says `Nothing to do.`, plus the charge and range, or the time to fu
 A missing or unavailable sensor never raises a warning: a car asleep says nothing rather than
 crying wolf. The thresholds are plain numbers in the template, so change them in place.
 
+## The trail on the map
+
+The map shows the last 24 hours of positions as a coloured trail, in whatever colour Home Assistant
+has given the car. It is where the car has been, not anything about the road. Delete `hours_to_show`
+from the map card for the current position alone.
+
 ## What was dropped
 
 Still recorded and still in the history, just not on a card: motor RPM, inverter power and
