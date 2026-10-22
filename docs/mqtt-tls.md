@@ -46,8 +46,25 @@ Let's Encrypt certificates last 90 days. Renew on a schedule (Unraid's User Scri
 picks up the new certificate. Mosquitto must be able to read both files (`chown` them to the user it runs as;
 in the official image that is uid 1883).
 
-No domain? A private certificate authority works too (OVMS, Home Assistant and World Assistant can all be
-given your own CA), but then every client needs that CA file, and you manage its expiry yourself.
+### Or: your own certificate authority (no domain, no renewals every 90 days)
+
+`scripts/mqtt-ca.sh` makes a small certificate authority of your own and a broker certificate signed by it. Give
+it every name and IP address clients use to reach the broker (the public name or IP the car connects to, and the
+NAS's LAN address):
+
+```bash
+bash scripts/mqtt-ca.sh --out /mnt/user/appdata/mosquitto/certs --restart mosquitto mqtt.example.com 203.0.113.7 192.168.1.10
+```
+
+- The CA lasts 10 years; its key stays in `WA_SECRETS_DIR/mqtt-ca` and never leaves it.
+- The broker certificate (`fullchain.pem`, `privkey.pem` in `--out`) lasts 5 years. Re-run the same command to
+  renew it: the CA is kept, so the car and Home Assistant need no change. `--restart` restarts your Mosquitto
+  container afterwards. Without `--out` the files go where the bundled broker reads them.
+- Every client is told once to trust `ca.pem` (in `--out`, and downloadable from Settings > MQTT): OVMS in
+  `/store/trustedca` (step 5), Home Assistant as a custom CA (step 6). World Assistant trusts it by itself
+  (`WA_MQTT_TLS_CA=/keys/mqtt-ca.pem`, which the script sets).
+
+With your own CA you can skip steps 1 and 2 entirely; the names just have to be the ones clients connect to.
 
 ## 3. Mosquitto
 
@@ -118,8 +135,9 @@ In the OVMS web interface: **Config > Server V3 (MQTT)**:
 Save, then check **Status**: Server V3 should say connected. The module needs the right time to check a
 certificate, which it gets from the modem or GPS.
 
-If it reports a certificate error, the module does not trust the root behind your certificate. For Let's
-Encrypt that is **ISRG Root X1** (from letsencrypt.org/certificates, the PEM file): in **Tools > Editor** create
+With your own CA (`scripts/mqtt-ca.sh`), the module must be told to trust it: in **Tools > Editor** create
+`/store/trustedca/world-assistant-ca.pem` with the contents of `ca.pem`, then **Tools > Shell**: `tls trust reload`.
+With Let's Encrypt, if it reports a certificate error, the module does not trust the root behind it: that is **ISRG Root X1** (from letsencrypt.org/certificates, the PEM file): in **Tools > Editor** create
 `/store/trustedca/isrgrootx1.pem` with its contents, then in **Tools > Shell** run `tls trust reload` (and
 `tls trust list` to see it). For a private CA, put your CA's certificate there instead.
 

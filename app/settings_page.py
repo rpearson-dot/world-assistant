@@ -86,13 +86,15 @@ PAGE = """<!doctype html>
       <label>Password<input id="mqpw" type="password" autocomplete="new-password" placeholder="Leave empty to keep"></label>
     </div>
     <label class="switch"><input id="mqtls" type="checkbox"> <span><b>Encrypted (TLS)</b><br>
-      <span class="hint" id="mqtlshint">The broker's certificate is checked against the server name.</span></span></label>
+      <span class="hint" id="mqtlshint">The broker's certificate is checked against the server name. Your own certificate
+      authority (scripts/mqtt-ca.sh) is trusted automatically.</span></span></label>
   </div>
   <p id="mqbundled" class="note" hidden>This is the broker bundled with World Assistant. Its password is managed by the stack
   (mqtt_password.txt), and inside the stack the connection never leaves this server, so encryption is not needed here.
   To encrypt connections from outside (a car's OVMS module), add certificates to the broker (docs/mqtt-tls.md).</p>
   <div class="row" style="margin-top:12px"><button id="mqtest" type="button">Test connection</button>
     <button id="mqsave" class="primary" type="button">Save</button><button id="mqreset" type="button">Use .env</button>
+    <button id="mqca" type="button" hidden>Download ca.pem</button>
     <span id="mqmsg" class="dim"></span></div></div>
 </section>
 
@@ -343,7 +345,15 @@ function mqShow(d) {
   $('mqnow').textContent = state + (d.source === 'settings' ? ' (Settings here, which override .env.)' : ' (From .env.)');
   $('mqnow').className = lp && !lp.ok && d.active ? 'err' : 'dim';
   $('mqreset').disabled = d.source !== 'settings';
+  $('mqca').hidden = !d.ca_available;
 }
+// the CA certificate made by scripts/mqtt-ca.sh, for the OVMS module and Home Assistant to trust
+$('mqca').onclick = async () => {
+  const r = await fetch('/v1/settings/mqtt/ca', { headers: hdr() });
+  if (!r.ok) { $('mqmsg').textContent = 'No CA certificate: ' + r.status; return; }
+  const url = URL.createObjectURL(await r.blob()), a = document.createElement('a');
+  a.href = url; a.download = 'world-assistant-mqtt-ca.pem'; document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+};
 // switching encryption moves the port between the usual pair, unless a custom one was chosen
 $('mqtls').onchange = () => {
   const p = $('mqport').value;

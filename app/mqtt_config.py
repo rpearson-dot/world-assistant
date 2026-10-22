@@ -14,10 +14,12 @@ import re
 import ssl
 import tempfile
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any
 
 import aiomqtt
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
@@ -52,7 +54,11 @@ class MqttConf:
 
 def from_env(s: Settings | None = None) -> MqttConf:
     s = s or get_settings()
-    return MqttConf(s.mqtt_host.strip(), s.mqtt_port, s.mqtt_user, s.mqtt_tls, s.mqtt_tls_ca, s.mqtt_enabled)
+    ca = s.mqtt_tls_ca
+    if not ca:  # the CA scripts/mqtt-ca.sh made, when .env does not name one
+        made = secretstore.keys_dir() / "mqtt-ca.pem"
+        ca = str(made) if made.is_file() else ""
+    return MqttConf(s.mqtt_host.strip(), s.mqtt_port, s.mqtt_user, s.mqtt_tls, ca, s.mqtt_enabled)
 
 
 def merge(base: MqttConf, saved: dict[str, Any] | None) -> MqttConf:
@@ -85,7 +91,9 @@ def tls_context(enabled: bool, ca_file: str = "") -> ssl.SSLContext | None:
     """TLS for the broker connection: verified against the system's trusted roots, or your own CA file."""
     if not enabled:
         return None
-    ctx = ssl.create_default_context(cafile=ca_file or None)
+    ctx = ssl.create_default_context()  # the public roots (Let's Encrypt and the like) ...
+    if ca_file:
+        ctx.load_verify_locations(cafile=ca_file)  # ... and your own CA as well, not instead
     ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     return ctx
 
@@ -179,7 +187,28 @@ async def describe(request: Request) -> dict[str, Any]:
             "active": conf.active, "bundled": conf.bundled, "source": source, "changed_at": at,
             "password_set": pw_source not in ("missing", "default"), "password_source": pw_source,
             "env": {"host": from_env().host, "port": from_env().port, "tls": from_env().tls},
-            "last_publish": last}  # fmt: skip
+            "last_publish": last, "ca_available": ca_file() is not None}  # fmt: skip
+
+
+def ca_file() -> Path | None:
+    """The CA certificate clients should trust: WA_MQTT_TLS_CA, or the one scripts/mqtt-ca.sh left in the keys folder."""
+    for candidate in (from_env().ca, str(secretstore.keys_dir() / "mqtt-ca.pem")):
+        if candidate and Path(candidate).is_file():
+            return Path(candidate)
+    return None
+
+
+@router.get("/ca", response_class=PlainTextResponse)
+async def get_ca() -> PlainTextResponse:
+    """The CA certificate (public, not a secret), for the OVMS module and Home Assistant to trust."""
+    path = ca_file()
+    if path is None:
+        raise HTTPException(404, "no CA certificate here: run scripts/mqtt-ca.sh, or set WA_MQTT_TLS_CA")
+    body = path.read_text()
+    if "BEGIN CERTIFICATE" not in body or "PRIVATE KEY" in body:
+        raise HTTPException(404, "that file is not a certificate")
+    return PlainTextResponse(body, media_type="application/x-pem-file",
+                             headers={"Content-Disposition": 'attachment; filename="world-assistant-mqtt-ca.pem"'})  # fmt: skip
 
 
 @router.get("")
