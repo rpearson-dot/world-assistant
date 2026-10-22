@@ -151,7 +151,7 @@ def events_device(data: dict[str, Any]) -> Device:
     for loc in data.get("locations") or []:
         rows = [{"name": e.get("name"), "date": e.get("date"), "doors_open": e.get("doors_open"),
                  "venue": e.get("venue"), "town": e.get("town"), "distance_km": e.get("distance_km"),
-                 "price": e.get("price"), "type": e.get("type"), "source": e.get("source")}
+                 "price": e.get("price"), "type": e.get("type"), "source": e.get("source"), "url": e.get("url")}
                 for e in loc.get("events") or []]  # fmt: skip
         sensors.append(Sensor(
             f"place_{ha.slug(str(loc['id']))}", f"Events near {loc['name']}", loc.get("count", len(rows)),

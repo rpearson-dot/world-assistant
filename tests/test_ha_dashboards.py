@@ -194,6 +194,17 @@ def test_events_card_lists_the_events_near_home() -> None:
     assert "Nothing listed" in _env({}, user="Anyone").from_string(_card("events")).render()
 
 
+def test_event_names_link_to_their_page_when_there_is_one() -> None:
+    evs = [{"name": "Linked [live]", "date": "2026-10-25", "distance_km": 1.0, "url": "https://example.com/e/1"},
+           {"name": "Plain Gig", "date": "2026-10-26", "distance_km": 2.0, "url": None}]  # fmt: skip
+    ents = {"sensor.wa_events_home_upcoming": ("2", {"events": evs, "days": 7, "radius_km": 8}),
+            "sensor.wa_events_place_work": ("1", {"friendly_name": "Events near Work", "place": "Work", "events": evs[:1] + [{**evs[1], "url": "https://x.test/2"}]})}  # fmt: skip
+    for card in (0, 1):
+        out = _env(ents, user="Anyone").from_string(_card("events", card)).render()
+        assert "[**Linked (live)**](https://example.com/e/1)" in out  # brackets in a name cannot break the link
+        assert "**Plain Gig**" in out or "[**Plain Gig**](https://x.test/2)" in out
+
+
 # --- pollen --------------------------------------------------------------------------------------
 
 POLLEN_PACKAGE = ROOT / "homeassistant" / "packages" / "world_assistant_pollen.yaml"
