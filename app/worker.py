@@ -11,6 +11,7 @@ from arq.connections import RedisSettings
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import get_settings
+from app.energy.sync import energy_sync
 from app.graph.build import graph_build
 from app.ha_publish import ha_sync
 from app.integrations.bus.poller import poll_bus
@@ -74,6 +75,7 @@ class WorkerSettings:
         graph_build,
         naptan_sync,
         flood_poll,
+        energy_sync,
         codepoint_sync,
     ]
     cron_jobs: ClassVar[list] = [
@@ -99,6 +101,8 @@ class WorkerSettings:
         cron(graph_build, minute={8, 38}, timeout=300, max_tries=1),
         # Flood warnings: the EA updates its list every 15 minutes.
         cron(flood_poll, minute={5, 20, 35, 50}, timeout=240, max_tries=1),
+        # Energy rates: Octopus publishes tomorrow's mid-afternoon; every 30 minutes keeps today fresh.
+        cron(energy_sync, minute={3, 33}, timeout=120, max_tries=1),
         # Postcodes: checked daily, downloaded only when missing or a month old (OS publishes quarterly).
         cron(codepoint_sync, hour={3}, minute={10}, timeout=1800, max_tries=1),
         # The national stop register changes slowly: checked daily, downloaded (~100 MB) only when the table

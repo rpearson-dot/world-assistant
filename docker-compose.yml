@@ -40,6 +40,9 @@ x-app: &app
     WA_FUEL_POLL_ENABLED: ${WA_FUEL_POLL_ENABLED:-true}
     WA_CODEPOINT_POLL_ENABLED: ${WA_CODEPOINT_POLL_ENABLED:-true}
     WA_FLOOD_POLL_ENABLED: ${WA_FLOOD_POLL_ENABLED:-true}
+    WA_ENERGY_POLL_ENABLED: ${WA_ENERGY_POLL_ENABLED:-true}
+    WA_OCTOPUS_ACCOUNT: ${WA_OCTOPUS_ACCOUNT:-}
+    WA_OCTOPUS_TARIFF: ${WA_OCTOPUS_TARIFF:-}
     WA_NAPTAN_POLL_ENABLED: ${WA_NAPTAN_POLL_ENABLED:-true}
     WA_FUEL_PRICE_INTERVAL_MIN: ${WA_FUEL_PRICE_INTERVAL_MIN:-30}
     WA_NH_LIVE_INTERVAL_MIN: ${WA_NH_LIVE_INTERVAL_MIN:-10}
@@ -69,6 +72,7 @@ x-app: &app
     - nr_access_token
     - skiddle_api_key
     - bods_api_key
+    - octopus_api_key
     - ticketmaster_api_key
     - pollen_api_key
     - redis_password
@@ -193,6 +197,8 @@ secrets:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/nr_access_token.txt
   mqtt_password:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/mqtt_password.txt
+  octopus_api_key:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/octopus_api_key.txt
   bods_api_key:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/bods_api_key.txt
   skiddle_api_key:

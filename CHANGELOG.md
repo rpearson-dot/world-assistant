@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- Energy supply module (phase 1): Octopus unit rates for your tariff (fixed, Cosy, Go, Agile) every 30 minutes, banded cheap / standard / peak from the rates themselves. `GET /v1/energy/now`, `/rates` and `/windows`, and an **Energy** device in Home Assistant with the current rate and band, a cheap-now flag, the next change, the next cheap and peak windows and the cheapest block, for Home Assistant to act on; World Assistant never controls the inverter. New secret `octopus_api_key`, settings `WA_OCTOPUS_ACCOUNT` / `WA_OCTOPUS_TARIFF`, switch `WA_ENERGY_POLL_ENABLED`. Migration 0023 ([docs/energy.md](docs/energy.md)).
+
 ## [0.9.0] - 2026-10-22
 
 ### Added

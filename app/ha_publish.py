@@ -23,6 +23,7 @@ import httpx
 
 from app import ha, mqtt
 from app.config import get_settings
+from app.energy.ha import energy_device
 from app.ha import Device, Sensor, slug
 from app.pollen_map import render_svg
 
@@ -389,7 +390,13 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
                 log.info("home assistant: bus tracker %s skipped (%s)", tid, type(exc).__name__)
         return out
 
-    for name, build in (("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
+    async def energy() -> Device:
+        now = await _get(c, "/v1/energy/now")
+        if now.get("tariff") is None:
+            raise ValueError("energy is not set up")
+        return energy_device(now, (await _get(c, "/v1/energy/rates", hours=48))["slots"] if now.get("available") else [])
+
+    for name, build in (("energy", energy), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
         await attempt(name, build)
     return devices
 

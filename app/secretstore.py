@@ -61,6 +61,7 @@ KNOWN: tuple[Known, ...] = (
     Known("nr_access_token", False, "National Rail (Rail Data Marketplace) consumer key"),
     Known("ticketmaster_api_key", False, "Ticketmaster Discovery API consumer key"),
     Known("skiddle_api_key", False, "Skiddle events API key"),
+    Known("octopus_api_key", False, "Octopus Energy API key (finds your tariff from the account number)"),
     Known("bods_api_key", False, "Bus Open Data Service key (live buses outside London)"),
     Known("pollen_api_key", False, "Polleninformation (Austrian Pollen Information Service) API key"),
     Known("redis_password", False, "Password of the stack's own Redis"),

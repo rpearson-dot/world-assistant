@@ -8,3 +8,4 @@ made that would be hard to reverse or that a future reader would question.
 - [0003 Corridor matching in plain Python](0003-corridor-matching.md)
 - [0004 Immutable, signed releases](0004-immutable-releases.md)
 - [0005 Self-hosted routing with Valhalla](0005-routing-engine.md)
+- [0008 Domain modules; WA reports, HA acts](0008-domain-modules.md)
