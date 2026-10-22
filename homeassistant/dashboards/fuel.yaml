@@ -8,10 +8,26 @@ views:
     path: fuel
     icon: mdi:gas-station
     cards:
-      - type: entities
-        title: Fuel
-        entities:
-          - entity: input_select.wa_fuel_type
+      # The dropdown only appears once the package is installed; until then the card below shows petrol.
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: input_select.wa_fuel_type
+            state_not: unavailable
+        card:
+          type: entities
+          title: Fuel
+          entities:
+            - entity: input_select.wa_fuel_type
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: input_select.wa_fuel_type
+            state: unavailable
+        card:
+          type: markdown
+          content: |
+            Showing petrol (E10). Add homeassistant/packages/world_assistant_fuel.yaml to choose diesel.
       - type: markdown
         title: Cheapest near you
         content: |

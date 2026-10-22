@@ -18,17 +18,30 @@ views:
           {% else %}No services listed.
           {% endif %}{% endfor %}
           {% if not ns.found %}No boards yet. Set one up in World Assistant (Trains page).{% endif %}
-      - type: entities
-        title: Bus times
-        show_header_toggle: false
-        entities:
-          - entity: input_datetime.wa_bus_deadline
-          - entity: input_datetime.wa_bus_earliest
-          - entity: input_datetime.wa_bus_show_until
-      - type: markdown
-        content: |
-          Needs homeassistant/packages/world_assistant_bus.yaml. The times World Assistant is using are in
-          the chance line below.
+      # Optional controls: they appear once homeassistant/packages/world_assistant_bus.yaml is installed.
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: input_datetime.wa_bus_deadline
+            state_not: unavailable
+        card:
+          type: entities
+          title: Bus times
+          show_header_toggle: false
+          entities:
+            - entity: input_datetime.wa_bus_deadline
+            - entity: input_datetime.wa_bus_earliest
+            - entity: input_datetime.wa_bus_show_until
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: input_datetime.wa_bus_deadline
+            state: unavailable
+        card:
+          type: markdown
+          content: |
+            To change the bus times from here, add homeassistant/packages/world_assistant_bus.yaml. The times
+            World Assistant is using are in the chance line below.
       - type: markdown
         title: Bus tracker
         content: |
