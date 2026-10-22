@@ -100,6 +100,11 @@ views:
         default_zoom: 14
         theme_mode: auto
         hours_to_show: 24
+      - type: markdown
+        content: |
+          The coloured trail is where the car has been over the last 24 hours, in the colour Home
+          Assistant gives this car. It is the route driven, not a road condition. For just the
+          current position and no trail, delete `hours_to_show` from the map card above.
 
   - title: Health
     path: leaf-health
