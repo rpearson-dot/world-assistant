@@ -169,7 +169,7 @@ function badge(f) {
   else { b.className = 'badge'; b.textContent = 'Last changed in ' + f.changed_in; }
   return b;
 }
-// navigator.clipboard only exists over HTTPS (or localhost); on http://<server> fall back to a hidden textarea.
+// navigator.clipboard only exists in a secure context (HTTPS or localhost); elsewhere fall back to a hidden textarea.
 function copyText(text) {
   if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
   const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', '');
