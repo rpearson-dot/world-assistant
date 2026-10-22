@@ -179,3 +179,13 @@ async def test_save_replaces_only_its_kinds(schema) -> None:
         assert {r["kind"] for r in await store.load_sessions(engine)} == {"saving", "boost"}
     finally:
         await engine.dispose()
+
+
+def test_retired_sensors_are_not_published_and_are_cleared():
+    from app import ha
+    from app.energy.ha import RETIRED
+
+    published = {x.key for x in session_sensors(sessions.summarise(rows(), NOW))}
+    assert not published & set(RETIRED)
+    msgs = ha.clear("wa", "homeassistant", "energy", RETIRED)
+    assert ("homeassistant/sensor/wa_energy_free_electricity_now/config", "", True) in msgs

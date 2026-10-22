@@ -23,6 +23,7 @@ import httpx
 
 from app import ha, mqtt
 from app.config import get_settings
+from app.energy.ha import RETIRED as ENERGY_RETIRED
 from app.energy.ha import energy_device
 from app.ha import Device, Sensor, slug
 from app.pollen_map import render_svg
@@ -447,6 +448,8 @@ async def ha_sync(ctx: dict[str, Any]) -> int:
         for dev, old in (ctx.get("ha_keys") or {}).items():
             if dev in keys:
                 gone += ha.clear(s.mqtt_topic_prefix, s.mqtt_discovery_prefix, dev, [k for k in old if k not in keys[dev]])
+    if first and "energy" in keys:
+        gone += ha.clear(s.mqtt_topic_prefix, s.mqtt_discovery_prefix, "energy", ENERGY_RETIRED)
     expire = max(1, s.ha_interval_min) * 60 * 3
     sent: dict[str, str] = ctx.setdefault("ha_images", {})
     before = dict(sent)
