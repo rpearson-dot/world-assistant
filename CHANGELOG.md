@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Changed
+- TfL road disruptions keep the area TfL says they affect (its `geometry`, a MultiPolygon) when there are no street lines, instead of a single point, so trip conditions and `GET /v1/roads/tfl/at` now find long works anywhere along their length. Run the TfL sync (or wait 15 minutes) after updating. The probe reports how many are stored as lines, areas and points ([docs/tfl-roads.md](docs/tfl-roads.md)).
+
 ## [0.12.1] - 2026-10-22
 
 ### Changed

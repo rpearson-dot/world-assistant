@@ -64,7 +64,22 @@ def _pairs(raw: Any) -> list[tuple[float, float]]:
     return out
 
 
-def _geojson_parts(geo: Any, lines: list[list[tuple[float, float]]], points: list[tuple[float, float]]) -> None:
+def _ring(raw: Any) -> list[tuple[float, float]] | None:
+    """A polygon's outer ring, closed, or None if it is too small to be an area."""
+    ring = _pairs(raw)
+    if len(ring) < 3:
+        return None
+    if ring[0] != ring[-1]:
+        ring.append(ring[0])
+    return ring if len(ring) >= 4 else None
+
+
+def _geojson_parts(
+    geo: Any,
+    lines: list[list[tuple[float, float]]],
+    points: list[tuple[float, float]],
+    areas: list[list[tuple[float, float]]],
+) -> None:
     if not isinstance(geo, dict):
         return
     kind, coords = geo.get("type"), geo.get("coordinates")
@@ -74,17 +89,26 @@ def _geojson_parts(geo: Any, lines: list[list[tuple[float, float]]], points: lis
         lines.append(ln)
     elif kind == "MultiLineString" and isinstance(coords, list):
         lines.extend(ln for part in coords if (ln := _pairs(part)))
-    elif kind == "Polygon" and isinstance(coords, list) and coords and (ring := _pairs(coords[0])):
-        lines.append(ring)
+    elif kind == "Polygon" and isinstance(coords, list) and coords and (ring := _ring(coords[0])):
+        areas.append(ring)
+    elif kind == "MultiPolygon" and isinstance(coords, list):
+        # TfL's "geometry": the area the works affect, one polygon per stretch of road (outer rings only)
+        areas.extend(ring for poly in coords if isinstance(poly, list) and poly and (ring := _ring(poly[0])))
     elif kind == "GeometryCollection":
         for g in geo.get("geometries") or []:
-            _geojson_parts(g, lines, points)
+            _geojson_parts(g, lines, points, areas)
 
 
 def geometry_of(item: dict[str, Any]) -> dict[str, Any] | None:
-    """GeoJSON for where the disruption is: a MultiLineString if it has street lines, else a Point."""
+    """GeoJSON for where the disruption is, most exact first.
+
+    Street lines (a MultiLineString) when TfL gives them; else the affected area (a MultiPolygon, from
+    "geometry"); else any other line or point the feed carries; else the single "point". Only about one in
+    five items has street lines; the area lets the rest match along their length, not at one point.
+    """
     lines: list[list[tuple[float, float]]] = []
     points: list[tuple[float, float]] = []
+    areas: list[list[tuple[float, float]]] = []
     for street in item.get("streets") or []:
         if not isinstance(street, dict):
             continue
@@ -92,18 +116,20 @@ def geometry_of(item: dict[str, Any]) -> dict[str, Any] | None:
             if isinstance(seg, dict) and (ln := _pairs(seg.get("lineString"))):
                 lines.append(ln)
     if not lines:
-        _geojson_parts(item.get("geometry"), lines, points)
-    if not lines:
-        _geojson_parts(item.get("geography"), lines, points)
-    if not lines and not points:
+        _geojson_parts(item.get("geometry"), lines, points, areas)
+    if not lines and not areas:
+        _geojson_parts(item.get("geography"), lines, points, areas)
+    if not lines and not areas and not points:
         raw = item.get("point")
         if isinstance(raw, str):
             nums = re.findall(r"-?\d+(?:\.\d+)?", raw)
             if len(nums) >= 2 and (v := _valid(nums[0], nums[1])):
                 points.append(v)
-    lines = [ln for ln in lines if len(ln) >= 2] or []
+    lines = [ln for ln in lines if len(ln) >= 2]
     if lines:
         return {"type": "MultiLineString", "coordinates": [[list(p) for p in ln] for ln in lines]}
+    if areas:
+        return {"type": "MultiPolygon", "coordinates": [[[list(p) for p in ring]] for ring in areas]}
     if points:
         return {"type": "Point", "coordinates": list(points[0])}
     return None

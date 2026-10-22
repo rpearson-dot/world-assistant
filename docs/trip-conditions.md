@@ -47,5 +47,5 @@ incidents for a later `when` are whatever is reported now, so the response says 
 - The match is geometric. A flood area that crosses the route may not put water on the road, and a TfL closure
   on a parallel street within 75 m can show. Raise or lower `buffer_m` to taste.
 - The route is Valhalla's best road line, simplified to about 30 m. Your actual road may differ.
-- TfL's response shape was not verifiable when this was written: run `python -m app.integrations.tflroads.probe`
-  and check most disruptions have a position.
+- TfL works are matched by their street lines or, for most, the area TfL says they affect; only a few are a single
+  point. `python -m app.integrations.tflroads.probe` shows the split.
