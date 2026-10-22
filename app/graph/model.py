@@ -10,12 +10,9 @@ are kept to what a traversal needs for a decision or a label; the detail stays i
 
 from __future__ import annotations
 
-import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
-
-EARTH_KM = 6371.0088
 
 # Labels, so a typo is a NameError rather than a quietly empty graph.
 PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER = (
@@ -53,34 +50,6 @@ class Graph:
 
     def counts(self) -> dict[str, int]:
         return {"nodes": len(self.nodes), "relationships": len(self.rels)}
-
-
-def haversine_km(a: tuple[float, float], b: tuple[float, float]) -> float:
-    p = math.pi / 180
-    h = (
-        math.sin((b[0] - a[0]) * p / 2) ** 2
-        + math.cos(a[0] * p) * math.cos(b[0] * p) * math.sin((b[1] - a[1]) * p / 2) ** 2
-    )
-    return 2 * EARTH_KM * math.asin(math.sqrt(h))
-
-
-def _point(row: dict[str, Any]) -> tuple[float, float] | None:
-    lat, lon = row.get("lat"), row.get("lon")
-    return None if lat is None or lon is None else (float(lat), float(lon))
-
-
-def near_line(point: tuple[float, float], line: Sequence[tuple[float, float]], within_km: float) -> float | None:
-    """How far a point is from the nearest waypoint of a line, or None if further than within_km.
-
-    Distance to the waypoints rather than to the segments between them: corridors are stored as
-    dense waypoints, so the difference is small, and this keeps the builder cheap and pure.
-    """  # fmt: skip
-    best = None
-    for p in line:
-        d = haversine_km(point, p)
-        if best is None or d < best:
-            best = d
-    return best if best is not None and best <= within_km else None
 
 
 def places(rows: Iterable[dict[str, Any]]) -> list[Node]:
@@ -149,42 +118,16 @@ def trackers(rows: Iterable[dict[str, Any]]) -> list[Node]:
     return out
 
 
-def near_places(
-    things: Sequence[Node], place_nodes: Sequence[Node], within_km: float
-) -> list[Rel]:
-    """Anything with coordinates, tied to the places it is close to, with the distance."""
-    out = []
-    located = [(p, _point(p.props)) for p in place_nodes]
-    for thing in things:
-        a = _point(thing.props)
-        if a is None:
-            continue
-        for place, b in located:
-            if b is None:
-                continue
-            d = haversine_km(a, b)
-            if d <= within_km:
-                out.append(Rel(NEAR, thing.key(), place.key(), {"km": round(d, 3)}))
-    return out
+def near_places(pairs: Iterable[tuple[str, str, str, float]]) -> list[Rel]:
+    """NEAR relationships from (label, thing id, place id, km) measured by PostGIS."""
+    return [Rel(NEAR, (label, thing), (PLACE, place), {"km": round(float(km), 3)})
+            for label, thing, place, km in pairs]  # fmt: skip
 
 
-def along_corridors(
-    station_nodes: Sequence[Node], corridor_rows: Iterable[dict[str, Any]], within_km: float
-) -> list[Rel]:
-    """Stations close enough to a corridor to be on the way."""
-    out = []
-    located = [(s, _point(s.props)) for s in station_nodes]
-    for row in corridor_rows:
-        line = [(float(p[0]), float(p[1])) for p in (row.get("centreline") or []) if len(p) >= 2]
-        if not line:
-            continue
-        for station, point in located:
-            if point is None:
-                continue
-            d = near_line(point, line, within_km)
-            if d is not None:
-                out.append(Rel(ALONG, station.key(), (CORRIDOR, row["id"]), {"km": round(d, 3)}))
-    return out
+def along_corridors(pairs: Iterable[tuple[str, str, float]]) -> list[Rel]:
+    """ALONG relationships from (station id, corridor id, km) measured by PostGIS."""
+    return [Rel(ALONG, (STATION, station), (CORRIDOR, corridor), {"km": round(float(km), 3)})
+            for station, corridor, km in pairs]  # fmt: skip
 
 
 def drives(vehicle_nodes: Sequence[Node], trip_nodes: Sequence[Node]) -> list[Rel]:
@@ -203,8 +146,8 @@ def build(
     location_rows: Sequence[dict[str, Any]],
     vehicle_rows: Sequence[dict[str, Any]],
     tracker_rows: Sequence[dict[str, Any]],
-    near_km: float = 3.0,
-    along_km: float = 2.0,
+    near_pairs: Sequence[tuple[str, str, str, float]] = (),
+    along_pairs: Sequence[tuple[str, str, float]] = (),
 ) -> Graph:
     """The whole graph, from one read of Postgres. Pure, so the shape is testable on its own."""
     place_nodes = places(place_rows)
@@ -221,9 +164,8 @@ def build(
     rels = [
         *trip_rels,
         *event_rels,
-        *near_places(station_nodes, place_nodes, near_km),
-        *near_places(location_nodes, place_nodes, near_km),
-        *along_corridors(station_nodes, corridor_rows, along_km),
+        *near_places(near_pairs),
+        *along_corridors(along_pairs),
         *drives(vehicle_nodes, trip_nodes),
     ]
     known = {n.key() for n in nodes}

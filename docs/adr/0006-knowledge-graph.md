@@ -37,6 +37,6 @@ build, which runs twice an hour.
 It is a fourth datastore, and a fourth thing to keep patched. If it is not earning its place, it can
 be removed by deleting a compose file, a job and a router — no migration, and no data goes with it.
 
-Proximity relationships (`NEAR`, `ALONG`) are computed in Python over every pair, because nothing in
-WA uses PostGIS yet even though the extension is installed. That is fine at this size and is the
-obvious thing to replace when PostGIS is turned on properly.
+Proximity relationships (`NEAR`, `ALONG`) are measured by PostGIS (ADR 0007), so the builder asks
+Postgres which things are close rather than comparing every pair in Python. The model stays pure:
+it is handed the measured pairs and turns them into relationships.

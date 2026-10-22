@@ -74,6 +74,24 @@ def _hit(r: Any, fuel: str, distance_km: float, now: datetime) -> FuelHit:
     )  # fmt: skip
 
 
+# The same columns, but cut to a radius by PostGIS and measured on the spheroid. ST_DWithin is
+# index-assisted by ix_fuel_station_geog, so this looks at the stations near the point rather than
+# every station in the country.
+_SELECT_NEAR = text(
+    """
+    SELECT s.node_id, s.trading_name, s.brand_name, s.postcode, s.city, s.lat, s.lon,
+           s.is_motorway, s.is_supermarket, p.pence, p.last_updated, p.effective,
+           ST_Distance(s.geog, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography) / 1000.0 AS distance_km
+    FROM fuel_station s JOIN fuel_price p ON p.node_id = s.node_id
+    WHERE p.fuel_type = :fuel AND s.coords_ok AND NOT s.temporary_closure
+      AND NOT s.permanent_closure
+      AND ST_DWithin(s.geog, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, :radius_m)
+      AND (CAST(:max_age_h AS float) IS NULL
+           OR COALESCE(p.last_updated, p.effective) > now() - CAST(:max_age_h AS float) * interval '1 hour')
+    """
+)
+
+
 async def _candidates(
     engine: AsyncEngine, fuel: str, box: tuple[float, float, float, float], max_age_h: float | None
 ) -> Sequence[Any]:
@@ -185,20 +203,17 @@ async def near_point(
     engine: AsyncEngine, lat: float, lon: float, *, radius_km: float = 5.0, fuel: str = "E10",
     limit: int = 10, max_age_hours: float | None = 48.0,
 ) -> list[FuelHit]:  # fmt: skip
-    """Cheapest stations within radius_km of a point."""
+    """Cheapest stations within radius_km of a point. PostGIS does the cutting and the measuring."""
     code = _fuel(fuel)
-    dlat = math.degrees(radius_km / EARTH_KM)
-    dlon = dlat / max(math.cos(math.radians(lat)), 0.01)
-    rows = await _candidates(
-        engine, code, (lat - dlat, lon - dlon, lat + dlat, lon + dlon), max_age_hours
-    )
+    async with engine.connect() as conn:
+        result = await conn.execute(
+            _SELECT_NEAR,
+            {"fuel": code, "lat": lat, "lon": lon, "radius_m": radius_km * 1000.0,
+             "max_age_h": max_age_hours},
+        )  # fmt: skip
+        rows = result.mappings().all()
     now = datetime.now(UTC)
-    hits = []
-    for r in rows:
-        d = haversine_km((lat, lon), (r["lat"], r["lon"]))
-        if d <= radius_km:
-            hits.append(_hit(r, code, d, now))
-    return _rank(hits, limit)
+    return _rank([_hit(r, code, float(r["distance_km"]), now) for r in rows], limit)
 
 
 async def along_corridor(

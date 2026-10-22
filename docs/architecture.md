@@ -50,7 +50,7 @@ flowchart LR
 | `api` | FastAPI. Serves the pages and `/v1/*`, the assistant tools (`/v1/ask`, `/mcp`) and the status, backup and automatic-update endpoints. Reads the database; calls Valhalla, postcodes.io and (cached) the event, train and pollen services on demand. |
 | `worker` | arq scheduler. Polls the feeds that are stored (National Highways, Fuel Finder, the bus tracker, pollen history) and writes to the database. The only thing that calls National Highways and Fuel Finder. Records a heartbeat the status page shows. |
 | `migrate` | One-shot Alembic job that runs before the api and worker start. |
-| `wa-db` | PostGIS Postgres, private to the stack. |
+| `wa-db` | PostGIS Postgres, private to the stack. Tables holding coordinates carry a generated `geog` point and a GiST index, so radius searches are indexed ([ADR 0007](adr/0007-postgis.md)). |
 | `wa-redis` | Redis, private to the stack and password protected (`redis_password`). Used for the shared upstream rate limiter, short caches and the worker heartbeat. Nothing is saved to disk. Keys are prefixed `wa:`. |
 | `wa-graph` | Optional Neo4j (separate compose file) holding relationships derived from Postgres. Owns no data: the `graph_build` job rebuilds it, and it is left out of the backup on purpose. See [graph.md](graph.md). |
 | `valhalla` | Optional routing engine (separate compose file). Only reachable inside the stack. |

@@ -27,22 +27,29 @@ from app.main import app
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
-FILE = Path(__file__).parent.parent / "migrations" / "versions" / "0007_fuel.py"
+VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
+FILES = [VERSIONS / "0007_fuel.py", VERSIONS / "0018_geography.py"]  # 0018 adds the indexed point
 TABLES = ["fuel_price_change", "fuel_price", "fuel_station"]
 
 
 def _migrate(fn: str) -> None:
-    spec = importlib.util.spec_from_file_location("m0007", FILE)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    modules = []
+    for f in FILES:
+        spec = importlib.util.spec_from_file_location(f.stem, f)
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        modules.append(module)
+    if fn != "upgrade":
+        modules.reverse()
     sync_engine = sa.create_engine(URL)  # type: ignore[arg-type]
     with sync_engine.begin() as conn:
         if fn == "upgrade":
             for t in TABLES:
                 conn.execute(text(f"DROP TABLE IF EXISTS {t} CASCADE"))
         with Operations.context(MigrationContext.configure(conn)):
-            getattr(module, fn)()
+            for module in modules:
+                getattr(module, fn)()
     sync_engine.dispose()
 
 

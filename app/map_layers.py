@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import text
 
 from app.auth import require_token
+from app.geoquery import distance_km, params, within_sql
 from app.integrations.fuelfinder.normalise import canonical_fuel
 from app.integrations.fuelfinder.queries import haversine_km
 from app.places import place_or_default
@@ -53,17 +54,29 @@ def _collection(features: list[dict[str, Any]], name: str) -> dict[str, Any]:
     return {"type": "FeatureCollection", "name": name, "features": features}
 
 
-def within(centre: Point | None, radius_km: float, lat: float | None, lon: float | None) -> bool:
-    """A point is in range when there is no centre, or it is inside the radius."""
+async def _near(
+    conn: Any, sql: str, centre: Point | None, radius_km: float, *,
+    order: str | None = None, alias: str = "", **extra: Any,
+) -> Any:  # fmt: skip
+    """Run a SELECT, cut to the radius by Postgres rather than by us.
+
+    With no centre the query is run as written. With one, a `ST_DWithin` is appended and the rows
+    come back nearest first, which the GiST index on `geog` makes an indexed lookup rather than a
+    scan of the table.
+    """
     if centre is None:
-        return True
-    if lat is None or lon is None:
-        return False
-    return haversine_km(centre, (lat, lon)) <= radius_km
+        return await conn.execute(text(sql + (f" ORDER BY {order}" if order else "")), extra)
+    joiner = " AND " if " WHERE " in sql.upper() else " WHERE "
+    sql = sql + joiner + within_sql(alias) + f" ORDER BY {distance_km(alias)}"
+    return await conn.execute(text(sql), params(centre[0], centre[1], radius_km, **extra))
 
 
 def line_within(centre: Point | None, radius_km: float, points: Sequence[Point]) -> bool:
-    """A line is in range when any of its points is: a closure drawn in part is worse than none."""
+    """A line is in range when any of its points is: a closure drawn in part is worse than none.
+
+    Lines live in JSONB rather than a geometry column, and there are only ever a handful of them,
+    so this stays in Python where the point layers have moved to SQL.
+    """
     if centre is None:
         return True
     return any(haversine_km(centre, p) <= radius_km for p in points)
@@ -80,19 +93,19 @@ def pollen_level(forecast: Any) -> tuple[str | None, int | None]:
 
 
 async def _places(conn: Any, centre: Point | None, radius_km: float) -> list[dict[str, Any]]:
-    res = await conn.execute(text("SELECT id, name, kind, postcode, lat, lon, origin FROM place ORDER BY name"))
+    res = await _near(conn, "SELECT id, name, kind, postcode, lat, lon, origin FROM place",
+                      centre, radius_km, order="name")  # fmt: skip
     return [_point(r.lat, r.lon, {"id": r.id, "name": r.name, "kind": r.kind, "postcode": r.postcode,
                                   "origin": r.origin})
-            for r in res if within(centre, radius_km, r.lat, r.lon)]  # fmt: skip
+            for r in res]  # fmt: skip
 
 
 async def _locations(conn: Any, centre: Point | None, radius_km: float) -> list[dict[str, Any]]:
-    res = await conn.execute(
-        text("SELECT id, name, lat, lon, radius_km, last_seen FROM ha_location ORDER BY name")
-    )
+    res = await _near(conn, "SELECT id, name, lat, lon, radius_km, last_seen FROM ha_location",
+                      centre, radius_km, order="name")  # fmt: skip
     return [_point(r.lat, r.lon, {"id": r.id, "name": r.name, "radius_km": r.radius_km,
                                   "last_seen": r.last_seen.isoformat() if r.last_seen else None})
-            for r in res if within(centre, radius_km, r.lat, r.lon)]  # fmt: skip
+            for r in res]  # fmt: skip
 
 
 async def _roads(conn: Any, centre: Point | None, radius_km: float) -> list[dict[str, Any]]:
@@ -130,38 +143,37 @@ async def _road_events(conn: Any, centre: Point | None, radius_km: float) -> lis
 
 
 async def _signs(conn: Any, centre: Point | None, radius_km: float) -> list[dict[str, Any]]:
-    res = await conn.execute(
-        text("SELECT sign_id, road, direction, description, lat, lon, working, lines, time_last_set "
-             "FROM nh_sign WHERE lat IS NOT NULL AND lon IS NOT NULL ORDER BY road, direction")
-    )  # fmt: skip
+    res = await _near(conn,
+                      "SELECT sign_id, road, direction, description, lat, lon, working, lines, time_last_set "
+                      "FROM nh_sign WHERE geog IS NOT NULL",
+                      centre, radius_km, order="road, direction")  # fmt: skip
     return [_point(r.lat, r.lon, {"id": r.sign_id, "road": r.road, "direction": r.direction,
                                   "description": r.description, "working": r.working,
                                   "lines": list(r.lines or []),
                                   "set_at": r.time_last_set.isoformat() if r.time_last_set else None})
-            for r in res if within(centre, radius_km, r.lat, r.lon)]  # fmt: skip
+            for r in res]  # fmt: skip
 
 
 async def _fuel(conn: Any, centre: Point | None, radius_km: float, fuel: str) -> list[dict[str, Any]]:
-    res = await conn.execute(
-        text("SELECT s.node_id, s.brand_name, s.trading_name, s.postcode, s.lat, s.lon, s.is_motorway, "
-             "s.is_supermarket, p.pence, p.last_updated "
-             "FROM fuel_station s LEFT JOIN fuel_price p ON p.node_id = s.node_id AND p.fuel_type = :f "
-             "WHERE s.coords_ok AND NOT s.permanent_closure"),
-        {"f": fuel},
-    )  # fmt: skip
+    res = await _near(
+        conn,
+        "SELECT s.node_id, s.brand_name, s.trading_name, s.postcode, s.lat, s.lon, s.is_motorway, "
+        "s.is_supermarket, p.pence, p.last_updated "
+        "FROM fuel_station s LEFT JOIN fuel_price p ON p.node_id = s.node_id AND p.fuel_type = :f "
+        "WHERE s.coords_ok AND NOT s.permanent_closure",
+        centre, radius_km, alias="s", f=fuel,
+    )
     return [_point(r.lat, r.lon, {"id": r.node_id, "brand": r.brand_name, "name": r.trading_name,
                                   "postcode": r.postcode, "motorway": r.is_motorway,
                                   "supermarket": r.is_supermarket, "fuel": fuel, "pence": r.pence,
                                   "price_at": r.last_updated.isoformat() if r.last_updated else None})
-            for r in res if within(centre, radius_km, r.lat, r.lon)]  # fmt: skip
+            for r in res]  # fmt: skip
 
 
 async def _pollen(conn: Any, centre: Point | None, radius_km: float) -> list[dict[str, Any]]:
-    res = await conn.execute(text("SELECT lat, lon, forecast, changed_at FROM pollen_grid"))
+    res = await _near(conn, "SELECT lat, lon, forecast, changed_at FROM pollen_grid", centre, radius_km)
     out = []
     for r in res:
-        if not within(centre, radius_km, r.lat, r.lon):
-            continue
         label, level = pollen_level(r.forecast)
         out.append(_point(r.lat, r.lon, {"label": label, "level": level,
                                          "changed_at": r.changed_at.isoformat() if r.changed_at else None}))  # fmt: skip

@@ -83,5 +83,5 @@ There is no Neo4j in CI, so the tests drive the writer against a fake session: t
 the grouping and the parameters, but not that the Cypher parses. The first real `graph_build` is what
 proves that. If it fails, the error names the statement.
 
-Proximity is computed in Python over every pair of things, because nothing in WA uses PostGIS yet.
-That is quick enough at this size and is the first thing to replace once PostGIS is in use.
+Proximity (`NEAR`, `ALONG`) is measured by PostGIS during the build, so the distances on those
+relationships are spheroid distances from the same index the rest of WA now uses.
