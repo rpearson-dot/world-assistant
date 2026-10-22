@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-22
+
 ### Removed
 - The PostGIS image installs `postgis_tiger_geocoder`, a United States census address geocoder, which puts `tiger` on the search path along with its own `place` table — ours won only because `public` comes first. Nothing here geocodes anything, so migration 0019 drops it: 34 empty tables and a trap gone.
 
