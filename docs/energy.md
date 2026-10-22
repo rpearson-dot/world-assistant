@@ -58,8 +58,10 @@ Every 30 minutes WA also reads:
 
 * **Saving Sessions** from Octopus's GraphQL API (needs the key and account number): the announced events, and
   whether you have joined each. WA never joins for you; do that in the Octopus app.
-* **Free Electricity sessions** from a community-run list (`oe-api.davidskendall.co.uk`); nothing about you is
-  sent. `WA_ENERGY_FREE_SESSIONS_ENABLED=false` turns it off.
+
+Octopus now announces Free Electricity sessions on a calendar rather than through a feed this project can read,
+so they are not included yet. (An earlier version read a community-run list; it had stopped being updated and
+has been removed.)
 
 The queries follow the BottlecapDave Home Assistant integration and are not an official Octopus contract, so a
 change at Octopus could break them. The rates keep working if the sessions fail. To see exactly what Octopus
@@ -70,8 +72,7 @@ docker compose exec worker python -m app.energy.probe
 ```
 
 API: `GET /v1/energy/sessions` (also under `sessions` in `/v1/energy/now`). Home Assistant sensors: Saving session
-now (`on`/`off`, with a `joined` attribute), Next saving session starts, Next joined saving session starts, Free
-electricity now, Next free electricity session starts, and the next joined one. Migration 0024 (`energy_session`).
+now (`on`/`off`, with a `joined` attribute), Next saving session starts, and Next joined saving session starts. Migration 0024 (`energy_session`).
 
 Example: when `sensor.wa_energy_saving_session_now` is `on` and its `joined` attribute is true, run the house from
 the battery.

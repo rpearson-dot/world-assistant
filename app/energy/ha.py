@@ -152,11 +152,11 @@ def _next(prefix: str, name: str, block: dict[str, Any], icon: str) -> list[Sens
 
 
 def session_sensors(sessions: dict[str, Any]) -> list[Sensor]:
-    """Saving Sessions (Octopus pays for using less) and free-electricity sessions. Empty when none are known."""
+    """Saving Sessions (Octopus pays for using less). Empty when sessions are not known."""
     if not sessions:
         return []
-    saving, free = sessions.get("saving") or {}, sessions.get("free") or {}
-    cur_s, cur_f = saving.get("current") or {}, free.get("current") or {}
+    saving = sessions.get("saving") or {}
+    cur_s = saving.get("current") or {}
     return [
         Sensor(
             "saving_session_now",
@@ -170,12 +170,4 @@ def session_sensors(sessions: dict[str, Any]) -> list[Sensor]:
             },
         ),
         *_next("saving_session", "saving session", saving, "mdi:calendar-star"),
-        Sensor(
-            "free_electricity_now",
-            "Free electricity now",
-            "on" if free.get("now") else "off",
-            icon="mdi:flash",
-            attributes={"end": cur_f.get("end")},
-        ),
-        *_next("free_electricity", "free electricity session", free, "mdi:calendar-star"),
     ]

@@ -69,7 +69,9 @@ UPSERT_SESSION = text(
 async def save_sessions(engine: AsyncEngine, kinds: list[str], rows: list[dict[str, Any]]) -> int:
     """Replace the stored sessions of `kinds` with `rows` (a complete fetch); other kinds are untouched."""
     async with engine.begin() as conn:
-        await conn.execute(text("DELETE FROM energy_session WHERE kind = ANY(:k)"), {"k": kinds})
+        await conn.execute(
+            text("DELETE FROM energy_session WHERE kind = ANY(:k) OR kind = 'free'"), {"k": kinds}
+        )
         if rows:
             await conn.execute(UPSERT_SESSION, rows)
         await conn.execute(

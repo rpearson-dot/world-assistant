@@ -84,14 +84,7 @@ DATA = {
 
 
 def rows():
-    return kraken.parse_saving(DATA) + kraken.parse_free(
-        {
-            "data": [
-                {"id": 9, "code": "F1", "start": t(3), "end": t(4)},
-                {"id": 8, "code": "T", "start": t(1), "end": t(2), "is_test": True},
-            ]
-        }
-    )
+    return kraken.parse_saving(DATA)
 
 
 def test_parse_saving_skips_dev_and_bad_and_marks_joined():
@@ -101,32 +94,24 @@ def test_parse_saving_skips_dev_and_bad_and_marks_joined():
     assert by["SAVE1"]["regions"] == "J" and by["UP"]["kind"] == "boost"
 
 
-def test_parse_free_skips_tests():
-    assert [r["code"] for r in rows() if r["kind"] == "free"] == ["F1"]
-
-
-def test_parse_free_bad_shape():
-    with pytest.raises(kraken.OctopusError):
-        kraken.parse_free({"nope": 1})
-
-
 def test_summary_now_and_next():
     s = sessions.summarise(rows(), NOW)
     assert s["saving"]["now"] and s["saving"]["now_joined"]
     assert s["saving"]["next"]["code"] == "SAVE2" and s["saving"]["next_joined"] is None
-    assert not s["free"]["now"] and s["free"]["next"]["starts_in_minutes"] == 180
+    assert s["saving"]["next"]["starts_in_minutes"] == 1440
 
 
 def test_empty():
     s = sessions.summarise([], NOW)
-    assert s["saving"]["next"] is None and not s["free"]["now"]
+    assert s["saving"]["next"] is None
 
 
 def test_sensors():
     s = sessions.summarise(rows(), NOW)
     keys = {x.key: x for x in session_sensors(s)}
-    assert keys["saving_session_now"].state == "on" and keys["free_electricity_now"].state == "off"
-    assert keys["free_electricity_next_start"].state is not None
+    assert keys["saving_session_now"].state == "on"
+    assert keys["saving_session_next_start"].state is not None
+    assert not any(k.startswith("free_") for k in keys)
     assert session_sensors({}) == []
     dev = energy_device({"available": False, "sessions": s}, [])
     assert {x.key for x in dev.sensors} >= {"status", "saving_session_now"}
@@ -175,14 +160,22 @@ async def test_save_replaces_only_its_kinds(schema) -> None:
         "event_type": None,
     }
     try:
+        await store.save_sessions(engine, ["saving"], [mk("saving", "A", 1), mk("saving", "B", 2)])
+        await store.save_sessions(engine, ["boost"], [mk("boost", "U", 3)])
         await store.save_sessions(
-            engine, ["saving", "boost"], [mk("saving", "A", 1), mk("saving", "B", 2)]
-        )
-        await store.save_sessions(engine, ["free"], [mk("free", "F", 3)])
-        await store.save_sessions(
-            engine, ["saving", "boost"], [mk("saving", "B", 2)]
-        )  # A is gone, free stays
+            engine, ["saving"], [mk("saving", "B", 2)]
+        )  # A is gone, boost stays
         got = {(r["kind"], r["code"]) for r in await store.load_sessions(engine)}
-        assert got == {("saving", "B"), ("free", "F")}
+        assert got == {("saving", "B"), ("boost", "U")}
+        # rows of the retired free-electricity kind are cleared by the next save
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO energy_session (kind, code, start_at, end_at) "
+                    "VALUES ('free', 'old', now() + interval '1 hour', now() + interval '2 hours')"
+                )
+            )
+        await store.save_sessions(engine, ["saving"], [mk("saving", "B", 2)])
+        assert {r["kind"] for r in await store.load_sessions(engine)} == {"saving", "boost"}
     finally:
         await engine.dispose()
