@@ -69,6 +69,7 @@ app/
   secretstore.py, secretsctl.py                                     where every secret comes from
   status.py, backups.py, backup.py, autodeploy.py                   status page, backups, update switch
   places.py, trips (in places.py), vehicles.py, routing.py, geo.py places, trips, vehicles, Valhalla
+  conditions.py, tflroads.py                                                              what is on a trip's route; TfL road disruptions
   stops.py, floods.py, postcodes.py, bods.py                                              stops near a point (NaPTAN); flood warnings
   fuel.py, events.py, pollen.py, pollen_history.py, pollen_grid.py, pollen_map.py                  fuel, events and pollen (API and pages)
   bus.py, bus_page.py, tfl.py                                       bus tracker, train boards
@@ -112,6 +113,12 @@ also have a `probe` you can run to see the real response (`python -m app.integra
 A **place** is a name plus coordinates (from a postcode or given directly). A **trip** is two
 places. **Build route** asks Valhalla for the road line, simplifies it, and stores it as the
 trip's corridor with the road numbers it uses. Stored events are then re-tagged.
+
+## Trip conditions
+
+`GET /v1/trips/{id}/conditions` builds the route line from the corridor centreline and asks three stored sources about
+it: events tagged to the corridor (National Highways), TfL disruptions within a buffer, and flood areas it crosses.
+Rules and the rollup are in `app/conditions.py` ([docs/trip-conditions.md](trip-conditions.md)).
 
 ## Schema
 

@@ -5,6 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [Unreleased]
 
 ### Added
+- Trip conditions: what is on the way. `GET /v1/trips/{id}/conditions` (and `GET /v1/conditions` for every routed trip) combines National Highways events on the trip's corridor, TfL road disruptions near the route and Environment Agency flood warnings crossing it, as **now** (clear, minor, disrupted, severe, with the items and a sentence to read aloud) and **planned** (works starting later, `days` ahead), with a `when` option for a later departure. Shown on the Places page, as two Home Assistant sensors per routed trip (status; planned works count) under a new Trips device, and as an assistant tool, `road_conditions` ([docs/trip-conditions.md](docs/trip-conditions.md)).
 - London road disruptions from TfL (works, closures, collisions, incidents), every 15 minutes, kept with where they are: `GET /v1/roads/tfl` lists them and `GET /v1/roads/tfl/at` finds those near a place or point. A probe (`python -m app.integrations.tflroads.probe`) shows the real response. `WA_TFLROADS_POLL_ENABLED` turns it off. Migration 0025 ([docs/tfl-roads.md](docs/tfl-roads.md)).
 
 ## [0.11.1] - 2026-10-22

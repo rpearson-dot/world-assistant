@@ -319,6 +319,34 @@ def roads_device(status: dict[str, Any], events: list[dict[str, Any]] | None = N
     return Device("roads", "Roads", sensors)
 
 
+def trips_device(trips: list[dict[str, Any]]) -> Device:
+    """One status sensor and one planned-works sensor for each trip with a route."""
+
+    def brief(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        keys = ("source", "headline", "where", "starts", "ends", "level")
+        return [{k: i.get(k) for k in keys} for i in items[:8]]
+
+    sensors: list[Sensor] = []
+    for t in trips:
+        if "now" not in t:  # no route yet
+            continue
+        key, name = slug(str(t["trip"]["id"])), t["trip"].get("name") or t["trip"]["id"]
+        planned = t["planned"]
+        sensors.append(Sensor(
+            f"{key}_conditions", f"{name}: conditions", t["now"]["status"], icon="mdi:road-variant",
+            attributes={"summary": t.get("summary"), "problems": t["now"]["count"], "items": brief(t["now"]["items"])},
+        ))  # fmt: skip
+        sensors.append(Sensor(
+            f"{key}_planned", f"{name}: planned works", planned["count"], icon="mdi:calendar-alert",
+            state_class="measurement",
+            attributes={"next_starts": planned["items"][0]["starts"] if planned["items"] else None,
+                        "days": planned["days"], "items": brief(planned["items"])},
+        ))  # fmt: skip
+    if not sensors:
+        raise ValueError("no trip has a route yet")
+    return Device("trips", "Trips", sensors)
+
+
 async def _get(c: httpx.AsyncClient, path: str, **params: Any) -> Any:
     r = await c.get(path, params=params or None)
     r.raise_for_status()
@@ -397,7 +425,10 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
             raise ValueError("energy is not set up")
         return energy_device(now, (await _get(c, "/v1/energy/rates", hours=48))["slots"] if now.get("available") else [])
 
-    for name, build in (("energy", energy), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
+    async def trips() -> Device:
+        return trips_device((await _get(c, "/v1/conditions"))["trips"])
+
+    for name, build in (("trips", trips), ("energy", energy), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
         await attempt(name, build)
     return devices
 

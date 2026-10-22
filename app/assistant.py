@@ -156,6 +156,21 @@ async def energy_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
     return {"text": energy_speech.sentence(res, ZoneInfo(get_settings().local_tz), now), "data": res}
 
 
+async def conditions_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.conditions import all_conditions, trip_conditions
+
+    days = int(args.get("days") or 7)
+    trip = str(args.get("trip") or "") or None
+    if trip:
+        r = await _wrap(trip_conditions(request, trip, None, days))
+        return {"text": r["summary"], "data": r}
+    res = await all_conditions(request, days)
+    done = [t for t in res["trips"] if "now" in t]
+    if not done:
+        raise ToolError("No trip has a route yet. Build one on the Places page, then ask again.")
+    return {"text": " ".join(t["summary"] for t in done), "data": res}
+
+
 async def events_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
     place = str(args.get("place") or "") or None
     days = int(args.get("days") or 7)
@@ -269,6 +284,9 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
          {"type": "object", "properties": _props(place=("string", "id of a saved place; default: home"))}, pollen_tool),
     Tool("electricity", "Electricity price now and next, the next cheap and peak times, the cheapest block of hours, and Saving Sessions.",
          {"type": "object", "properties": _props(hours=("number", "length of the cheapest block, default 3"))}, energy_tool),
+    Tool("road_conditions", "Road works, closures, incidents and flood warnings on a saved trip's route, now and planned. No trip means all of them.",
+         {"type": "object", "properties": _props(trip=("string", "id of a saved routed trip; default: all"),
+                                                  days=("number", "how far ahead to look for planned works, default 7"))}, conditions_tool),
     Tool("trip_cost", "Fuel or energy needed, and cost, for a saved routed trip in a saved vehicle.",
          {"type": "object", "properties": _props(trip=("string", "trip id"), vehicle=("string", "vehicle id")),
           "required": ["trip", "vehicle"]}, trip_cost_tool),
