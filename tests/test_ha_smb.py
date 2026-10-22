@@ -87,8 +87,8 @@ def test_copying_to_a_real_share() -> None:
     stamp = f"# {time.time_ns()}\n"  # new content every run, so the first copy always writes
     files = {"packages/world_assistant_test.yaml": stamp + "a: 1\n", "world_assistant/dashboards/test.yaml": stamp}
     first = copy_files(share, user, pw, files, None)
-    assert first["ok"] and {f["result"] for f in first["files"]} == {"written"}
+    assert first["ok"] and {f["result"] for f in first["files"]} == {"written"}, first
     assert (local / "packages" / "world_assistant_test.yaml").read_text() == stamp + "a: 1\n"
     again = copy_files(share, user, pw, files, None)
-    assert {f["result"] for f in again["files"]} == {"unchanged"}
+    assert {f["result"] for f in again["files"]} == {"unchanged"}, again
     assert copy_files(share, user, "wrong", files, None)["error"].startswith("the share refused")
