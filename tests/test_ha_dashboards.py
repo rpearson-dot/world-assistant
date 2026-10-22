@@ -31,6 +31,21 @@ def test_the_static_dashboards_are_here() -> None:
     assert {p.stem for p in DASHBOARDS} == {"pollen", "fuel", "trains-buses", "roads", "events", "manage", "leaf"}
 
 
+FOOTER_TYPES = {"buttons", "graph"}  # all Home Assistant accepts; anything else is a Configuration error
+
+
+@pytest.mark.parametrize("path", DASHBOARDS, ids=lambda p: p.stem)
+def test_card_footers_are_a_type_home_assistant_knows(path: Path) -> None:
+    """A markdown footer renders as a red "Configuration error" box, so notes go in their own card."""
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    for view in doc["views"]:
+        for card in view["cards"]:
+            for c in [card, *(card.get("cards") or []), *( [card["card"]] if card.get("card") else [])]:
+                foot = c.get("footer") if isinstance(c, dict) else None
+                if foot:
+                    assert foot.get("type") in FOOTER_TYPES, f"{c.get('title')}: footer {foot.get('type')!r}"
+
+
 @pytest.mark.parametrize("path", DASHBOARDS, ids=lambda p: p.stem)
 def test_dashboard_is_valid(path: Path) -> None:
     env = _jinja().Environment()

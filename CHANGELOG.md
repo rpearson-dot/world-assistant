@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Fixed
+- Dashboard cards showed a red "Configuration error" where a note sat in the card's footer: Home Assistant accepts only `buttons` and `graph` there. The notes on the Leaf and Trains and buses dashboards are now cards of their own, and a test rejects any other footer type.
+
 ### Added
 - A Home Assistant dashboard for the Leaf (`homeassistant/dashboards/leaf.yaml`, [docs/leaf.md](docs/leaf.md)): what you need before driving on the first view, diagnostics on the second. A "Before you go" card stays silent unless the car is plugged in but not charging, low, unlocked, open, short of 12V, alerting on cells, or off its tyre pressures. Fed by OVMS; it needs nothing from World Assistant.
 

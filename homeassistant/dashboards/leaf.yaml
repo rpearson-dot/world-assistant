@@ -123,12 +123,10 @@ views:
             name: Gids
           - entity: sensor.hv66bzd_maximum_gids_nissan_leaf
             name: Gids at this pack's best
-        footer:
-          type: markdown
-          content: >-
-            Hx falls faster than state of health and is the earlier warning. Gids against the
-            maximum is the same story in the pack's own units.
-
+      - type: markdown
+        content: |
+          Hx falls faster than state of health and is the earlier warning. Gids against the maximum is the
+          same story in the pack's own units.
       - type: entities
         title: 12V battery
         show_header_toggle: false
@@ -139,12 +137,10 @@ views:
             name: Reference
           - entity: binary_sensor.hv66bzd_12v_battery_charging
             name: Charging
-        footer:
-          type: markdown
-          content: >-
-            Around 12.4V at rest is healthy and below 11.9V is not. It reads high whenever the car
-            is awake or charging, so judge it when the car has been asleep a while.
-
+      - type: markdown
+        content: |
+          Around 12.4V at rest is healthy and below 11.9V is not. It reads high whenever the car is awake
+          or charging, so judge it when the car has been asleep a while.
       - type: entities
         title: Charges taken
         show_header_toggle: false
@@ -185,10 +181,9 @@ views:
             name: Rear left
           - entity: sensor.leaf_tyre_pressure_rear_right_psi
             name: Rear right
-        footer:
-          type: markdown
-          content: 36 psi recommended. The first view says something only below 33 or above 40.
-
+      - type: markdown
+        content: |
+          36 psi recommended. The first view says something only below 33 or above 40.
       - type: entities
         title: Distance
         show_header_toggle: false
