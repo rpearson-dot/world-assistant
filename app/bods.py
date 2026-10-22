@@ -25,7 +25,7 @@ log = logging.getLogger("wa.bods")
 
 router = APIRouter(prefix="/v1/live-buses", tags=["live buses"], dependencies=[Depends(require_token)])
 
-CACHE_SECONDS = 30
+CACHE_SECONDS = 10  # BODS refreshes positions every 10 seconds
 MAX_RADIUS_KM = 15.0  # a box this size around a city is a few thousand buses; wider is a slow, large reply
 
 

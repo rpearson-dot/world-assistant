@@ -39,3 +39,15 @@ the tests use a response built to that shape. The parser ignores XML namespaces 
 If your first call fails, the error says whether it was the key, the HTTP status, or the XML.
 
 Contains public sector information licensed under the Open Government Licence v3.0.
+
+## Does it cover London (the 213)?
+
+Unconfirmed. BODS says its positions refresh every 10 seconds, but its guidance page does not say whether
+London buses are included, and TfL has its own feed. To find out with your key, ask for a box round the
+213's route and look for line 213:
+
+```
+curl -s "https://data.bus-data.dft.gov.uk/api/v1/datafeed/?boundingBox=-0.40,51.40,-0.20,51.50&api_key=YOUR_KEY" | grep -c "<VehicleActivity>"
+```
+
+Zero (or no 213) means London is not in it, and the TfL-based bus tracker stays the source for that route.
