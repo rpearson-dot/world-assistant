@@ -159,10 +159,22 @@ def all_trips(state: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def detect_anomalies(
-    state: dict[str, Any], dir_of: Callable[[str], str | None]
+    state: dict[str, Any], dir_of: Callable[[str], str | None],
+    names: dict[str, str] | None = None, towards: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Trip starts, direction changes and backwards moves, each reported once, at the moment
-    a new stop is added to a trip."""
+    a new stop is added to a trip. With `names` and `towards` each says where (the stop's name) and which
+    way (where that direction is heading: "towards Kingston")."""
+    names, towards = names or {}, towards or {}
+
+    def where(sid: str, direction: str | None = None) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        if names.get(sid):
+            out["stop"] = names[sid]
+        if direction and towards.get(direction):
+            out["towards"] = towards[direction]
+        return out
+
     out: list[dict[str, Any]] = []
     for vehicle, trip in state["trips"].items():
         stops = trip["stops"]
@@ -176,15 +188,20 @@ def detect_anomalies(
         latest_dir = dir_of(latest["sid"])
         if len(stops) == 1:
             if latest["pos"] == 0:
-                out.append({"vehicle": vehicle, "type": "trip_start", "sid": latest["sid"]})
+                out.append({"vehicle": vehicle, "type": "trip_start", "sid": latest["sid"],
+                            **where(latest["sid"], latest_dir)})  # fmt: skip
             continue
         prev = stops[-2]
         prev_dir = dir_of(prev["sid"])
         if latest_dir != prev_dir:
-            out.append({"vehicle": vehicle, "type": "direction_change", "sid": latest["sid"]})
+            out.append({"vehicle": vehicle, "type": "direction_change", "sid": latest["sid"],
+                        **where(latest["sid"], latest_dir),
+                        "from_towards": towards.get(prev_dir or ""), "from_stop": names.get(prev["sid"])})  # fmt: skip
         elif latest["pos"] < prev["pos"]:
             out.append({"vehicle": vehicle, "type": "reverse_movement", "sid": latest["sid"],
-                        "from_pos": prev["pos"], "to_pos": latest["pos"]})  # fmt: skip
+                        "from_pos": prev["pos"], "to_pos": latest["pos"], **where(latest["sid"], latest_dir),
+                        "from_stop": names.get(prev["sid"])})  # fmt: skip
         elif latest["pos"] == 0 and prev["pos"] != 0:
-            out.append({"vehicle": vehicle, "type": "trip_start", "sid": latest["sid"]})
+            out.append({"vehicle": vehicle, "type": "trip_start", "sid": latest["sid"],
+                        **where(latest["sid"], latest_dir)})  # fmt: skip
     return out

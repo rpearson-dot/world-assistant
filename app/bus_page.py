@@ -129,10 +129,25 @@ async function load() {
       'No leg times yet today.');
     table('rel', ['Bus', 'Days', 'Made it'], rel.slots.map(s => [s.slot, s.days_scheduled, s.miss_rate == null ? '' : meter(s.miss_rate)]),
       'History builds up over the days the tracker runs.');
-    table('an', ['When', 'Bus', 'What happened'], an.map(a => [hhmm(a.at), a.vehicle,
-      a.type === 'turnaround' ? 'Turned round at ' + (a.detail.place || '').replaceAll('_', ' ') + ' (' + a.detail.gap_s + ' s between sides)'
-        : a.type === 'trip_start' ? 'Started its route' : a.type === 'reverse_movement' ? 'Went backwards along the route' : a.type]), 'Nothing recorded.');
+    table('an', ['When', 'Bus', 'What happened'], an.map(a => [hhmm(a.at), a.vehicle, anomalyText(a)]), 'Nothing recorded.');
   } catch (e) { msg.textContent = e.message; }
+}
+const way = t => t ? ' towards ' + t : '';
+function anomalyText(a) {
+  const d = a.detail || {}, at = d.stop ? ' at ' + d.stop : '';
+  if (a.type === 'early_termination')
+    return 'Ended early' + at + ', heading' + way(d.towards) + ' (' + (d.kind || 'ended') + ', ' + d.stops_before_end + ' stops short of the end)'
+      + (d.resumed_stop ? '; next seen at ' + d.resumed_stop + (d.resumed_at ? ' ' + hhmm(new Date(d.resumed_at * 1000).toISOString()) : '') : '');
+  if (a.type === 'turnaround')
+    return 'Turned round at ' + (d.place || '').replaceAll('_', ' ') + (d.from_towards ? ': was heading' + way(d.from_towards) + ', now' + way(d.to_towards) : '')
+      + ' (' + d.gap_s + ' s between sides)';
+  if (a.type === 'direction_change')
+    return 'Changed direction' + at + (d.from_towards ? ': was heading' + way(d.from_towards) + ', now' + way(d.towards) : '');
+  if (a.type === 'trip_start') return 'Started its route' + at + (d.towards ? ', heading' + way(d.towards) : '');
+  if (a.type === 'reverse_movement')
+    return 'Reported at an earlier stop than before' + (d.from_stop ? ' (' + d.from_stop + ' then ' + (d.stop || 'an earlier stop') + ')' : '')
+      + ', same direction: usually the live predictions shifting, not the bus';
+  return a.type;
 }
 /* ---- guided setup ---- */
 let stops = null; const watched = new Map();

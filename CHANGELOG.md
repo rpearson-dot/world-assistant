@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [Unreleased]
 
 ### Changed
+- Bus tracker events say where and which way. "Ended early", "Turned round", "Changed direction" and "Started its route" now name the stop and where that bus was heading ("towards Kingston" or "towards Sutton"); the Home Assistant "ended early" sensor includes it too. "Went backwards along the route" is renamed "Reported at an earlier stop than before", with the two stops, because it is usually the live predictions shifting rather than the bus going backwards. Events recorded before this update keep their old, shorter text.
+
+### Changed
 - On the Home Assistant Events dashboard, each event name links to its page (details and tickets) when it has one, for events near home and near the extra places. Replace `events.yaml` in your dashboards; the extra places also need the new worker, which now publishes each event's link.
 
 ### Fixed

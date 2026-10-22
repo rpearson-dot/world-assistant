@@ -219,7 +219,7 @@ def condition_summary(
 
 
 def turnarounds(
-    state: dict[str, Any], place_of: Callable[[str], str | None]
+    state: dict[str, Any], place_of: Callable[[str], str | None], towards: dict[str, str] | None = None
 ) -> list[dict[str, Any]]:
     """A bus that turns back short of the end of the route shows up as two stops at the same
     place in a row, one in each direction (e.g. outbound then inbound at the same road). Report
@@ -249,6 +249,7 @@ def turnarounds(
         out.append({"vehicle": vehicle, "type": "turnaround", "place": place,
                     "from_sid": last["sid"], "to_sid": first["sid"],
                     "from_dir": prev_trip["dir"], "to_dir": trip["dir"],
+                    "from_towards": (towards or {}).get(prev_trip["dir"]), "to_towards": (towards or {}).get(trip["dir"]),
                     "from_at": a, "to_at": b, "gap_s": round(b - a)})  # fmt: skip
     state["turned"] = sorted(done)[-200:]
     return out
@@ -331,7 +332,8 @@ EARLY_MARGIN = 2  # a bus last seen at least this many stops short of the end of
 
 
 def early_terminations(
-    state: dict[str, Any], end_pos: dict[str, int], names: dict[str, str], margin: int = EARLY_MARGIN
+    state: dict[str, Any], end_pos: dict[str, int], names: dict[str, str], margin: int = EARLY_MARGIN,
+    towards: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:  # fmt: skip
     """Buses that ended a trip short of the end of the route, each reported once: where they were last
     seen and when, and whether they turned back (and where they next appeared) or just stopped
@@ -345,7 +347,7 @@ def early_terminations(
         nxt = e.get("next") or {}
         out.append({
             "vehicle": e["vehicle"], "type": "early_termination", "sid": e["sid"], "stop": names.get(e["sid"]) or None,
-            "direction": e["dir"], "at": e.get("at"), "stops_before_end": end - e["pos"],
+            "direction": e["dir"], "towards": (towards or {}).get(e["dir"]), "at": e.get("at"), "stops_before_end": end - e["pos"],
             "kind": "turned back" if e["reason"] == "reversed" else "stopped reporting",
             "resumed_sid": nxt.get("sid"), "resumed_stop": names.get(nxt.get("sid") or "") or None, "resumed_at": nxt.get("at"),
         })  # fmt: skip

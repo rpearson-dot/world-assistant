@@ -347,7 +347,7 @@ async def terminations(request: Request, tid: str, days: int = Query(7, ge=1, le
         resumed = _clock(d.get("resumed_at"), tz)
         mins = to_minutes(seen)
         by_day.setdefault(at.astimezone(tz).date().isoformat(), []).append({
-            "time": seen, "vehicle": vehicle, "kind": d.get("kind"), "direction": d.get("direction"),
+            "time": seen, "vehicle": vehicle, "kind": d.get("kind"), "direction": d.get("direction"), "towards": d.get("towards"),
             "stop": d.get("stop"), "stops_before_end": d.get("stops_before_end"),
             "resumed_at_stop": d.get("resumed_stop"), "resumed_at_time": resumed,
             "in_target_window": lo <= mins <= hi,

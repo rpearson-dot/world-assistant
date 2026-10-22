@@ -268,7 +268,8 @@ def bus_device(
         def line(b: dict[str, Any]) -> str:
             where = b.get("stop") or "an unknown stop"
             back = f", next seen at {b['resumed_at_stop']} {b['resumed_at_time']}" if b.get("resumed_at_stop") else ""
-            return f"{b['time']} {b['kind']} at {where} ({b.get('stops_before_end')} stops short){back}"
+            way = f" towards {b['towards']}" if b.get("towards") else ""
+            return f"{b['time']} {b['kind']} at {where}{way} ({b.get('stops_before_end')} stops short){back}"
 
         sensors.append(Sensor(
             "ended_early", "Buses that ended early today", todays["count"], icon="mdi:bus-alert",
