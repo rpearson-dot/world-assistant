@@ -44,9 +44,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Drop the tiger geocoder
-        # postgis/postgis installs postgis_tiger_geocoder, whose `tiger` schema holds its own
-        # `place` table and sits on the search path. Ours is the `place` these tests mean, and
-        # an extension-owned table cannot be dropped by a fixture. We do no geocoding.
+        # The image installs postgis_tiger_geocoder, whose `tiger` schema holds its own `place`
+        # table and sits on the search path, shadowing ours. Migration 0019 drops it for real
+        # databases; these tests build partial schemas without running the chain, so it goes here
+        # too. We do no geocoding.
         env:
           PGPASSWORD: wa
         run: |

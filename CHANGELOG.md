@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Removed
+- The PostGIS image installs `postgis_tiger_geocoder`, a United States census address geocoder, which puts `tiger` on the search path along with its own `place` table — ours won only because `public` comes first. Nothing here geocodes anything, so migration 0019 drops it: 34 empty tables and a trap gone.
+
 ### Changed
 - PostGIS, installed since the first migration but never used, now does the distance work. Every table with coordinates gains a point column Postgres keeps in step with lat and lon by itself, and a spatial index over it (migration 0018), so "within 10 km, nearest first" is an indexed query instead of reading the table and filtering in Python. Fuel searches, the map layers and the graph's proximity all use it, and distances are now measured on the spheroid, so they move by a few hundred metres ([ADR 0007](docs/adr/0007-postgis.md)). CI tests against the same PostGIS image production runs.
 
