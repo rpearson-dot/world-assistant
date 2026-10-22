@@ -6,6 +6,14 @@ from typing import Any
 
 from app.ha import Device, Sensor
 
+# Sensors this device used to publish. Home Assistant keeps retained entities until told otherwise, so they are
+# removed every time discovery is sent (a worker restart forgets what it published before).
+RETIRED = [
+    "free_electricity_now",
+    "free_electricity_next_start",
+    "free_electricity_next_joined_start",
+]
+
 
 def energy_device(now: dict[str, Any], slots: list[dict[str, Any]]) -> Device:
     extra = session_sensors(now.get("sessions") or {})
