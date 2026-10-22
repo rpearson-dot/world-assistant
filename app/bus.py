@@ -18,7 +18,9 @@ from app.integrations.bus import store
 from app.integrations.bus.config import TrackerConfig
 from app.integrations.bus.events import (
     condition_summary,
+    journey_rows,
     outlook,
+    pair_arrivals,
     result_log,
     sentence,
     slot_reliability,
@@ -303,6 +305,14 @@ async def target(
             {"t": tid, "d": the_day})]  # fmt: skip
     hit_slots = {h["slot"] for h in hits if h["slot"]}
     slots = list(d[0]) if d else []
+    async with request.app.state.engine.connect() as conn:
+        due = await store.get_timetable(conn, tid, cfg.sid(cfg.target.alight), max_age_days=60)
+    is_today = the_day == now.date().isoformat()
+    journeys = journey_rows(
+        slots, hits, pair_arrivals(slots, due or []), now.hour * 60 + now.minute if is_today else None,
+        lambda t: t.astimezone(tz).strftime("%H:%M") if t else None,
+    )
+    labels = {s.key: s.label for s in cfg.stops}
     pending = [s for s in slots if s not in hit_slots]
     last = hits[-1] if hits else None
     since = (now - timedelta(days=HISTORY_DAYS)).date()
@@ -322,7 +332,8 @@ async def target(
     return {
         "day": the_day, "earliest": cfg.earliest, "deadline": cfg.deadline,
         "board": cfg.target.board, "tracking_now": in_window(cfg, now), "scheduled": slots, "pending": pending,
-        "hits": hits, "last_bus": last, "outlook": chance,
+        "hits": hits, "last_bus": last, "outlook": chance, "journeys": journeys,
+        "board_label": labels.get(cfg.target.board, ""), "alight_label": labels.get(cfg.target.alight, ""),
         "summary": sentence(last, cfg.deadline, tz),
     }  # fmt: skip
 

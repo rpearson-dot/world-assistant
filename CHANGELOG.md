@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Changed
+- **Bus page, today's buses**: one row for every scheduled bus, split into the start stop (scheduled, actual), the target stop (scheduled, late or early) and **Arrived today?** (arrived at a time, did not arrive, or not yet). The target stop's scheduled time comes from its TfL timetable, matched to each departure in order. `GET /v1/bus/trackers/{id}/target` gains `journeys`, `board_label` and `alight_label`.
+
 ## [0.15.0] - 2026-10-22
 
 ### Added

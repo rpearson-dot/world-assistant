@@ -338,3 +338,17 @@ def test_each_direction_is_labelled_by_where_it_ends() -> None:
     seq = [{"direction": "outbound", "pos": p, "sid": f"o{p}", "name": n} for p, n in enumerate(["Kingston", "Worcester Park", "Sutton"])]
     seq += [{"direction": "inbound", "pos": p, "sid": f"i{p}", "name": n} for p, n in enumerate(["Sutton", "Worcester Park", "Kingston"])]
     assert Lookup(seq).towards == {"outbound": "Sutton", "inbound": "Kingston"}
+
+
+def test_a_scheduled_time_at_the_target_for_each_departure() -> None:
+    from app.integrations.bus.events import journey_rows, pair_arrivals
+
+    due = pair_arrivals(["07:02", "07:14", "07:26"], ["07:09", "07:21", "07:33", "07:45"])
+    assert due == {"07:02": "07:09", "07:14": "07:21", "07:26": "07:33"}  # in order, none used twice
+    hits = [{"slot": "07:02", "board_at": "L1", "arrive_at": "A1"}, {"slot": None, "board_at": "L2", "arrive_at": "A2"}]
+    clock = {"L1": "07:04", "A1": "07:12", "L2": "07:40", "A2": "07:55"}
+    rows = journey_rows(["07:02", "07:14", "07:26"], hits, due, 7 * 60 + 50, clock.get)
+    assert [(r["slot"], r["status"]) for r in rows] == [("07:02", "arrived"), ("07:14", "missed"), ("07:26", "waiting"), (None, "arrived")]
+    assert rows[0]["late_min"] == 3 and rows[0]["due_arrive"] == "07:09" and rows[1]["late_min"] is None
+    over = journey_rows(["07:26"], [], due, None, clock.get)  # a finished day: no bus is still waiting
+    assert over[0]["status"] == "missed"

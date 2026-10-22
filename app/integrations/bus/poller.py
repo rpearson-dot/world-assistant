@@ -190,6 +190,12 @@ async def _slots(
             log.warning("timetable fetch failed: %s", exc)
             return []
         await store.save_timetable(conn, tid, board, times)
+    alight = cfg.sid(cfg.target.alight)  # the scheduled times at the target stop, for the "due" column
+    if await store.get_timetable(conn, tid, alight) is None:
+        try:
+            await store.save_timetable(conn, tid, alight, await client.timetable_times(cfg.line, alight, cfg.target.direction))
+        except TflError as exc:
+            log.warning("target timetable fetch failed: %s", exc)
     return slots_in_window(times, cfg.earliest, cfg.deadline, cfg.min_travel_min)
 
 

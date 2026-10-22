@@ -27,7 +27,7 @@ PAGE = """<!doctype html>
     <div class="dim" id="status"></div></div></div>
   <div class="card"><h2>Next buses</h2><div id="next" class="next"></div></div>
   <div class="grid">
-    <div class="card"><h2>Reached the target stop today</h2><table id="hits"></table><p id="pending" class="dim"></p></div>
+    <div class="card"><h2>Today's buses</h2><table id="hits"></table><p id="pending" class="dim"></p></div>
     <div class="card"><h2>Leg times today</h2><table id="cond"></table></div>
   </div>
   <div class="grid">
@@ -124,11 +124,19 @@ async function load() {
       next.appendChild(box);
     }
     if (!next.children.length) next.appendChild(el('p', 'No buses predicted at your stops right now.', 'dim'));
-    table('hits', ['Arrived', 'Left start', 'Timetable', 'Late / early', ''],
-      target ? target.hits.map(h => [hhmm(h.arrive_at), hhmm(h.board_at), h.slot || '',
-        h.delay_min == null ? '' : badge((h.delay_min > 0 ? '+' : '') + h.delay_min + ' min', h.delay_min >= 5 ? 'bad' : h.delay_min >= 2 ? 'warn' : 'good'),
-        h.via_return ? el('span', 'ended here', 'dim') : '']) : [], 'None confirmed yet.');
-    $('pending').textContent = target && target.pending.length ? 'Scheduled but not yet seen: ' + target.pending.join(', ') : '';
+    const lab = n => (n || '').split(' (')[0];
+    const mins = m => badge((m > 0 ? '+' : '') + m + ' min', m >= 5 ? 'bad' : m >= 2 ? 'warn' : 'good');
+    const rows = target ? (target.journeys || []) : [];
+    table('hits', ['Scheduled', 'Actual', 'Scheduled', 'Late / early', 'Arrived today?'],
+      rows.map(j => [j.slot || '', j.left || '', j.due_arrive || '', j.late_min == null ? '' : mins(j.late_min),
+        j.status === 'arrived' ? badge('Arrived ' + (j.arrived || ''), 'good')
+          : j.status === 'missed' ? badge('Did not arrive', 'bad') : el('span', 'Not yet', 'dim')]),
+      'No buses scheduled in the window.');
+    const t = $('hits');
+    if (rows.length) { const g = t.tHead.insertRow(0);
+      for (const [text, span] of [[lab(target.board_label) || 'Start', 2], [lab(target.alight_label) || 'Target', 2], ['', 1]]) {
+        const c = el('th', text, 'group'); c.colSpan = span; c.style.textAlign = 'center'; g.appendChild(c); } }
+    $('pending').textContent = '';
     table('cond', ['Leg', 'Usual', 'Last 30 min', ''], cond.map(c => [c.from + ' to ' + c.to,
       c.day_avg_min == null ? '' : c.day_avg_min + ' min', c.recent_avg_min == null ? '' : c.recent_avg_min + ' min',
       c.delta_min == null ? '' : badge((c.delta_min > 0 ? '+' : '') + c.delta_min + ' min', c.delta_min >= 3 ? 'bad' : c.delta_min >= 1.5 ? 'warn' : 'good')]),
