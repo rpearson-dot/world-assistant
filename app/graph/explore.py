@@ -67,7 +67,8 @@ PRESETS: dict[str, tuple[str, str]] = {
 }  # fmt: skip
 
 SEARCH = (
-    "MATCH (n) WHERE toLower(coalesce(n.name, '')) CONTAINS toLower($q) OR toLower(n.id) CONTAINS toLower($q) "
+    "MATCH (n) WHERE toLower(toString(coalesce(n.name, ''))) CONTAINS toLower($q) "
+    "OR toLower(toString(coalesce(n.id, ''))) CONTAINS toLower($q) "
     "RETURN n LIMIT 25"
 )
 EXPAND = (
