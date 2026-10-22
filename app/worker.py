@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.graph.build import graph_build
 from app.ha_publish import ha_sync
 from app.integrations.bus.poller import poll_bus
+from app.integrations.codepoint.sync import codepoint_sync
 from app.integrations.flood.sync import flood_poll
 from app.integrations.fuelfinder.sync import fuel_sync_prices, fuel_sync_stations
 from app.integrations.naptan.sync import naptan_sync
@@ -73,6 +74,7 @@ class WorkerSettings:
         graph_build,
         naptan_sync,
         flood_poll,
+        codepoint_sync,
     ]
     cron_jobs: ClassVar[list] = [
         cron(heartbeat, minute=set(range(0, 60, 5))),
@@ -97,8 +99,11 @@ class WorkerSettings:
         cron(graph_build, minute={8, 38}, timeout=300, max_tries=1),
         # Flood warnings: the EA updates its list every 15 minutes.
         cron(flood_poll, minute={5, 20, 35, 50}, timeout=240, max_tries=1),
-        # The national stop register changes slowly: weekly, Sunday early morning (a ~100 MB download).
-        cron(naptan_sync, weekday={6}, hour={2}, minute={50}, timeout=1800, max_tries=1),
+        # Postcodes: checked daily, downloaded only when missing or a month old (OS publishes quarterly).
+        cron(codepoint_sync, hour={3}, minute={10}, timeout=1800, max_tries=1),
+        # The national stop register changes slowly: checked daily, downloaded (~100 MB) only when the table
+        # is empty or a week old.
+        cron(naptan_sync, hour={2}, minute={50}, timeout=1800, max_tries=1),
         cron(
             poll_planned,
             hour=set(range(0, 24, _PLANNED_HOURS)),

@@ -1,6 +1,7 @@
 """NaPTAN sync: download the national register and keep it in Postgres.
 
-The register changes slowly, so this runs weekly. The download is about 100 MB of CSV, streamed to a
+The register changes slowly: the job runs daily but downloads only when the table is empty or a week old, so a
+fresh install fills itself overnight rather than waiting for a weekly slot. The download is about 100 MB of CSV, streamed to a
 temporary file rather than held in memory, and written in batches. Rows are stamped with the time
 of the sync; rows from an earlier sync are deleted at the end, and only when the file looked
 complete, so a truncated download can only ever add or update, never wipe.
@@ -35,6 +36,7 @@ from app.jobs import tracked
 log = logging.getLogger("wa.naptan")
 
 BATCH = 5000
+REFRESH_DAYS = 7
 MIN_STOPS = 200_000  # Great Britain has about 400,000; far fewer means a truncated file
 
 UPSERT = text(
@@ -105,6 +107,13 @@ async def load(engine: AsyncEngine, path: Path, started: datetime | None = None)
     return {"stops": len(seen), "removed": removed}
 
 
+async def due(engine: AsyncEngine) -> bool:
+    """Empty, or last loaded a week ago or more."""
+    async with engine.connect() as conn:
+        newest = (await conn.execute(text("SELECT max(seen) FROM naptan_stop"))).scalar()
+    return newest is None or (datetime.now(UTC) - newest).days >= REFRESH_DAYS
+
+
 async def download(url: str, dest: Path) -> int:
     """Stream the register to disk. Returns the size in bytes."""
     size = 0
@@ -136,6 +145,8 @@ async def naptan_sync(ctx: dict[str, Any]) -> Any:
     async def run() -> Any:
         if not settings.naptan_poll_enabled:
             return "disabled"
+        if not await due(ctx["engine"]):
+            return "up to date"
         return await sync(ctx["engine"], settings.naptan_url)
 
     return await tracked(ctx["engine"], "naptan", run)

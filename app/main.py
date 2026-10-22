@@ -37,6 +37,7 @@ from app.places import page_router as places_page_router
 from app.places import router as places_router
 from app.pollen import page_router as pollen_page_router
 from app.pollen import router as pollen_router
+from app.postcodes import router as postcodes_router
 from app.status import page_router
 from app.status import router as status_router
 from app.stops import router as stops_router
@@ -84,6 +85,7 @@ app.include_router(places_router)
 app.include_router(map_router)
 app.include_router(stops_router)
 app.include_router(floods_router)
+app.include_router(postcodes_router)
 app.include_router(graph_router)
 app.include_router(map_page_router)
 app.include_router(fuel_router)

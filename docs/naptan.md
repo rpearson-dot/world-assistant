@@ -11,8 +11,9 @@ becomes a point: it can be drawn, measured from, and related to a saved place.
 
 ## How it is loaded
 
-A worker job downloads the register (about 100 MB of CSV) every **Sunday at 02:50**, streams it to a
-temporary file, and upserts it into `naptan_stop` in batches. Rows from an earlier load are deleted at
+A worker job checks daily at 02:50 and, when the table is empty or a week old, downloads the register
+(about 100 MB of CSV), streams it to a temporary file, and upserts it into `naptan_stop` in batches.
+A fresh install therefore fills itself on the first night. Rows from an earlier load are deleted at
 the end, but only if the file held at least 200,000 stops, so a truncated download can add and update
 and never wipe. Rows that are inactive, outside the UK, without a usable position, or of a type no
 bus or train calls at (taxi ranks, say) are left out.
