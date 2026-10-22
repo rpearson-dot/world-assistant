@@ -80,7 +80,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await app.state.engine.dispose()
 
 
-app = FastAPI(title="World Assistant", version="0.14.0", lifespan=lifespan)
+app = FastAPI(title="World Assistant", version="0.15.0", lifespan=lifespan)
 # Files shipped with the app (Leaflet), so the pages load no third-party script. Read-only and
 # unauthenticated: it holds nothing private, and StaticFiles refuses paths outside the directory.
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")

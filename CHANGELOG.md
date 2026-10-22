@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-22
+
 ### Added
 - **Settings > MQTT**: the broker World Assistant publishes to, with server, port, user, password and an **Encrypted (TLS)** switch (the port follows it between 1883 and 8883), **Test connection** with failures explained in words, Save (wins over `.env`, used from the next publish, no restart) and **Use .env**. The Setup list and the Home Assistant page show the broker in use.
 - **Copy straight into Home Assistant** on the `/ha` page, over SMB (the Samba share add-on): the ticked packages to `packages/`, the dashboards to `world_assistant/dashboards/`, and optionally the missing `secrets.yaml` lines (backed up first, existing lines never changed, differing ones reported). Unchanged files are skipped. A `configuration.yaml` snippet turns the copied dashboards into YAML dashboards that update with each copy. Tested against a real Samba server in CI. Adds `smbprotocol` (with `cryptography`) to the locked dependencies.
