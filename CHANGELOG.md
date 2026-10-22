@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- London road disruptions from TfL (works, closures, collisions, incidents), every 15 minutes, kept with where they are: `GET /v1/roads/tfl` lists them and `GET /v1/roads/tfl/at` finds those near a place or point. A probe (`python -m app.integrations.tflroads.probe`) shows the real response. `WA_TFLROADS_POLL_ENABLED` turns it off. Migration 0025 ([docs/tfl-roads.md](docs/tfl-roads.md)).
+
 ## [0.11.1] - 2026-10-22
 
 ### Added
