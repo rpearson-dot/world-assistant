@@ -335,3 +335,34 @@ async def test_postgis_finds_what_is_near_and_what_is_on_the_way(geo_schema: Non
         assert any(r.type == "NEAR" for r in graph.rels)
     finally:
         await engine.dispose()
+
+
+@pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
+async def test_the_census_geocoder_is_dropped_and_stops_shadowing_our_place() -> None:
+    """postgis/postgis ships postgis_tiger_geocoder, whose `tiger` schema holds its own `place`."""
+    import importlib.util as iu
+
+    spec = iu.spec_from_file_location("m0019", VERSIONS / "0019_drop_tiger_geocoder.py")
+    assert spec and spec.loader
+    m0019 = iu.module_from_spec(spec)
+    spec.loader.exec_module(m0019)
+
+    sync = sa.create_engine(URL)  # type: ignore[arg-type]
+    try:
+        with sync.begin() as conn:
+            conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder CASCADE"))
+        with sync.begin() as conn:
+            assert conn.execute(sa.text(
+                "SELECT count(*) FROM pg_tables WHERE schemaname IN ('tiger','tiger_data')")).scalar() > 0
+            with Operations.context(MigrationContext.configure(conn)):
+                m0019.upgrade()
+        with sync.begin() as conn:
+            assert conn.execute(sa.text(
+                "SELECT count(*) FROM pg_tables WHERE schemaname IN ('tiger','tiger_data')")).scalar() == 0
+            assert conn.execute(sa.text(
+                "SELECT count(*) FROM pg_extension WHERE extname = 'postgis_tiger_geocoder'")).scalar() == 0
+            # postgis itself must survive: the geography columns depend on it
+            assert conn.execute(sa.text(
+                "SELECT count(*) FROM pg_extension WHERE extname = 'postgis'")).scalar() == 1
+    finally:
+        sync.dispose()

@@ -41,3 +41,10 @@ but it is now true in fact.
 
 Migration 0018 skips tables that are not present, because tests build partial schemas on purpose.
 In a real upgrade all five exist.
+
+Moving the test database to the PostGIS image turned up something that had been sitting in
+production unnoticed: `postgis/postgis` also installs `postgis_tiger_geocoder`, a United States
+census address geocoder, which puts `tiger` on the database's search path and ships its own `place`
+table there. Our `place` wins only because `public` comes first on that path. Nothing here geocodes
+anything, so migration 0019 drops it, removing 34 empty tables and the shadowing, and pins the
+search path to `public`.
