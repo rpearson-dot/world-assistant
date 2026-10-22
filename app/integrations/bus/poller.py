@@ -51,7 +51,10 @@ class Lookup:
         self.by_sid: dict[str, tuple[str, int]] = {}
         self.names: dict[str, str] = {}
         self.end_pos: dict[str, int] = {}  # position of the last stop of each direction
+        self.towards: dict[str, str] = {}  # name of the last stop of each direction: "towards Kingston"
         for r in rows:
+            if r["pos"] >= self.end_pos.get(r["direction"], -1) and r["name"]:
+                self.towards[r["direction"]] = r["name"]
             self.end_pos[r["direction"]] = max(self.end_pos.get(r["direction"], 0), r["pos"])
             self.by_sid.setdefault(r["sid"], (r["direction"], r["pos"]))
             self.names.setdefault(r["sid"], r["name"] or "")
@@ -107,9 +110,9 @@ def process_poll(
         state["terminal"] = {}
         state["turned"] = []
     update_trips(state, preds, lookup.pos_of, now)
-    anomalies = detect_anomalies(state, lookup.dir_of)
-    anomalies += turnarounds(state, cfg.place_of)
-    anomalies += early_terminations(state, lookup.end_pos, lookup.names)
+    anomalies = detect_anomalies(state, lookup.dir_of, lookup.names, lookup.towards)
+    anomalies += turnarounds(state, cfg.place_of, lookup.towards)
+    anomalies += early_terminations(state, lookup.end_pos, lookup.names, towards=lookup.towards)
     anomalies += first_sightings(state, lookup.names)
     obs = segment_observations(state, now, cfg.segment_pairs())
     hits = compute_hits(cfg, state, now, local_day, tz, slots)

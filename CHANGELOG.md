@@ -4,15 +4,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
-### Changed
-- On the Home Assistant Events dashboard, each event name links to its page (details and tickets) when it has one, for events near home and near the extra places. Replace `events.yaml` in your dashboards; the extra places also need the new worker, which now publishes each event's link.
-
-### Fixed
-- The Fuel and Trains and buses dashboards no longer show "Entity not found" when the optional fuel or bus package is not installed: the dropdown and bus-time controls appear only once their package exists, with a one-line note until then.
+## [0.12.0] - 2026-10-22
 
 ### Added
 - Trip conditions: what is on the way. `GET /v1/trips/{id}/conditions` (and `GET /v1/conditions` for every routed trip) combines National Highways events on the trip's corridor, TfL road disruptions near the route and Environment Agency flood warnings crossing it, as **now** (clear, minor, disrupted, severe, with the items and a sentence to read aloud) and **planned** (works starting later, `days` ahead), with a `when` option for a later departure. Shown on the Places page, as two Home Assistant sensors per routed trip (status; planned works count) under a new Trips device, and as an assistant tool, `road_conditions` ([docs/trip-conditions.md](docs/trip-conditions.md)).
 - London road disruptions from TfL (works, closures, collisions, incidents), every 15 minutes, kept with where they are: `GET /v1/roads/tfl` lists them and `GET /v1/roads/tfl/at` finds those near a place or point. A probe (`python -m app.integrations.tflroads.probe`) shows the real response. `WA_TFLROADS_POLL_ENABLED` turns it off. Migration 0025 ([docs/tfl-roads.md](docs/tfl-roads.md)).
+
+### Changed
+- Bus tracker events say where and which way. "Ended early", "Turned round", "Changed direction" and "Started its route" now name the stop and where that bus was heading ("towards Kingston" or "towards Sutton"); the Home Assistant "ended early" sensor includes it too. "Went backwards along the route" is renamed "Reported at an earlier stop than before", with the two stops, because it is usually the live predictions shifting rather than the bus going backwards. Events recorded before this update keep their old, shorter text.
+- On the Home Assistant Events dashboard, each event name links to its page (details and tickets) when it has one, for events near home and near the extra places. Replace `events.yaml` in your dashboards; the extra places also need the new worker, which now publishes each event's link.
+
+### Fixed
+- The Fuel and Trains and buses dashboards no longer show "Entity not found" when the optional fuel or bus package is not installed: the dropdown and bus-time controls appear only once their package exists, with a one-line note until then.
+- Bus tracker setup: a stop served in both directions now appears twice in the boarding list as "Stop (towards X)" and "Stop (towards Y)". Before, both read the same, so you could not tell which direction you were choosing and the destinations only ran one way.
 
 ## [0.11.1] - 2026-10-22
 

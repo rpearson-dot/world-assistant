@@ -44,7 +44,7 @@ PAGE = """<!doctype html>
     <div id="steps" class="form hidden">
       <label>Where do you get on?<select id="board"></select></label>
       <label>Where do you need to get to?<select id="target"></select>
-        <span class="hint">Only stops after your boarding stop, in the same direction, are listed.</span></label>
+        <span class="hint">Choose the boarding stop for the direction you travel (the name says where that bus is heading). Only stops after it, in that direction, are listed.</span></label>
       <label>Any other stops to time on the way? <span class="hint">Optional. Busy stops where delays build up.</span>
         <div class="row"><select id="watch"></select><button id="addwatch" type="button">Add</button></div>
         <div id="watched" class="chips"></div></label>
@@ -129,10 +129,25 @@ async function load() {
       'No leg times yet today.');
     table('rel', ['Bus', 'Days', 'Made it'], rel.slots.map(s => [s.slot, s.days_scheduled, s.miss_rate == null ? '' : meter(s.miss_rate)]),
       'History builds up over the days the tracker runs.');
-    table('an', ['When', 'Bus', 'What happened'], an.map(a => [hhmm(a.at), a.vehicle,
-      a.type === 'turnaround' ? 'Turned round at ' + (a.detail.place || '').replaceAll('_', ' ') + ' (' + a.detail.gap_s + ' s between sides)'
-        : a.type === 'trip_start' ? 'Started its route' : a.type === 'reverse_movement' ? 'Went backwards along the route' : a.type]), 'Nothing recorded.');
+    table('an', ['When', 'Bus', 'What happened'], an.map(a => [hhmm(a.at), a.vehicle, anomalyText(a)]), 'Nothing recorded.');
   } catch (e) { msg.textContent = e.message; }
+}
+const way = t => t ? ' towards ' + t : '';
+function anomalyText(a) {
+  const d = a.detail || {}, at = d.stop ? ' at ' + d.stop : '';
+  if (a.type === 'early_termination')
+    return 'Ended early' + at + ', heading' + way(d.towards) + ' (' + (d.kind || 'ended') + ', ' + d.stops_before_end + ' stops short of the end)'
+      + (d.resumed_stop ? '; next seen at ' + d.resumed_stop + (d.resumed_at ? ' ' + hhmm(new Date(d.resumed_at * 1000).toISOString()) : '') : '');
+  if (a.type === 'turnaround')
+    return 'Turned round at ' + (d.place || '').replaceAll('_', ' ') + (d.from_towards ? ': was heading' + way(d.from_towards) + ', now' + way(d.to_towards) : '')
+      + ' (' + d.gap_s + ' s between sides)';
+  if (a.type === 'direction_change')
+    return 'Changed direction' + at + (d.from_towards ? ': was heading' + way(d.from_towards) + ', now' + way(d.towards) : '');
+  if (a.type === 'trip_start') return 'Started its route' + at + (d.towards ? ', heading' + way(d.towards) : '');
+  if (a.type === 'reverse_movement')
+    return 'Reported at an earlier stop than before' + (d.from_stop ? ' (' + d.from_stop + ' then ' + (d.stop || 'an earlier stop') + ')' : '')
+      + ', same direction: usually the live predictions shifting, not the bus';
+  return a.type;
 }
 /* ---- guided setup ---- */
 let stops = null; const watched = new Map();
@@ -140,7 +155,7 @@ const label = (d, s) => s.name + ' (towards ' + stops[d].towards + ')';
 function fillBoard() {
   const b = $('board'); b.replaceChildren();
   for (const d of Object.keys(stops)) { const g = document.createElement('optgroup'); g.label = 'Towards ' + stops[d].towards;
-    for (const s of stops[d].stops.slice(0, -1)) { const o = new Option(s.name, s.id); o.dataset.dir = d; g.appendChild(o); } b.appendChild(g); }
+    for (const s of stops[d].stops.slice(0, -1)) { const o = new Option(label(d, s), s.id); o.dataset.dir = d; g.appendChild(o); } b.appendChild(g); }
   fillTarget();
 }
 function fillTarget() {

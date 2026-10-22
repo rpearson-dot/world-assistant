@@ -303,3 +303,38 @@ def test_buses_left_over_from_yesterday_are_not_logged_as_ending_early() -> None
     run_bus(state, "V1", {"s2": T0 + 600, "s3": T0 + 900}, T0, T0 + 1000)
     run_bus(state, "V1", {"i0": next_morning + 300, "i1": next_morning + 500}, next_morning, next_morning + 100)
     assert events.early_terminations(state, END, NAMES) == []
+
+
+TOWARDS = {"outbound": "Sutton", "inbound": "Kingston"}
+
+
+def test_an_early_end_says_which_way_the_bus_was_heading() -> None:
+    state = trips.new_state()
+    run_bus(state, "V1", {"s2": T0 + 600, "s3": T0 + 900}, T0, T0 + 1000)
+    run_bus(state, "V1", {"i0": T0 + 1300, "i1": T0 + 1500}, T0 + 1100, T0 + 1250)
+    (e,) = events.early_terminations(state, END, NAMES, towards=TOWARDS)
+    assert (e["stop"], e["towards"], e["kind"]) == ("Third Stop", "Sutton", "turned back")
+    assert e["resumed_stop"] == "Back Start"  # and it came back the other way
+
+
+def test_anomalies_say_where_and_which_way() -> None:
+    state = trips.new_state()
+    state["trips"]["V1"] = {"stops": [], "dir": "outbound"}
+    names = NAMES | {"s1": "Second Stop", "s2": "Mid Stop", "i0": "Back Start"}
+    anoms: list[dict[str, Any]] = []
+    for sid in ("s1", "s2", "s1", "i0"):  # on a stop, back a stop (same direction), then the other way
+        state["trips"]["V1"]["stops"].append({"sid": sid, "pos": POS[sid][1], "expected": T0})
+        anoms += trips.detect_anomalies(state, lambda s: POS[s][0], names, TOWARDS)
+    by = {a["type"]: a for a in anoms}
+    assert by["reverse_movement"]["stop"] == "Second Stop" and by["reverse_movement"]["from_stop"] == "Mid Stop"
+    assert by["reverse_movement"]["towards"] == "Sutton"  # same direction: not a return journey
+    assert by["direction_change"]["towards"] == "Kingston" and by["direction_change"]["from_towards"] == "Sutton"
+    assert by["direction_change"]["stop"] == "Back Start"
+
+
+def test_each_direction_is_labelled_by_where_it_ends() -> None:
+    from app.integrations.bus.poller import Lookup
+
+    seq = [{"direction": "outbound", "pos": p, "sid": f"o{p}", "name": n} for p, n in enumerate(["Kingston", "Worcester Park", "Sutton"])]
+    seq += [{"direction": "inbound", "pos": p, "sid": f"i{p}", "name": n} for p, n in enumerate(["Sutton", "Worcester Park", "Kingston"])]
+    assert Lookup(seq).towards == {"outbound": "Sutton", "inbound": "Kingston"}
