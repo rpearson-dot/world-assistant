@@ -5,9 +5,11 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -27,6 +29,7 @@ from app.ha_routes import router as ha_routes_router
 from app.icons import router as icons_router
 from app.logging import configure_logging
 from app.map_layers import router as map_router
+from app.map_page import page_router as map_page_router
 from app.places import page_router as places_page_router
 from app.places import router as places_router
 from app.pollen import page_router as pollen_page_router
@@ -59,6 +62,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="World Assistant", version="0.7.6", lifespan=lifespan)
+# Files shipped with the app (Leaflet), so the pages load no third-party script. Read-only and
+# unauthenticated: it holds nothing private, and StaticFiles refuses paths outside the directory.
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 app.include_router(status_router)
 app.include_router(autodeploy_router)
 app.include_router(backups_router)
@@ -71,6 +77,7 @@ app.include_router(pollen_router)
 app.include_router(pollen_page_router)
 app.include_router(places_router)
 app.include_router(map_router)
+app.include_router(map_page_router)
 app.include_router(fuel_router)
 app.include_router(bus_router)
 app.include_router(assistant_router)

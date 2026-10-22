@@ -1,7 +1,7 @@
 # Map layers
 
-Every dataset World Assistant holds with coordinates, served as GeoJSON so one map can draw them
-together, a layer at a time. This is the data side only; nothing draws it yet.
+Every dataset World Assistant holds with coordinates, on one map, a layer at a time. The `/map`
+page draws them; `/v1/map/geojson` serves them to anything else.
 
 ## What there is
 
@@ -38,3 +38,34 @@ inside, so a closure is never drawn half-finished.
 
 A token is needed, like every other `/v1` route. The layers include where people are, so treat the
 answer as private.
+
+## The page
+
+`/map` asks for your token, then draws the layers over street tiles. Tick a layer to show it; the
+number beside each name is how many features came back. Click anything for its detail. Places,
+corridors, closures and fuel are on at first; people, signs and pollen are off.
+
+Fuel stations are coloured against the cheapest one on screen: green within 2p of it, amber within
+6p, red beyond. Pollen points take the allergy-risk colours of the pollen map.
+
+The centre is whichever place you pick, out to the distance you choose, or **Everywhere** for the
+lot with no centre. Points are drawn on a canvas rather than one shape each, so Everywhere stays
+quick even with thousands of stations.
+
+## What the browser fetches
+
+Leaflet is served from this app (`app/static/vendor/leaflet`), not from a CDN, so no page loads a
+third-party script and the version cannot change underneath you. `VERSION.txt` beside it records
+the version and the hash it was taken with; upgrading means repeating that deliberately.
+
+The map tiles are the one thing your browser fetches from elsewhere, and whoever serves them can
+see which parts of the map get looked at. By default they come from OpenStreetMap:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `WA_MAP_TILE_URL` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | where tiles come from; point it at your own server to keep it in the house |
+| `WA_MAP_TILE_ATTRIBUTION` | `© OpenStreetMap contributors` | shown on the map; the licence requires crediting whoever made the tiles |
+| `WA_MAP_MAX_ZOOM` | `19` | how far in the tiles go |
+
+In dark mode the tiles are inverted in the browser so the map does not glare; your data keeps its
+own colours.

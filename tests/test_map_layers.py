@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app import map_layers
+from app.config import get_settings
 from app.main import app
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
@@ -148,3 +149,52 @@ async def test_every_layer_is_served_and_cut_to_the_radius(
         assert c.get("/v1/map/geojson?layers=fuel&fuel=sunflower+oil", headers=h).status_code == 422
     finally:
         await engine.dispose()
+
+
+# --- the page -----------------------------------------------------------------------------------
+
+
+def test_map_page_is_served_without_a_token_and_builds_no_html_from_data() -> None:
+    r = TestClient(app).get("/map")
+    assert r.status_code == 200
+    assert "Map" in r.text and "leaflet.js" in r.text
+    assert "innerHTML" not in r.text  # popups are built as DOM nodes
+    assert "/*MAP_CONFIG*/" not in r.text  # the placeholder was filled
+
+
+def test_the_page_loads_no_third_party_script() -> None:
+    """Leaflet is served from this app. A CDN would put the pages at someone else's mercy."""
+    text = TestClient(app).get("/map").text
+    for tag in ("<script", "<link"):
+        for part in text.split(tag)[1:]:
+            head = part[: part.index(">")]
+            for attr in ("src=", "href="):
+                if attr in head:
+                    url = head.split(attr)[1].strip("\"' ").split("\"")[0].split("'")[0]
+                    assert url.startswith("/"), f"{attr}{url} is not served by this app"
+
+
+def test_leaflet_is_vendored_with_its_provenance() -> None:
+    root = Path(__file__).resolve().parent.parent / "app" / "static" / "vendor" / "leaflet"
+    assert (root / "leaflet.js").stat().st_size > 100_000
+    assert (root / "leaflet.css").exists() and (root / "images" / "marker-icon.png").exists()
+    note = (root / "VERSION.txt").read_text(encoding="utf-8")
+    assert "1.9.4" in note and "sha256" in note  # the version and hash, so an upgrade is deliberate
+
+
+def test_leaflet_is_served_and_the_mount_refuses_to_climb_out() -> None:
+    c = TestClient(app)
+    assert c.get("/static/vendor/leaflet/leaflet.js").status_code == 200
+    assert c.get("/static/vendor/leaflet/leaflet.css").status_code == 200
+    for climb in ("/static/../config.py", "/static/vendor/../../config.py", "/static/../../etc/passwd"):
+        assert c.get(climb).status_code == 404
+
+
+def test_the_tile_server_is_configurable() -> None:
+    """Whoever serves the tiles sees which bits of the map are looked at, so it must be changeable."""
+    from app.config import Settings
+
+    s = Settings(map_tile_url="https://tiles.example/{z}/{x}/{y}.png", map_tile_attribution="mine")
+    assert "{z}" in s.map_tile_url and s.map_tile_attribution == "mine"
+    text = TestClient(app).get("/map").text
+    assert get_settings().map_tile_url in text and get_settings().map_tile_attribution in text

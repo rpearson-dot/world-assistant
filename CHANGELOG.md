@@ -5,15 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [Unreleased]
 
 ### Added
-- Every dataset with coordinates as GeoJSON, one layer each, for drawing on a single map: `GET /v1/map/layers` and `GET /v1/map/geojson` cover saved places, Home Assistant locations, road corridors, open road events, motorway signs, fuel stations and the pollen lattice ([docs/map.md](docs/map.md)). Nothing draws them yet.
-
-### Fixed
-- Dashboard cards showed a red "Configuration error" where a note sat in the card's footer: Home Assistant accepts only `buttons` and `graph` there. The notes on the Leaf and Trains and buses dashboards are now cards of their own, and a test rejects any other footer type.
-
-### Added
+- A map of everything with coordinates, a layer at a time: saved places, Home Assistant locations, road corridors, open road events, motorway signs, fuel stations priced from cheapest to dearest, and the pollen lattice. The `/map` page draws them over street tiles, behind `GET /v1/map/layers` and `GET /v1/map/geojson` ([docs/map.md](docs/map.md)). Leaflet is served from the app itself, so no page loads a third-party script; tiles are the only outside fetch and `WA_MAP_TILE_URL` points them wherever you like.
 - A Home Assistant dashboard for the Leaf (`homeassistant/dashboards/leaf.yaml`, [docs/leaf.md](docs/leaf.md)): what you need before driving on the first view, diagnostics on the second. A "Before you go" card stays silent unless the car is plugged in but not charging, low, unlocked, open, short of 12V, alerting on cells, or off its tyre pressures. Fed by OVMS; it needs nothing from World Assistant.
 
 ### Fixed
+- Dashboard cards showed a red "Configuration error" where a note sat in the card's footer: Home Assistant accepts only `buttons` and `graph` there. The notes on the Leaf and Trains and buses dashboards are now cards of their own, and a test rejects any other footer type.
 - A pollen test pinned a forecast to a fixed date, so it passed on the day it was written and failed from the next day on. It now uses the day the app is living in.
 
 ## [0.7.6] - 2026-10-21
