@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-22
+
 ### Added
 - An `electricity` tool for the assistant (`/v1/ask/electricity`, Siri, MCP): the price now and next, the next cheap and peak times, the cheapest block of hours and Saving Sessions, as a spoken sentence.
 
