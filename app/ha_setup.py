@@ -133,7 +133,8 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
   <p class="dim">In <code>configuration.yaml</code>, turn packages on (once):</p>
   <pre class="yaml">homeassistant:
   packages: !include_dir_named packages</pre>
-  <p class="dim">Then put the ones you want in <code>/config/packages/</code>. Each is optional.</p>
+  <p class="dim">Then put the ones you want in <code>/config/packages/</code>, with the same file names: download them,
+  or Copy and paste each into a new file there (in Studio Code Server or the File editor). Each is optional.</p>
   <div class="scroll"><table id="pk"></table></div></li>
 <li class="card"><h2>Add these lines to <code>/config/secrets.yaml</code></h2>
   <p class="dim">For the packages ticked above. Home Assistant will not start if a package names a secret that is
@@ -168,10 +169,20 @@ function badge(f) {
   else { b.className = 'badge'; b.textContent = 'Last changed in ' + f.changed_in; }
   return b;
 }
+// navigator.clipboard only exists over HTTPS (or localhost); on http://<server> fall back to a hidden textarea.
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+  const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select();
+  const ok = document.execCommand('copy'); ta.remove();
+  return ok ? Promise.resolve() : Promise.reject(new Error('This browser would not copy: use Download'));
+}
+const texts = {};  // every file's text, fetched with the page, so Copy happens inside the click itself
 async function fetchFile(f) {
+  if (texts[f.path] != null) return texts[f.path];
   const r = await fetch('/v1/ha/files/' + f.path, { headers: hdr() });
   if (!r.ok) throw new Error(f.name + ': ' + r.status);
-  return r.text();
+  return (texts[f.path] = await r.text());
 }
 async function download(f) {
   const url = URL.createObjectURL(new Blob([await fetchFile(f)], { type: 'text/yaml' })), a = document.createElement('a');
@@ -190,12 +201,13 @@ function row(f, pick) {
   const act = tr.insertCell(), dl = document.createElement('button');
   dl.type = 'button'; dl.textContent = 'Download'; dl.onclick = () => download(f).catch(e => $('msg').textContent = e.message);
   act.appendChild(dl);
-  if (!pick) {
-    const cp = document.createElement('button'); cp.type = 'button'; cp.textContent = 'Copy';
-    cp.onclick = async () => { try { await navigator.clipboard.writeText(await fetchFile(f)); cp.textContent = 'Copied'; }
-      catch (e) { $('msg').textContent = e.message; } };
-    act.appendChild(cp);
-  }
+  // Copy as well as Download: for pasting into the raw dashboard editor, or into a new file in Studio Code Server
+  const cp = document.createElement('button'); cp.type = 'button'; cp.textContent = 'Copy';
+  cp.onclick = async () => {
+    try { await copyText(texts[f.path] != null ? texts[f.path] : await fetchFile(f)); cp.textContent = 'Copied'; }
+    catch (e) { $('msg').textContent = e.message; }
+  };
+  act.appendChild(cp);
   return tr;
 }
 function secrets() {
@@ -233,11 +245,12 @@ async function load() {
   $('pk').replaceChildren(...data.files.filter(f => f.kind === 'package').map(f => row(f, true)));
   $('db').replaceChildren(...data.files.filter(f => f.kind === 'dashboard').map(f => row(f, false)));
   secrets();
+  data.files.forEach(f => fetchFile(f).catch(() => {}));
 }
 $('go').onclick = load;
 $('base').oninput = secrets;
 $('since').oninput = () => { try { localStorage.setItem('wa_ha_since', $('since').value.trim()); } catch (e) {} if (data) load(); };
-$('copysec').onclick = () => navigator.clipboard.writeText($('sec').textContent).then(() => $('secmsg').textContent = 'Copied.');
+$('copysec').onclick = () => copyText($('sec').textContent).then(() => $('secmsg').textContent = 'Copied.', e => $('secmsg').textContent = e.message);
 $('showtok').onclick = async () => {
   const r = await fetch('/v1/ha/token', { headers: hdr() });
   if (!r.ok) { $('secmsg').textContent = 'Could not get the token: ' + r.status; return; }

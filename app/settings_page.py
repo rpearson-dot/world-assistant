@@ -285,7 +285,12 @@ async function sysLoad() {
   $('sys').textContent = 'Version ' + d.version + ' (' + String(d.commit).slice(0, 7) + '). Worker last seen: '
     + (d.worker_heartbeat ? ago(d.worker_heartbeat) : 'not yet') + '.';
 }
-$('copy').onclick = () => navigator.clipboard.writeText($('out').textContent);
+$('copy').onclick = () => {
+  const t = $('out').textContent;
+  if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(t); return; }
+  const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+};
 $('refresh').onclick = () => load();
 
 async function load() {

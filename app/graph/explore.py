@@ -144,15 +144,16 @@ class View:
 
 async def read(cypher: str, **params: Any) -> dict[str, Any]:
     """Run a read-only statement and return it as graph (nodes, edges) and as a table (columns, rows)."""
-    from neo4j import READ_ACCESS, Query
-    from neo4j.exceptions import ClientError
+    from neo4j import READ_ACCESS, unit_of_work
+    from neo4j.exceptions import ClientError, DriverError, Neo4jError
 
     driver = await store.get_driver()
     view, rows, columns = View(), [], []
 
+    @unit_of_work(timeout=TIMEOUT_S)  # a transaction function takes its time limit this way, not as a Query
     async def work(tx: Any) -> None:
         nonlocal columns
-        result = await tx.run(Query(cypher, timeout=TIMEOUT_S), **params)
+        result = await tx.run(cypher, **params)
         columns = list(result.keys())
         async for record in result:
             if len(rows) >= MAX_ROWS:
@@ -165,6 +166,6 @@ async def read(cypher: str, **params: Any) -> dict[str, Any]:
             await s.execute_read(work)
     except ClientError as exc:  # a mistake in the query, a write refused, a timeout
         raise QueryRefused(exc.message or str(exc)) from exc
-    except Exception as exc:  # the server is down, the password is wrong
+    except (Neo4jError, DriverError, OSError) as exc:  # the server is down, the password is wrong
         raise store.GraphUnavailable(f"the knowledge graph could not be reached: {exc}") from exc
     return view.result(columns, rows)

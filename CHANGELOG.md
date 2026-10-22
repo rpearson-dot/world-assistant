@@ -16,6 +16,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Changed
 - `deploy.sh` and `setup.sh` create `WA_DATA_DIR/keys` for the app; `docker-compose.yml` mounts it at `/keys`.
+- The Home Assistant page has Copy beside Download for the packages too (to paste into a new file in Studio Code Server or the File editor), and every Copy button now works over plain `http://` on the home network, where browsers withhold the clipboard API.
 
 ## [0.13.0] - 2026-10-22
 
