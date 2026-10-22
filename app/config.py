@@ -103,6 +103,8 @@ class Settings(BaseSettings):
     codepoint_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
     codepoint_url: str = "https://api.os.uk/downloads/v1/products/CodePointOpen/downloads?area=GB&format=CSV&redirect"
     energy_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
+    energy_free_sessions_enabled: bool = True  # community feed of Octopus free-electricity sessions (no personal data sent)
+    energy_free_url: str = "https://oe-api.davidskendall.co.uk/free_electricity.json"
     octopus_account: str = ""  # e.g. A-1234ABCD; with the octopus_api_key secret this finds the tariff
     octopus_tariff: str = ""  # optional override, e.g. E-1R-COSY-22-12-08-A; needs no key
     flood_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off

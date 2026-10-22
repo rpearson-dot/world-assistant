@@ -4,7 +4,7 @@ World Assistant reports what electricity costs now and later. **Home Assistant a
 WA talks to an inverter or battery: WA is the outside world, HA owns the house. A Sunsynk inverter (for
 example through the kellerza add-on) is driven from HA automations that read the sensors below.
 
-## What it does (phase 1: rates)
+## Rates
 
 Reads your tariff's unit rates from Octopus (public, no key), every 30 minutes, for yesterday to three days
 ahead. Works for fixed, time-of-use (Cosy, Go) and half-hourly (Agile) tariffs alike.
@@ -46,11 +46,35 @@ Cheapest block starts, Average rate next 24h, and Upcoming rates (the next slots
 Example automation idea: when `sensor.wa_energy_cheap_now` turns `on` and the battery is below target, start
 grid charging; when `sensor.wa_energy_rate_band` is `peak`, run from battery.
 
-## Not yet (phase 2)
+## Page
 
-Octopus Saving Sessions and Free Electricity sessions (the "calendar") come from Octopus's GraphQL API and
-need your account; they will be added as further sensors once the response can be inspected with a probe
-command against your account.
+`/energy` in the browser (token as on the other pages): the rate and band now, a 48-hour bar chart coloured by
+band with a "now" line, the next cheap and peak windows, the cheapest block of 1 to 6 hours, Octopus sessions,
+and a table of every upcoming rate. It refreshes each minute.
+
+## Sessions (phase 2)
+
+Every 30 minutes WA also reads:
+
+* **Saving Sessions** from Octopus's GraphQL API (needs the key and account number): the announced events, and
+  whether you have joined each. WA never joins for you; do that in the Octopus app.
+* **Free Electricity sessions** from a community-run list (`oe-api.davidskendall.co.uk`); nothing about you is
+  sent. `WA_ENERGY_FREE_SESSIONS_ENABLED=false` turns it off.
+
+The queries follow the BottlecapDave Home Assistant integration and are not an official Octopus contract, so a
+change at Octopus could break them. The rates keep working if the sessions fail. To see exactly what Octopus
+returns for your account (account number and tokens are blanked out):
+
+```
+docker compose exec worker python -m app.energy.probe
+```
+
+API: `GET /v1/energy/sessions` (also under `sessions` in `/v1/energy/now`). Home Assistant sensors: Saving session
+now (`on`/`off`, with a `joined` attribute), Next saving session starts, Next joined saving session starts, Free
+electricity now, Next free electricity session starts, and the next joined one. Migration 0024 (`energy_session`).
+
+Example: when `sensor.wa_energy_saving_session_now` is `on` and its `joined` attribute is true, run the house from
+the battery.
 
 ## Notes
 

@@ -8,11 +8,12 @@ from app.ha import Device, Sensor
 
 
 def energy_device(now: dict[str, Any], slots: list[dict[str, Any]]) -> Device:
+    extra = session_sensors(now.get("sessions") or {})
     if not now.get("available"):
         return Device(
             "energy",
             "Energy",
-            [Sensor("status", "Rates status", "no rates yet", icon="mdi:flash-off")],
+            [Sensor("status", "Rates status", "no rates yet", icon="mdi:flash-off"), *extra],
         )
     cur, nxt = now["now"], now.get("next") or {}
     cheap, peak, block = (
@@ -116,5 +117,65 @@ def energy_device(now: dict[str, Any], slots: list[dict[str, Any]]) -> Device:
             state_class="measurement",
             attributes={"slots": slots[:100]},
         ),
+        *extra,
     ]
     return Device("energy", "Energy", sensors)
+
+
+def _next(prefix: str, name: str, block: dict[str, Any], icon: str) -> list[Sensor]:
+    nxt = block.get("next") or {}
+    joined = block.get("next_joined") or {}
+    return [
+        Sensor(
+            f"{prefix}_next_start",
+            f"Next {name} starts",
+            nxt.get("start"),
+            icon=icon,
+            device_class="timestamp",
+            attributes={
+                "end": nxt.get("end"),
+                "minutes": nxt.get("minutes"),
+                "joined": nxt.get("joined"),
+                "octopoints_per_kwh": nxt.get("octopoints_per_kwh"),
+                "upcoming": block.get("upcoming") or [],
+            },
+        ),
+        Sensor(
+            f"{prefix}_next_joined_start",
+            f"Next joined {name} starts",
+            joined.get("start"),
+            icon=icon,
+            device_class="timestamp",
+            attributes={"end": joined.get("end"), "minutes": joined.get("minutes")},
+        ),
+    ]
+
+
+def session_sensors(sessions: dict[str, Any]) -> list[Sensor]:
+    """Saving Sessions (Octopus pays for using less) and free-electricity sessions. Empty when none are known."""
+    if not sessions:
+        return []
+    saving, free = sessions.get("saving") or {}, sessions.get("free") or {}
+    cur_s, cur_f = saving.get("current") or {}, free.get("current") or {}
+    return [
+        Sensor(
+            "saving_session_now",
+            "Saving session now",
+            "on" if saving.get("now") else "off",
+            icon="mdi:piggy-bank-outline",
+            attributes={
+                "joined": saving.get("now_joined"),
+                "end": cur_s.get("end"),
+                "octopoints_per_kwh": cur_s.get("octopoints_per_kwh"),
+            },
+        ),
+        *_next("saving_session", "saving session", saving, "mdi:calendar-star"),
+        Sensor(
+            "free_electricity_now",
+            "Free electricity now",
+            "on" if free.get("now") else "off",
+            icon="mdi:flash",
+            attributes={"end": cur_f.get("end")},
+        ),
+        *_next("free_electricity", "free electricity session", free, "mdi:calendar-star"),
+    ]

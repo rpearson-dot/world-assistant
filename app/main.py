@@ -21,6 +21,7 @@ from app.bods import router as bods_router
 from app.bus import router as bus_router
 from app.bus_page import page_router as bus_page_router
 from app.config import get_settings
+from app.energy.page import page_router as energy_page_router
 from app.energy.routes import router as energy_router
 from app.events import page_router as events_page_router
 from app.events import router as events_router
@@ -69,7 +70,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await app.state.engine.dispose()
 
 
-app = FastAPI(title="World Assistant", version="0.10.0", lifespan=lifespan)
+app = FastAPI(title="World Assistant", version="0.11.0", lifespan=lifespan)
 # Files shipped with the app (Leaflet), so the pages load no third-party script. Read-only and
 # unauthenticated: it holds nothing private, and StaticFiles refuses paths outside the directory.
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
@@ -88,6 +89,7 @@ app.include_router(map_router)
 app.include_router(stops_router)
 app.include_router(floods_router)
 app.include_router(energy_router)
+app.include_router(energy_page_router)
 app.include_router(postcodes_router)
 app.include_router(bods_router)
 app.include_router(graph_router)

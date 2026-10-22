@@ -13,7 +13,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from app.config import get_settings
-from app.energy import octopus, store
+from app.energy import kraken, octopus, store
 from app.jobs import tracked
 
 USER_AGENT = "world-assistant (self-hosted)"
@@ -34,19 +34,46 @@ async def resolve_tariff(client: httpx.AsyncClient) -> str:
 
 
 async def sync(engine: AsyncEngine, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+    """Rates, then sessions. Each part stands alone: a failure in one is reported and does not stop the others,
+    and the rates error (the one that matters most) is raised at the end so the job shows as failed."""
     owned = client is None
     client = client or httpx.AsyncClient(timeout=30.0, headers={"User-Agent": USER_AGENT})
+    result: dict[str, Any] = {}
+    rates_error: Exception | None = None
+    s = get_settings()
     try:
-        tariff = await resolve_tariff(client)
-        rows = await octopus.fetch_rates(client, tariff)
-        if not rows:
-            raise octopus.OctopusError(
-                f"Octopus returned no rates for {tariff}; keeping what is stored"
-            )
-        return {"tariff": tariff, "rates": await store.save(engine, tariff, rows)}
+        try:
+            tariff = await resolve_tariff(client)
+            rows = await octopus.fetch_rates(client, tariff)
+            if not rows:
+                raise octopus.OctopusError(
+                    f"Octopus returned no rates for {tariff}; keeping what is stored"
+                )
+            result.update({"tariff": tariff, "rates": await store.save(engine, tariff, rows)})
+        except (httpx.HTTPError, octopus.OctopusError, ValueError) as exc:
+            rates_error = exc
+        if s.octopus_account.strip() and s.octopus_api_key:
+            try:
+                saving = await kraken.fetch_saving(
+                    client, s.octopus_api_key, s.octopus_account.strip()
+                )
+                result["saving_sessions"] = await store.save_sessions(
+                    engine, ["saving", "boost"], saving
+                )
+            except (httpx.HTTPError, octopus.OctopusError, ValueError, KeyError, TypeError) as exc:
+                result["saving_sessions_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+        if s.energy_free_sessions_enabled:
+            try:
+                free = await kraken.fetch_free(client, s.energy_free_url)
+                result["free_sessions"] = await store.save_sessions(engine, ["free"], free)
+            except (httpx.HTTPError, octopus.OctopusError, ValueError, KeyError, TypeError) as exc:
+                result["free_sessions_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
     finally:
         if owned:
             await client.aclose()
+    if rates_error is not None:
+        raise rates_error
+    return result
 
 
 async def energy_sync(ctx: dict[str, Any]) -> Any:
