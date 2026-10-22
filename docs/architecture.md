@@ -69,6 +69,7 @@ app/
   secretstore.py, secretsctl.py                                     where every secret comes from
   status.py, backups.py, backup.py, autodeploy.py                   status page, backups, update switch
   places.py, trips (in places.py), vehicles.py, routing.py, geo.py places, trips, vehicles, Valhalla
+  stops.py                                                          stops near a point (NaPTAN)
   fuel.py, events.py, pollen.py, pollen_history.py, pollen_grid.py, pollen_map.py                  fuel, events and pollen (API and pages)
   bus.py, bus_page.py, tfl.py                                       bus tracker, train boards
   assistant.py                                                      /v1/ask and /mcp tools
@@ -76,6 +77,7 @@ app/
   integrations/
     nationalhighways/   client, normalise, match (corridor geometry), store, poller, capture
     fuelfinder/         client, normalise, store, sync, queries, capture
+    naptan/             normalise, sync (the national stop register, weekly)
     tfl/ rail/          TfL Unified API; National Rail via the Rail Data Marketplace
     bus/                tracker config, poller, store, events, trips
     skiddle/ ticketmaster/ pollen/    event and pollen clients (each with a probe)
@@ -113,6 +115,7 @@ trip's corridor with the road numbers it uses. Stored events are then re-tagged.
 | `nh_event`, `nh_event_corridor` | Closures and speed limits; their corridor tags |
 | `nh_sign`, `nh_sign_message` | Message signs; history, written only when the text changes |
 | `nh_corridor` | Corridor centrelines (manual, draft or routed) |
+| `naptan_stop` | Every bus stop, station and terminal in Great Britain with its position, reloaded weekly from NaPTAN ([docs/naptan.md](naptan.md)) |
 | `fuel_station`, `fuel_price`, `fuel_price_change` | Stations; current prices; price-change history |
 | `place`, `trip`, `vehicle` | User data; the trip row also holds route summary. `place.origin` and `trip.origin` are `home-assistant` for ones Home Assistant added (ids start `ha-`), empty for the rest |
 | `tfl_board` | Saved train boards (station plus filter, and which source reads it) |

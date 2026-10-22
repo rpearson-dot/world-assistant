@@ -63,6 +63,10 @@ ROWS: dict[str, Any] = {
     "along_pairs": [("f1", "a3", 0.0), ("f2", "a3", 0.0)],
     "vehicle_rows": [{"id": "leaf", "name": "Leaf", "kind": "electric"}],
     "tracker_rows": [{"id": "213", "config": {"line": "213"}, "enabled": True}],
+    # Stops the tracker watches, positioned by NaPTAN. "ghost" is a stop NaPTAN has no record of.
+    "bus_stop_rows": [{"id": "490001346C", "name": "Home Road", "indicator": "Stop A",
+                       "lat": NEAR[0], "lon": NEAR[1]}],
+    "calls_at": [("213", "490001346C"), ("213", "ghost")],
 }
 
 
@@ -83,6 +87,13 @@ def test_every_record_becomes_a_node() -> None:
     assert sorted(by_label["Station"]) == ["f1", "f2", "f3"]  # the one without coordinates too
     assert by_label["Vehicle"] == ["leaf"] and by_label["BusTracker"] == ["213"]
     assert all(n.label in model.LABELS for n in g.nodes)
+
+
+def test_a_tracker_calls_at_the_stops_naptan_could_place() -> None:
+    g = built()
+    assert [n.id for n in g.nodes if n.label == "BusStop"] == ["490001346C"]
+    calls = {(r.start[1], r.end[1]) for r in g.rels if r.type == "CALLS_AT"}
+    assert calls == {("213", "490001346C")}  # 'ghost' has no position, so no node and no relationship
 
 
 def test_trips_join_their_places_and_corridor() -> None:
@@ -250,8 +261,9 @@ def test_an_unknown_label_is_refused_before_the_graph_is_asked(monkeypatch: pyte
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
 GEO_MIGRATIONS = ["0003_nh_storage", "0006_places_trips", "0007_fuel", "0009_vehicle",
-                  "0011_bus_tracking", "0016_ha_location", "0017_ha_origin", "0018_geography"]  # fmt: skip
-GEO_TABLES = ["bus_timetable", "bus_target_hit", "bus_target_day", "bus_anomaly", "bus_segment_obs",
+                  "0011_bus_tracking", "0016_ha_location", "0017_ha_origin", "0018_geography",
+                  "0020_naptan"]  # fmt: skip
+GEO_TABLES = ["naptan_stop", "bus_timetable", "bus_target_hit", "bus_target_day", "bus_anomaly", "bus_segment_obs",
               "bus_stop", "bus_tracker", "vehicle", "fuel_price_change", "fuel_price", "fuel_station",
               "ha_location", "trip", "place", "nh_sign_message", "nh_sign", "nh_event_corridor",
               "nh_event", "nh_corridor"]  # fmt: skip
@@ -285,6 +297,15 @@ def geo_schema() -> Iterator[None]:
             "INSERT INTO nh_corridor (id, name, centreline) VALUES ('a3', 'A3', CAST(:c AS jsonb)), "
             "('stub', 'One point only', CAST(:s AS jsonb))"),
             {"c": f"[[{HOME[0]}, {HOME[1]}], [{FAR[0]}, {FAR[1]}]]", "s": f"[[{HOME[0]}, {HOME[1]}]]"})
+        # a tracker watching one stop; NaPTAN also knows a second stop nobody watches
+        conn.execute(sa.text("INSERT INTO bus_tracker (id, config) VALUES ('213', '{}')"))
+        conn.execute(sa.text("INSERT INTO bus_stop (tracker, direction, pos, sid, name) "
+                             "VALUES ('213', 'outbound', 0, 'watched', 'Watched stop')"))
+        conn.execute(sa.text(
+            "INSERT INTO naptan_stop (atco, name, stop_type, kind, lat, lon, seen) VALUES "
+            "('watched', 'Watched stop', 'BCT', 'bus_stop', :la, :lo, now()), "
+            "('unwatched', 'Unwatched stop', 'BCT', 'bus_stop', :la, :lo, now())"),
+            {"la": NEAR[0], "lo": NEAR[1]})
     yield
     with sync.begin() as conn:
         for t in GEO_TABLES:
@@ -324,6 +345,10 @@ async def test_postgis_finds_what_is_near_and_what_is_on_the_way(geo_schema: Non
         assert ("Station", "f2", "home") not in near  # Birmingham
         assert not any(t == "f3" for _, t, _ in near)  # no coordinates
         assert all(0 <= km <= 3.0 for *_, km in rows["near_pairs"])
+        assert ("BusStop", "watched", "home") in near  # a tracked stop is placed by NaPTAN
+        assert not any(t == "unwatched" for _, t, _ in near)  # the register stays out of the graph
+        assert [r["id"] for r in rows["bus_stop_rows"]] == ["watched"]
+        assert rows["calls_at"] == [("213", "watched")]
 
         along = {(s, c) for s, c, _ in rows["along_pairs"]}
         assert ("f1", "a3") in along and ("f2", "a3") in along  # the corridor runs to Birmingham

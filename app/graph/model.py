@@ -15,14 +15,16 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # Labels, so a typo is a NameError rather than a quietly empty graph.
-PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER = (
-    "Place", "Trip", "Corridor", "RoadEvent", "Station", "Location", "Vehicle", "BusTracker",
+PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER, BUS_STOP = (
+    "Place", "Trip", "Corridor", "RoadEvent", "Station", "Location", "Vehicle", "BusTracker", "BusStop",
 )  # fmt: skip
-LABELS = (PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER)
+LABELS = (PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER, BUS_STOP)
 
 # Relationship types.
-FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES = "FROM", "TO", "USES", "AFFECTS", "ALONG", "NEAR", "DRIVES"
-TYPES = (FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES)
+FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT = (
+    "FROM", "TO", "USES", "AFFECTS", "ALONG", "NEAR", "DRIVES", "CALLS_AT",
+)  # fmt: skip
+TYPES = (FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT)
 
 
 @dataclass(frozen=True)
@@ -118,6 +120,16 @@ def trackers(rows: Iterable[dict[str, Any]]) -> list[Node]:
     return out
 
 
+def bus_stops(rows: Iterable[dict[str, Any]], calls_at: Iterable[tuple[str, str]]) -> tuple[list[Node], list[Rel]]:
+    """The stops a bus tracker watches, with positions from NaPTAN. Only these: the register holds
+    400,000 stops, and the graph is for how things join up, not for a copy of the register."""
+    nodes = [Node(BUS_STOP, r["id"], {"name": r["name"], "indicator": r.get("indicator"),
+                                      "lat": r.get("lat"), "lon": r.get("lon")})
+             for r in rows]  # fmt: skip
+    rels = [Rel(CALLS_AT, (TRACKER, tracker), (BUS_STOP, stop)) for tracker, stop in calls_at]
+    return nodes, rels
+
+
 def near_places(pairs: Iterable[tuple[str, str, str, float]]) -> list[Rel]:
     """NEAR relationships from (label, thing id, place id, km) measured by PostGIS."""
     return [Rel(NEAR, (label, thing), (PLACE, place), {"km": round(float(km), 3)})
@@ -146,6 +158,8 @@ def build(
     location_rows: Sequence[dict[str, Any]],
     vehicle_rows: Sequence[dict[str, Any]],
     tracker_rows: Sequence[dict[str, Any]],
+    bus_stop_rows: Sequence[dict[str, Any]] = (),
+    calls_at: Sequence[tuple[str, str]] = (),
     near_pairs: Sequence[tuple[str, str, str, float]] = (),
     along_pairs: Sequence[tuple[str, str, float]] = (),
 ) -> Graph:
@@ -158,12 +172,14 @@ def build(
     location_nodes = locations(location_rows)
     vehicle_nodes = vehicles(vehicle_rows)
     tracker_nodes = trackers(tracker_rows)
+    stop_nodes, stop_rels = bus_stops(bus_stop_rows, calls_at)
 
     nodes = [*place_nodes, *trip_nodes, *corridor_nodes, *event_nodes, *station_nodes,
-             *location_nodes, *vehicle_nodes, *tracker_nodes]  # fmt: skip
+             *location_nodes, *vehicle_nodes, *tracker_nodes, *stop_nodes]  # fmt: skip
     rels = [
         *trip_rels,
         *event_rels,
+        *stop_rels,
         *near_places(near_pairs),
         *along_corridors(along_pairs),
         *drives(vehicle_nodes, trip_nodes),

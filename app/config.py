@@ -100,6 +100,8 @@ class Settings(BaseSettings):
     tfl_naive_tz: str = "Europe/London"  # zone for TfL times that carry no offset
     valhalla_url: str = "http://valhalla:8002"
     fuel_poll_enabled: bool = False
+    naptan_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
+    naptan_url: str = "https://naptan.api.dft.gov.uk/v1/access-nodes?dataFormat=csv"
     fuel_price_interval_min: int = 30
     nh_live_interval_min: int = 10
     nh_planned_interval_hours: int = 2

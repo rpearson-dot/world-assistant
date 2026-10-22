@@ -15,7 +15,7 @@ cd "$(dirname "$0")/.."
 WORK="$(mktemp -d)"
 export WA_SECRETS_DIR="$WORK/secrets" WA_DATA_DIR="$WORK/data"
 export WA_MQTT_HOST=127.0.0.1 WA_API_PORT="${WA_API_PORT:-18010}" COMPOSE_PROJECT_NAME=wa-ci
-export WA_NH_POLL_ENABLED=false WA_NH_CAPTURE_ENABLED=false WA_FUEL_POLL_ENABLED=false
+export WA_NH_POLL_ENABLED=false WA_NH_CAPTURE_ENABLED=false WA_FUEL_POLL_ENABLED=false WA_NAPTAN_POLL_ENABLED=false
 export COMPOSE_FILE=docker-compose.yml
 unset WA_IMAGE WA_REDIS_URL
 

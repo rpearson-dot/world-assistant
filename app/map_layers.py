@@ -17,6 +17,7 @@ from app.auth import require_token
 from app.geoquery import distance_km, params, within_sql
 from app.integrations.fuelfinder.normalise import canonical_fuel
 from app.integrations.fuelfinder.queries import haversine_km
+from app.integrations.naptan.normalise import STATION_TYPES
 from app.places import place_or_default
 
 router = APIRouter(prefix="/v1/map", tags=["map"], dependencies=[Depends(require_token)])
@@ -30,8 +31,10 @@ LAYERS: dict[str, str] = {
     "road_events": "Closures and speed limits",
     "signs": "Motorway signs",
     "fuel": "Fuel stations",
+    "stops": "Bus stops and stations",
     "pollen": "Allergy risk lattice",
 }
+STOPS_CAP = 3000  # nearest first; a city centre can hold far more bus stops than a map can use
 POLLEN_LEVELS = ["none", "low", "moderate", "high", "very high"]
 
 
@@ -56,7 +59,7 @@ def _collection(features: list[dict[str, Any]], name: str) -> dict[str, Any]:
 
 async def _near(
     conn: Any, sql: str, centre: Point | None, radius_km: float, *,
-    order: str | None = None, alias: str = "", **extra: Any,
+    order: str | None = None, alias: str = "", limit: int | None = None, **extra: Any,
 ) -> Any:  # fmt: skip
     """Run a SELECT, cut to the radius by Postgres rather than by us.
 
@@ -64,10 +67,11 @@ async def _near(
     come back nearest first, which the GiST index on `geog` makes an indexed lookup rather than a
     scan of the table.
     """
+    cap = f" LIMIT {int(limit)}" if limit else ""
     if centre is None:
-        return await conn.execute(text(sql + (f" ORDER BY {order}" if order else "")), extra)
+        return await conn.execute(text(sql + (f" ORDER BY {order}" if order else "") + cap), extra)
     joiner = " AND " if " WHERE " in sql.upper() else " WHERE "
-    sql = sql + joiner + within_sql(alias) + f" ORDER BY {distance_km(alias)}"
+    sql = sql + joiner + within_sql(alias) + f" ORDER BY {distance_km(alias)}" + cap
     return await conn.execute(text(sql), params(centre[0], centre[1], radius_km, **extra))
 
 
@@ -170,6 +174,25 @@ async def _fuel(conn: Any, centre: Point | None, radius_km: float, fuel: str) ->
             for r in res]  # fmt: skip
 
 
+async def _stops(conn: Any, centre: Point | None, radius_km: float) -> list[dict[str, Any]]:
+    """Near a point, every stop (nearest first, capped). Over the whole country, only the stations:
+    400,000 bus stops would be a smear, and one record per station is what a national map wants."""
+    where = ""
+    extra: dict[str, Any] = {}
+    if centre is None:
+        where = " WHERE stop_type = ANY(:types)"
+        extra["types"] = list(STATION_TYPES)
+    res = await _near(
+        conn,
+        "SELECT atco, name, street, indicator, locality, kind, stop_type, lat, lon FROM naptan_stop" + where,
+        centre, radius_km, order="name", limit=STOPS_CAP if centre else None, **extra,
+    )
+    return [_point(r.lat, r.lon, {"id": r.atco, "name": r.name, "street": r.street,
+                                  "indicator": r.indicator, "locality": r.locality, "kind": r.kind,
+                                  "stop_type": r.stop_type})
+            for r in res]  # fmt: skip
+
+
 async def _pollen(conn: Any, centre: Point | None, radius_km: float) -> list[dict[str, Any]]:
     res = await _near(conn, "SELECT lat, lon, forecast, changed_at FROM pollen_grid", centre, radius_km)
     out = []
@@ -190,6 +213,7 @@ async def layers(request: Request) -> dict[str, Any]:
         "road_events": "SELECT count(*) FROM nh_event WHERE cleared_at IS NULL",
         "signs": "SELECT count(*) FROM nh_sign WHERE lat IS NOT NULL",
         "fuel": "SELECT count(*) FROM fuel_station WHERE coords_ok AND NOT permanent_closure",
+        "stops": "SELECT count(*) FROM naptan_stop",
         "pollen": "SELECT count(*) FROM pollen_grid",
     }
     out = []
@@ -249,6 +273,8 @@ async def geojson(
                 features = await _signs(conn, centre, radius_km)
             elif key == "fuel":
                 features = await _fuel(conn, centre, radius_km, fuel_key)
+            elif key == "stops":
+                features = await _stops(conn, centre, radius_km)
             else:
                 features = await _pollen(conn, centre, radius_km)
             out[key] = _collection(features, LAYERS[key])

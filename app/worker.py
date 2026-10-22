@@ -15,6 +15,7 @@ from app.graph.build import graph_build
 from app.ha_publish import ha_sync
 from app.integrations.bus.poller import poll_bus
 from app.integrations.fuelfinder.sync import fuel_sync_prices, fuel_sync_stations
+from app.integrations.naptan.sync import naptan_sync
 from app.integrations.nationalhighways.capture import capture_job
 from app.integrations.nationalhighways.poller import poll_live, poll_planned
 from app.logging import configure_logging
@@ -69,6 +70,7 @@ class WorkerSettings:
         pollen_grid_sync,
         ha_sync,
         graph_build,
+        naptan_sync,
     ]
     cron_jobs: ClassVar[list] = [
         cron(heartbeat, minute=set(range(0, 60, 5))),
@@ -91,6 +93,8 @@ class WorkerSettings:
         cron(ha_sync, minute=set(range(1, 60, _HA_MIN)), timeout=120, max_tries=1),
         # Knowledge graph, rebuilt from Postgres twice an hour. It returns at once when switched off.
         cron(graph_build, minute={8, 38}, timeout=300, max_tries=1),
+        # The national stop register changes slowly: weekly, Sunday early morning (a ~100 MB download).
+        cron(naptan_sync, weekday={6}, hour={2}, minute={50}, timeout=1800, max_tries=1),
         cron(
             poll_planned,
             hour=set(range(0, 24, _PLANNED_HOURS)),
