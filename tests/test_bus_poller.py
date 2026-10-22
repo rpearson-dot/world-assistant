@@ -164,22 +164,29 @@ URL = os.environ.get("WA_TEST_DATABASE_URL")
 MIGRATION = Path(__file__).parent.parent / "migrations" / "versions" / "0011_bus_tracking.py"
 
 
-@pytest.fixture
-def schema() -> Iterator[None]:
-    spec = importlib.util.spec_from_file_location("m0011", MIGRATION)
+def _migration(name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, MIGRATION.parent / f"{name}.py")
     assert spec and spec.loader
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
+    return m
+
+
+@pytest.fixture
+def schema() -> Iterator[None]:
+    m11, m26 = _migration("0011_bus_tracking"), _migration("0026_bus_position")
     eng = sa.create_engine(URL)  # type: ignore[arg-type]
     with eng.begin() as conn:
-        for t in ("bus_timetable", "bus_target_hit", "bus_target_day", "bus_anomaly", "bus_segment_obs",
-                  "bus_stop", "bus_tracker"):  # fmt: skip
+        for t in ("bus_position", "bus_timetable", "bus_target_hit", "bus_target_day", "bus_anomaly",
+                  "bus_segment_obs", "bus_stop", "bus_tracker"):  # fmt: skip
             conn.execute(sa.text(f"DROP TABLE IF EXISTS {t} CASCADE"))
         with Operations.context(MigrationContext.configure(conn)):
-            m.upgrade()
+            m11.upgrade()
+            m26.upgrade()
     yield
     with eng.begin() as conn, Operations.context(MigrationContext.configure(conn)):
-        m.downgrade()
+        m26.downgrade()
+        m11.downgrade()
     eng.dispose()
 
 

@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from app.config import get_settings
-from app.integrations.bus import store
+from app.integrations.bus import live, store
 from app.integrations.bus.config import TrackerConfig
 from app.integrations.bus.events import (
     assign_slots,
@@ -196,6 +196,28 @@ async def _slots(
 Publisher = Callable[[str, TrackerConfig, dict[str, dict[str, Any]]], Awaitable[None]]
 
 
+async def _live_fixes(
+    engine: AsyncEngine, cfg: TrackerConfig, state: dict[str, Any], preds: list[dict[str, Any]],
+    lookup: Lookup, local: datetime,
+) -> list[dict[str, Any]]:
+    """GPS positions of the followed buses, only inside this tracker's journey window (see live.py)."""
+    settings = get_settings()
+    if not settings.bus_live_enabled or not settings.bods_api_key:
+        return []
+    if not live.in_journey_window(cfg, local.hour * 60 + local.minute):
+        return []
+    vehicles = live.known_vehicles(state, preds, {s.sid for s in cfg.stops})
+    if not vehicles:
+        return []
+    sids = list(lookup.by_sid)  # the whole line, so a bus still approaching the route is in the box
+    try:
+        async with engine.connect() as conn:
+            return await live.gather(conn, settings.bods_api_key, cfg, sids, vehicles)
+    except Exception:
+        log.exception("live positions failed for %s", cfg.line)
+        return []
+
+
 async def poll_one(
     engine: AsyncEngine,
     client: TflClient,
@@ -217,7 +239,14 @@ async def poll_one(
     state = (current or row).get("state") or new_state()
     preds = await client.line_arrivals(cfg.line)
     out = process_poll(cfg, state, preds, lookup, now, local.date(), tz, slots)
+    fixes = await _live_fixes(engine, cfg, state, preds, lookup, local)
+    live.attach(out["anomalies"], {v["vehicle"]: v for v in fixes}, lookup.towards)
     async with engine.begin() as conn:
+        if fixes:
+            await store.save_positions(conn, tid, fixes)
+        if state.get("positions_pruned") != local.date().isoformat():
+            await store.prune_positions(conn, live.KEEP_DAYS)
+            state["positions_pruned"] = local.date().isoformat()
         await store.save_observations(conn, tid, out["observations"])
         await store.save_anomalies(conn, tid, out["anomalies"])
         await store.save_hits(conn, tid, local.date(), out["hits"])

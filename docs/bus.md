@@ -12,6 +12,34 @@ where you get on and where you need to get to, add any busy stops to time on the
 times and press **Start tracking**. The direction, the opposite-side stop at your destination (for
 buses that terminate there) and the stop before it are worked out for you from TfL's route data.
 
+### The way back
+
+Tick **Also track the way back** (default 15:00 to 17:30) and setup creates a second tracker, `<name>-return`:
+the other side of the stop you got off at, to the other side of the stop you got on at (for example Coombe
+Girls School to Worcester Park). It has its own times and its own record and success rate, and is polled from
+half an hour before its window to an hour after it. It is an ordinary tracker, so everything below applies to it.
+
+## Live positions (BODS)
+
+TfL's arrival predictions say which buses are heading for your stops, but work out where each one *is* by
+inference, which can wobble. The Bus Open Data Service publishes each bus's GPS position, bearing and
+destination, under the same vehicle id (the registration, e.g. `LG23FAJ`), and it covers London buses such as
+the 213. When a BODS key is set (`bods_api_key`), the tracker uses it, but only when it is needed:
+
+- **only inside the tracker's own journey window** (earliest bus to arrive-by time), not its whole polling window;
+- **only for buses TfL already shows heading for the tracker's stops**, not every bus on the line;
+- one request a poll, and nothing at all without a key. `WA_BUS_LIVE_ENABLED=false` turns it off.
+
+What it does with it:
+
+- stores each followed bus's fixes (position, bearing, destination) for 30 days: `GET /v1/bus/trackers/{id}/positions?day=&vehicle=`
+  gives a bus's track along the route;
+- adds what the GPS says to any event about that bus (its real destination, bearing and position);
+- a "reported at an earlier stop than before" event whose bus is still heading the same way by its destination
+  board is marked as the predictions shifting, not the bus going back.
+
+A failure of the BODS feed never stops the tracker: it carries on from TfL alone.
+
 ## Configure by hand (advanced)
 
 `PUT /v1/bus/trackers/{id}` with a body like:
@@ -66,6 +94,7 @@ Open `/bus` in a browser for all of this on one page (token typed in, as on `/fu
 | `/v1/bus/trackers/{id}/reliability` | per-slot hit rate over 30 days |
 | `/v1/bus/trackers/{id}/conditions` | leg times, last 30 minutes vs the day |
 | `/v1/bus/trackers/{id}/anomalies` | trip starts, reverse moves, turnarounds |
+| `/v1/bus/trackers/{id}/positions` | GPS fixes of the followed buses in the journey window, with `?day=` and `?vehicle=` |
 
 Polling runs every 30 s inside the poll window (`WA_BUS_POLL_ENABLED`, `WA_LOCAL_TZ`).
 

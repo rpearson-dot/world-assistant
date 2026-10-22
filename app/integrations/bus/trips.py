@@ -199,7 +199,8 @@ def detect_anomalies(
                         "from_towards": towards.get(prev_dir or ""), "from_stop": names.get(prev["sid"])})  # fmt: skip
         elif latest["pos"] < prev["pos"]:
             out.append({"vehicle": vehicle, "type": "reverse_movement", "sid": latest["sid"],
-                        "from_pos": prev["pos"], "to_pos": latest["pos"], **where(latest["sid"], latest_dir),
+                        "from_pos": prev["pos"], "to_pos": latest["pos"], "direction": latest_dir,
+                        **where(latest["sid"], latest_dir),
                         "from_stop": names.get(prev["sid"])})  # fmt: skip
         elif latest["pos"] == 0 and prev["pos"] != 0:
             out.append({"vehicle": vehicle, "type": "trip_start", "sid": latest["sid"],
