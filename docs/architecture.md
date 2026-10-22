@@ -18,6 +18,7 @@ flowchart LR
     R[(Redis)]
     V[Valhalla - optional]
     O[OpenBao - optional]
+    G[(Neo4j - optional)]
   end
   M[(MQTT - existing)]
   NH --> W
@@ -34,6 +35,9 @@ flowchart LR
   A --> TF
   A --> PO
   A <--> R
+  W --> G
+  A --> G
+  DB -.derived.-> G
   OSM --> V
   A -.-> O
   U[Browser, MCP, Siri Shortcuts] --> A
@@ -48,6 +52,7 @@ flowchart LR
 | `migrate` | One-shot Alembic job that runs before the api and worker start. |
 | `wa-db` | PostGIS Postgres, private to the stack. |
 | `wa-redis` | Redis, private to the stack and password protected (`redis_password`). Used for the shared upstream rate limiter, short caches and the worker heartbeat. Nothing is saved to disk. Keys are prefixed `wa:`. |
+| `wa-graph` | Optional Neo4j (separate compose file) holding relationships derived from Postgres. Owns no data: the `graph_build` job rebuilds it, and it is left out of the backup on purpose. See [graph.md](graph.md). |
 | `valhalla` | Optional routing engine (separate compose file). Only reachable inside the stack. |
 | `openbao` | Optional key vault run beside the app (separate compose file), with an optional auto-unseal helper. See [openbao.md](openbao.md). |
 | MQTT | An existing broker you provide. The worker publishes bus-tracker summaries and the fuel, train, road and pollen sensors (with a pollen map image) to it with Home Assistant discovery, so sensors appear without YAML. Events are fetched by Home Assistant itself for where each person is (the mobile app's location when away, else its home zone) (see [home-assistant.md](home-assistant.md)). |

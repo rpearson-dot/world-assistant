@@ -1,0 +1,55 @@
+# Adds Neo4j to the stack: the knowledge graph the assistant walks.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.graph.yml up -d
+#
+# The graph holds no data of its own. Every node and relationship in it is derived from Postgres by
+# the `graph_build` job, so losing it costs nothing: delete the volume, start again, and the next
+# build fills it. It is deliberately left out of the backup for the same reason.
+#
+# Set WA_GRAPH_ENABLED=true so the api and worker use it, and put a password in the
+# graph_password secret (scripts/init-secrets.sh makes one). The service is reachable only by the
+# other containers, as bolt://wa-graph:7687; no port is published to your LAN. To look at the graph
+# yourself, publish 7474 temporarily and open Neo4j Browser.
+
+services:
+  wa-graph:
+    image: neo4j:5.26-community
+    restart: unless-stopped
+    labels:
+      net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/graph.png"
+    environment:
+      TZ: ${TZ:-Europe/London}
+      # The image wants user/password as one variable; it is read from the secret at start.
+      NEO4J_AUTH_FILE: /run/secrets/neo4j_auth
+      NEO4J_server_memory_heap_max__size: ${WA_GRAPH_HEAP:-512m}
+      NEO4J_server_memory_pagecache_size: ${WA_GRAPH_PAGECACHE:-256m}
+    secrets:
+      - neo4j_auth
+    volumes:
+      - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/neo4j/data:/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
+  api:
+    environment:
+      WA_GRAPH_ENABLED: ${WA_GRAPH_ENABLED:-true}
+    secrets:
+      - graph_password
+
+  worker:
+    environment:
+      WA_GRAPH_ENABLED: ${WA_GRAPH_ENABLED:-true}
+    secrets:
+      - graph_password
+
+secrets:
+  graph_password:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/graph_password.txt
+  # Neo4j wants "user/password" in one file; init-secrets.sh writes it from graph_password.
+  neo4j_auth:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/neo4j_auth.txt
