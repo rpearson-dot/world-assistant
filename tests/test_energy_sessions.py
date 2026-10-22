@@ -189,3 +189,32 @@ def test_retired_sensors_are_not_published_and_are_cleared():
     assert not published & set(RETIRED)
     msgs = ha.clear("wa", "homeassistant", "energy", RETIRED)
     assert ("homeassistant/sensor/wa_energy_free_electricity_now/config", "", True) in msgs
+
+
+def test_spoken_answer():
+    from zoneinfo import ZoneInfo
+
+    from app.energy import rates as R
+    from app.energy import speech, summary
+
+    tz = ZoneInfo("Europe/London")
+    d = datetime(2026, 10, 23, 0, 0, tzinfo=UTC)
+    ps = [
+        R.Period(d + timedelta(hours=a), d + timedelta(hours=b), p)
+        for a, b, p in [
+            (0, 4, 26),
+            (4, 7, 13),
+            (7, 13, 26),
+            (13, 16, 13),
+            (16, 19, 39),
+            (19, 24, 26),
+        ]
+    ]
+    now = d + timedelta(hours=14)
+    res = summary.summarise("T", ps, now)
+    res["sessions"] = sessions.summarise(rows(), now)
+    text = speech.sentence(res, tz, now)
+    assert (
+        "cheap now at 13.0p" in text and "until 17:00" in text
+    )  # 16:00 UTC is 17:00 in London (BST)
+    assert "Peak is 39.0p from 17:00" in text and "cheapest 3 hours" in text

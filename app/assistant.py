@@ -11,7 +11,9 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Annotated, Any
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse
@@ -20,6 +22,11 @@ from sqlalchemy import text
 from app.auth import require_token
 from app.bus import live as bus_live
 from app.bus import target as bus_target
+from app.config import get_settings
+from app.energy import sessions as energy_sessions
+from app.energy import speech as energy_speech
+from app.energy import store as energy_store
+from app.energy import summary as energy_summary
 from app.events import near as events_near
 from app.fuel import near as fuel_near
 from app.pollen import near as pollen_near
@@ -138,6 +145,17 @@ async def pollen_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
     return {"text": f"Near {where}, " + "; ".join(parts) + ".", "data": res}
 
 
+async def energy_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    hours = float(args.get("hours") or 3)
+    tariff, periods = await energy_store.load(request.app.state.engine)
+    now = datetime.now(UTC)
+    res = energy_summary.summarise(tariff, periods, now, min(max(hours, 0.5), 12))
+    if not res["available"]:
+        raise ToolError("There are no electricity rates yet. Set up the Octopus account or tariff (docs/energy.md).")
+    res["sessions"] = energy_sessions.summarise(await energy_store.load_sessions(request.app.state.engine), now)
+    return {"text": energy_speech.sentence(res, ZoneInfo(get_settings().local_tz), now), "data": res}
+
+
 async def events_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
     place = str(args.get("place") or "") or None
     days = int(args.get("days") or 7)
@@ -249,6 +267,8 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
              type=("string", "optional: LIVE, CLUB, FEST, COMEDY, THEATRE, SPORT, KIDS, ARTS"))}, events_tool),
     Tool("pollen", "Pollen levels and allergy risk near a saved place, today and the next three days.",
          {"type": "object", "properties": _props(place=("string", "id of a saved place; default: home"))}, pollen_tool),
+    Tool("electricity", "Electricity price now and next, the next cheap and peak times, the cheapest block of hours, and Saving Sessions.",
+         {"type": "object", "properties": _props(hours=("number", "length of the cheapest block, default 3"))}, energy_tool),
     Tool("trip_cost", "Fuel or energy needed, and cost, for a saved routed trip in a saved vehicle.",
          {"type": "object", "properties": _props(trip=("string", "trip id"), vehicle=("string", "vehicle id")),
           "required": ["trip", "vehicle"]}, trip_cost_tool),

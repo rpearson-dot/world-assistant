@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [Unreleased]
 
 ### Added
+- An `electricity` tool for the assistant (`/v1/ask/electricity`, Siri, MCP): the price now and next, the next cheap and peak times, the cheapest block of hours and Saving Sessions, as a spoken sentence.
+
+### Changed
+- The Home Assistant sensors "Next cheap window starts/ends" and "Next peak window starts" are renamed "Cheap window starts/ends (current or next)" and "Peak window starts (current or next)", because they show the window you are in when you are in one. Entity ids are unchanged.
+
+### Added
 - `docs/ha/wa_energy_plan.yaml`: a Home Assistant package that sets the charge target of the three Cosy charging slots on a Deye/Sunsynk inverter from expected use and the solar forecast. Dry run until switched on. It also reads the Saving Session sensors: a joined evening session raises the afternoon charge target, a low battery during a joined session sends a notification, and a joined session outside 16:00-22:00 is flagged ([docs/energy.md](docs/energy.md)).
 
 ### Removed

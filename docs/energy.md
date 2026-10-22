@@ -46,6 +46,10 @@ Cheapest block starts, Average rate next 24h, and Upcoming rates (the next slots
 Example automation idea: when `sensor.wa_energy_cheap_now` turns `on` and the battery is below target, start
 grid charging; when `sensor.wa_energy_rate_band` is `peak`, run from battery.
 
+## Asking by voice
+
+The assistant has an `electricity` tool (`POST /v1/ask/electricity?format=text`, also over MCP and Siri Shortcuts): "Electricity is cheap now at 14.3p, until 16:00, then peak at 43.7p. ..." with the next cheap and peak times, the cheapest block and any Saving Session.
+
 ## Page
 
 `/energy` in the browser (token as on the other pages): the rate and band now, a 48-hour bar chart coloured by
