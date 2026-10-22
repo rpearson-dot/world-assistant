@@ -143,3 +143,26 @@ def build_config(
         "poll_end": poll_end,
     }
     return cfg
+
+
+def _shift(hhmm: str, minutes: int) -> str:
+    m = min(max(int(hhmm[:2]) * 60 + int(hhmm[3:]) + minutes, 0), 23 * 60 + 59)
+    return f"{m // 60:02d}:{m % 60:02d}"
+
+
+def return_config(
+    line: str, seqs: Seqs, board_sid: str, target_sid: str, earliest: str, deadline: str
+) -> dict[str, Any]:
+    """The way back: from the other side of the stop you went to, to the other side of the stop you set off from.
+    Its own window (for example 15:00 to 17:30), polled from half an hour before to an hour after it."""
+    b_dir, b_pos = _find(seqs, board_sid)
+    t_dir, t_pos = _find(seqs, target_sid)
+    start = _opposite_same_name(seqs, t_dir, seqs[t_dir][t_pos]["name"])
+    end = _opposite_same_name(seqs, b_dir, seqs[b_dir][b_pos]["name"])
+    for stop, original in ((start, seqs[t_dir][t_pos]), (end, seqs[b_dir][b_pos])):
+        if stop is None:
+            raise SetupError(f"could not find the stop on the other side of the road for {original['name']}")
+    return build_config(
+        line, seqs, start["id"], end["id"], None, earliest, deadline,  # type: ignore[index]
+        poll_start=_shift(earliest, -30), poll_end=_shift(deadline, 60),
+    )  # fmt: skip

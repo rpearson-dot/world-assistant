@@ -83,7 +83,7 @@ class WorkerSettings:
     cron_jobs: ClassVar[list] = [
         cron(heartbeat, minute=set(range(0, 60, 5))),
         # Bus tracker: every 30 s; the job returns at once outside each tracker's poll window.
-        cron(poll_bus, hour=set(range(5, 11)), second={0, 30}, timeout=25, max_tries=1),
+        cron(poll_bus, hour={*range(5, 11), *range(14, 19)}, second={0, 30}, timeout=25, max_tries=1),
         # Every 20 minutes. A run is paced by the rate limiter, so allow it time.
         cron(capture_job, minute={0, 20, 40}, timeout=1500, max_tries=1),
         # Live feeds (offset from the capture run). Interval is WA_NH_LIVE_INTERVAL_MIN.

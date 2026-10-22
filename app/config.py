@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     nh_poll_enabled: bool = False
     local_tz: str = "Europe/London"
     bus_poll_enabled: bool = True
+    bus_live_enabled: bool = True  # GPS positions of followed buses (needs the BODS key), inside the journey window only
     ticketmaster_base_url: str = ""  # empty = https://app.ticketmaster.com/discovery/v2
     skiddle_base_url: str = ""  # empty = https://www.skiddle.com/api/v1
     pollen_base_url: str = ""  # empty = https://www.polleninformation.at/api/forecast/public

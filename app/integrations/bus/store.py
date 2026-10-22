@@ -214,3 +214,32 @@ async def day_hits(conn: AsyncConnection, tid: str, day: date) -> list[dict[str,
         {"t": tid, "d": day},
     )
     return [dict(r._mapping) for r in res]
+
+
+async def save_positions(conn: AsyncConnection, tid: str, vehicles: list[dict[str, Any]]) -> int:
+    """GPS fixes of followed buses. A fix already stored (BODS refreshes less often than we poll) is skipped."""
+    rows = [
+        {"t": tid, "v": v["vehicle"], "at": v["recorded_at"], "lat": v["lat"], "lon": v["lon"],
+         "b": v.get("bearing"), "d": v.get("destination"), "bd": v.get("direction")}
+        for v in vehicles if v.get("recorded_at")
+    ]  # fmt: skip
+    if not rows:
+        return 0
+    from datetime import datetime
+
+    for r in rows:
+        r["at"] = datetime.fromisoformat(r["at"])
+    result = await conn.execute(
+        text(
+            "INSERT INTO bus_position (tracker, vehicle, recorded_at, lat, lon, bearing, destination, bods_direction) "
+            "VALUES (:t, :v, :at, :lat, :lon, :b, :d, :bd) ON CONFLICT DO NOTHING"
+        ),
+        rows,
+    )
+    return int(result.rowcount or 0)
+
+
+async def prune_positions(conn: AsyncConnection, days: int) -> None:
+    await conn.execute(
+        text("DELETE FROM bus_position WHERE recorded_at < now() - make_interval(days => :d)"), {"d": days}
+    )

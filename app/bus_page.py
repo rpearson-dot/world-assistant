@@ -53,6 +53,12 @@ PAGE = """<!doctype html>
         <label>I must arrive by <input id="deadline" type="time" value="08:10"></label>
         <label>Tracker name <input id="name" value="main" maxlength="40"></label>
       </div>
+      <label style="flex-direction:row;align-items:center;gap:8px"><input id="back" type="checkbox" style="width:auto">
+        Also track the way back <span class="hint">the other side of each stop, from where you got off to where you got on</span></label>
+      <div class="row hidden" id="backtimes">
+        <label>Earliest bus back <input id="bearliest" type="time" value="15:00"></label>
+        <label>I must be back by <input id="bdeadline" type="time" value="17:30"></label>
+      </div>
       <div class="row"><button id="save" class="primary" type="button">Start tracking</button></div>
       <p id="setupmsg" class="dim"></p>
     </div>
@@ -133,7 +139,9 @@ async function load() {
   } catch (e) { msg.textContent = e.message; }
 }
 const way = t => t ? ' towards ' + t : '';
-function anomalyText(a) {
+const gps = l => l ? ' GPS: ' + (l.destination ? 'destination ' + l.destination : 'seen') + (l.bearing != null ? ', bearing ' + Math.round(l.bearing) + '°' : '') + (l.recorded_at ? ' at ' + hhmm(l.recorded_at) : '') + '.' : '';
+function anomalyText(a) { return anomalyBase(a) + gps((a.detail || {}).live); }
+function anomalyBase(a) {
   const d = a.detail || {}, at = d.stop ? ' at ' + d.stop : '';
   if (a.type === 'early_termination')
     return 'Ended early' + at + ', heading' + way(d.towards) + ' (' + (d.kind || 'ended') + ', ' + d.stops_before_end + ' stops short of the end)'
@@ -144,6 +152,8 @@ function anomalyText(a) {
   if (a.type === 'direction_change')
     return 'Changed direction' + at + (d.from_towards ? ': was heading' + way(d.from_towards) + ', now' + way(d.towards) : '');
   if (a.type === 'trip_start') return 'Started its route' + at + (d.towards ? ', heading' + way(d.towards) : '');
+  if (a.type === 'reverse_movement' && d.verdict === 'prediction_shift')
+    return 'Predictions shifted' + (d.from_stop ? ' (' + d.from_stop + ' then ' + (d.stop || 'an earlier stop') + ')' : '') + ': the GPS shows it still heading' + way(d.live && d.live.towards) + ', so the bus did not go back';
   if (a.type === 'reverse_movement')
     return 'Reported at an earlier stop than before' + (d.from_stop ? ' (' + d.from_stop + ' then ' + (d.stop || 'an earlier stop') + ')' : '')
       + ', same direction: usually the live predictions shifting, not the bus';
@@ -176,13 +186,16 @@ $('load').onclick = async () => {
   catch (e) { msg.textContent = e.message; }
 };
 $('board').onchange = fillTarget;
+$('back').onchange = () => $('backtimes').classList.toggle('hidden', !$('back').checked);
 $('addwatch').onclick = () => { const o = $('watch').selectedOptions[0]; if (o) { watched.set(o.value, o.textContent); drawChips(); } };
 $('save').onclick = async () => {
   try {
     const r = await api('POST', '/v1/bus/setup', { line: $('line').value.trim(), board: $('board').value, target: $('target').value,
-      watch: [...watched.keys()], earliest: $('earliest').value, deadline: $('deadline').value, name: $('name').value.trim() || 'main' });
+      watch: [...watched.keys()], earliest: $('earliest').value, deadline: $('deadline').value, name: $('name').value.trim() || 'main',
+      ...($('back').checked ? { return_earliest: $('bearliest').value, return_deadline: $('bdeadline').value } : {}) });
     $('setupmsg').className = 'ok'; $('setupmsg').textContent = 'Tracking ' + r.stops_tracked.join(', ') + '.' +
-      (r.return_side_found ? ' The opposite-side stop at your destination was found automatically.' : '');
+      (r.return_side_found ? ' The opposite-side stop at your destination was found automatically.' : '') +
+      (r.return_tracker ? ' The way back (' + r.return_tracker.board + ' to ' + r.return_tracker.target + ', ' + r.return_tracker.earliest + ' to ' + r.return_tracker.deadline + ') is tracked as "' + r.return_tracker.id + '".' : '');
     load();
   } catch (e) { $('setupmsg').className = 'err'; $('setupmsg').textContent = e.message; }
 };

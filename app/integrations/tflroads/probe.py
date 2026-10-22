@@ -42,6 +42,15 @@ async def main() -> int:
           f"lines {sum(1 for p in parsed if p['geom'] and p['geom']['type'] == 'MultiLineString')}")  # fmt: skip
     for name in ("category", "sub_category", "severity", "status", "scope"):
         print(f"{name}:", dict(Counter(p[name] for p in parsed).most_common(8)))
+    kinds = Counter((i.get("geography") or {}).get("type") for i in items)
+    print("geography types:", dict(kinds))
+    print("with roadDisruptionLines:", sum(1 for i in items if i.get("roadDisruptionLines")),
+          "; with roadDisruptionImpactAreas:", sum(1 for i in items if i.get("roadDisruptionImpactAreas")))
+    for field in ("roadDisruptionLines", "roadDisruptionImpactAreas"):
+        sample = next((i for i in items if i.get(field)), None)
+        if sample:
+            print(f"\nfirst {field} (of {sample['id']}), cut:")
+            print(json.dumps(sample[field][:1], indent=1, default=str)[:1800])
     print("\nfirst record, raw (long text cut):")
     print(json.dumps(items[0], indent=1, default=str)[:3500])
     print("\nfirst record, as parsed:")

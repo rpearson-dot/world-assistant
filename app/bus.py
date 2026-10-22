@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -25,7 +25,7 @@ from app.integrations.bus.events import (
     to_minutes,
 )
 from app.integrations.bus.poller import Lookup, in_window
-from app.integrations.bus.setup import SetupError, build_config, describe
+from app.integrations.bus.setup import SetupError, build_config, describe, return_config
 from app.integrations.tfl.client import TflClient, TflError
 from app.places import check_slug
 from app.ratelimit import SlidingWindowLimiter
@@ -68,6 +68,11 @@ class SetupIn(BaseModel):
     earliest: str = Field("07:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     deadline: str = Field("08:10", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     name: str = "main"
+    return_earliest: str | None = Field(
+        None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$",
+        description="also track the way back (the other side of each stop), earliest bus; needs return_deadline",
+    )
+    return_deadline: str | None = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$", description="the way back: arrive by")
 
 
 _HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
@@ -123,8 +128,14 @@ async def line_stops(request: Request, line: str) -> dict[str, Any]:
 
 @router.post("/setup")
 async def setup(request: Request, body: SetupIn) -> dict[str, Any]:
-    """Create or replace a tracker from plain choices; works out everything else."""
+    """Create or replace a tracker from plain choices; works out everything else. With a way-back window it also
+    creates `<name>-return`: the other side of each stop, from where you got off to where you got on."""
     check_slug(body.name)
+    if bool(body.return_earliest) != bool(body.return_deadline):
+        raise HTTPException(422, "the way back needs both an earliest time and an arrive-by time")
+    back_id = f"{body.name}-return"
+    if body.return_earliest:
+        check_slug(back_id)
     seqs = await _sequences(request, body.line)
     try:
         cfg = build_config(
@@ -133,13 +144,28 @@ async def setup(request: Request, body: SetupIn) -> dict[str, Any]:
         TrackerConfig.model_validate(cfg)
     except (SetupError, ValueError) as exc:
         raise HTTPException(422, str(exc)) from exc
-    async with request.app.state.engine.begin() as conn:
+    back: dict[str, Any] | None = None
+    if body.return_earliest and body.return_deadline:
+        try:
+            back = return_config(body.line, seqs, body.board, body.target, body.return_earliest, body.return_deadline)
+            TrackerConfig.model_validate(back)
+        except (SetupError, ValueError) as exc:
+            raise HTTPException(422, f"the way back: {exc}") from exc
+    async with request.app.state.engine.begin() as conn:  # both, or neither
         await store.upsert_tracker(conn, body.name, cfg, True)
+        if back is not None:
+            await store.upsert_tracker(conn, back_id, back, True)
     names = {s["sid"]: s["label"] for s in cfg["stops"]}
     t = cfg["target"]
-    return {"id": body.name, "direction": t["direction"], "board": names[cfg["stops"][0]["sid"]],
-            "stops_tracked": [s["label"] for s in cfg["stops"]],
-            "return_side_found": t["alight_return"] is not None}  # fmt: skip
+    out: dict[str, Any] = {"id": body.name, "direction": t["direction"], "board": names[cfg["stops"][0]["sid"]],
+                           "stops_tracked": [s["label"] for s in cfg["stops"]],
+                           "return_side_found": t["alight_return"] is not None}  # fmt: skip
+    if back is not None:
+        back_names = {s["sid"]: s["label"] for s in back["stops"]}
+        out["return_tracker"] = {"id": back_id, "board": back_names[back["stops"][0]["sid"]],
+                                 "target": next(s["label"] for s in back["stops"] if s["key"] == "target"),
+                                 "earliest": body.return_earliest, "deadline": body.return_deadline}  # fmt: skip
+    return out
 
 
 @router.get("/trackers/{tid}/summary")
@@ -408,6 +434,29 @@ async def conditions(request: Request, tid: str) -> list[dict[str, Any]]:
                 }
             )
     return out
+
+
+@router.get("/trackers/{tid}/positions")
+async def positions(
+    request: Request, tid: str, day: date | None = None, vehicle: str | None = None,
+    limit: int = Query(2000, ge=1, le=20000),
+) -> dict[str, Any]:
+    """GPS fixes of the buses the tracker followed inside its journey window (from BODS), oldest first.
+    Default: today. Each bus's fixes, in order, are its track along the route."""
+    await _load(request, tid)
+    tz = _tz()
+    d = day or datetime.now(tz).date()
+    lo = datetime(d.year, d.month, d.day, tzinfo=tz)
+    async with request.app.state.engine.connect() as conn:
+        rows = (await conn.execute(
+            text("SELECT vehicle, recorded_at, lat, lon, bearing, destination, bods_direction FROM bus_position "
+                 "WHERE tracker = :t AND recorded_at >= :lo AND recorded_at < :hi "
+                 "AND (CAST(:v AS text) IS NULL OR vehicle = :v) ORDER BY recorded_at LIMIT :n"),
+            {"t": tid, "lo": lo, "hi": lo + timedelta(days=1), "v": vehicle, "n": limit})).all()  # fmt: skip
+    return {"date": d.isoformat(), "count": len(rows),
+            "fixes": [{"vehicle": r.vehicle, "at": r.recorded_at.astimezone(tz).isoformat(), "lat": r.lat, "lon": r.lon,
+                       "bearing": r.bearing, "destination": r.destination, "direction": r.bods_direction}
+                      for r in rows]}  # fmt: skip
 
 
 @router.get("/trackers/{tid}/anomalies")

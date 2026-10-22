@@ -95,3 +95,20 @@ def test_setup_rejects_bad_choices_before_touching_the_database(client: TestClie
     body: dict[str, Any] = {"line": "213", "board": "OUT00005", "target": "OUT00002"}
     r = client.post("/v1/bus/setup", json=body, headers=h)
     assert r.status_code == 422 and "comes before" in r.json()["detail"]
+
+
+def test_the_way_back_must_be_fully_specified_and_workable(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    h = {"Authorization": "Bearer tok"}
+    body: dict[str, Any] = {"line": "213", "board": "OUT00002", "target": "OUT00005"}
+    r = client.post("/v1/bus/setup", json={**body, "return_earliest": "15:00"}, headers=h)
+    assert r.status_code == 422 and "both" in r.json()["detail"]  # nothing was stored: that was checked first
+    # a way back whose far side does not exist is explained, not half-created
+    odd = {"outbound": SEQS["outbound"], "inbound": [{"id": "INB00009", "name": "Elsewhere"}]}
+    fake = type("T", (_FakeTfl,), {"route_sequence": lambda s, line, d: _async(odd[d])})()
+    monkeypatch.setattr(bus, "_tfl", lambda _r: fake)
+    r = client.post("/v1/bus/setup", json={**body, "return_earliest": "15:00", "return_deadline": "17:30"}, headers=h)
+    assert r.status_code == 422 and "the way back" in r.json()["detail"]
+
+
+async def _async(value: Any) -> Any:
+    return value
