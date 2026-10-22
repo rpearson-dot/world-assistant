@@ -17,7 +17,7 @@
 
 services:
   wa-mqtt:
-    image: eclipse-mosquitto:2.0.20
+    image: eclipse-mosquitto:2.0.22
     restart: unless-stopped
     labels:
       net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/worker.png"
