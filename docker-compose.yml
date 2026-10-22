@@ -23,6 +23,8 @@ x-app: &app
   volumes:
     # Backups (status page, scripts/deploy.sh). Keep copies somewhere other than this server too.
     - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/backups:/backups
+    # Keys saved from the Settings page (only the data sources' keys; see app/keys.py)
+    - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/keys:/keys
   environment:
     WA_BACKUP_KEEP: ${WA_BACKUP_KEEP:-14}
     TZ: ${TZ:-Europe/London}
@@ -37,9 +39,13 @@ x-app: &app
     WA_MQTT_PORT: ${WA_MQTT_PORT:-1883}
     WA_MQTT_USER: ${WA_MQTT_USER:-}
     WA_MQTT_PUBLISH_PORT: ${WA_MQTT_PUBLISH_PORT:-1883}
+    WA_MQTT_TLS: ${WA_MQTT_TLS:-false}
+    WA_MQTT_TLS_CA: ${WA_MQTT_TLS_CA:-}
     # The web pages and API need no token from the local network (docs/security.md). false: always ask.
     WA_LOCAL_NO_TOKEN: ${WA_LOCAL_NO_TOKEN:-true}
     WA_LOCAL_HOSTS: ${WA_LOCAL_HOSTS:-}
+    # Over Tailscale (docker-compose.tailscale.yml), pages in a browser need no token; false: they ask too.
+    WA_TAILNET_WEB_NO_TOKEN: ${WA_TAILNET_WEB_NO_TOKEN:-true}
     WA_NH_RATE_LIMIT_PER_MINUTE: ${WA_NH_RATE_LIMIT_PER_MINUTE:-8}
     WA_NH_CAPTURE_ENABLED: ${WA_NH_CAPTURE_ENABLED:-true}
     WA_NH_POLL_ENABLED: ${WA_NH_POLL_ENABLED:-true}

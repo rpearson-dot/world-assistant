@@ -4,6 +4,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-22
+
+### Added
+- **The web pages are an app.** Installable on a phone (Add to Home Screen) with its own icon, a bottom tab bar (Buses, Trains, Map, Fuel, More) and a More sheet on phones, a top bar with every page on wider screens, safe-area support, and a service worker that keeps the pages available offline over HTTPS (it never caches the API). `/` opens the map, or Settings before home is set.
+- **Settings** replaces Status (`/status` redirects): a **setup wizard** (home, keys, Home Assistant), the Setup list, a **Keys** tab where data-source keys can be pasted and saved from the browser (kept in `WA_DATA_DIR/keys`, used at once, never shown again), Backups and updates, and System (version, worker heartbeat, raw status).
+- **Graph page** (`/graph`): the Neo4j knowledge graph as an interactive node and edge view (drag, pinch, zoom, tap for details, double-tap to expand), search, ready-made questions, and read-only Cypher (`POST /v1/graph/query`; writes are refused and the session is read-only). The Setup list shows whether the graph is on.
+- **Tailscale** (`docker-compose.tailscale.yml`): World Assistant on your tailnet as its own device with HTTPS (`https://world-assistant.<tailnet>.ts.net`). In a browser there the pages need no token; Siri Shortcuts, MCP and the API still do ([docs/tailscale.md](docs/tailscale.md)).
+- **MQTT over TLS**: `WA_MQTT_TLS` (and `WA_MQTT_TLS_CA` for a private CA) for World Assistant's own connection, a TLS listener on 8883 in the bundled broker once certificates are in place, and a guide from the car's OVMS module through a forwarded port to Home Assistant ([docs/mqtt-tls.md](docs/mqtt-tls.md)).
+- `setup.sh` also asks about the knowledge graph and Tailscale. CI now runs Neo4j and checks every ready-made question, and checks that a key saved from Settings is used and that another site cannot save one.
+
+### Changed
+- `deploy.sh` and `setup.sh` create `WA_DATA_DIR/keys` for the app; `docker-compose.yml` mounts it at `/keys`.
+
 ## [0.13.0] - 2026-10-22
 
 ### Added

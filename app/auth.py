@@ -1,6 +1,7 @@
 """Bearer-token check for the /v1 API. The token lives in the api_token secret.
 
-Requests from the local network need no token (app/localnet.py says exactly what counts as local).
+Requests from the local network need no token, nor do the web pages' own fetches from a browser on the
+tailnet (app/localnet.py says exactly what counts).
 """
 
 from __future__ import annotations
@@ -10,11 +11,11 @@ import secrets
 from fastapi import Header, HTTPException, Request
 
 from app.config import get_settings
-from app.localnet import is_local
+from app.localnet import is_local, tailnet_page_fetch
 
 
 async def require_token(request: Request, authorization: str | None = Header(default=None)) -> None:
-    if is_local(request, request.method):
+    if is_local(request, request.method) or tailnet_page_fetch(request, request.method):
         return
     expected = get_settings().api_token
     if not expected:

@@ -20,6 +20,8 @@ coming from its own gateway, which is a private address.
 
 from __future__ import annotations
 
+import socket
+import time
 from ipaddress import IPv4Address, IPv6Address, ip_address, ip_network
 from urllib.parse import urlsplit
 
@@ -92,9 +94,57 @@ def is_local(conn: HTTPConnection, method: str = "GET") -> bool:
     return private_peer(conn) and home_host(conn.headers.get("host", ""), s.local_hosts) and same_origin(conn, method)
 
 
+# --- Tailscale (docker-compose.tailscale.yml) -----------------------------------------------------------
+# The sidecar answers https://<name>.<tailnet>.ts.net and passes requests on to the api, adding the tailnet
+# user's identity. Such a request is a proxied one, so is_local() says no; instead:
+#   * pages from the tailnet hide the token box (a page holds no data);
+#   * the API answers without a token only the browser's own same-origin fetches from those pages, so the
+#     web interface works from your phone while Siri Shortcuts, MCP clients and scripts still need the token.
+
+_proxy_cache: tuple[float, str, frozenset[str]] = (0.0, "", frozenset())
+
+
+def _proxy_ips(name: str) -> frozenset[str]:
+    """The sidecar's addresses on the stack's network, looked up at most once a minute."""
+    global _proxy_cache
+    at, cached_name, ips = _proxy_cache
+    if cached_name == name and time.monotonic() - at < 60:
+        return ips
+    try:
+        ips = frozenset(str(info[4][0]) for info in socket.getaddrinfo(name, None))
+    except OSError:
+        ips = frozenset()
+    _proxy_cache = (time.monotonic(), name, ips)
+    return ips
+
+
+def from_tailnet(conn: HTTPConnection) -> bool:
+    """Came through this stack's Tailscale sidecar, from a signed-in tailnet user."""
+    s = get_settings()
+    if not (s.tailscale_proxy and s.tailnet_web_no_token):
+        return False
+    ip = _peer(conn)
+    return ip is not None and str(ip) in _proxy_ips(s.tailscale_proxy) and bool(conn.headers.get("tailscale-user-login"))
+
+
+def tailnet_page_fetch(conn: HTTPConnection, method: str = "GET") -> bool:
+    """A fetch made by one of this server's pages, in a browser on the tailnet.
+
+    Sec-Fetch-Site is set by the browser itself and a page cannot change it, so "same-origin" means the
+    request came from this server's own page. Scripts and Shortcuts do not send it, so they need the token.
+    (A tailnet device that sends the header by hand gets in; it is already on your tailnet.)
+    """
+    return from_tailnet(conn) and conn.headers.get("sec-fetch-site", "").lower() == "same-origin"
+
+
+def page_without_token(conn: HTTPConnection) -> bool:
+    """Serve a page with the token box hidden: on the home network, or in a browser on the tailnet."""
+    return is_local(conn) or from_tailnet(conn)
+
+
 # Put on every page served to a local browser: the pages already send whatever is in their token box, so a
 # placeholder is stored (only when there is no real token) and the box is hidden; the API lets it through.
 PAGE_SNIPPET = (
     "<script>try{if(!sessionStorage.getItem('wa_token'))sessionStorage.setItem('wa_token','local')}catch(e){}"
-    "</script><style>#t{display:none}</style>"
+    "</script><style>#t{display:none}.bar:has(>#t):not(:has(>:not(#t):not(#go))){display:none}</style>"
 )

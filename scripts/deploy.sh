@@ -26,6 +26,10 @@ BACKUPS="$DATA/backups"
 mkdir -p "$BACKUPS"
 chown 10001:10001 "$BACKUPS" 2>/dev/null || chmod 777 "$BACKUPS"
 chmod 770 "$BACKUPS" 2>/dev/null || true
+# Keys saved from the Settings page: the app writes here too.
+mkdir -p "$DATA/keys"
+chown 10001:10001 "$DATA/keys" 2>/dev/null || chmod 777 "$DATA/keys"
+chmod 700 "$DATA/keys" 2>/dev/null || true
 
 running() { [ -n "$(docker compose ps --status running -q api 2>/dev/null)" ]; }
 
