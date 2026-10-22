@@ -256,6 +256,34 @@ function routeBtn(tr, t) {
   b.textContent = t.corridor_id ? 'Rebuild route' : 'Build route';
   b.onclick = () => run(() => api('POST', '/v1/trips/' + t.id + '/route')); td.appendChild(b); tr.appendChild(td);
 }
+const when = s => s ? new Date(s).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'no end date';
+function condLine(i) {
+  const d = document.createElement('div');
+  d.textContent = '[' + i.source.toUpperCase() + '] ' + i.headline + (i.where ? ' - ' + i.where : '')
+    + ' (' + (i.starts ? 'from ' + when(i.starts) + ', ' : '') + 'until ' + when(i.ends) + ')';
+  d.className = i.level >= 3 ? 'err' : 'dim';
+  return d;
+}
+function condCell(tr, t) {
+  const td = document.createElement('td'), s = document.createElement('span'), b = document.createElement('button');
+  s.textContent = t.corridor_id ? 'checking...' : ''; td.appendChild(s);
+  tr.appendChild(td);
+  if (!t.corridor_id) return null;
+  const more = document.createElement('tr'), mt = document.createElement('td');
+  mt.colSpan = 5; more.appendChild(mt); more.hidden = true;
+  b.textContent = 'Conditions'; b.style.marginLeft = '8px'; b.onclick = () => { more.hidden = !more.hidden; };
+  td.appendChild(b);
+  api('GET', '/v1/trips/' + t.id + '/conditions').then(c => {
+    s.textContent = c.now.status + (c.planned.count ? ', ' + c.planned.count + ' planned' : '');
+    const lines = [];
+    const head = document.createElement('div'); head.textContent = c.summary; lines.push(head);
+    if (c.now.items.length) { const h = document.createElement('strong'); h.textContent = 'Now'; lines.push(h, ...c.now.items.map(condLine)); }
+    if (c.planned.items.length) { const h = document.createElement('strong'); h.textContent = 'Planned, next ' + c.planned.days + ' days'; lines.push(h, ...c.planned.items.map(condLine)); }
+    const note = document.createElement('div'); note.className = 'dim'; note.textContent = c.caveats.join(' '); lines.push(note);
+    mt.replaceChildren(...lines);
+  }).catch(e => { s.textContent = 'unavailable'; mt.textContent = e.message; });
+  return more;
+}
 async function load() {
   msg.textContent = '';
   try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
@@ -271,8 +299,9 @@ async function load() {
     const tr = document.createElement('tr');
     cell(tr, t.name);
     cell(tr, t.corridor_id ? (t.distance_km.toFixed(0) + ' km, ' + Math.round(t.duration_s / 60) + ' min, ' + (t.roads || []).join(' ')) : 'route pending');
+    const more = condCell(tr, t);
     routeBtn(tr, t); delBtn(tr, '/v1/trips/' + t.id);
-    tb.appendChild(tr);
+    tb.appendChild(tr); if (more) tb.appendChild(more);
   }
   const vb = document.querySelector('#vehicles tbody'); vb.replaceChildren();
   for (const v of vehicles) {

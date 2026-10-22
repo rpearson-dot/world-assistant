@@ -20,6 +20,7 @@ from app.backups import router as backups_router
 from app.bods import router as bods_router
 from app.bus import router as bus_router
 from app.bus_page import page_router as bus_page_router
+from app.conditions import router as conditions_router
 from app.config import get_settings
 from app.energy.page import page_router as energy_page_router
 from app.energy.routes import router as energy_router
@@ -88,6 +89,7 @@ app.include_router(pollen_page_router)
 app.include_router(places_router)
 app.include_router(map_router)
 app.include_router(stops_router)
+app.include_router(conditions_router)
 app.include_router(floods_router)
 app.include_router(tflroads_router)
 app.include_router(energy_router)
