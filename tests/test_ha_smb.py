@@ -82,10 +82,13 @@ def test_the_share_is_kept_but_never_its_password(db: None, tmp_path: Path) -> N
 @pytest.mark.skipif(len(SMB) != 4, reason="WA_TEST_SMB not set (a real share to write to)")
 def test_copying_to_a_real_share() -> None:
     share, user, pw, local = parse_share(SMB[0]), SMB[1], SMB[2], Path(SMB[3])
-    files = {"packages/world_assistant_test.yaml": "a: 1\n", "world_assistant/dashboards/test.yaml": "views: []\n"}
+    import time
+
+    stamp = f"# {time.time_ns()}\n"  # new content every run, so the first copy always writes
+    files = {"packages/world_assistant_test.yaml": stamp + "a: 1\n", "world_assistant/dashboards/test.yaml": stamp}
     first = copy_files(share, user, pw, files, None)
     assert first["ok"] and {f["result"] for f in first["files"]} == {"written"}
-    assert (local / "packages" / "world_assistant_test.yaml").read_text() == "a: 1\n"
+    assert (local / "packages" / "world_assistant_test.yaml").read_text() == stamp + "a: 1\n"
     again = copy_files(share, user, pw, files, None)
     assert {f["result"] for f in again["files"]} == {"unchanged"}
     assert copy_files(share, user, "wrong", files, None)["error"].startswith("the share refused")

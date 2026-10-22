@@ -135,7 +135,10 @@ For the car itself, the OVMS integration (from HACS) subscribes to `ovms/#` thro
 
 ## 7. World Assistant
 
-In `.env`:
+On the **Settings** page, **MQTT** tab: server `mqtt.example.com`, port `8883`, user `worldassistant`, its password,
+and turn **Encrypted (TLS)** on. **Test connection** says plainly what is wrong if it fails (the name the certificate
+is for, an untrusted certificate, the wrong port, the login), and **Save** applies it from the next publish. Settings
+saved there win over `.env`; **Use .env** goes back. Or in `.env`:
 
 ```
 WA_MQTT_HOST=mqtt.example.com

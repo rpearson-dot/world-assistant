@@ -4,6 +4,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- **Settings > MQTT**: the broker World Assistant publishes to, with server, port, user, password and an **Encrypted (TLS)** switch (the port follows it between 1883 and 8883), **Test connection** with failures explained in words, Save (wins over `.env`, used from the next publish, no restart) and **Use .env**. The Setup list and the Home Assistant page show the broker in use.
+- **Copy straight into Home Assistant** on the `/ha` page, over SMB (the Samba share add-on): the ticked packages to `packages/`, the dashboards to `world_assistant/dashboards/`, and optionally the missing `secrets.yaml` lines (backed up first, existing lines never changed, differing ones reported). Unchanged files are skipped. A `configuration.yaml` snippet turns the copied dashboards into YAML dashboards that update with each copy. Tested against a real Samba server in CI. Adds `smbprotocol` (with `cryptography`) to the locked dependencies.
+
+### Fixed
+- The pollen grid could stop refreshing: points the pollen service cannot answer were "never fetched", so tried first on every run, and four failures in a row ended the run before any other point. Now a failing point waits (2 days, doubling to 30), only failures of points that have worked before end a run early, and the job reports which points failed.
+- The Pollen dashboard's forecast-point map labels each point with its allergy risk (0 to 10) instead of its initials ("PP5"), and shows every point instead of grouping them into "+4" bubbles. Copy the new `pollen.yaml` (the Home Assistant page marks it as changed). The pollen map's legend now says what grey means (no forecast nearby).
+
 ## [0.14.0] - 2026-10-22
 
 ### Added
