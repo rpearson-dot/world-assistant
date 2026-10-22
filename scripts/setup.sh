@@ -73,6 +73,9 @@ env_set WA_DATA_DIR "$data"
 env_set WA_SECRETS_DIR "$secrets"
 env_set WA_API_PORT "$port"
 mkdir -p "$data/backups"
+# The app runs as uid 10001 and writes backups here (as scripts/deploy.sh sets it up).
+chown 10001:10001 "$data/backups" 2>/dev/null || chmod 777 "$data/backups"
+chmod 770 "$data/backups" 2>/dev/null || true
 
 hr "Home Assistant"
 host_now="$(env_get WA_MQTT_HOST)"
