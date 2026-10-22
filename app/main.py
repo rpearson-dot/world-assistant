@@ -41,6 +41,7 @@ from app.keys import router as keys_router
 from app.logging import configure_logging
 from app.map_layers import router as map_router
 from app.map_page import page_router as map_page_router
+from app.mqtt_config import router as mqtt_config_router
 from app.places import page_router as places_page_router
 from app.places import router as places_router
 from app.pollen import page_router as pollen_page_router
@@ -85,6 +86,7 @@ app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), na
 app.include_router(status_router)
 app.include_router(setup_router)
 app.include_router(keys_router)
+app.include_router(mqtt_config_router)
 app.include_router(ha_setup_router)
 app.include_router(ha_setup_page_router)
 app.include_router(autodeploy_router)

@@ -111,7 +111,7 @@ async def test_collect_asks_for_nothing_location_specific_and_skips_failures() -
 async def test_ha_sync_publishes_discovery_once_then_state_only(monkeypatch: pytest.MonkeyPatch) -> None:
     sent: list[list[mqtt.Message]] = []
 
-    async def fake_publish(msgs: list[mqtt.Message]) -> bool:
+    async def fake_publish(msgs: list[mqtt.Message], conf: object = None) -> bool:
         sent.append(msgs)
         return True
 
@@ -355,7 +355,9 @@ async def test_collecting_a_bus_tracker_end_to_end_survives_a_failing_log() -> N
 def test_tls_to_the_broker_is_verified() -> None:
     import ssl
 
-    assert mqtt.tls_context(False) is None
-    ctx = mqtt.tls_context(True)
+    from app.mqtt_config import tls_context
+
+    assert tls_context(False) is None
+    ctx = tls_context(True)
     assert ctx is not None and ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname
     assert ctx.minimum_version == ssl.TLSVersion.TLSv1_2

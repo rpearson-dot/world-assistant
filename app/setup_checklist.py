@@ -19,6 +19,7 @@ from app.auth import require_token
 from app.config import Settings, get_settings
 from app.ha_publish import HA_LAST_KEY
 from app.localnet import is_local
+from app.mqtt_config import MqttConf, from_env, load
 
 router = APIRouter(prefix="/v1/setup", tags=["status"], dependencies=[Depends(require_token)])
 
@@ -126,17 +127,20 @@ def judge(src: Source, s: Settings, runs: dict[str, dict[str, Any]]) -> dict[str
     return out
 
 
-def home_assistant(s: Settings, last: dict[str, Any] | None) -> dict[str, Any]:
-    out: dict[str, Any] = {"id": "ha", "name": "Home Assistant (MQTT)", "link": "/ha",
+def home_assistant(s: Settings, last: dict[str, Any] | None, conf: MqttConf | None = None) -> dict[str, Any]:
+    conf = conf or from_env(s)
+    out: dict[str, Any] = {"id": "ha", "name": "Home Assistant (MQTT)", "link": "/settings#mqtt",
                            "unlocks": "Sensors and ready-made dashboards in Home Assistant",
-                           "broker": f"{s.mqtt_host}:{s.mqtt_port}" if s.mqtt_host else ""}  # fmt: skip
-    if not s.mqtt_active or not s.ha_publish:
+                           "broker": f"{conf.host}:{conf.port}" if conf.host else "", "tls": conf.tls}  # fmt: skip
+    if not conf.active or not s.ha_publish:
         out["state"] = OFF
-        out["note"] = "No broker set. Set WA_MQTT_HOST (or run scripts/setup.sh) to publish sensors."
+        out["note"] = "No broker set: add it under Settings > MQTT."
     elif not last:
         out["state"] = WAITING
+        out["note"] = f"Publishing to {conf.host}:{conf.port}" + (" (encrypted)." if conf.tls else ".")
     elif last.get("ok"):
-        out["state"], out["last_ok"], out["note"] = READY, last.get("at"), f"{last.get('sensors', 0)} sensors"
+        out["state"], out["last_ok"] = READY, last.get("at")
+        out["note"] = f"{last.get('sensors', 0)} sensors on {conf.host}:{conf.port}" + (", encrypted." if conf.tls else ".")
     else:
         out["state"], out["error"] = FAILING, last.get("error") or "could not reach the broker"
     return out
@@ -193,7 +197,7 @@ async def checklist(request: Request) -> dict[str, Any]:
         {"id": "home", "name": "Your home", "unlocks": "The default place for fuel, events, pollen and the map",
          "state": READY if home else MISSING, "link": "/places",
          "note": "" if home else "Add a place called home on the Places page."},
-        home_assistant(s, last),
+        home_assistant(s, last, (await load(request.app.state.engine))[0]),
         await routing(s),
         await graph(s),
     ]  # fmt: skip

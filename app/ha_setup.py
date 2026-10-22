@@ -19,6 +19,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from app.auth import require_token
 from app.config import get_settings
 from app.localnet import is_local
+from app.mqtt_config import from_env, load
 from app.pagestyle import themed
 from app.setup_checklist import home_assistant
 from app.version import VERSION
@@ -90,8 +91,9 @@ async def setup(request: Request) -> dict[str, Any]:
         last = json.loads(raw) if raw else None
     except Exception:  # noqa: BLE001 - the page must still show the files
         last = None
-    mqtt = home_assistant(s, last)
-    mqtt.update({"bundled": s.mqtt_host == "wa-mqtt", "user": s.mqtt_user, "publish_port": s.mqtt_publish_port})
+    conf, _ = await load(request.app.state.engine) if hasattr(request.app.state, "engine") else (from_env(s), "env")
+    mqtt = home_assistant(s, last, conf)
+    mqtt.update({"bundled": conf.bundled, "user": conf.user, "publish_port": s.mqtt_publish_port})
     return {"version": VERSION, "local": is_local(request, request.method), "mqtt": mqtt, "files": files(),
             "secret_paths": SECRET_PATHS}  # fmt: skip
 

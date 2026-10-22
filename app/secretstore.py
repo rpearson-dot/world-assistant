@@ -249,8 +249,12 @@ def keys_dir() -> Path:
     return Path(os.environ.get("WA_KEYS_DIR", "/keys"))
 
 
+# Saved from Settings too, but not listed with the keys: the MQTT broker's password (app/mqtt_config.py).
+SETTINGS_SECRETS = WEB_KEYS | {"mqtt_password"}
+
+
 def web_value(name: str) -> str | None:
-    if name not in WEB_KEYS:
+    if name not in SETTINGS_SECRETS:
         return None
     value = _file_value(name, keys_dir())
     return value or None
