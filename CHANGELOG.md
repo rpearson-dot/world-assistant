@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Fixed
+- A pollen test pinned a forecast to a fixed date, so it passed on the day it was written and failed from the next day on. It now uses the day the app is living in.
+
 ## [0.7.6] - 2026-10-21
 
 ### Added

@@ -203,7 +203,14 @@ def test_endpoints_answer_from_the_stored_lattice(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("API_TOKEN", "s3cret")
     monkeypatch.setenv("POLLEN_API_KEY", "k")
     now = datetime.now(UTC)
-    fc = {"dates": ["2026-10-21"], "allergy_risk": [3], "allergy_risk_level": [1], "allergy_risk_label": ["low"],
+    # today where the app lives: a stored forecast that no longer covers today is dropped, so a
+    # fixed date here would pass on the day it was written and fail every day after.
+    from zoneinfo import ZoneInfo
+
+    from app.config import get_settings
+
+    day = now.astimezone(ZoneInfo(get_settings().local_tz)).date().isoformat()
+    fc = {"dates": [day], "allergy_risk": [3], "allergy_risk_level": [1], "allergy_risk_label": ["low"],
           "allergens": [{"id": 1, "name": "Birch", "levels": [1], "labels": ["low"]}, {"id": 2, "name": "Grasses", "levels": [3], "labels": ["high"]}]}  # fmt: skip
 
     async def stored(engine: Any) -> list[dict[str, Any]]:
