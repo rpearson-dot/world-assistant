@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-22
+
 ### Changed
 - Trip conditions ignore TfL disruptions it rates "No impact" (unless the road is closed). The TfL probe also shows the shapes of `roadDisruptionLines` and `roadDisruptionImpactAreas`, which the parser does not use yet.
 
