@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- Where every bus stop, station and ferry terminal in Great Britain is, from NaPTAN, the national register (about 400,000 records, Open Government Licence). The bus tracker had stop ids and names but no positions, which is why stops could not be drawn or measured from. A weekly job loads the register into `naptan_stop` (migration 0020); `GET /v1/stops/near` finds stops around a point and `GET /v1/stops/{atco}` looks one up. The map gains a `stops` layer, and the knowledge graph gains `BusStop` nodes for the stops a tracker watches, joined to the tracker (`CALLS_AT`) and to any place they are near ([docs/naptan.md](docs/naptan.md)). `WA_NAPTAN_POLL_ENABLED` turns the job off.
+
 ## [0.8.0] - 2026-10-22
 
 ### Removed

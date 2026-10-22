@@ -33,6 +33,7 @@ With it switched off, every graph endpoint answers 503 and says so. Nothing else
 | `Location` | Home Assistant location | name, position |
 | `Vehicle` | vehicle | name, kind |
 | `BusTracker` | bus tracker | line |
+| `BusStop` | stop a bus tracker watches | name, indicator, position (from NaPTAN) |
 
 | Relationship | Meaning |
 | --- | --- |
@@ -40,8 +41,9 @@ With it switched off, every graph endpoint answers 503 and says so. Nothing else
 | `(Trip)-[:USES]->(Corridor)` | the corridor built for that trip |
 | `(RoadEvent)-[:AFFECTS]->(Corridor)` | a closure or limit on that corridor |
 | `(Station)-[:ALONG {km}]->(Corridor)` | a station close enough to be on the way |
-| `(Station\|Location)-[:NEAR {km}]->(Place)` | close to a place, with the distance |
+| `(Station\|Location\|BusStop)-[:NEAR {km}]->(Place)` | close to a place, with the distance |
 | `(Vehicle)-[:DRIVES]->(Trip)` | a vehicle that could make the trip |
+| `(BusTracker)-[:CALLS_AT]->(BusStop)` | a stop on a tracker's route |
 
 `WA_GRAPH_NEAR_KM` (3 km) and `WA_GRAPH_ALONG_KM` (2 km) decide how close counts.
 

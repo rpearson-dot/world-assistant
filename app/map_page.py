@@ -70,6 +70,7 @@ const STYLE = {
   road_events: { colour: '#b42318', label: 'Closures', weight: 5 },
   signs:       { colour: '#b54708', label: 'Signs', small: true },
   fuel:        { colour: '#1a7f4b', label: 'Fuel', small: true },
+  stops:       { colour: '#0d6e6e', label: 'Stops', small: true },
   pollen:      { colour: '#7c7c7c', label: 'Pollen', small: true }
 };
 const POLLEN = ['#ffffff', '#8cc700', '#f5e400', '#f7a600', '#e63a10'];
@@ -97,6 +98,7 @@ function popup(key, p) {
   if (key === 'signs') lines.push((p.lines || []).join(' / '), p.working ? '' : 'not working');
   if (key === 'fuel') lines.push(p.pence ? p.fuel + ' at ' + p.pence.toFixed(1) + 'p' : 'no ' + p.fuel + ' price',
     p.price_at ? 'set ' + new Date(p.price_at).toLocaleDateString('en-GB') : '', p.postcode || '');
+  if (key === 'stops') lines.push([p.kind ? p.kind.replace('_', ' ') : '', p.indicator, p.street].filter(Boolean).join(' · '), p.locality || '', p.id);
   if (key === 'pollen') lines.push(p.label ? 'allergy risk: ' + p.label : 'no reading');
   for (const line of lines) if (line) box.appendChild(el('div', line, 'dim'));
   return box;
@@ -111,6 +113,7 @@ function draw(key, collection, cheapest) {
       shape = L.polyline(g.coordinates.map(c => [c[1], c[0]]), { color: s.colour, weight: s.weight || 3, opacity: .85 });
     } else if (g.type === 'Point') {
       let colour = s.colour, r = s.small ? 4 : 7;
+      if (key === 'stops' && p.kind && p.kind !== 'bus_stop') { colour = '#0b3d91'; r = 6; }  // stations stand out from stops
       if (key === 'pollen') colour = POLLEN[p.level == null ? 0 : p.level];
       if (key === 'fuel' && p.pence && cheapest) colour = p.pence <= cheapest + 2 ? '#1a7f4b' : p.pence <= cheapest + 6 ? '#b54708' : '#b42318';
       shape = L.circleMarker([g.coordinates[1], g.coordinates[0]],

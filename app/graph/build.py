@@ -40,8 +40,14 @@ QUERIES: dict[str, str] = {
     "location_rows": "SELECT id, name, lat, lon FROM ha_location",
     "vehicle_rows": "SELECT id, name, kind FROM vehicle",
     "tracker_rows": "SELECT id, config, enabled FROM bus_tracker",
+    # Only the stops a tracker watches, with the position NaPTAN gives them.
+    "bus_stop_rows": (
+        "SELECT n.atco AS id, n.name, n.indicator, n.lat, n.lon FROM naptan_stop n "
+        "WHERE n.atco IN (SELECT sid FROM bus_stop)"
+    ),
 }
 EVENT_CORRIDORS = "SELECT record_id, corridor_id FROM nh_event_corridor"
+CALLS_AT = "SELECT DISTINCT tracker, sid FROM bus_stop"
 
 # Proximity is PostGIS's job: ST_DWithin on the geography columns from migration 0018, index
 # assisted, rather than measuring every pair of things in Python.
@@ -53,6 +59,10 @@ WHERE s.coords_ok AND NOT s.permanent_closure
 UNION ALL
 SELECT 'Location', l.id, p.id, ST_Distance(l.geog, p.geog) / 1000.0
 FROM ha_location l JOIN place p ON ST_DWithin(l.geog, p.geog, :near_m)
+UNION ALL
+SELECT 'BusStop', n.atco, p.id, ST_Distance(n.geog, p.geog) / 1000.0
+FROM naptan_stop n JOIN place p ON ST_DWithin(n.geog, p.geog, :near_m)
+WHERE n.atco IN (SELECT sid FROM bus_stop)
 """
 
 ALONG_PAIRS = """
@@ -77,6 +87,7 @@ async def read(engine: AsyncEngine, near_km: float, along_km: float) -> dict[str
         for name, sql in QUERIES.items():
             out[name] = [dict(r._mapping) for r in await conn.execute(text(sql))]
         out["event_corridors"] = [tuple(r) for r in await conn.execute(text(EVENT_CORRIDORS))]
+        out["calls_at"] = [tuple(r) for r in await conn.execute(text(CALLS_AT))]
         out["near_pairs"] = [tuple(r) for r in await conn.execute(
             text(NEAR_PAIRS), {"near_m": near_km * 1000.0})]  # fmt: skip
         out["along_pairs"] = [tuple(r) for r in await conn.execute(

@@ -20,8 +20,8 @@ from app.main import app
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
 MIGRATIONS = ["0003_nh_storage", "0006_places_trips", "0007_fuel", "0015_pollen_grid", "0016_ha_location",
-              "0017_ha_origin", "0018_geography"]  # fmt: skip
-TABLES = ["pollen_grid", "ha_location", "fuel_price_change", "fuel_price", "fuel_station", "trip", "place",
+              "0017_ha_origin", "0018_geography", "0020_naptan"]  # fmt: skip
+TABLES = ["naptan_stop", "pollen_grid", "ha_location", "fuel_price_change", "fuel_price", "fuel_station", "trip", "place",
           "nh_sign_message", "nh_sign", "nh_event_corridor", "nh_event", "nh_corridor"]  # fmt: skip
 
 HOME = (51.5074, -0.1278)  # the centre every test measures from
@@ -83,6 +83,11 @@ def schema() -> Iterator[None]:
                           "('f3', 'No coordinates', NULL, NULL, false)"),
                      {"la": NEAR[0], "lo": NEAR[1], "fa": FAR[0], "fo": FAR[1]})  # fmt: skip
         conn.execute(text("INSERT INTO fuel_price (node_id, fuel_type, pence) VALUES ('f1', 'E10', 139.9)"))
+        conn.execute(text("INSERT INTO naptan_stop (atco, name, stop_type, kind, lat, lon, seen) VALUES "
+                          "('bus-near', 'Near stop', 'BCT', 'bus_stop', :la, :lo, now()), "
+                          "('rail-far', 'Far station', 'RLY', 'rail', :fa, :fo, now()), "
+                          "('bus-far', 'Far stop', 'BCT', 'bus_stop', :fa, :fo, now())"),
+                     {"la": NEAR[0], "lo": NEAR[1], "fa": FAR[0], "fo": FAR[1]})  # fmt: skip
         conn.execute(text("INSERT INTO pollen_grid (lat, lon, forecast, fingerprint) "
                           "VALUES (:la, :lo, CAST(:f AS jsonb), 'x')"),
                      {"la": NEAR[0], "lo": NEAR[1], "f": '{"allergy_risk_label": ["low"]}'})  # fmt: skip
@@ -93,7 +98,7 @@ def schema() -> Iterator[None]:
     sync.dispose()
 
 
-ALL = "places,locations,roads,road_events,signs,fuel,pollen"
+ALL = "places,locations,roads,road_events,signs,fuel,stops,pollen"
 
 
 @pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
@@ -124,6 +129,7 @@ async def test_every_layer_is_served_and_cut_to_the_radius(
         assert [f["properties"]["road"] for f in lay["road_events"]["features"]] == ["A3"]
         assert [f["properties"]["id"] for f in lay["signs"]["features"]] == ["s1"]
         assert [f["properties"]["pence"] for f in lay["fuel"]["features"]] == [139.9]
+        assert [f["properties"]["id"] for f in lay["stops"]["features"]] == ["bus-near"]
         assert [f["properties"]["label"] for f in lay["pollen"]["features"]] == ["low"]
         # the corridor runs from far away to nearby: in range, and drawn in full
         roads = lay["roads"]["features"]
@@ -134,6 +140,8 @@ async def test_every_layer_is_served_and_cut_to_the_radius(
         assert wide["centre"] is None
         assert len(wide["layers"]["places"]["features"]) == 2
         assert len(wide["layers"]["fuel"]["features"]) == 2
+        # across the country only stations are drawn: 400,000 bus stops would be a smear
+        assert [f["properties"]["id"] for f in wide["layers"]["stops"]["features"]] == ["rail-far"]
 
         spot = c.get("/v1/map/geojson?layers=places&lat=52.4862&lon=-1.8904&radius_km=3", headers=h).json()
         assert [f["properties"]["name"] for f in spot["layers"]["places"]["features"]] == ["Away"]

@@ -13,6 +13,7 @@ page draws them; `/v1/map/geojson` serves them to anything else.
 | `road_events` | lines and points | National Highways, still open | closure or speed limit, road, cause, times |
 | `signs` | points | motorway signs | road, direction, what it is showing |
 | `fuel` | points | Fuel Finder stations | brand, name, the price of one fuel and when it was set |
+| `stops` | points | NaPTAN: bus stops, stations, terminals | name, kind (bus stop, rail, metro, ferry, air), indicator, street. Near a point: every stop, nearest first, up to 3,000. Everywhere: one point per station only |
 | `pollen` | points | the allergy-risk lattice | today's risk label and level 0–4 |
 
 Bus stops are not a layer: the tracker stores a stop's id and name but not its position. Adding them
