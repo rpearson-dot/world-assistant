@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-22
+
 ### Added
 - Live buses anywhere in Great Britain from the Bus Open Data Service: `GET /v1/live-buses` and a `buses` map layer show where every bus that reports a position is right now, near a place. Needs a free BODS key in the new `bods_api_key` secret; without one the map says so and the rest is unaffected. Nothing is stored; positions are cached for 10 seconds ([docs/live-buses.md](docs/live-buses.md)).
 - Every UK postcode with a position, held locally from Ordnance Survey's Code-Point Open (about 1.7 million, Open Government Licence). Adding a place by postcode now looks it up in your own database first and falls back to postcodes.io only for one the file lacks, so day-to-day use no longer sends your postcodes anywhere. `GET /v1/postcodes/{postcode}` and `/v1/postcodes/near` (the nearest postcodes to a point, for a dropped pin). A daily job downloads the file when the table is empty or a month old; `WA_CODEPOINT_POLL_ENABLED` turns it off. Migration 0022 ([docs/postcodes.md](docs/postcodes.md)).
