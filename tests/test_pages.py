@@ -6,7 +6,7 @@ from app.main import app
 client = TestClient(app)
 
 
-@pytest.mark.parametrize("path", ["/status", "/bus", "/trains", "/fuel", "/places", "/events", "/pollen"])
+@pytest.mark.parametrize("path", ["/status", "/bus", "/trains", "/fuel", "/places", "/events", "/pollen", "/energy"])
 def test_every_page_is_themed_and_has_nav(path: str) -> None:
     r = client.get(path)
     assert r.status_code == 200

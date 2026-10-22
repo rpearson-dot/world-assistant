@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, Request
 
 from app.auth import require_token
+from app.energy import sessions as sess
 from app.energy import store, summary
 
 router = APIRouter(prefix="/v1/energy", tags=["energy"], dependencies=[Depends(require_token)])
@@ -20,7 +21,16 @@ async def now(
 ) -> dict[str, Any]:
     """The current rate and band, the next change, the next cheap and peak windows, and the cheapest block."""
     tariff, periods = await store.load(request.app.state.engine)
-    return summary.summarise(tariff, periods, datetime.now(UTC), hours)
+    now_ = datetime.now(UTC)
+    out = summary.summarise(tariff, periods, now_, hours)
+    out["sessions"] = sess.summarise(await store.load_sessions(request.app.state.engine), now_)
+    return out
+
+
+@router.get("/sessions")
+async def sessions(request: Request) -> dict[str, Any]:
+    """Saving Sessions (with whether you joined), Free Electricity sessions, and Octopus boost events: on now, next, upcoming."""
+    return sess.summarise(await store.load_sessions(request.app.state.engine), datetime.now(UTC))
 
 
 @router.get("/rates")

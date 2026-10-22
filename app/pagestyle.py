@@ -69,7 +69,7 @@ BASE_CSS = """
 
 NAV = """<nav>
   <a href="/status" data-p="status">Status</a><a href="/bus" data-p="bus">Buses</a>
-  <a href="/trains" data-p="trains">Trains</a><a href="/fuel" data-p="fuel">Fuel</a>
+  <a href="/trains" data-p="trains">Trains</a><a href="/fuel" data-p="fuel">Fuel</a><a href="/energy" data-p="energy">Energy</a>
   <a href="/events" data-p="events">Events</a><a href="/pollen" data-p="pollen">Pollen</a><a href="/places" data-p="places">Places</a><a href="/map" data-p="map">Map</a>
 </nav>
 """

@@ -4,6 +4,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-22
+
+### Added
+- **Energy page** at `/energy`: the rate and band now, a 48-hour chart coloured cheap / standard / peak, the next cheap and peak windows, the cheapest block of 1 to 6 hours, and Octopus sessions.
+- Octopus **Saving Sessions** (announced events, and whether you joined) and **Free Electricity** sessions (from a community-run list; switch `WA_ENERGY_FREE_SESSIONS_ENABLED`). `GET /v1/energy/sessions`, and new Home Assistant sensors for each session being on now and the next one. World Assistant never joins a session. Migration 0024.
+- `python -m app.energy.probe` prints what Octopus really returns for your account (account number and tokens blanked), to check the session parsers against the real service ([docs/energy.md](docs/energy.md)).
+
 ## [0.10.0] - 2026-10-22
 
 ### Added
