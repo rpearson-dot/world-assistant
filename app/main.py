@@ -46,6 +46,7 @@ from app.status import router as status_router
 from app.stops import router as stops_router
 from app.tfl import page_router as tfl_page_router
 from app.tfl import router as tfl_router
+from app.tflroads import router as tflroads_router
 from app.vehicles import router as vehicles_router
 
 log = logging.getLogger("wa.api")
@@ -88,6 +89,7 @@ app.include_router(places_router)
 app.include_router(map_router)
 app.include_router(stops_router)
 app.include_router(floods_router)
+app.include_router(tflroads_router)
 app.include_router(energy_router)
 app.include_router(energy_page_router)
 app.include_router(postcodes_router)

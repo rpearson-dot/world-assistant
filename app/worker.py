@@ -21,6 +21,7 @@ from app.integrations.fuelfinder.sync import fuel_sync_prices, fuel_sync_station
 from app.integrations.naptan.sync import naptan_sync
 from app.integrations.nationalhighways.capture import capture_job
 from app.integrations.nationalhighways.poller import poll_live, poll_planned
+from app.integrations.tflroads.sync import tflroads_poll
 from app.logging import configure_logging
 from app.pollen_grid import pollen_grid_sync
 from app.pollen_history import pollen_sync
@@ -76,6 +77,7 @@ class WorkerSettings:
         naptan_sync,
         flood_poll,
         energy_sync,
+        tflroads_poll,
         codepoint_sync,
     ]
     cron_jobs: ClassVar[list] = [
@@ -101,6 +103,8 @@ class WorkerSettings:
         cron(graph_build, minute={8, 38}, timeout=300, max_tries=1),
         # Flood warnings: the EA updates its list every 15 minutes.
         cron(flood_poll, minute={5, 20, 35, 50}, timeout=240, max_tries=1),
+        # TfL road disruptions: the whole London list, every 15 minutes.
+        cron(tflroads_poll, minute={7, 22, 37, 52}, timeout=120, max_tries=1),
         # Energy rates: Octopus publishes tomorrow's mid-afternoon; every 30 minutes keeps today fresh.
         cron(energy_sync, minute={3, 33}, timeout=120, max_tries=1),
         # Postcodes: checked daily, downloaded only when missing or a month old (OS publishes quarterly).
