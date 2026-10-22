@@ -44,7 +44,7 @@ PAGE = """<!doctype html>
     <div id="steps" class="form hidden">
       <label>Where do you get on?<select id="board"></select></label>
       <label>Where do you need to get to?<select id="target"></select>
-        <span class="hint">Only stops after your boarding stop, in the same direction, are listed.</span></label>
+        <span class="hint">Choose the boarding stop for the direction you travel (the name says where that bus is heading). Only stops after it, in that direction, are listed.</span></label>
       <label>Any other stops to time on the way? <span class="hint">Optional. Busy stops where delays build up.</span>
         <div class="row"><select id="watch"></select><button id="addwatch" type="button">Add</button></div>
         <div id="watched" class="chips"></div></label>
@@ -140,7 +140,7 @@ const label = (d, s) => s.name + ' (towards ' + stops[d].towards + ')';
 function fillBoard() {
   const b = $('board'); b.replaceChildren();
   for (const d of Object.keys(stops)) { const g = document.createElement('optgroup'); g.label = 'Towards ' + stops[d].towards;
-    for (const s of stops[d].stops.slice(0, -1)) { const o = new Option(s.name, s.id); o.dataset.dir = d; g.appendChild(o); } b.appendChild(g); }
+    for (const s of stops[d].stops.slice(0, -1)) { const o = new Option(label(d, s), s.id); o.dataset.dir = d; g.appendChild(o); } b.appendChild(g); }
   fillTarget();
 }
 function fillTarget() {

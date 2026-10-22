@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Fixed
 - The Fuel and Trains and buses dashboards no longer show "Entity not found" when the optional fuel or bus package is not installed: the dropdown and bus-time controls appear only once their package exists, with a one-line note until then.
+- Bus tracker setup: a stop served in both directions now appears twice in the boarding list as "Stop (towards X)" and "Stop (towards Y)". Before, both read the same, so you could not tell which direction you were choosing and the destinations only ran one way.
 
 ### Added
 - Trip conditions: what is on the way. `GET /v1/trips/{id}/conditions` (and `GET /v1/conditions` for every routed trip) combines National Highways events on the trip's corridor, TfL road disruptions near the route and Environment Agency flood warnings crossing it, as **now** (clear, minor, disrupted, severe, with the items and a sentence to read aloud) and **planned** (works starting later, `days` ahead), with a `when` option for a later departure. Shown on the Places page, as two Home Assistant sensors per routed trip (status; planned works count) under a new Trips device, and as an assistant tool, `road_conditions` ([docs/trip-conditions.md](docs/trip-conditions.md)).
