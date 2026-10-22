@@ -36,6 +36,12 @@ PAGE = """<!doctype html>
   .keycard .top { display: flex; justify-content: space-between; gap: 8px; align-items: start; }
   .keycard .field { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
   .keycard .field input { flex: 1 1 200px; min-width: 0; } .keycard label { font-size: 13px; color: var(--dim); font-weight: 600; }
+  label.switch { display: flex; gap: 10px; align-items: flex-start; font-weight: 400; cursor: pointer; }
+  label.switch input { width: 40px; height: 22px; appearance: none; -webkit-appearance: none; border-radius: 999px; background: var(--line);
+    position: relative; padding: 0; flex: none; margin-top: 2px; transition: background .15s; }
+  label.switch input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / .3); transition: left .15s; }
+  label.switch input:checked { background: var(--good); } label.switch input:checked::after { left: 20px; }
   .note { background: var(--warn-bg); color: var(--warn); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
 </style></head><body><main>
 <!--NAV-->
@@ -48,7 +54,7 @@ PAGE = """<!doctype html>
 
 <div class="seg" role="tablist">
   <button data-tab="setup" class="on" role="tab">Setup</button><button data-tab="keys" role="tab">Keys</button>
-  <button data-tab="backup" role="tab">Backups and updates</button><button data-tab="system" role="tab">System</button>
+  <button data-tab="mqtt" role="tab">MQTT</button><button data-tab="backup" role="tab">Backups and updates</button><button data-tab="system" role="tab">System</button>
 </div>
 
 <section data-pane="setup">
@@ -65,6 +71,31 @@ PAGE = """<!doctype html>
   server in its own keys folder and work straight away. They are never shown again, only whether one is set.</p>
   <p id="kwarn" class="note" hidden></p>
   <div id="keylist"></div></div>
+</section>
+
+<section data-pane="mqtt" hidden>
+  <div class="card"><h2>MQTT broker</h2>
+  <p class="dim">Where World Assistant sends its sensors for Home Assistant. Leave the server empty to send nothing.</p>
+  <p id="mqnow"></p>
+  <div class="form">
+    <label>Server<span class="hint">A host name or IP address. With encryption on, use the name the certificate is for.</span>
+      <input id="mqhost" autocomplete="off" placeholder="192.168.1.10 or mqtt.example.com"></label>
+    <div class="row">
+      <label>Port<input id="mqport" type="number" min="1" max="65535" style="width:110px"></label>
+      <label>User<input id="mquser" autocomplete="off" style="width:180px"></label>
+      <label>Password<input id="mqpw" type="password" autocomplete="new-password" placeholder="Leave empty to keep"></label>
+    </div>
+    <label class="switch"><input id="mqtls" type="checkbox"> <span><b>Encrypted (TLS)</b><br>
+      <span class="hint" id="mqtlshint">The broker's certificate is checked against the server name. Your own certificate
+      authority (scripts/mqtt-ca.sh) is trusted automatically.</span></span></label>
+  </div>
+  <p id="mqbundled" class="note" hidden>This is the broker bundled with World Assistant. Its password is managed by the stack
+  (mqtt_password.txt), and inside the stack the connection never leaves this server, so encryption is not needed here.
+  To encrypt connections from outside (a car's OVMS module), add certificates to the broker (docs/mqtt-tls.md).</p>
+  <div class="row" style="margin-top:12px"><button id="mqtest" type="button">Test connection</button>
+    <button id="mqsave" class="primary" type="button">Save</button><button id="mqreset" type="button">Use .env</button>
+    <button id="mqca" type="button" hidden>Download ca.pem</button>
+    <span id="mqmsg" class="dim"></span></div></div>
 </section>
 
 <section data-pane="backup" hidden>
@@ -223,7 +254,9 @@ function wizard(step) {
     w.append(el('h2', null, 'Home Assistant'), badge(ha.state), el('p', null, details(ha) || 'Publishing sensors to Home Assistant.'));
     const a = el('a', null, 'Open the Home Assistant setup page'); a.href = '/ha';
     w.append(el('p', 'dim', 'The page gives you the packages, the secrets.yaml lines and the dashboards for this version.'), a);
-    if (ha.state === 'off') w.append(el('p', 'dim', 'No broker is set. On the server, run scripts/setup.sh and choose your broker or the bundled one. Skip this if you do not use Home Assistant.'));
+    if (ha.state === 'off') w.append(el('p', 'dim', 'No broker is set yet. Skip this if you do not use Home Assistant.'));
+    const set = el('button', null, 'Set the MQTT broker'); set.type = 'button'; set.onclick = () => { wizDone(); tab('mqtt'); };
+    w.append(el('p'), set);
   } else {
     const all = [...setup.you, ...setup.keys, ...setup.free], n = all.filter(x => x.state === 'ready' || x.state === 'limited').length;
     w.append(el('h2', null, 'All set'), el('p', null, n + ' of ' + all.length + ' things are working. Some sources take a few minutes to load the first time; the Setup list shows them arrive.'));
@@ -293,16 +326,69 @@ $('copy').onclick = () => {
 };
 $('refresh').onclick = () => load();
 
+// --- MQTT --------------------------------------------------------------------------------------------------
+let mq = null;
+function mqForm() {
+  return { host: $('mqhost').value.trim(), port: parseInt($('mqport').value, 10) || ($('mqtls').checked ? 8883 : 1883),
+    user: $('mquser').value.trim(), tls: $('mqtls').checked, password: $('mqpw').value || null };
+}
+function mqShow(d) {
+  mq = d;
+  $('mqhost').value = d.host; $('mqport').value = d.port; $('mquser').value = d.user; $('mqtls').checked = d.tls; $('mqpw').value = '';
+  const WHERE = { settings: 'saved here', file: 'in mqtt_password.txt', env: 'in the environment' };
+  $('mqpw').placeholder = d.password_set ? 'Set ' + (WHERE[d.password_source] || 'in the ' + d.password_source) + ': leave empty to keep' : 'None set';
+  $('mqbundled').hidden = !d.bundled; $('mqpw').disabled = d.bundled;
+  const lp = d.last_publish, where = d.host ? d.host + ':' + d.port : 'nowhere';
+  const state = !d.active ? 'Not publishing: no server set.'
+    : lp && lp.ok ? 'Publishing to ' + where + (d.tls ? ', encrypted' : ', not encrypted') + '. Last sent ' + ago(lp.at) + '.'
+    : lp ? 'Could not publish to ' + where + ': ' + lp.error : 'Publishing to ' + where + '; the first send is due within a few minutes.';
+  $('mqnow').textContent = state + (d.source === 'settings' ? ' (Settings here, which override .env.)' : ' (From .env.)');
+  $('mqnow').className = lp && !lp.ok && d.active ? 'err' : 'dim';
+  $('mqreset').disabled = d.source !== 'settings';
+  $('mqca').hidden = !d.ca_available;
+}
+// the CA certificate made by scripts/mqtt-ca.sh, for the OVMS module and Home Assistant to trust
+$('mqca').onclick = async () => {
+  const r = await fetch('/v1/settings/mqtt/ca', { headers: hdr() });
+  if (!r.ok) { $('mqmsg').textContent = 'No CA certificate: ' + r.status; return; }
+  const url = URL.createObjectURL(await r.blob()), a = document.createElement('a');
+  a.href = url; a.download = 'world-assistant-mqtt-ca.pem'; document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+};
+// switching encryption moves the port between the usual pair, unless a custom one was chosen
+$('mqtls').onchange = () => {
+  const p = $('mqport').value;
+  if ($('mqtls').checked && (p === '' || p === '1883')) $('mqport').value = 8883;
+  if (!$('mqtls').checked && (p === '' || p === '8883')) $('mqport').value = 1883;
+};
+async function mqLoad() { try { mqShow(await api('/v1/settings/mqtt')); } catch (e) { $('mqmsg').textContent = e.message; } }
+$('mqtest').onclick = async () => {
+  $('mqmsg').textContent = 'Connecting...';
+  try { const r = await api('/v1/settings/mqtt/test', { method: 'POST', body: JSON.stringify(mqForm()) });
+    $('mqmsg').textContent = r.ok ? 'Connected.' : 'Could not connect: ' + r.error; $('mqmsg').className = r.ok ? 'ok' : 'err'; }
+  catch (e) { $('mqmsg').textContent = e.message; $('mqmsg').className = 'err'; }
+};
+$('mqsave').onclick = async () => {
+  try { mqShow(await api('/v1/settings/mqtt', { method: 'PUT', body: JSON.stringify(mqForm()) }));
+    $('mqmsg').textContent = 'Saved. The worker uses it from its next send (every few minutes).'; $('mqmsg').className = 'dim'; refreshKeys(); }
+  catch (e) { $('mqmsg').textContent = e.message; $('mqmsg').className = 'err'; }
+};
+$('mqreset').onclick = async () => {
+  try { mqShow(await api('/v1/settings/mqtt', { method: 'DELETE' })); $('mqmsg').textContent = 'Back to the settings in .env.'; $('mqmsg').className = 'dim'; refreshKeys(); }
+  catch (e) { $('mqmsg').textContent = e.message; }
+};
+
 async function load() {
   $('msg').textContent = '';
   try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
   try { await refreshKeys(); } catch (e) { $('msg').textContent = 'Could not load: ' + e.message; return; }
-  bkLoad(); auLoad(); sysLoad().catch(e => $('sys').textContent = e.message);
+  bkLoad(); auLoad(); mqLoad(); sysLoad().catch(e => $('sys').textContent = e.message);
   let done = false; try { done = localStorage.getItem('wa_wizard') === 'done'; } catch (e) {}
   if (!done && setup.you.find(x => x.id === 'home').state !== 'ready') wizard(0);
 }
 $('go').onclick = load;
-const want = location.hash.slice(1); if (['setup', 'keys', 'backup', 'system'].includes(want)) tab(want);
+const TABS = ['setup', 'keys', 'mqtt', 'backup', 'system'];
+const want = location.hash.slice(1); if (TABS.includes(want)) tab(want);
+window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if (TABS.includes(h)) tab(h); });
 if (tok.value) load();
 </script></main></body></html>"""
 

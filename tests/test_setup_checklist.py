@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
+from app.mqtt_config import MqttConf
 from app.setup_checklist import SOURCES, home_assistant, judge
 
 NOW = datetime(2026, 10, 22, 17, 0, tzinfo=UTC)
@@ -61,11 +62,13 @@ def test_sources_with_no_key_and_switches() -> None:
 
 
 def test_home_assistant_states() -> None:
-    assert home_assistant(settings(mqtt_active=False, mqtt_host=""), None)["state"] == "off"
-    assert home_assistant(settings(), None)["state"] == "waiting"
-    ok = home_assistant(settings(), {"ok": True, "at": NOW.isoformat(), "sensors": 40})
-    assert ok["state"] == "ready" and ok["note"] == "40 sensors"
-    bad = home_assistant(settings(), {"ok": False, "error": "OSError: refused"})
+    on, off = MqttConf("broker.lan", 8883, "wa", True), MqttConf("", 1883, "", False)
+    assert home_assistant(settings(), None, off)["state"] == "off"
+    waiting = home_assistant(settings(), None, on)
+    assert waiting["state"] == "waiting" and waiting["broker"] == "broker.lan:8883" and waiting["tls"] is True
+    ok = home_assistant(settings(), {"ok": True, "at": NOW.isoformat(), "sensors": 40}, on)
+    assert ok["state"] == "ready" and ok["note"] == "40 sensors on broker.lan:8883, encrypted."
+    bad = home_assistant(settings(), {"ok": False, "error": "OSError: refused"}, on)
     assert bad["state"] == "failing" and "refused" in bad["error"]
 
 

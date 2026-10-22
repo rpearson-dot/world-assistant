@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "world-assistant"
-version = "0.14.0"
+version = "0.15.0"
 description = "API gateway for everything outside the home"
 readme = "README.md"
 license = {text = "MIT"}
@@ -23,6 +23,8 @@ dependencies = [
   "tenacity>=8.5",
   "aiomqtt>=2.3",
   "neo4j>=5.24",
+  # copying the Home Assistant files to its config share (the /ha page)
+  "smbprotocol>=1.14",
 ]
 
 [project.optional-dependencies]

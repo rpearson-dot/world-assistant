@@ -265,7 +265,9 @@ def test_pollen_map_card_lists_every_lattice_point() -> None:
     cfg = yaml.safe_load(Path("homeassistant/dashboards/pollen.yaml").read_text())
     card = next(c for v in cfg["views"] for c in v["cards"] if c["type"] == "map")
     want = {f"sensor.wa_pollen_{pollen_point_key(a, b)}" for a, b in grid_points(1.0)}
-    assert set(card["entities"]) == want  # regenerate the list if the lattice changes
+    assert {e["entity"] for e in card["entities"]} == want  # regenerate the list if the lattice changes
+    # each marker shows its allergy risk, not the initials of its name, and none are grouped away
+    assert all(e["label_mode"] == "state" for e in card["entities"]) and card["cluster"] is False
 
 
 def test_events_card_lists_whatever_places_exist() -> None:

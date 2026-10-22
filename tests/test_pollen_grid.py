@@ -90,6 +90,18 @@ class _Redis:
 
     def __init__(self, used: int = 0) -> None:
         self.n = used
+        self.kv: dict[str, str] = {}
+
+    async def mget(self, keys: list[str]) -> list[str | None]:
+        return [self.kv.get(k) for k in keys]
+
+    async def set(self, k: str, v: str, ex: int | None = None) -> None:
+        self.kv[k] = v
+        self.ttl = getattr(self, "ttl", {}) | {k: ex}
+
+    async def delete(self, *keys: str) -> None:
+        for k in keys:
+            self.kv.pop(k, None)
 
     def register_script(self, _lua: str) -> Any:
         async def run(*a: Any, **k: Any) -> int:
@@ -101,6 +113,9 @@ class _Redis:
         return str(self.n) if self.n else None
 
     async def incr(self, k: str) -> int:
+        if k.startswith("wa:pollen:gridfails:"):
+            self.kv[k] = str(int(self.kv.get(k, "0")) + 1)
+            return int(self.kv[k])
         self.n += 1
         return self.n
 
@@ -111,7 +126,8 @@ class _Redis:
     async def expire(self, k: str, s: int) -> None: ...
 
 
-def _patch(monkeypatch: pytest.MonkeyPatch, *, fail: bool = False, have: list[dict[str, Any]] | None = None) -> list[Any]:
+def _patch(monkeypatch: pytest.MonkeyPatch, *, fail: bool = False, have: list[dict[str, Any]] | None = None,
+           fail_north_of: float | None = None) -> list[Any]:  # fmt: skip
     from app import jobs
     from app.integrations.pollen.client import PollenError
 
@@ -130,8 +146,8 @@ def _patch(monkeypatch: pytest.MonkeyPatch, *, fail: bool = False, have: list[di
         async def forecast(self, lat: float, lon: float, *a: Any, **k: Any) -> dict[str, Any]:
             await self.limiter.acquire()  # the real client does this before each request
             calls.append((lat, lon))
-            if fail:
-                raise PollenError("HTTP 429")
+            if fail or (fail_north_of is not None and lat > fail_north_of):
+                raise PollenError("HTTP 404: no data for this point")
             return {"dates": ["d"], "allergens": [], "allergy_risk": [1]}
 
     async def fake_tracked(engine: Any, name: str, run: Any) -> Any:
@@ -155,10 +171,16 @@ def _patch(monkeypatch: pytest.MonkeyPatch, *, fail: bool = False, have: list[di
 
 @pytest.mark.asyncio
 async def test_sync_gives_up_after_repeated_failures(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls = _patch(monkeypatch, fail=True)
+    """Points that worked before all failing means the service is refusing us: stop early."""
+    have = [{"lat": a, "lon": b, "fetched_at": NOW} for a, b in grid_points(1.0)]
+    calls = _patch(monkeypatch, fail=True, have=have)
     out = await pollen_grid.pollen_grid_sync({"engine": object(), "redis": _Redis()}, pause=0)
     assert out["gave_up"] is True and out["ok"] == 0
     assert len(calls) == pollen_grid.MAX_FAILURES_IN_A_ROW
+    # points that never had data failing do not end the run early, but the per-run cap still holds
+    calls = _patch(monkeypatch, fail=True)
+    out = await pollen_grid.pollen_grid_sync({"engine": object(), "redis": _Redis()}, pause=0)
+    assert out["gave_up"] is False and len(calls) == 12
 
 
 @pytest.mark.asyncio
@@ -205,3 +227,39 @@ async def test_no_pollen_request_is_made_once_the_day_is_used_up() -> None:
     redis.n = 35
     await limiter.acquire()
     assert redis.n == 36 and await limiter.remaining() == 0
+
+
+@pytest.mark.asyncio
+async def test_points_the_provider_cannot_answer_do_not_starve_the_rest(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Never-fetched points that always fail used to be "stalest" for ever: tried first every run, the run gave up,
+    and the rest of the grid never refreshed. Now they wait behind the others, longer each time they fail."""
+    from app.config import get_settings
+
+    get_settings.cache_clear()  # the default calls per run, whatever an earlier test cached
+    pts = grid_points(1.0)
+    south = [q for q in pts if q[0] <= 54.0]
+    north = [q for q in pts if q[0] > 54.0]
+    have = [{"lat": a, "lon": b, "fetched_at": NOW} for a, b in south]  # the south has (old) data; the north never
+    redis = _Redis()
+    calls = _patch(monkeypatch, have=have, fail_north_of=54.0)
+    per_run = 12
+    runs = []
+    for _ in range(4):
+        calls.clear()
+        redis.n = 0  # a run a day, so each has the day's budget
+        runs.append(await pollen_grid.pollen_grid_sync({"engine": object(), "redis": redis}, pause=0))
+    # failures of never-fetched points do not end a run early: each run uses its calls
+    assert all(not r["gave_up"] and r["ok"] + r["failed"] == per_run for r in runs)
+    assert sum(r["failed"] for r in runs) == len(north)  # each northern point is tried once, then waits
+    assert runs[-1]["ok"] == per_run and runs[-1]["failed"] == 0  # and the south is refreshed again
+    assert redis.ttl[pollen_grid.fail_key(*north[0])] == pollen_grid.FAIL_BACKOFF_S
+
+
+def test_backoff_grows_and_has_a_ceiling() -> None:
+    assert [pollen_grid.backoff_s(n) // 86400 for n in (1, 2, 3, 4, 5, 9)] == [2, 4, 8, 16, 30, 30]
+
+
+def test_order_puts_recent_failures_last() -> None:
+    a, b, c = (50.0, 0.0), (51.0, 0.0), (52.0, 0.0)
+    fetched = {b: NOW}
+    assert pollen_grid.order([a, b, c], fetched, failing={a}) == [c, b, a]

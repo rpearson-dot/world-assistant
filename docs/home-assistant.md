@@ -136,6 +136,23 @@ two more secrets (below).
 
 The pollen provider answers one point at a time and, importantly, allows only **40 requests a day** on a key. So everything shares one daily budget of 36 requests (`WA_POLLEN_DAILY_LIMIT`; the day is the UTC date), and the worker keeps a lattice of points over Britain (1 degree apart, about 51 points on land; `WA_POLLEN_GRID_DEG`) in the `pollen_grid` table. Because each fetch covers four days (today and three more), a stored point stays useful for up to four days: lookups read the entry for today's date. At 03:40 and 15:40 the worker refreshes the 12 stalest points (`WA_POLLEN_GRID_CALLS_PER_RUN`), pausing 10 seconds between calls, so every point is refreshed roughly every two days. It stops early when only 6 requests of the day's budget are left (`WA_POLLEN_RESERVE_CALLS`, kept for saved places and live lookups), and gives up if the provider fails four times in a row. Anything asking for pollen at a point (`/v1/pollen/near?lat=..&lon=..`, or Home Assistant's tiles) is answered from the nearest stored point within 150 km that still covers today, falling back to a live fetch otherwise (which uses budget). `GET /v1/pollen/grid` returns the lattice, each cut to start today. Each stored point records when its forecast last changed (`changed_at`), which shows how often the provider really updates.
 
+## Copying the files over SMB (the Samba share add-on)
+
+With Home Assistant's **Samba share** add-on, the `/ha` page can put the files in place for you. Open
+**Copy straight into Home Assistant**, give the share (`\\homeassistant.local\config`, or its IP; `\\host:port\share`
+for another port), the add-on's username and password, **Test** and **Save**. **Copy to Home Assistant** then writes:
+
+- the packages ticked on the page to `packages/`,
+- the dashboards to `world_assistant/dashboards/`,
+- and, if you tick it, the missing `wa_*` lines to `secrets.yaml` (with the API token). `secrets.yaml` is backed up
+  to `secrets.yaml.world-assistant.bak` first, existing lines are never changed, and any that differ from what this
+  server would write are listed so you can check them.
+
+Files that have not changed are left alone, and nothing else in the share is touched. Then check the
+configuration and restart. To have the copied dashboards update themselves on every copy, add the `lovelace:`
+snippet the page shows to `configuration.yaml` once (YAML-mode dashboards), instead of pasting each into the raw
+editor. The share and user are kept in the database; the password in the keys folder, never shown again.
+
 ## Setting up pollen and events (once)
 
 The `/ha` page does these steps with you, with the lines filled in. By hand:

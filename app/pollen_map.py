@@ -17,8 +17,10 @@ CELL = 0.1  # degrees: the size of a patch of colour
 PX_PER_DEG = 78  # vertical; horizontal is scaled by cos(latitude) so shapes look right
 COS = math.cos(math.radians(54.5))
 SEA, LAND_UNKNOWN = "#a8c8e0", "#d9d9d9"
-COLOURS = {"none": "#ffffff", "low": "#8cc700", "moderate": "#f5e400", "high": "#f7a600", "very high": "#e63a10"}
-LEGEND = [("None", "none"), ("Low", "low"), ("Medium", "moderate"), ("High", "high"), ("Very high", "very high")]
+COLOURS = {"none": "#ffffff", "low": "#8cc700", "moderate": "#f5e400", "high": "#f7a600", "very high": "#e63a10",
+           "unknown": LAND_UNKNOWN}  # fmt: skip
+LEGEND = [("None", "none"), ("Low", "low"), ("Medium", "moderate"), ("High", "high"), ("Very high", "very high"),
+          ("No forecast", "unknown")]  # fmt: skip
 CREDIT = "Allergy risk today. Austrian Pollen Information Service, www.polleninformation.at"
 
 

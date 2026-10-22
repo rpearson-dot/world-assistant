@@ -41,6 +41,29 @@ _NI = [(54.0, -6.0), (54.6, -5.5), (55.2, -6.0), (55.2, -7.0), (54.7, -8.0), (54
 SOURCE = "Austrian Pollen Information Service, www.polleninformation.at"
 PAUSE_S = 10.0  # between provider calls: gentle, the service asks for fair use
 MAX_FAILURES_IN_A_ROW = 4  # then give up until the next run
+# A point the provider could not answer waits before it is tried first again: 2 days, then 4, 8 ... up to 30.
+# Without it, points that never succeed stay "stalest" for ever, are tried first on every run, and stop the rest
+# of the grid refreshing.
+FAIL_BACKOFF_S, FAIL_BACKOFF_MAX_S = 2 * 86400, 30 * 86400
+
+
+def fail_key(lat: float, lon: float) -> str:
+    return f"wa:pollen:gridfail:{lat}:{lon}"
+
+
+def fail_count_key(lat: float, lon: float) -> str:
+    return f"wa:pollen:gridfails:{lat}:{lon}"
+
+
+def backoff_s(failures: int) -> int:
+    return int(min(FAIL_BACKOFF_S * 2 ** max(0, failures - 1), FAIL_BACKOFF_MAX_S))
+
+
+def order(pts: list[tuple[float, float]], fetched: dict[tuple[float, float], datetime],
+          failing: set[tuple[float, float]]) -> list[tuple[float, float]]:  # fmt: skip
+    """Stalest first, but points that failed lately after every other point."""
+    oldest = datetime.min.replace(tzinfo=UTC)
+    return sorted(pts, key=lambda q: (q in failing, fetched.get(q) or oldest))
 MAX_KM = 150.0  # and neither is one further than this from the request
 
 
@@ -192,8 +215,12 @@ async def pollen_grid_sync(ctx: dict[str, Any], pause: float = PAUSE_S) -> Any:
         pts = grid_points(s.pollen_grid_step_deg)
         limiter = PollenLimiter(ctx["redis"], s.pollen_daily_limit)
         have = {(p["lat"], p["lon"]): p["fetched_at"] for p in await load(engine)}
-        pts.sort(key=lambda q: have.get(q) or datetime.min.replace(tzinfo=UTC))  # stalest first
+        redis = ctx["redis"]
+        flags = await redis.mget([fail_key(a, b) for a, b in pts]) if pts else []
+        failing = {q for q, f in zip(pts, flags, strict=True) if f}
+        pts = order(pts, have, failing)
         ok = failed = streak = 0
+        failed_now: list[str] = []
         budget = False
         async with PollenClient(s.pollen_api_key, s.pollen_base_url or DEFAULT_BASE, limiter=limiter) as c:
             for lat, lon in pts:
@@ -207,17 +234,26 @@ async def pollen_grid_sync(ctx: dict[str, Any], pause: float = PAUSE_S) -> Any:
                     await store(engine, lat, lon, await c.forecast(lat, lon, today, country=s.pollen_country))
                     ok += 1
                     streak = 0
+                    if (lat, lon) in failing:
+                        await redis.delete(fail_key(lat, lon), fail_count_key(lat, lon))
                 except PollenBudgetError:
                     budget = True
                     break
                 except PollenError as exc:
                     failed += 1
-                    streak += 1
-                    log.warning("pollen grid point (%s, %s) failed: %s", lat, lon, exc)
+                    # In a row only counts points that have worked before: those failing means the service is
+                    # refusing us. A point that never had data failing says nothing about the service.
+                    streak = streak + 1 if (lat, lon) in have else streak
+                    failed_now.append(f"{lat},{lon}")
+                    n = await redis.incr(fail_count_key(lat, lon))
+                    await redis.expire(fail_count_key(lat, lon), 60 * 86400)
+                    await redis.set(fail_key(lat, lon), str(exc)[:200], ex=backoff_s(n))
+                    log.warning("pollen grid point (%s, %s) failed (%d time(s)): %s", lat, lon, n, exc)
         if ok:
             await prune(engine, set(pts))
         return {"points": len(pts), "ok": ok, "failed": failed, "gave_up": streak >= MAX_FAILURES_IN_A_ROW,
-                "budget_stop": budget}  # fmt: skip
+                "budget_stop": budget, "with_data": len(have), "waiting_after_failing": len(failing),
+                "failed_now": failed_now[:20]}  # fmt: skip
 
     return await tracked(ctx["engine"], "pollen_grid_sync", run)
 

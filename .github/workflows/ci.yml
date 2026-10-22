@@ -55,10 +55,30 @@ jobs:
           psql -h localhost -U wa -d wa_test -c "ALTER DATABASE wa_test SET search_path TO public"
       - name: Install locked dev dependencies
         run: pip install --require-hashes --no-deps -r requirements-dev.lock
+      - name: A Samba share for the Home Assistant copy test
+        # A real SMB server (as Home Assistant's Samba share add-on is), so copying over SMB is tested end to end.
+        run: |
+          sudo apt-get update -q >/dev/null && sudo apt-get install -y -q samba >/dev/null
+          sudo systemctl stop smbd nmbd winbind 2>/dev/null || true
+          sudo mkdir -p /srv/haconfig /var/lib/smbtest/{lock,private,state,cache,pid,ncalrpc}
+          sudo useradd -M hauser && sudo chown hauser /srv/haconfig
+          printf '[global]\n  smb ports = 4445\n  interfaces = lo\n  bind interfaces only = yes\n  disable netbios = yes\n  server min protocol = SMB2_10\n  lock directory = /var/lib/smbtest/lock\n  private dir = /var/lib/smbtest/private\n  state directory = /var/lib/smbtest/state\n  cache directory = /var/lib/smbtest/cache\n  pid directory = /var/lib/smbtest/pid\n  ncalrpc dir = /var/lib/smbtest/ncalrpc\n  log file = /var/lib/smbtest/log.%%m\n  load printers = no\n  printing = bsd\n  printcap name = /dev/null\n  disable spoolss = yes\n[config]\n  path = /srv/haconfig\n  read only = no\n  valid users = hauser\n' \
+            | sudo tee /etc/samba/smb-test.conf >/dev/null
+          (echo hapass; echo hapass) | sudo smbpasswd -c /etc/samba/smb-test.conf -s -a hauser
+          sudo smbd -s /etc/samba/smb-test.conf -D
+          for i in $(seq 1 15); do (echo > /dev/tcp/127.0.0.1/4445) 2>/dev/null && break; sleep 1; done
+          (echo > /dev/tcp/127.0.0.1/4445) 2>/dev/null || { echo "smbd is not listening"; sudo tail -n 15 /var/lib/smbtest/log.* 2>&1 | cut -c1-300 | sed "s/^/::error title=smbd::/"; exit 1; }
+          echo "WA_TEST_SMB=//127.0.0.1:4445/config hauser hapass /srv/haconfig" >> "$GITHUB_ENV"
       - name: Lint
         run: ruff check .
       - name: Test
-        run: python -m pytest -q
+        # Failing tests are also published as annotations, readable without downloading the log.
+        run: |
+          set +e
+          python -m pytest -q -rfE 2>&1 | tee pytest.txt
+          status=${PIPESTATUS[0]}
+          grep -E "^(FAILED|ERROR) " pytest.txt | cut -c1-400 | sed 's/^/::error title=test::/'
+          exit "$status"
 
   image:
     # Proves the image builds (no push). Releases are built by release.yml.

@@ -12,62 +12,115 @@ views:
         show_name: false
         show_state: false
       - type: map
-        title: Forecast points (tap one for its pollen breakdown)
+        title: Forecast points (allergy risk today, 0 to 10; tap one for its pollen breakdown)
         default_zoom: 6
         hours_to_show: 0
         aspect_ratio: 100%
+        # every point on its own (not grouped into "+4" bubbles), labelled with its risk rather than its initials
+        cluster: false
         entities:
-          - sensor.wa_pollen_point_50p25_m5p0
-          - sensor.wa_pollen_point_50p25_m4p0
-          - sensor.wa_pollen_point_50p25_m3p0
-          - sensor.wa_pollen_point_50p25_m2p0
-          - sensor.wa_pollen_point_51p25_m4p0
-          - sensor.wa_pollen_point_51p25_m3p0
-          - sensor.wa_pollen_point_51p25_m2p0
-          - sensor.wa_pollen_point_51p25_m1p0
-          - sensor.wa_pollen_point_51p25_0p0
-          - sensor.wa_pollen_point_51p25_1p0
-          - sensor.wa_pollen_point_52p25_m5p0
-          - sensor.wa_pollen_point_52p25_m4p0
-          - sensor.wa_pollen_point_52p25_m3p0
-          - sensor.wa_pollen_point_52p25_m2p0
-          - sensor.wa_pollen_point_52p25_m1p0
-          - sensor.wa_pollen_point_52p25_0p0
-          - sensor.wa_pollen_point_52p25_1p0
-          - sensor.wa_pollen_point_53p25_m5p0
-          - sensor.wa_pollen_point_53p25_m4p0
-          - sensor.wa_pollen_point_53p25_m3p0
-          - sensor.wa_pollen_point_53p25_m2p0
-          - sensor.wa_pollen_point_53p25_m1p0
-          - sensor.wa_pollen_point_53p25_0p0
-          - sensor.wa_pollen_point_53p25_1p0
-          - sensor.wa_pollen_point_54p25_m8p0
-          - sensor.wa_pollen_point_54p25_m7p0
-          - sensor.wa_pollen_point_54p25_m6p0
-          - sensor.wa_pollen_point_54p25_m3p0
-          - sensor.wa_pollen_point_54p25_m2p0
-          - sensor.wa_pollen_point_54p25_m1p0
-          - sensor.wa_pollen_point_54p25_0p0
-          - sensor.wa_pollen_point_55p25_m7p0
-          - sensor.wa_pollen_point_55p25_m6p0
-          - sensor.wa_pollen_point_55p25_m5p0
-          - sensor.wa_pollen_point_55p25_m4p0
-          - sensor.wa_pollen_point_55p25_m3p0
-          - sensor.wa_pollen_point_55p25_m2p0
-          - sensor.wa_pollen_point_55p25_m1p0
-          - sensor.wa_pollen_point_56p25_m6p0
-          - sensor.wa_pollen_point_56p25_m5p0
-          - sensor.wa_pollen_point_56p25_m4p0
-          - sensor.wa_pollen_point_56p25_m3p0
-          - sensor.wa_pollen_point_56p25_m2p0
-          - sensor.wa_pollen_point_57p25_m6p0
-          - sensor.wa_pollen_point_57p25_m5p0
-          - sensor.wa_pollen_point_57p25_m4p0
-          - sensor.wa_pollen_point_57p25_m3p0
-          - sensor.wa_pollen_point_57p25_m2p0
-          - sensor.wa_pollen_point_58p25_m5p0
-          - sensor.wa_pollen_point_58p25_m4p0
-          - sensor.wa_pollen_point_58p25_m3p0
+          - entity: sensor.wa_pollen_point_50p25_m5p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_50p25_m4p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_50p25_m3p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_50p25_m2p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_51p25_m4p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_51p25_m3p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_51p25_m2p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_51p25_m1p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_51p25_0p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_51p25_1p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_52p25_m5p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_52p25_m4p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_52p25_m3p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_52p25_m2p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_52p25_m1p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_52p25_0p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_52p25_1p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_53p25_m5p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_53p25_m4p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_53p25_m3p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_53p25_m2p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_53p25_m1p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_53p25_0p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_53p25_1p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_54p25_m8p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_54p25_m7p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_54p25_m6p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_54p25_m3p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_54p25_m2p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_54p25_m1p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_54p25_0p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_55p25_m7p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_55p25_m6p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_55p25_m5p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_55p25_m4p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_55p25_m3p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_55p25_m2p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_55p25_m1p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_56p25_m6p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_56p25_m5p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_56p25_m4p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_56p25_m3p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_56p25_m2p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_57p25_m6p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_57p25_m5p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_57p25_m4p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_57p25_m3p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_57p25_m2p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_58p25_m5p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_58p25_m4p0
+            label_mode: state
+          - entity: sensor.wa_pollen_point_58p25_m3p0
+            label_mode: state
       - type: markdown
         title: Pollen this week
         content: |

@@ -26,6 +26,7 @@ from app.config import get_settings
 from app.energy.ha import RETIRED as ENERGY_RETIRED
 from app.energy.ha import energy_device
 from app.ha import Device, Sensor, slug
+from app.mqtt_config import from_env, load
 from app.pollen_map import render_svg
 
 log = logging.getLogger("wa.ha")
@@ -464,7 +465,8 @@ def _fingerprint(devices: list[Device]) -> str:
 async def ha_sync(ctx: dict[str, Any]) -> int:
     """Worker job: publish every domain. Discovery goes out on start and whenever the sensors change."""
     s = get_settings()
-    if not (s.mqtt_active and s.ha_publish):
+    conf, _ = await load(ctx["engine"]) if "engine" in ctx else (from_env(s), "env")
+    if not (conf.active and s.ha_publish):
         return 0
     async with httpx.AsyncClient(
         base_url=s.ha_api_url, timeout=30, headers={"Authorization": f"Bearer {s.api_token}"}
@@ -485,7 +487,7 @@ async def ha_sync(ctx: dict[str, Any]) -> int:
     expire = max(1, s.ha_interval_min) * 60 * 3
     sent: dict[str, str] = ctx.setdefault("ha_images", {})
     before = dict(sent)
-    ok = await mqtt.publish(gone + messages(devices, with_discovery=first, expire_after=expire, sent_images=sent))
+    ok = await mqtt.publish(gone + messages(devices, with_discovery=first, expire_after=expire, sent_images=sent), conf)
     if ok:
         ctx["ha_fingerprint"] = fp
         ctx["ha_keys"] = keys

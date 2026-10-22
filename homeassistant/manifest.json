@@ -18,8 +18,8 @@
       "sha256": "2100338da5fea34fa82669407ed94496c87b5f4d33e7593fa8793e77480899f8"
     },
     "dashboards/pollen.yaml": {
-      "changed_in": "0.7.4",
-      "sha256": "aa5aa75d0ee40423b637bd1fa706a6bdda2fb6b7f024168ccce9cebf5d5fe521"
+      "changed_in": "0.15.0",
+      "sha256": "5a63fe74d497625fa024cba7738f8617ec820b1f9904fbdaf17ca87812c2f8d7"
     },
     "dashboards/roads.yaml": {
       "changed_in": "0.7.3",
