@@ -15,16 +15,17 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # Labels, so a typo is a NameError rather than a quietly empty graph.
-PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER, BUS_STOP = (
+PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER, BUS_STOP, FLOOD = (
     "Place", "Trip", "Corridor", "RoadEvent", "Station", "Location", "Vehicle", "BusTracker", "BusStop",
+    "FloodWarning",
 )  # fmt: skip
-LABELS = (PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER, BUS_STOP)
+LABELS = (PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER, BUS_STOP, FLOOD)
 
 # Relationship types.
-FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT = (
-    "FROM", "TO", "USES", "AFFECTS", "ALONG", "NEAR", "DRIVES", "CALLS_AT",
+FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT, COVERS, CROSSES = (
+    "FROM", "TO", "USES", "AFFECTS", "ALONG", "NEAR", "DRIVES", "CALLS_AT", "COVERS", "CROSSES",
 )  # fmt: skip
-TYPES = (FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT)
+TYPES = (FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT, COVERS, CROSSES)
 
 
 @dataclass(frozen=True)
@@ -130,6 +131,20 @@ def bus_stops(rows: Iterable[dict[str, Any]], calls_at: Iterable[tuple[str, str]
     return nodes, rels
 
 
+def floods(rows: Iterable[dict[str, Any]]) -> list[Node]:
+    """Live flood warnings (alert, warning, severe). Their shapes stay in Postgres."""
+    return [Node(FLOOD, r["id"], {"name": r.get("name"), "level": r.get("level"), "severity": r.get("severity"),
+                                  "county": r.get("county"), "river_or_sea": r.get("river_or_sea")})
+            for r in rows]  # fmt: skip
+
+
+def flood_reach(covers: Iterable[tuple[str, str]], crosses: Iterable[tuple[str, str]]) -> list[Rel]:
+    """COVERS: a warning's area contains a saved place. CROSSES: it crosses a watched corridor.
+    Both are tested by PostGIS against the stored boundary."""
+    return [*(Rel(COVERS, (FLOOD, w), (PLACE, p)) for w, p in covers),
+            *(Rel(CROSSES, (FLOOD, w), (CORRIDOR, c)) for w, c in crosses)]  # fmt: skip
+
+
 def near_places(pairs: Iterable[tuple[str, str, str, float]]) -> list[Rel]:
     """NEAR relationships from (label, thing id, place id, km) measured by PostGIS."""
     return [Rel(NEAR, (label, thing), (PLACE, place), {"km": round(float(km), 3)})
@@ -160,6 +175,9 @@ def build(
     tracker_rows: Sequence[dict[str, Any]],
     bus_stop_rows: Sequence[dict[str, Any]] = (),
     calls_at: Sequence[tuple[str, str]] = (),
+    flood_rows: Sequence[dict[str, Any]] = (),
+    flood_covers: Sequence[tuple[str, str]] = (),
+    flood_crosses: Sequence[tuple[str, str]] = (),
     near_pairs: Sequence[tuple[str, str, str, float]] = (),
     along_pairs: Sequence[tuple[str, str, float]] = (),
 ) -> Graph:
@@ -173,13 +191,15 @@ def build(
     vehicle_nodes = vehicles(vehicle_rows)
     tracker_nodes = trackers(tracker_rows)
     stop_nodes, stop_rels = bus_stops(bus_stop_rows, calls_at)
+    flood_nodes = floods(flood_rows)
 
     nodes = [*place_nodes, *trip_nodes, *corridor_nodes, *event_nodes, *station_nodes,
-             *location_nodes, *vehicle_nodes, *tracker_nodes, *stop_nodes]  # fmt: skip
+             *location_nodes, *vehicle_nodes, *tracker_nodes, *stop_nodes, *flood_nodes]  # fmt: skip
     rels = [
         *trip_rels,
         *event_rels,
         *stop_rels,
+        *flood_reach(flood_covers, flood_crosses),
         *near_places(near_pairs),
         *along_corridors(along_pairs),
         *drives(vehicle_nodes, trip_nodes),

@@ -151,6 +151,19 @@ DISRUPTION = (
     "ORDER BY trip_name, event LIMIT $limit"
 )
 
+# Warnings that cover a place itself, or cross the corridor of a trip that starts or ends there.
+FLOOD_AT_PLACE = (
+    "MATCH (p:Place {id: $id})<-[:COVERS]-(f:FloodWarning) "
+    "RETURN f.id AS flood, f.name AS area, f.level AS level, f.severity AS severity, 'place' AS where_ "
+    "ORDER BY level, area LIMIT $limit"
+)
+FLOOD_ON_ROUTE = (
+    "MATCH (p:Place {id: $id})<-[:FROM|TO]-(t:Trip)-[:USES]->(c:Corridor)<-[:CROSSES]-(f:FloodWarning) "
+    "RETURN DISTINCT f.id AS flood, f.name AS area, f.level AS level, f.severity AS severity, "
+    "t.name AS trip_name, c.name AS corridor_name "
+    "ORDER BY level, area LIMIT $limit"
+)
+
 COUNTS = "MATCH (n) RETURN labels(n)[0] AS label, count(*) AS total ORDER BY label"
 REL_COUNTS = "MATCH ()-[r]->() RETURN type(r) AS rel, count(*) AS total ORDER BY rel"
 

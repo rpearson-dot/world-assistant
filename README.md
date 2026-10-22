@@ -45,6 +45,7 @@ It started as a personal project on a home Unraid server. Nothing in it is speci
 | **Buses and trains** | Live bus tracking with on-time statistics, and train departure boards (TfL and National Rail). Departures, fuel prices and road closures are published to Home Assistant over MQTT, and fuel, roads, pollen (a map and a home graph) follow where each person is, and events show what is on near the home zone and any extra places you add (the app's location when away, else the home zone) ([how](docs/home-assistant.md)), with ready-made dashboards. |
 | **Assistant** | The same data as spoken-style answers: `/v1/ask` for Siri Shortcuts and scripts, and `/mcp` for AI assistants that speak the Model Context Protocol. |
 | **Knowledge graph** | Optional Neo4j holding how the data joins up — trips to corridors, closures to corridors, stations near places — so the assistant can follow connections rather than be told where to look ([how](docs/graph.md)). Derived from Postgres and safe to throw away. |
+| **Floods** | Environment Agency flood alerts and warnings for England, refreshed every 15 minutes, with each warned area drawn on the map; ask what covers home, or what crosses the way to work ([how](docs/floods.md)). |
 | **Stops** | Where every bus stop, station and ferry terminal in Great Britain is, from the national NaPTAN register, held locally and refreshed weekly ([how](docs/naptan.md)). |
 | **Map** | Everything with coordinates on one map, a layer at a time: places, people, corridors, closures, signs, fuel priced cheapest to dearest, stops and stations, pollen ([how](docs/map.md)). Leaflet is served from the app; only the tiles come from outside, and you choose where from. |
 | **Web pages** | `/status`, `/bus`, `/trains`, `/fuel`, `/events`, `/pollen`, `/places`, `/map`. Small, fast, no accounts. |
@@ -151,6 +152,7 @@ All `/v1/*` routes need `Authorization: Bearer <api_token>`. The interactive ref
 | `GET/PUT/DELETE /v1/places/{id}`, `/v1/trips/{id}`, `/v1/vehicles/{id}` | Manage places, trips, vehicles |
 | `POST /v1/trips/{id}/route` | Route a trip and (re)build its corridor |
 | `GET /v1/trips/{id}/cost?vehicle=` | Energy or fuel needed, range check, cost |
+| `GET /v1/floods`, `/v1/floods/at` | Current flood warnings; those covering a place or a point |
 | `GET /v1/stops/near`, `/v1/stops/{atco}` | Bus stops, stations and terminals near a point (nearest first), or one stop by its ATCO code |
 | `GET /v1/fuel/near`, `/v1/fuel/along/{corridor}` | Cheapest fuel near a place or along a corridor; `vehicle=` ranks by saving after the detour |
 | `GET /v1/events/near` | What is on near a place (`place` defaults to home) or a point (`lat` and `lon`) |

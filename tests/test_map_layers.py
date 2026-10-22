@@ -20,8 +20,8 @@ from app.main import app
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
 MIGRATIONS = ["0003_nh_storage", "0006_places_trips", "0007_fuel", "0015_pollen_grid", "0016_ha_location",
-              "0017_ha_origin", "0018_geography", "0020_naptan"]  # fmt: skip
-TABLES = ["naptan_stop", "pollen_grid", "ha_location", "fuel_price_change", "fuel_price", "fuel_station", "trip", "place",
+              "0017_ha_origin", "0018_geography", "0020_naptan", "0021_flood"]  # fmt: skip
+TABLES = ["flood_warning", "flood_area", "naptan_stop", "pollen_grid", "ha_location", "fuel_price_change", "fuel_price", "fuel_station", "trip", "place",
           "nh_sign_message", "nh_sign", "nh_event_corridor", "nh_event", "nh_corridor"]  # fmt: skip
 
 HOME = (51.5074, -0.1278)  # the centre every test measures from
@@ -88,6 +88,15 @@ def schema() -> Iterator[None]:
                           "('rail-far', 'Far station', 'RLY', 'rail', :fa, :fo, now()), "
                           "('bus-far', 'Far stop', 'BCT', 'bus_stop', :fa, :fo, now())"),
                      {"la": NEAR[0], "lo": NEAR[1], "fa": FAR[0], "fo": FAR[1]})  # fmt: skip
+        conn.execute(text("INSERT INTO flood_area (notation, label, county, geom) VALUES "
+                          "('near', 'Near area', 'London', ST_GeogFromText(:n)), "
+                          "('far', 'Far area', 'West Midlands', ST_GeogFromText(:f)), "
+                          "('over', 'Over area', 'London', ST_GeogFromText(:n))"),
+                     {"n": "POLYGON((-0.14 51.50, -0.11 51.50, -0.11 51.52, -0.14 51.52, -0.14 51.50))",
+                      "f": "POLYGON((-1.91 52.47, -1.88 52.47, -1.88 52.50, -1.91 52.50, -1.91 52.47))"})  # fmt: skip
+        conn.execute(text("INSERT INTO flood_warning (id, area, severity_level, severity, seen) VALUES "
+                          "('near', 'near', 2, 'Flood Warning', now()), ('far', 'far', 3, 'Flood Alert', now()), "
+                          "('over', 'over', 4, 'Gone', now())"))
         conn.execute(text("INSERT INTO pollen_grid (lat, lon, forecast, fingerprint) "
                           "VALUES (:la, :lo, CAST(:f AS jsonb), 'x')"),
                      {"la": NEAR[0], "lo": NEAR[1], "f": '{"allergy_risk_label": ["low"]}'})  # fmt: skip
@@ -98,7 +107,7 @@ def schema() -> Iterator[None]:
     sync.dispose()
 
 
-ALL = "places,locations,roads,road_events,signs,fuel,stops,pollen"
+ALL = "places,locations,roads,road_events,signs,fuel,stops,floods,pollen"
 
 
 @pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
@@ -130,6 +139,9 @@ async def test_every_layer_is_served_and_cut_to_the_radius(
         assert [f["properties"]["id"] for f in lay["signs"]["features"]] == ["s1"]
         assert [f["properties"]["pence"] for f in lay["fuel"]["features"]] == [139.9]
         assert [f["properties"]["id"] for f in lay["stops"]["features"]] == ["bus-near"]
+        flood = lay["floods"]["features"]
+        assert [f["properties"]["id"] for f in flood] == ["near"]  # in range, live; the ended one is out
+        assert flood[0]["geometry"]["type"] in ("Polygon", "MultiPolygon") and flood[0]["properties"]["level"] == 2
         assert [f["properties"]["label"] for f in lay["pollen"]["features"]] == ["low"]
         # the corridor runs from far away to nearby: in range, and drawn in full
         roads = lay["roads"]["features"]
@@ -140,6 +152,7 @@ async def test_every_layer_is_served_and_cut_to_the_radius(
         assert wide["centre"] is None
         assert len(wide["layers"]["places"]["features"]) == 2
         assert len(wide["layers"]["fuel"]["features"]) == 2
+        assert {f["properties"]["id"] for f in wide["layers"]["floods"]["features"]} == {"near", "far"}
         # across the country only stations are drawn: 400,000 bus stops would be a smear
         assert [f["properties"]["id"] for f in wide["layers"]["stops"]["features"]] == ["rail-far"]
 

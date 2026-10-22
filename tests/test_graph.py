@@ -67,6 +67,12 @@ ROWS: dict[str, Any] = {
     "bus_stop_rows": [{"id": "490001346C", "name": "Home Road", "indicator": "Stop A",
                        "lat": NEAR[0], "lon": NEAR[1]}],
     "calls_at": [("213", "490001346C"), ("213", "ghost")],
+    # a live warning over home and across the A3, and one nobody has a place or corridor in
+    "flood_rows": [{"id": "w1", "name": "Thames", "level": 2, "severity": "Flood Warning", "county": "London",
+                    "river_or_sea": "River Thames"},
+                   {"id": "w2", "name": "Elsewhere", "level": 3, "severity": "Flood Alert"}],
+    "flood_covers": [("w1", "home"), ("w1", "ghost-place")],
+    "flood_crosses": [("w1", "a3")],
 }
 
 
@@ -94,6 +100,15 @@ def test_a_tracker_calls_at_the_stops_naptan_could_place() -> None:
     assert [n.id for n in g.nodes if n.label == "BusStop"] == ["490001346C"]
     calls = {(r.start[1], r.end[1]) for r in g.rels if r.type == "CALLS_AT"}
     assert calls == {("213", "490001346C")}  # 'ghost' has no position, so no node and no relationship
+
+
+def test_a_flood_warning_covers_the_places_and_crosses_the_corridors_postgis_found() -> None:
+    g = built()
+    assert sorted(n.id for n in g.nodes if n.label == "FloodWarning") == ["w1", "w2"]
+    covers = {(r.start[1], r.end[1]) for r in g.rels if r.type == "COVERS"}
+    crosses = {(r.start[1], r.end[1]) for r in g.rels if r.type == "CROSSES"}
+    assert covers == {("w1", "home")}  # 'ghost-place' is not a node, so no dangling relationship
+    assert crosses == {("w1", "a3")}
 
 
 def test_trips_join_their_places_and_corridor() -> None:
@@ -262,8 +277,8 @@ URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
 GEO_MIGRATIONS = ["0003_nh_storage", "0006_places_trips", "0007_fuel", "0009_vehicle",
                   "0011_bus_tracking", "0016_ha_location", "0017_ha_origin", "0018_geography",
-                  "0020_naptan"]  # fmt: skip
-GEO_TABLES = ["naptan_stop", "bus_timetable", "bus_target_hit", "bus_target_day", "bus_anomaly", "bus_segment_obs",
+                  "0020_naptan", "0021_flood"]  # fmt: skip
+GEO_TABLES = ["flood_warning", "flood_area", "naptan_stop", "bus_timetable", "bus_target_hit", "bus_target_day", "bus_anomaly", "bus_segment_obs",
               "bus_stop", "bus_tracker", "vehicle", "fuel_price_change", "fuel_price", "fuel_station",
               "ha_location", "trip", "place", "nh_sign_message", "nh_sign", "nh_event_corridor",
               "nh_event", "nh_corridor"]  # fmt: skip
@@ -306,6 +321,13 @@ def geo_schema() -> Iterator[None]:
             "('watched', 'Watched stop', 'BCT', 'bus_stop', :la, :lo, now()), "
             "('unwatched', 'Unwatched stop', 'BCT', 'bus_stop', :la, :lo, now())"),
             {"la": NEAR[0], "lo": NEAR[1]})
+        # a live warning whose area surrounds home and runs on to Birmingham (so it crosses the A3), and
+        # an ended one that must stay out of the graph
+        conn.execute(sa.text("INSERT INTO flood_area (notation, label, geom) VALUES "
+                             "('wide', 'Wide area', ST_GeogFromText(:wkt)), ('gone', 'Ended', ST_GeogFromText(:wkt))"),
+                     {"wkt": "POLYGON((0 51.4, -1.95 51.4, -1.95 52.6, 0 52.6, 0 51.4))"})
+        conn.execute(sa.text("INSERT INTO flood_warning (id, area, severity_level, severity, seen) VALUES "
+                             "('wide', 'wide', 2, 'Flood Warning', now()), ('gone', 'gone', 4, 'Gone', now())"))
     yield
     with sync.begin() as conn:
         for t in GEO_TABLES:
@@ -349,6 +371,9 @@ async def test_postgis_finds_what_is_near_and_what_is_on_the_way(geo_schema: Non
         assert not any(t == "unwatched" for _, t, _ in near)  # the register stays out of the graph
         assert [r["id"] for r in rows["bus_stop_rows"]] == ["watched"]
         assert rows["calls_at"] == [("213", "watched")]
+        assert [r["id"] for r in rows["flood_rows"]] == ["wide"]  # the ended warning is not live
+        assert ("wide", "home") in rows["flood_covers"] and ("wide", "brum") in rows["flood_covers"]
+        assert rows["flood_crosses"] == [("wide", "a3")]
 
         along = {(s, c) for s, c, _ in rows["along_pairs"]}
         assert ("f1", "a3") in along and ("f2", "a3") in along  # the corridor runs to Birmingham

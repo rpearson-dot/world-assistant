@@ -34,6 +34,7 @@ With it switched off, every graph endpoint answers 503 and says so. Nothing else
 | `Vehicle` | vehicle | name, kind |
 | `BusTracker` | bus tracker | line |
 | `BusStop` | stop a bus tracker watches | name, indicator, position (from NaPTAN) |
+| `FloodWarning` | live flood alert, warning or severe warning | area, level, severity, county, river or sea |
 
 | Relationship | Meaning |
 | --- | --- |
@@ -44,6 +45,8 @@ With it switched off, every graph endpoint answers 503 and says so. Nothing else
 | `(Station\|Location\|BusStop)-[:NEAR {km}]->(Place)` | close to a place, with the distance |
 | `(Vehicle)-[:DRIVES]->(Trip)` | a vehicle that could make the trip |
 | `(BusTracker)-[:CALLS_AT]->(BusStop)` | a stop on a tracker's route |
+| `(FloodWarning)-[:COVERS]->(Place)` | the warned area contains the place |
+| `(FloodWarning)-[:CROSSES]->(Corridor)` | the warned area crosses the corridor |
 
 `WA_GRAPH_NEAR_KM` (3 km) and `WA_GRAPH_ALONG_KM` (2 km) decide how close counts.
 
@@ -58,7 +61,8 @@ With it switched off, every graph endpoint answers 503 and says so. Nothing else
 | `POST /v1/graph/rebuild` | rebuild now rather than waiting |
 
 `disruption` is the one that shows the point: it follows place → trip → corridor → road event, four
-steps, without anyone writing a query for that question.
+steps, without anyone writing a query for that question. It also reports flood warnings that cover the
+place itself or cross the corridor of one of its trips.
 
 ## Rebuilding
 

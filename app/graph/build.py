@@ -46,6 +46,10 @@ QUERIES: dict[str, str] = {
         "WHERE n.atco IN (SELECT sid FROM bus_stop)"
     ),
 }
+FLOODS = (
+    "SELECT w.id, a.label AS name, w.severity_level AS level, w.severity, a.county, a.river_or_sea "
+    "FROM flood_warning w JOIN flood_area a ON a.notation = w.area WHERE w.severity_level <= 3"
+)
 EVENT_CORRIDORS = "SELECT record_id, corridor_id FROM nh_event_corridor"
 CALLS_AT = "SELECT DISTINCT tracker, sid FROM bus_stop"
 
@@ -63,6 +67,29 @@ UNION ALL
 SELECT 'BusStop', n.atco, p.id, ST_Distance(n.geog, p.geog) / 1000.0
 FROM naptan_stop n JOIN place p ON ST_DWithin(n.geog, p.geog, :near_m)
 WHERE n.atco IN (SELECT sid FROM bus_stop)
+"""
+
+# Which saved places a live warning's area contains, and which corridors it crosses.
+FLOOD_COVERS = """
+SELECT w.id, p.id FROM flood_warning w
+JOIN flood_area a ON a.notation = w.area AND a.geom IS NOT NULL
+JOIN place p ON ST_DWithin(a.geom, p.geog, 0)
+WHERE w.severity_level <= 3
+"""
+
+FLOOD_CROSSES = """
+WITH lines AS (
+  SELECT c.id, ST_MakeLine(ARRAY(
+           SELECT ST_SetSRID(ST_MakePoint((pt->>1)::float8, (pt->>0)::float8), 4326)
+           FROM jsonb_array_elements(c.centreline) AS pt
+         ))::geography AS line
+  FROM nh_corridor c
+  WHERE c.enabled AND jsonb_array_length(c.centreline) > 1
+)
+SELECT w.id, l.id FROM flood_warning w
+JOIN flood_area a ON a.notation = w.area AND a.geom IS NOT NULL
+JOIN lines l ON ST_DWithin(a.geom, l.line, 0)
+WHERE w.severity_level <= 3
 """
 
 ALONG_PAIRS = """
@@ -87,6 +114,9 @@ async def read(engine: AsyncEngine, near_km: float, along_km: float) -> dict[str
         for name, sql in QUERIES.items():
             out[name] = [dict(r._mapping) for r in await conn.execute(text(sql))]
         out["event_corridors"] = [tuple(r) for r in await conn.execute(text(EVENT_CORRIDORS))]
+        out["flood_rows"] = [dict(r._mapping) for r in await conn.execute(text(FLOODS))]
+        out["flood_covers"] = [tuple(r) for r in await conn.execute(text(FLOOD_COVERS))]
+        out["flood_crosses"] = [tuple(r) for r in await conn.execute(text(FLOOD_CROSSES))]
         out["calls_at"] = [tuple(r) for r in await conn.execute(text(CALLS_AT))]
         out["near_pairs"] = [tuple(r) for r in await conn.execute(
             text(NEAR_PAIRS), {"near_m": near_km * 1000.0})]  # fmt: skip
