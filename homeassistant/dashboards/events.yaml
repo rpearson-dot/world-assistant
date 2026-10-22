@@ -16,7 +16,7 @@ views:
 
           | Date | Event | Venue | Away | Price |
           |:--|:--|:--|--:|:--|{% for ev in events %}
-          | {{ ev.date or '' }}{{ ' ' ~ ev.doors_open if ev.doors_open else '' }} | **{{ ev.name }}** | {{ ev.venue or '' }}{{ ', ' ~ ev.town if ev.town else '' }} | {{ ('%.1f km' % ev.distance_km) if ev.distance_km is not none else '' }} | {{ ev.price or '' }} |{% endfor %}
+          | {{ ev.date or '' }}{{ ' ' ~ ev.doors_open if ev.doors_open else '' }} | {{ ('[**' ~ (ev.name | replace('[', '(') | replace(']', ')')) ~ '**](' ~ ev.url ~ ')') if ev.url else ('**' ~ ev.name ~ '**') }} | {{ ev.venue or '' }}{{ ', ' ~ ev.town if ev.town else '' }} | {{ ('%.1f km' % ev.distance_km) if ev.distance_km is not none else '' }} | {{ ev.price or '' }} |{% endfor %}
           {% else %}Nothing listed near home yet. Is the events package installed? (docs/home-assistant.md){% endif %}
       - type: markdown
         title: Other places
@@ -28,7 +28,7 @@ views:
           {% if p.attributes.events %}
           | Date | Event | Venue | Away | Price |
           |:--|:--|:--|--:|:--|{% for ev in p.attributes.events %}
-          | {{ ev.date or '' }}{{ ' ' ~ ev.doors_open if ev.doors_open else '' }} | **{{ ev.name }}** | {{ ev.venue or '' }}{{ ', ' ~ ev.town if ev.town else '' }} | {{ ('%.1f km' % ev.distance_km) if ev.distance_km is not none else '' }} | {{ ev.price or '' }} |{% endfor %}
+          | {{ ev.date or '' }}{{ ' ' ~ ev.doors_open if ev.doors_open else '' }} | {{ ('[**' ~ (ev.name | replace('[', '(') | replace(']', ')')) ~ '**](' ~ ev.url ~ ')') if ev.url else ('**' ~ ev.name ~ '**') }} | {{ ev.venue or '' }}{{ ', ' ~ ev.town if ev.town else '' }} | {{ ('%.1f km' % ev.distance_km) if ev.distance_km is not none else '' }} | {{ ev.price or '' }} |{% endfor %}
           {% endif %}
           {% else %}No other places yet. Add one with `rest_command.wa_add_location` (docs/home-assistant.md).
           {% endfor %}

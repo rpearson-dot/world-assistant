@@ -51,7 +51,7 @@ def test_events_device_has_a_sensor_per_place_plus_a_summary() -> None:
         "locations": [
             {"id": "mum-s-house", "name": "Mum's house", "lat": 52.0, "lon": -1.0, "radius_km": 8, "days": 7, "count": 1,
              "expires_at": "2026-11-20T00:00:00Z", "errors": [],
-             "events": [{"name": "Gig", "date": "2026-10-25", "venue": "V", "distance_km": 2.0, "source": "skiddle"}]},
+             "events": [{"name": "Gig", "date": "2026-10-25", "venue": "V", "distance_km": 2.0, "source": "skiddle", "url": "https://x.test/1"}]},
             {"id": "work", "name": "Work", "lat": 51.0, "lon": -0.5, "radius_km": 8, "days": 7, "count": 0, "events": [], "errors": []},
         ],
     }  # fmt: skip
@@ -61,6 +61,7 @@ def test_events_device_has_a_sensor_per_place_plus_a_summary() -> None:
     assert keys == ["locations", "place_mum_s_house", "place_work"]
     place = d.sensors[1]
     assert place.state == 1 and place.attributes["latitude"] == 52.0 and place.attributes["events"][0]["name"] == "Gig"
+    assert place.attributes["events"][0]["url"] == "https://x.test/1"
     assert d.sensors[0].state == 2 and d.sensors[0].attributes["max"] == 8
     assert ha.unique_id("events", place.key) == "wa_events_place_mum_s_house"
 
