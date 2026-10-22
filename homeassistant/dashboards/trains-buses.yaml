@@ -25,9 +25,10 @@ views:
           - entity: input_datetime.wa_bus_deadline
           - entity: input_datetime.wa_bus_earliest
           - entity: input_datetime.wa_bus_show_until
-        footer:
-          type: markdown
-          content: Needs homeassistant/packages/world_assistant_bus.yaml. The times World Assistant is using are in the chance line below.
+      - type: markdown
+        content: |
+          Needs homeassistant/packages/world_assistant_bus.yaml. The times World Assistant is using are in
+          the chance line below.
       - type: markdown
         title: Bus tracker
         content: |
