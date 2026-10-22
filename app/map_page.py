@@ -71,10 +71,12 @@ const STYLE = {
   signs:       { colour: '#b54708', label: 'Signs', small: true },
   fuel:        { colour: '#1a7f4b', label: 'Fuel', small: true },
   stops:       { colour: '#0d6e6e', label: 'Stops', small: true },
+  floods:      { colour: '#1d4ed8', label: 'Floods' },
   pollen:      { colour: '#7c7c7c', label: 'Pollen', small: true }
 };
+const FLOOD = { 1: '#7a0c0c', 2: '#d92d20', 3: '#f79009' };  // severe, warning, alert
 const POLLEN = ['#ffffff', '#8cc700', '#f5e400', '#f7a600', '#e63a10'];
-const ON = new Set(['places', 'roads', 'road_events', 'fuel']);
+const ON = new Set(['places', 'roads', 'road_events', 'fuel', 'floods']);
 
 let map, drawn = {};
 function ready() {
@@ -99,6 +101,7 @@ function popup(key, p) {
   if (key === 'fuel') lines.push(p.pence ? p.fuel + ' at ' + p.pence.toFixed(1) + 'p' : 'no ' + p.fuel + ' price',
     p.price_at ? 'set ' + new Date(p.price_at).toLocaleDateString('en-GB') : '', p.postcode || '');
   if (key === 'stops') lines.push([p.kind ? p.kind.replace('_', ' ') : '', p.indicator, p.street].filter(Boolean).join(' · '), p.locality || '', p.id);
+  if (key === 'floods') lines.push(p.severity || '', [p.river_or_sea, p.county].filter(Boolean).join(' · '), p.message ? String(p.message).slice(0, 220) : '', 'Environment Agency flood data');
   if (key === 'pollen') lines.push(p.label ? 'allergy risk: ' + p.label : 'no reading');
   for (const line of lines) if (line) box.appendChild(el('div', line, 'dim'));
   return box;
@@ -111,6 +114,9 @@ function draw(key, collection, cheapest) {
     let shape;
     if (g.type === 'LineString') {
       shape = L.polyline(g.coordinates.map(c => [c[1], c[0]]), { color: s.colour, weight: s.weight || 3, opacity: .85 });
+    } else if (g.type === 'Polygon' || g.type === 'MultiPolygon') {
+      const c = FLOOD[p.level] || s.colour;
+      shape = L.geoJSON(g, { style: { color: c, weight: 2, fillColor: c, fillOpacity: .25 } });
     } else if (g.type === 'Point') {
       let colour = s.colour, r = s.small ? 4 : 7;
       if (key === 'stops' && p.kind && p.kind !== 'bus_stop') { colour = '#0b3d91'; r = 6; }  // stations stand out from stops

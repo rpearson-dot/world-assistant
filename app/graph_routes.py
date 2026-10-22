@@ -71,10 +71,13 @@ async def disruption(
     """What is currently disrupting the trips that start or end at a place.
 
     Follows place -> trip -> corridor -> road event in one hop-chain, so a closure three steps away
-    from your home still surfaces.
+    from your home still surfaces. Flood warnings are checked the same way: over the place itself, and
+    over the corridors of its trips.
     """
     try:
         rows = await store.run(store.DISRUPTION, id=place, limit=limit)
+        at_place = await store.run(store.FLOOD_AT_PLACE, id=place, limit=limit)
+        on_route = await store.run(store.FLOOD_ON_ROUTE, id=place, limit=limit)
     except store.GraphUnavailable as exc:
         raise _unavailable(exc) from exc
     trips = sorted({r["trip_name"] for r in rows})
@@ -84,7 +87,12 @@ async def disruption(
         summary = (
             f"{len(rows)} thing(s) on the way on {len(trips)} trip(s): " + ", ".join(trips)
         )
-    return {"place": place, "summary": summary, "disruptions": rows}
+    if at_place:
+        summary += f" {len(at_place)} flood warning(s) cover this place."
+    if on_route:
+        summary += f" {len(on_route)} flood warning(s) cross the way."
+    return {"place": place, "summary": summary, "disruptions": rows,
+            "flood_warnings_here": at_place, "flood_warnings_on_route": on_route}  # fmt: skip
 
 
 @router.post("/rebuild")

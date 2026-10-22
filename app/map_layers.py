@@ -7,6 +7,7 @@ road events) come in whole if any part of them falls inside it, so a closure is 
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from typing import Any
 
@@ -14,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import text
 
 from app.auth import require_token
-from app.geoquery import distance_km, params, within_sql
+from app.geoquery import POINT, distance_km, params, within_sql
 from app.integrations.fuelfinder.normalise import canonical_fuel
 from app.integrations.fuelfinder.queries import haversine_km
 from app.integrations.naptan.normalise import STATION_TYPES
@@ -32,6 +33,7 @@ LAYERS: dict[str, str] = {
     "signs": "Motorway signs",
     "fuel": "Fuel stations",
     "stops": "Bus stops and stations",
+    "floods": "Flood warnings",
     "pollen": "Allergy risk lattice",
 }
 STOPS_CAP = 3000  # nearest first; a city centre can hold far more bus stops than a map can use
@@ -193,6 +195,28 @@ async def _stops(conn: Any, centre: Point | None, radius_km: float) -> list[dict
             for r in res]  # fmt: skip
 
 
+async def _floods(conn: Any, centre: Point | None, radius_km: float) -> list[dict[str, Any]]:
+    """Live warning areas as polygons. Drawn simplified: a coastline is thousands of points, and a
+    map shows a shape, not a survey. Areas whose boundary has not been fetched yet are left out."""
+    sql = (
+        "SELECT w.id, w.severity_level, w.severity, w.message, w.raised_at, a.label, a.county, a.river_or_sea, "
+        "ST_AsGeoJSON(ST_SimplifyPreserveTopology(a.geom::geometry, 0.0002), 5) AS shape "
+        "FROM flood_warning w JOIN flood_area a ON a.notation = w.area "
+        "WHERE w.severity_level <= 3 AND a.geom IS NOT NULL"
+    )
+    args: dict[str, Any] = {}
+    if centre is not None:
+        sql += f" AND ST_DWithin(a.geom, {POINT}, :radius_m)"
+        args = {"lat": centre[0], "lon": centre[1], "radius_m": radius_km * 1000.0}
+    out = []
+    for r in (await conn.execute(text(sql + " ORDER BY w.severity_level DESC"), args)):
+        out.append(_feature(json.loads(r.shape), {
+            "id": r.id, "name": r.label, "level": r.severity_level, "severity": r.severity,
+            "message": r.message, "county": r.county, "river_or_sea": r.river_or_sea,
+            "raised_at": r.raised_at.isoformat() if r.raised_at else None}))  # fmt: skip
+    return out
+
+
 async def _pollen(conn: Any, centre: Point | None, radius_km: float) -> list[dict[str, Any]]:
     res = await _near(conn, "SELECT lat, lon, forecast, changed_at FROM pollen_grid", centre, radius_km)
     out = []
@@ -214,6 +238,7 @@ async def layers(request: Request) -> dict[str, Any]:
         "signs": "SELECT count(*) FROM nh_sign WHERE lat IS NOT NULL",
         "fuel": "SELECT count(*) FROM fuel_station WHERE coords_ok AND NOT permanent_closure",
         "stops": "SELECT count(*) FROM naptan_stop",
+        "floods": "SELECT count(*) FROM flood_warning WHERE severity_level <= 3",
         "pollen": "SELECT count(*) FROM pollen_grid",
     }
     out = []
@@ -275,6 +300,8 @@ async def geojson(
                 features = await _fuel(conn, centre, radius_km, fuel_key)
             elif key == "stops":
                 features = await _stops(conn, centre, radius_km)
+            elif key == "floods":
+                features = await _floods(conn, centre, radius_km)
             else:
                 features = await _pollen(conn, centre, radius_km)
             out[key] = _collection(features, LAYERS[key])
