@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- A Home Assistant dashboard for the Leaf (`homeassistant/dashboards/leaf.yaml`, [docs/leaf.md](docs/leaf.md)): what you need before driving on the first view, diagnostics on the second. A "Before you go" card stays silent unless the car is plugged in but not charging, low, unlocked, open, short of 12V, alerting on cells, or off its tyre pressures. Fed by OVMS; it needs nothing from World Assistant.
+
 ### Fixed
 - A pollen test pinned a forecast to a fixed date, so it passed on the day it was written and failed from the next day on. It now uses the day the app is living in.
 

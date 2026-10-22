@@ -130,7 +130,7 @@ releases are signed (Sigstore) with SBOMs, and every push is scanned for secrets
 - [Runbook](docs/runbook.md): deploy, upgrade, roll back, automatic updates, troubleshoot
 - [Data sources](docs/data-sources.md): each feed, its limits, licence and credit
 - [Assistant](docs/assistant.md): Siri Shortcuts, MCP, the default place
-- [Bus tracker](docs/bus.md), [Trains](docs/trains.md)
+- [Bus tracker](docs/bus.md), [Trains](docs/trains.md), [Leaf dashboard](docs/leaf.md)
 - [Backups](docs/backup.md): the status-page button, the deploy script and restoring
 - [Secrets and key vaults](docs/secrets.md), [bundled OpenBao](docs/openbao.md)
 - [Security](docs/security.md): what is protected and how; supply chain
