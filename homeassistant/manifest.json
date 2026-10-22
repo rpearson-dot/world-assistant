@@ -1,0 +1,53 @@
+{
+  "about": "The release that last changed each Home Assistant file, shown on the /ha page so you know what to copy again. A test checks the hashes: when you change a file, set its changed_in to the coming release and update its sha256.",
+  "files": {
+    "dashboards/events.yaml": {
+      "changed_in": "0.12.0",
+      "sha256": "b5d6fc39704ad46777bc8f87ca435210073af6291ea6c76d90d475f0d1fd377d"
+    },
+    "dashboards/fuel.yaml": {
+      "changed_in": "0.12.0",
+      "sha256": "cc1e311d9753e7702784fedd5779b8394df31454fff1704f5bf22eec54ee88ce"
+    },
+    "dashboards/leaf.yaml": {
+      "changed_in": "0.8.0",
+      "sha256": "f4080d752be0e4e2618d914363f7f13dd3cb3e67bdbeccc712a992eaccd17f59"
+    },
+    "dashboards/manage.yaml": {
+      "changed_in": "0.7.5",
+      "sha256": "2100338da5fea34fa82669407ed94496c87b5f4d33e7593fa8793e77480899f8"
+    },
+    "dashboards/pollen.yaml": {
+      "changed_in": "0.7.4",
+      "sha256": "aa5aa75d0ee40423b637bd1fa706a6bdda2fb6b7f024168ccce9cebf5d5fe521"
+    },
+    "dashboards/roads.yaml": {
+      "changed_in": "0.7.3",
+      "sha256": "58fc495a4decb4df4dc88f5bdbee527a01bdb3c5af5a62265fca8dc7768d3552"
+    },
+    "dashboards/trains-buses.yaml": {
+      "changed_in": "0.12.0",
+      "sha256": "20945a2c3a1d253aa65a7a95baa88b6bd81713ea82db819e68530c00c952ffe2"
+    },
+    "packages/world_assistant_bus.yaml": {
+      "changed_in": "0.7.5",
+      "sha256": "cd6a1975e53ea51455bd7389fd7919d4a5452f6a369cba0c0ddea0429ef269e9"
+    },
+    "packages/world_assistant_events.yaml": {
+      "changed_in": "0.7.5",
+      "sha256": "7aecb013c5806c2535d85f13632c72d29a7db36d04ba15c959f0cee23e99bfe5"
+    },
+    "packages/world_assistant_fuel.yaml": {
+      "changed_in": "0.7.5",
+      "sha256": "0575e3ac1b99a500c115e19e305791b634c9863446a39215f1f992457d9339bd"
+    },
+    "packages/world_assistant_manage.yaml": {
+      "changed_in": "0.7.5",
+      "sha256": "465cf63cc16f7eb48ee68cc51d726f4e9a667f8af1850119a0eedaf3a22079de"
+    },
+    "packages/world_assistant_pollen.yaml": {
+      "changed_in": "0.7.3",
+      "sha256": "b47596d43f8fafe34e29f448d3d143bf1f987eb36b2848d203b9206d0c489bdb"
+    }
+  }
+}

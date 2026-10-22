@@ -227,12 +227,25 @@ PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>World Assistant status</title>
 <style>
-/*BASE_CSS*/</style></head><body><main>
+/*BASE_CSS*/
+  #sutbl .badge { white-space: nowrap; } #sutbl td { vertical-align: top; padding-top: 8px; padding-bottom: 8px; }
+  @media (max-width: 640px) {
+    #sutbl tr { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+    #sutbl td, #sutbl th { border: 0; padding: 0; }
+    #sutbl th { grid-column: 1 / -1; padding-top: 10px; }
+    #sutbl td:nth-child(3), #sutbl td:nth-child(4) { grid-column: 1 / -1; }
+  }
+</style></head><body><main>
 <!--NAV-->
 <h1>Status</h1>
 <form id="f" class="bar"><input id="t" type="password" placeholder="API token" autocomplete="current-password">
 <button class="primary">Load</button></form>
 <p id="msg" class="err"></p>
+<div class="card"><h2>Setup</h2>
+  <p id="sumsg" class="dim">Loading what is set up...</p>
+  <div class="scroll"><table id="sutbl"></table></div>
+  <p class="dim">Keys go in the secrets folder (or run <code>scripts/setup.sh</code> on the server), then
+  <code>docker compose up -d --force-recreate</code>. Every key is optional: a feature without one says so.</p></div>
 <div class="card"><h2>Backups</h2>
   <p class="dim">Your places, trips, vehicles, boards and bus history. Fuel prices and road events refill by themselves
   and are not included. Download a copy and keep it somewhere other than this server.</p>
@@ -248,7 +261,7 @@ PAGE = """<!doctype html>
   <p id="aumsg" class="dim"></p></div>
 <div class="bar"><button id="copy" type="button">Copy to clipboard</button>
 <button id="refresh" type="button">Refresh</button></div>
-<div class="card"><pre id="out">Enter the token from api_token.txt, then Load.</pre></div>
+<details class="card"><summary>Raw status</summary><pre id="out">Enter the token from api_token.txt, then Load.</pre></details>
 <script>
 const out = document.getElementById('out'), msg = document.getElementById('msg');
 const tok = document.getElementById('t');
@@ -259,7 +272,47 @@ async function load() {
   const r = await fetch('/v1/status', { headers: { Authorization: 'Bearer ' + tok.value } });
   if (!r.ok) { msg.textContent = 'Request failed: ' + r.status; return; }
   out.textContent = JSON.stringify(await r.json(), null, 2);
-  bkLoad(); auLoad();
+  bkLoad(); auLoad(); suLoad();
+}
+const SU = { ready: ['good', 'Working'], limited: ['warn', 'Works, better with a key'], waiting: ['warn', 'Set up, first run pending'],
+  off: ['', 'Off'], missing: ['warn', 'Not set up'], failing: ['bad', 'Failing'] };
+function suAgo(iso) {
+  if (!iso) return '';
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  return m < 1 ? 'just now' : m < 120 ? m + ' min ago' : m < 2880 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' days ago';
+}
+function suRow(x) {
+  const tr = document.createElement('tr'), [cls, word] = SU[x.state] || ['', x.state];
+  const name = tr.insertCell(); name.textContent = x.name;
+  const st = tr.insertCell(), b = document.createElement('span');
+  b.className = 'badge ' + cls; b.textContent = word; st.appendChild(b);
+  const what = tr.insertCell(); what.textContent = x.unlocks; what.className = 'dim';
+  const more = tr.insertCell(), bits = [];
+  if (x.state === 'failing' && x.error) bits.push(x.error);
+  else if (x.last_ok) bits.push('Updated ' + suAgo(x.last_ok));
+  if (x.note) bits.push(x.note);
+  if (x.missing_keys && x.missing_keys.length && x.state !== 'off') bits.push('Needs: ' + x.missing_keys.join(', '));
+  more.textContent = bits.map(b => /[.!?]$/.test(b) ? b : b + '.').join(' ');
+  if (x.link && (x.state === 'missing' || x.state === 'limited' || x.state === 'off' || x.link.startsWith('/'))) {
+    const a = document.createElement('a'); a.href = x.link;
+    a.textContent = x.link.startsWith('/') ? ' Open' : ' Get a key';
+    if (!x.link.startsWith('/')) { a.target = '_blank'; a.rel = 'noopener'; }
+    more.appendChild(a);
+  }
+  return tr;
+}
+function suHead(t) { const tr = document.createElement('tr'), th = document.createElement('th'); th.colSpan = 4; th.textContent = t; tr.appendChild(th); return tr; }
+async function suLoad() {
+  const m = document.getElementById('sumsg'), tbl = document.getElementById('sutbl');
+  try {
+    const r = await fetch('/v1/setup', { headers: { Authorization: 'Bearer ' + tok.value } });
+    if (!r.ok) throw new Error('setup returned ' + r.status);
+    const d = await r.json(), all = [...d.you, ...d.keys, ...d.free];
+    tbl.replaceChildren(suHead('You'), ...d.you.map(suRow), suHead('Sources that need a free key'), ...d.keys.map(suRow),
+      suHead('Sources that need no key'), ...d.free.map(suRow));
+    const working = all.filter(x => x.state === 'ready' || x.state === 'limited').length;
+    m.textContent = working + ' of ' + all.length + ' working.' + (d.local ? ' You are on the home network, so no token is needed here.' : '');
+  } catch (e) { m.textContent = e.message; }
 }
 const AU_WORDS = { updated: 'Updated', unchanged: 'Already up to date', refused: 'Not applied',
   rolled_back: 'Update failed its checks; the previous version is running again', failed: 'Needs attention' };
@@ -323,6 +376,6 @@ if (tok.value) load();
 
 
 @page_router.get("/status", response_class=HTMLResponse, include_in_schema=False)
-async def status_page() -> str:
+async def status_page(request: Request) -> str:
     """The page itself holds no data; it asks for the token and calls /v1/status."""
-    return themed(PAGE, "status")
+    return themed(PAGE, "status", request)

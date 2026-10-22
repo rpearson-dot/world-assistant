@@ -41,7 +41,13 @@ make_secret() {
 make_secret postgres_password "$(gen)"
 make_secret nh_subscription_key ""
 make_secret nh_subscription_key_secondary ""
-make_secret mqtt_password ""
+# Your broker's password, if it has one. With the bundled broker (WA_MQTT_HOST=wa-mqtt) one is generated.
+if [ "${WA_MQTT_HOST:-}" = "wa-mqtt" ]; then
+  make_secret mqtt_password "$(gen)"
+  [ -s "$DIR/mqtt_password.txt" ] || { gen | tr -d '\n' > "$DIR/mqtt_password.txt"; echo "filled   $DIR/mqtt_password.txt"; }
+else
+  make_secret mqtt_password ""
+fi
 make_secret api_token "$(gen)"
 make_secret fuel_finder_client_id ""
 make_secret fuel_finder_client_secret ""
@@ -69,17 +75,19 @@ make_secret vault_role_id ""
 make_secret vault_secret_id ""
 
 echo
-echo "Next: put your National Highways primary and secondary keys into"
-echo "  $DIR/nh_subscription_key.txt"
-echo "  $DIR/nh_subscription_key_secondary.txt"
-echo "and the Fuel Finder credentials into"
-echo "  $DIR/fuel_finder_client_id.txt"
-echo "  $DIR/fuel_finder_client_secret.txt"
-echo "  $DIR/tfl_app_key.txt   (optional: TfL works without it at a low rate)"
-echo "  $DIR/nr_access_token.txt   (optional: National Rail departures)"
-echo "Edit them on the server (e.g. with nano); don't share the keys in chat."
+echo "Every key is optional: a feature without its key says it is not set up. Put the ones you want in"
+echo "(the status page's setup checklist says what each unlocks and where to get it):"
+echo "  $DIR/nh_subscription_key.txt and nh_subscription_key_secondary.txt   National Highways roads"
+echo "  $DIR/fuel_finder_client_id.txt and fuel_finder_client_secret.txt      fuel prices"
+echo "  $DIR/tfl_app_key.txt          TfL (works without it at a low rate)"
+echo "  $DIR/nr_access_token.txt      National Rail departures"
+echo "  $DIR/bods_api_key.txt         live bus positions"
+echo "  $DIR/skiddle_api_key.txt, ticketmaster_api_key.txt   events"
+echo "  $DIR/pollen_api_key.txt       pollen"
+echo "  $DIR/octopus_api_key.txt      your Octopus tariff and Saving Sessions"
+echo "Edit them on the server (e.g. with nano); don't share the keys in chat. scripts/setup.sh asks for them instead."
 echo
-echo "The API token (needed to open the status page) is in:"
+echo "From your home network the web pages need no token. From elsewhere, the token is in:"
 echo "  $DIR/api_token.txt"
 
 echo

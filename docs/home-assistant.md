@@ -4,6 +4,20 @@ World Assistant publishes its data to Home Assistant over MQTT, using Home Assis
 [MQTT discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery). Sensors appear on
 their own, grouped into devices; there is no YAML to write and no custom integration to install.
 
+Home Assistant is optional. Set `WA_MQTT_HOST` to the broker Home Assistant uses, or add the bundled one
+(`docker-compose.mqtt.yml`, below); with neither, nothing is published. **The `/ha` page walks you through the
+rest**: the broker, which packages to copy, the exact `secrets.yaml` lines for this server, and each dashboard
+to paste, all from the running version, with what changed since you last copied them.
+
+### The bundled broker
+
+If Home Assistant has no broker yet, run one here: `scripts/setup.sh` (choose 2), or add
+`docker-compose.mqtt.yml` to `COMPOSE_FILE` and set `WA_MQTT_HOST=wa-mqtt` and `WA_MQTT_USER=wa`.
+`init-secrets.sh` generates its password (`mqtt_password.txt`). In Home Assistant, add the MQTT integration with
+this server's address, port 1883 (`WA_MQTT_PUBLISH_PORT`), user `wa` and that password. Anonymous access is
+off and retained messages are kept on disk. If Home Assistant already has a broker (its Mosquitto add-on),
+use that one instead: Home Assistant's MQTT integration talks to one broker.
+
 The worker reads this service's own API every few minutes (so Home Assistant always shows exactly
 what the web pages show) and publishes retained messages to the broker. Home Assistant needs only
 its normal MQTT integration, pointed at the same broker.
@@ -124,6 +138,8 @@ The pollen provider answers one point at a time and, importantly, allows only **
 
 ## Setting up pollen and events (once)
 
+The `/ha` page does these steps with you, with the lines filled in. By hand:
+
 Neither needs any per-person setup, and neither package writes a secret into its file.
 
 1. In Home Assistant's `configuration.yaml`, make sure packages are on:
@@ -161,7 +177,8 @@ use any saved place. Pollen is answered from the stored grid, so the pollen prov
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `WA_MQTT_HOST`, `WA_MQTT_PORT`, `WA_MQTT_USER`, secret `mqtt_password` | | The broker. |
+| `WA_MQTT_HOST`, `WA_MQTT_PORT`, `WA_MQTT_USER`, secret `mqtt_password` | empty | The broker. Empty: nothing is published. `wa-mqtt`: the bundled broker. |
+| `WA_MQTT_PUBLISH_PORT` | `1883` | The bundled broker's port on this server (shown on `/ha`). |
 | `WA_MQTT_ENABLED` | `true` | Turns all MQTT publishing off, including the bus tracker. |
 | `WA_HA_PUBLISH` | `true` | Turns off just these sensors. |
 | `WA_HA_INTERVAL_MIN` | `5` | How often the worker publishes. |

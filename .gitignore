@@ -1,5 +1,6 @@
-# Secrets and local config
+# Secrets, local config and local data (scripts/setup.sh defaults)
 secrets/
+data/
 .env
 *.pem
 *.key

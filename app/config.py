@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     env: str = "production"
     log_level: str = "INFO"
 
+    # Requests from the local network need no token (app/localnet.py). WA_LOCAL_HOSTS adds host names that
+    # count as home ones (comma separated), beyond IP addresses, single-label names and .lan/.local and so on.
+    local_no_token: bool = True
+    local_hosts: str = ""
+
     db_host: str = "wa-db"
     db_port: int = 5432
     db_name: str = "worldassistant"
@@ -40,9 +45,11 @@ class Settings(BaseSettings):
     # Shared Redis: every key this app writes is prefixed "wa:".
     redis_url: str = "redis://wa-redis:6379/0"
 
-    mqtt_host: str = "mosquitto"
+    # The MQTT broker Home Assistant uses. Empty: nothing is published (Home Assistant is optional).
+    mqtt_host: str = ""
     mqtt_port: int = 1883
     mqtt_user: str = ""
+    mqtt_publish_port: int = 1883  # the bundled broker's port on this server, shown on the /ha page
     mqtt_enabled: bool = True
     mqtt_topic_prefix: str = "world_assistant"
     mqtt_discovery_prefix: str = "homeassistant"
@@ -176,6 +183,11 @@ class Settings(BaseSettings):
     @property
     def pollen_api_key(self) -> str:
         return read_secret("pollen_api_key")
+
+    @property
+    def mqtt_active(self) -> bool:
+        """Publishing to Home Assistant is on: a broker is set and nothing turned it off."""
+        return self.mqtt_enabled and bool(self.mqtt_host.strip())
 
     @property
     def mqtt_password(self) -> str:

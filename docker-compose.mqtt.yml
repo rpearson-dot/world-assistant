@@ -1,0 +1,61 @@
+# Adds an MQTT broker (Mosquitto) for Home Assistant, for when you do not have one.
+#
+# If Home Assistant already uses a broker (its Mosquitto add-on, or a container of your own), do not add
+# this: set WA_MQTT_HOST to that broker instead. Home Assistant's MQTT integration talks to one broker.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.mqtt.yml up -d
+#   (or put COMPOSE_FILE=docker-compose.yml:docker-compose.mqtt.yml in .env; scripts/setup.sh does that)
+#
+# In .env: WA_MQTT_HOST=wa-mqtt and WA_MQTT_USER=wa. The password is the mqtt_password secret (setup.sh and
+# init-secrets.sh generate one). In Home Assistant, add the MQTT integration with this server's address,
+# port WA_MQTT_PUBLISH_PORT (default 1883), user wa and that password. Anonymous access is off; retained
+# messages (the sensors) are kept on disk, so Home Assistant sees them straight after a restart.
+
+services:
+  wa-mqtt:
+    image: eclipse-mosquitto:2.0.20
+    restart: unless-stopped
+    labels:
+      net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/worker.png"
+    networks: [internal]
+    ports:
+      # Home Assistant connects here, so it is published to the LAN. Never forward it to the internet.
+      - "${WA_MQTT_PUBLISH_PORT:-1883}:1883"
+    environment:
+      TZ: ${TZ:-Europe/London}
+      WA_MQTT_USER: ${WA_MQTT_USER:-wa}
+    secrets:
+      - mqtt_password
+    volumes:
+      - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/mosquitto:/mosquitto/data
+    # The image's entrypoint makes /mosquitto/data the broker's own; this writes the password file and
+    # config from the secret on every start (so changing the secret and restarting is enough), then runs it.
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        pw="$$(cat /run/secrets/mqtt_password)"
+        [ -n "$$pw" ] || { echo "The mqtt_password secret is empty: run scripts/init-secrets.sh" >&2; exit 1; }
+        umask 077
+        printf '%s:%s\n' "$${WA_MQTT_USER:-wa}" "$$pw" > /mosquitto/data/passwd
+        mosquitto_passwd -U /mosquitto/data/passwd
+        cat > /mosquitto/data/mosquitto.conf <<EOF
+        listener 1883
+        allow_anonymous false
+        password_file /mosquitto/data/passwd
+        persistence true
+        persistence_location /mosquitto/data/
+        log_dest stdout
+        log_type error
+        log_type warning
+        log_type notice
+        EOF
+        chown mosquitto:mosquitto /mosquitto/data/passwd /mosquitto/data/mosquitto.conf
+        exec mosquitto -c /mosquitto/data/mosquitto.conf
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -u \"$${WA_MQTT_USER:-wa}\" -P \"$$(cat /run/secrets/mqtt_password)\" -t '$$SYS/broker/uptime' -C 1 -W 5 >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

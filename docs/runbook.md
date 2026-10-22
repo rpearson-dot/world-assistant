@@ -3,10 +3,12 @@
 ## Build locally and run
 
 ```bash
-cp .env.example .env && bash scripts/init-secrets.sh
-docker compose up -d --build
+bash scripts/setup.sh      # asks where things live, about Home Assistant and routing, and for keys; then starts
 docker compose ps          # all services running / healthy; migrate exited 0
 ```
+
+Or by hand: `cp .env.example .env`, edit it, `bash scripts/init-secrets.sh`, put keys in the secret files,
+`docker compose up -d --build`. Re-run `setup.sh` any time to change answers; Enter keeps each current value.
 
 Optional extras: add `-f docker-compose.routing.yml` for Valhalla and
 `-f docker-compose.hardened.yml` for the read-only, capability-dropped containers.
@@ -56,6 +58,10 @@ docker compose exec -T wa-db pg_restore -U worldassistant -d worldassistant --cl
 ```
 
 ## First data load
+
+On a new install the worker loads fuel stations (with a Fuel Finder key), bus stops and stations, and
+postcodes as soon as it starts, rather than at the nightly run. The status page's Setup list shows them
+arrive. By hand:
 
 - **Fuel:** from a stored capture without calling the API again:
   `docker compose run --rm worker python -m app.integrations.fuelfinder.sync --from-capture`.

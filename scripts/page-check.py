@@ -1,4 +1,4 @@
-"""Open every page in a real browser, enter the token, press Load, and fail on any script error.
+"""Open every page in a real browser, enter the token if asked, press Load, and fail on any script error.
 
 Needs Playwright with Chromium (CI installs it). Reads WA_SMOKE_URL and WA_SMOKE_TOKEN.
 """
@@ -10,7 +10,7 @@ import sys
 
 from playwright.sync_api import sync_playwright
 
-PAGES = ("/status", "/bus", "/trains", "/fuel", "/events", "/pollen", "/places")
+PAGES = ("/status", "/bus", "/trains", "/fuel", "/events", "/pollen", "/places", "/ha")
 # Console messages that are the browser's own noise about a failed request, not a script fault.
 # A 4xx/5xx from a feature that is not set up (no API key) is reported by the smoke check instead.
 IGNORE = ("Failed to load resource",)
@@ -38,9 +38,11 @@ def main() -> int:
             if page.locator("nav").count() == 0:
                 problems.append("no navigation bar")
             if page.locator("#t").count():
-                page.fill("#t", token)
-                if page.locator("#go").count():
-                    page.click("#go")
+                # From the local network the token box is hidden and the page loads by itself.
+                if page.locator("#t").is_visible():
+                    page.fill("#t", token)
+                    if page.locator("#go").count():
+                        page.click("#go")
                 page.wait_for_timeout(1500)
             if page.locator("#t").count() and page.locator("main").count() == 0:
                 problems.append("page body is empty")

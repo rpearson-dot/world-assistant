@@ -35,7 +35,7 @@ send an `Authorization: Bearer` header.
 
 Do not expose the port to the internet. Put the server on Tailscale and use its Tailscale name in
 the URLs above; your phone then reaches it from anywhere while it is signed in to the same tailnet.
-The server itself only checks the token, so keep the token secret and rotate it if it leaks.
+From the home network neither needs the token (see [security.md](security.md#access)); from anywhere else, including over Tailscale through a proxy, they do. The server itself only checks the token, so keep the token secret and rotate it if it leaks.
 Remote connectors that are called from a vendor's cloud (rather than from your own device) cannot
 reach a Tailscale-only address.
 

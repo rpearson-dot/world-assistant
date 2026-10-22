@@ -16,7 +16,7 @@ import json
 import logging
 import math
 import statistics
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -464,7 +464,7 @@ def _fingerprint(devices: list[Device]) -> str:
 async def ha_sync(ctx: dict[str, Any]) -> int:
     """Worker job: publish every domain. Discovery goes out on start and whenever the sensors change."""
     s = get_settings()
-    if not (s.mqtt_enabled and s.ha_publish):
+    if not (s.mqtt_active and s.ha_publish):
         return 0
     async with httpx.AsyncClient(
         base_url=s.ha_api_url, timeout=30, headers={"Authorization": f"Bearer {s.api_token}"}
@@ -491,4 +491,21 @@ async def ha_sync(ctx: dict[str, Any]) -> int:
         ctx["ha_keys"] = keys
     else:
         ctx["ha_images"] = before  # not sent: try again next time
-    return sum(len(d.sensors) for d in devices) if ok else 0
+    sensors = sum(len(d.sensors) for d in devices)
+    await record(ctx, ok, sensors)
+    return sensors if ok else 0
+
+
+HA_LAST_KEY = "wa:ha:last"
+
+
+async def record(ctx: dict[str, Any], ok: bool, sensors: int) -> None:
+    """What the last publish did, for the status page's setup checklist. Best effort."""
+    redis = ctx.get("redis")
+    if redis is None:
+        return
+    entry = {"at": datetime.now(UTC).isoformat(), "ok": ok, "sensors": sensors, "error": "" if ok else mqtt.last_error}
+    try:
+        await redis.set(HA_LAST_KEY, json.dumps(entry), ex=86400)
+    except Exception:  # never stop publishing over a status note
+        log.debug("could not record the publish result", exc_info=True)

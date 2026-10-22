@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from starlette.requests import HTTPConnection
+
+from app.localnet import PAGE_SNIPPET, is_local
+
 BASE_CSS = """
   :root {
     color-scheme: light dark;
@@ -71,11 +75,14 @@ NAV = """<nav>
   <a href="/status" data-p="status">Status</a><a href="/bus" data-p="bus">Buses</a>
   <a href="/trains" data-p="trains">Trains</a><a href="/fuel" data-p="fuel">Fuel</a><a href="/energy" data-p="energy">Energy</a>
   <a href="/events" data-p="events">Events</a><a href="/pollen" data-p="pollen">Pollen</a><a href="/places" data-p="places">Places</a><a href="/map" data-p="map">Map</a>
+  <a href="/ha" data-p="ha">Home Assistant</a>
 </nav>
 """
 
 
-def themed(page: str, here: str) -> str:
-    """Fill the style and nav placeholders of a page."""
+def themed(page: str, here: str, request: HTTPConnection | None = None) -> str:
+    """Fill the style and nav placeholders of a page. From the local network, the token box goes away."""
     nav = NAV.replace(f'data-p="{here}"', f'class="here" data-p="{here}"')
+    if request is not None and is_local(request):
+        nav += PAGE_SNIPPET
     return page.replace("/*BASE_CSS*/", BASE_CSS).replace("<!--NAV-->", nav)
