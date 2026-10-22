@@ -83,8 +83,11 @@ the battery.
 time slots (00:00 04:00 07:00 13:00 16:00 22:00, grid charge on for slots 2, 4 and 6). It changes only the target
 charge level of the three charging slots, from expected use and tomorrow's solar forecast (Forecast.Solar). It
 starts as a dry run that only writes to the logbook; switch on "WA energy plan: apply to inverter" when the numbers
-look right. It does not use World Assistant yet: on Cosy the cheap windows are fixed and already in the slots. WA's
-sensors come in for Saving Sessions and for tariffs whose cheap times move.
+look right. On Cosy the cheap windows are fixed and already in the slots, so WA is not needed for those. WA's Saving Session
+sensors are used to raise the 13:00 target when you have joined a session between 16:00 and 22:00, to warn if the
+battery runs low during a joined session, and to flag a joined session outside 16:00-22:00 that the plan does not
+handle. Nothing in the package switches the grid off or limits what the inverter can draw: any shortfall is taken
+from the grid by the inverter itself, so the cost of a shortfall is a smaller reward, not a loss of supply.
 
 ## Notes
 
