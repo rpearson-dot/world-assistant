@@ -1,0 +1,87 @@
+# The knowledge graph
+
+Neo4j holds how World Assistant's data joins up, so a question can be answered by following
+connections rather than by knowing in advance which endpoint to call.
+
+It holds **no data of its own**. Every node carries the id of the Postgres record it stands for, and
+a job rebuilds the lot from Postgres. Drop it, rebuild it, nothing is lost. It is deliberately left
+out of the backup; `pg_dump` already covers everything that matters. Why it is built this way:
+[ADR 0006](adr/0006-knowledge-graph.md).
+
+## Turning it on
+
+```
+docker compose -f docker-compose.yml -f docker-compose.graph.yml up -d
+```
+
+`scripts/init-secrets.sh` makes the `graph_password` secret (and the `neo4j_auth.txt` the Neo4j image
+wants) if they are not there already. Set `WA_GRAPH_ENABLED=true` so the api and worker use it. The
+service is reachable only inside the stack, as `bolt://wa-graph:7687`; nothing is published to your
+LAN. To look around with Neo4j Browser, publish port 7474 for as long as you need it.
+
+With it switched off, every graph endpoint answers 503 and says so. Nothing else changes.
+
+## What is in it
+
+| Node | One per | Carries |
+| --- | --- | --- |
+| `Place` | saved place | name, kind, postcode, position |
+| `Trip` | trip | name, whether it is enabled |
+| `Corridor` | road corridor | name, road numbers, width |
+| `RoadEvent` | open closure or speed limit | kind, cause, limit |
+| `Station` | fuel station | name, brand, position |
+| `Location` | Home Assistant location | name, position |
+| `Vehicle` | vehicle | name, kind |
+| `BusTracker` | bus tracker | line |
+
+| Relationship | Meaning |
+| --- | --- |
+| `(Trip)-[:FROM\|:TO]->(Place)` | where a trip runs between |
+| `(Trip)-[:USES]->(Corridor)` | the corridor built for that trip |
+| `(RoadEvent)-[:AFFECTS]->(Corridor)` | a closure or limit on that corridor |
+| `(Station)-[:ALONG {km}]->(Corridor)` | a station close enough to be on the way |
+| `(Station\|Location)-[:NEAR {km}]->(Place)` | close to a place, with the distance |
+| `(Vehicle)-[:DRIVES]->(Trip)` | a vehicle that could make the trip |
+
+`WA_GRAPH_NEAR_KM` (3 km) and `WA_GRAPH_ALONG_KM` (2 km) decide how close counts.
+
+## Asking it
+
+| Endpoint | Answers |
+| --- | --- |
+| `GET /v1/graph/about` | the vocabulary; works even with the graph switched off |
+| `GET /v1/graph/counts` | how many of each node and relationship there are |
+| `GET /v1/graph/neighbours?id=home` | everything joined to one thing, either direction |
+| `GET /v1/graph/disruption?place=home` | closures and limits on the corridors of trips from a place |
+| `POST /v1/graph/rebuild` | rebuild now rather than waiting |
+
+`disruption` is the one that shows the point: it follows place → trip → corridor → road event, four
+steps, without anyone writing a query for that question.
+
+## Rebuilding
+
+The worker rebuilds at **:08 and :38** past each hour, so the graph is never more than half an hour
+behind Postgres. By hand:
+
+```
+docker compose exec worker python -m app.graph.build
+```
+
+Each build stamps every node and relationship with its own id and then deletes anything carrying an
+older one, so a rebuild replaces rather than accumulates. Interrupting a build leaves the previous
+graph in place.
+
+## What it will not hold
+
+History and configuration stay in Postgres. The bus record, fuel price changes and pollen readings
+are time-series answered by aggregates — the shape a graph database is worst at. Places, trips and
+vehicles rely on foreign keys, unique constraints and Alembic migrations, which Postgres does better.
+
+## A caveat worth knowing
+
+There is no Neo4j in CI, so the tests drive the writer against a fake session: they prove the order,
+the grouping and the parameters, but not that the Cypher parses. The first real `graph_build` is what
+proves that. If it fails, the error names the statement.
+
+Proximity is computed in Python over every pair of things, because nothing in WA uses PostGIS yet.
+That is quick enough at this size and is the first thing to replace once PostGIS is in use.

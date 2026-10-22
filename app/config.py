@@ -67,6 +67,14 @@ class Settings(BaseSettings):
     map_tile_attribution: str = "© OpenStreetMap contributors"
     map_max_zoom: int = 19
 
+    # The knowledge graph (optional, docker-compose.graph.yml). Neo4j holds relationships derived
+    # from Postgres and owns no data of its own: it can be dropped and rebuilt at any time.
+    graph_enabled: bool = False
+    graph_url: str = "bolt://wa-graph:7687"
+    graph_user: str = "neo4j"
+    graph_near_km: float = 3.0  # how close a station or location must be to a place to be "near" it
+    graph_along_km: float = 2.0  # how close a station must be to a corridor to be "along" it
+
     # National Highways allows 10 calls per subscription key per minute.
     # Stay under it so retries and clock skew never trip the upstream limit.
     nh_rate_limit_per_minute: int = 8
@@ -154,6 +162,10 @@ class Settings(BaseSettings):
     @property
     def mqtt_password(self) -> str:
         return read_secret("mqtt_password")
+
+    @property
+    def graph_password(self) -> str:
+        return read_secret("graph_password")
 
     @property
     def nh_primary_key(self) -> str:

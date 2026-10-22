@@ -11,6 +11,7 @@ from arq.connections import RedisSettings
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import get_settings
+from app.graph.build import graph_build
 from app.ha_publish import ha_sync
 from app.integrations.bus.poller import poll_bus
 from app.integrations.fuelfinder.sync import fuel_sync_prices, fuel_sync_stations
@@ -37,6 +38,9 @@ async def startup(ctx: dict[str, Any]) -> None:
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:
+    from app.graph import store as graph_store
+
+    await graph_store.close()
     await ctx["engine"].dispose()
     log.info("world-assistant worker stopping")
 
@@ -64,6 +68,7 @@ class WorkerSettings:
         pollen_sync,
         pollen_grid_sync,
         ha_sync,
+        graph_build,
     ]
     cron_jobs: ClassVar[list] = [
         cron(heartbeat, minute=set(range(0, 60, 5))),
@@ -84,6 +89,8 @@ class WorkerSettings:
         cron(pollen_grid_sync, hour={3, 15}, minute={40}, timeout=3000, max_tries=1),
         # Home Assistant sensors. WA_HA_INTERVAL_MIN (default 5) must divide into the hour sensibly.
         cron(ha_sync, minute=set(range(1, 60, _HA_MIN)), timeout=120, max_tries=1),
+        # Knowledge graph, rebuilt from Postgres twice an hour. It returns at once when switched off.
+        cron(graph_build, minute={8, 38}, timeout=300, max_tries=1),
         cron(
             poll_planned,
             hour=set(range(0, 24, _PLANNED_HOURS)),

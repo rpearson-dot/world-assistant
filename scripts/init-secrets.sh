@@ -51,6 +51,16 @@ make_secret skiddle_api_key ""
 make_secret ticketmaster_api_key ""
 make_secret pollen_api_key ""
 make_secret redis_password "$(gen)"
+# Only needed with docker-compose.graph.yml (the knowledge graph); harmless otherwise.
+# Neo4j's image wants "user/password" in one file, so it is written from the same password.
+make_secret graph_password "$(gen)"
+if [ ! -e "$DIR/neo4j_auth.txt" ]; then
+  printf 'neo4j/%s' "$(cat "$DIR/graph_password.txt")" > "$DIR/neo4j_auth.txt"
+  echo "created  $DIR/neo4j_auth.txt"
+  chmod 644 "$DIR/neo4j_auth.txt"
+else
+  echo "kept     $DIR/neo4j_auth.txt"
+fi
 # Only needed if you use a Vault / OpenBao key vault (docs/secrets.md); leave empty otherwise.
 make_secret vault_token ""
 make_secret vault_role_id ""

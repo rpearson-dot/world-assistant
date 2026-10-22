@@ -15,6 +15,7 @@ ROLES = {  # file name: (band text, band colour); the api icon has no band
     "cache": ("CACHE", "#d6453d"),
     "routing": ("ROUTING", "#12a594"),
     "vault": ("VAULT", "#c79a00"),
+    "graph": ("GRAPH", "#2d7ff9"),
 }
 
 GLOBE = f"""

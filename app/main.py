@@ -24,6 +24,8 @@ from app.events import page_router as events_page_router
 from app.events import router as events_router
 from app.fuel import page_router as fuel_page_router
 from app.fuel import router as fuel_router
+from app.graph import store as graph_store
+from app.graph_routes import router as graph_router
 from app.ha_locations import router as ha_locations_router
 from app.ha_routes import router as ha_routes_router
 from app.icons import router as icons_router
@@ -57,6 +59,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("world-assistant api started (env=%s)", settings.env)
     yield
 
+    await graph_store.close()
     await app.state.redis.aclose()
     await app.state.engine.dispose()
 
@@ -77,6 +80,7 @@ app.include_router(pollen_router)
 app.include_router(pollen_page_router)
 app.include_router(places_router)
 app.include_router(map_router)
+app.include_router(graph_router)
 app.include_router(map_page_router)
 app.include_router(fuel_router)
 app.include_router(bus_router)

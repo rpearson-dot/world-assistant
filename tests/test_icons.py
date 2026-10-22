@@ -23,7 +23,8 @@ def test_icons_are_served_without_a_token_and_only_the_known_ones() -> None:
 
 def test_every_compose_icon_label_names_a_real_icon() -> None:
     seen = set()
-    for f in ("docker-compose.yml", "docker-compose.routing.yml", "docker-compose.openbao.yml"):
+    for f in ("docker-compose.yml", "docker-compose.routing.yml", "docker-compose.openbao.yml",
+              "docker-compose.graph.yml"):
         doc = yaml.safe_load((ROOT / f).read_text())
         for svc in doc["services"].values():
             icon = (svc.get("labels") or {}).get("net.unraid.docker.icon")
