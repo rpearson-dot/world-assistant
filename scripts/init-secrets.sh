@@ -69,6 +69,8 @@ if [ ! -e "$DIR/neo4j_auth.txt" ]; then
 else
   echo "kept     $DIR/neo4j_auth.txt"
 fi
+# Only needed with docker-compose.tailscale.yml: an auth key from the Tailscale admin console (first start only).
+make_secret tailscale_authkey ""
 # Only needed if you use a Vault / OpenBao key vault (docs/secrets.md); leave empty otherwise.
 make_secret vault_token ""
 make_secret vault_role_id ""

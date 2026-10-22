@@ -1,0 +1,55 @@
+# Puts World Assistant on your tailnet as its own device, with HTTPS: https://world-assistant.<tailnet>.ts.net
+# Reach it from your phone (web pages, Siri Shortcuts) and from AI assistants (MCP) wherever you are, without
+# opening a port to the internet. Tailscale issues the certificate.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.tailscale.yml up -d
+#   (or add docker-compose.tailscale.yml to COMPOSE_FILE in .env)
+#
+# Once, in the Tailscale admin console:
+#   1. DNS: turn on MagicDNS and HTTPS Certificates.
+#   2. Settings > Keys: generate an auth key (reusable off, ephemeral off; a tag such as tag:world-assistant
+#      if you use ACL tags) and put it in the tailscale_authkey secret (WA_SECRETS_DIR/tailscale_authkey.txt).
+#      It is only needed for the first start: the device's identity is then kept in WA_DATA_DIR/tailscale.
+#
+# Over the tailnet the web pages need no token in a browser signed in to your tailnet; Siri Shortcuts, MCP
+# clients and scripts send the token (docs/tailscale.md). Funnel (public internet) stays off.
+
+services:
+  wa-tailscale:
+    image: tailscale/tailscale:${WA_TAILSCALE_TAG:-stable}
+    restart: unless-stopped
+    labels:
+      net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/world-assistant.png"
+    networks: [internal]
+    environment:
+      TZ: ${TZ:-Europe/London}
+      TS_HOSTNAME: ${WA_TAILSCALE_NAME:-world-assistant}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_USERSPACE: "true"
+      TS_EXTRA_ARGS: ${WA_TAILSCALE_ARGS:-}
+    secrets:
+      - tailscale_authkey
+    volumes:
+      - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/tailscale:/var/lib/tailscale
+      # A directory, not the file: Tailscale watches it for changes.
+      - ./deploy/tailscale:/config:ro
+    # The auth key is read from the secret, so it is never in the environment of the compose file.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        key="$$(cat /run/secrets/tailscale_authkey 2>/dev/null || true)"
+        [ -n "$$key" ] && export TS_AUTHKEY="$$key?ephemeral=false"
+        exec /usr/local/bin/containerboot
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    environment:
+      WA_TAILSCALE_PROXY: wa-tailscale
+
+secrets:
+  tailscale_authkey:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/tailscale_authkey.txt

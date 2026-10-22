@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import ssl
 import time
 from typing import Any
 
@@ -18,6 +19,15 @@ Message = tuple[str, str, bool]  # topic, payload, retain
 _BACKOFF_S = 300
 _down_until = 0.0
 last_error = ""  # why the last publish failed, for the status page ("" after a success)
+
+
+def tls_context(enabled: bool, ca_file: str = "") -> ssl.SSLContext | None:
+    """TLS for the broker connection: verified against the system's trusted roots, or your own CA file."""
+    if not enabled:
+        return None
+    ctx = ssl.create_default_context(cafile=ca_file or None)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    return ctx
 
 
 def bus_topic(prefix: str, tid: str, name: str) -> str:
@@ -91,11 +101,11 @@ async def publish(messages: list[Message]) -> bool:
     try:
         async with aiomqtt.Client(
             hostname=s.mqtt_host, port=s.mqtt_port, username=s.mqtt_user or None,
-            password=s.mqtt_password or None, timeout=8,
+            password=s.mqtt_password or None, timeout=8, tls_context=tls_context(s.mqtt_tls, s.mqtt_tls_ca),
         ) as client:  # fmt: skip
             for topic, payload, retain in messages:
                 await client.publish(topic, payload, qos=1, retain=retain)
-    except (aiomqtt.MqttError, OSError) as exc:
+    except (aiomqtt.MqttError, OSError, ssl.SSLError) as exc:
         _down_until = time.monotonic() + _BACKOFF_S
         last_error = f"{type(exc).__name__}: {exc}"[:200]
         log.warning("MQTT publish failed (%s); retrying in %d s", type(exc).__name__, _BACKOFF_S)

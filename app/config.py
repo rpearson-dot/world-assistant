@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # count as home ones (comma separated), beyond IP addresses, single-label names and .lan/.local and so on.
     local_no_token: bool = True
     local_hosts: str = ""
+    # The Tailscale sidecar's name on the stack's network (docker-compose.tailscale.yml sets it). Its browser
+    # requests from signed-in tailnet users need no token for the web pages; the API, MCP and Siri still do.
+    tailscale_proxy: str = ""
+    tailnet_web_no_token: bool = True
 
     db_host: str = "wa-db"
     db_port: int = 5432
@@ -50,6 +54,10 @@ class Settings(BaseSettings):
     mqtt_port: int = 1883
     mqtt_user: str = ""
     mqtt_publish_port: int = 1883  # the bundled broker's port on this server, shown on the /ha page
+    # TLS to the broker (docs/mqtt-tls.md). The certificate must match WA_MQTT_HOST; WA_MQTT_TLS_CA is only
+    # needed for a private certificate authority (a public one, such as Let's Encrypt, is trusted already).
+    mqtt_tls: bool = False
+    mqtt_tls_ca: str = ""
     mqtt_enabled: bool = True
     mqtt_topic_prefix: str = "world_assistant"
     mqtt_discovery_prefix: str = "homeassistant"

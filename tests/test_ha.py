@@ -350,3 +350,12 @@ async def test_collecting_a_bus_tracker_end_to_end_survives_a_failing_log() -> N
     keys = {s.key for s in bus.sensors}
     assert {"chance", "ended_early", "next_board", "active_buses"} <= keys  # the log failing only drops the record
     assert "record" not in keys
+
+
+def test_tls_to_the_broker_is_verified() -> None:
+    import ssl
+
+    assert mqtt.tls_context(False) is None
+    ctx = mqtt.tls_context(True)
+    assert ctx is not None and ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname
+    assert ctx.minimum_version == ssl.TLSVersion.TLSv1_2

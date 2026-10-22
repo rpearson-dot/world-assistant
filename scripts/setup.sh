@@ -76,6 +76,10 @@ mkdir -p "$data/backups"
 # The app runs as uid 10001 and writes backups here (as scripts/deploy.sh sets it up).
 chown 10001:10001 "$data/backups" 2>/dev/null || chmod 777 "$data/backups"
 chmod 770 "$data/backups" 2>/dev/null || true
+# Keys saved from the Settings page in the browser live here; the app writes them.
+mkdir -p "$data/keys"
+chown 10001:10001 "$data/keys" 2>/dev/null || chmod 777 "$data/keys"
+chmod 700 "$data/keys" 2>/dev/null || true
 
 hr "Home Assistant"
 host_now="$(env_get WA_MQTT_HOST)"
@@ -91,7 +95,8 @@ say "  3) I don't use Home Assistant (you can change this later)"
 mq="$(ask "Choose 1, 2 or 3" "$choice_now")"
 files="$(env_or COMPOSE_FILE docker-compose.yml)"
 # keep any other overlays (vault, graph, traefik); the broker and routing ones are decided below
-files="$(printf '%s' "$files" | tr ':' '\n' | grep -v -e '^docker-compose.mqtt.yml$' -e '^docker-compose.routing.yml$' | paste -sd: - || true)"
+files="$(printf '%s' "$files" | tr ':' '\n' | grep -v -e '^docker-compose.mqtt.yml$' -e '^docker-compose.routing.yml$' \
+  -e '^docker-compose.graph.yml$' -e '^docker-compose.tailscale.yml$' | paste -sd: - || true)"
 files="${files:-docker-compose.yml}"
 case "$mq" in
   1)
@@ -118,12 +123,37 @@ say "Valhalla turns your trips into real road routes, so closures, fuel and cond
 say "It downloads about 2 GB and builds for a while the first time."
 routing="$(ask "Add it? (y/n)" "$has_routing")"
 case "$routing" in y|Y|yes) files="$files:docker-compose.routing.yml" ;; esac
+
+hr "Knowledge graph (optional)"
+has_graph=n
+case ":$(env_get COMPOSE_FILE):" in *:docker-compose.graph.yml:*) has_graph=y ;; esac
+say "Neo4j holds how your places, trips, roads and stations connect: the Graph page and the assistant use it."
+say "It needs about 1 GB of memory."
+graphq="$(ask "Add it? (y/n)" "$has_graph")"
+case "$graphq" in
+  y|Y|yes) files="$files:docker-compose.graph.yml"; env_set WA_GRAPH_ENABLED true ;;
+  *) env_set WA_GRAPH_ENABLED false ;;
+esac
+
+hr "Tailscale (optional)"
+has_ts=n
+case ":$(env_get COMPOSE_FILE):" in *:docker-compose.tailscale.yml:*) has_ts=y ;; esac
+say "Puts World Assistant on your tailnet with HTTPS, for your phone, Siri Shortcuts and AI assistants anywhere."
+say "First, in the Tailscale admin console: turn on MagicDNS and HTTPS certificates, and create an auth key."
+tsq="$(ask "Add it? (y/n)" "$has_ts")"
+case "$tsq" in y|Y|yes) files="$files:docker-compose.tailscale.yml" ;; esac
 env_set COMPOSE_FILE "$files"
 
 hr "Secret files"
 made="$(bash scripts/init-secrets.sh)"
 printf '%s\n' "$made" | grep -E '^(created|filled)' || true
 dir="$secrets"
+case "$tsq" in
+  y|Y|yes)
+    k="$(secret_ask "Tailscale auth key (Enter to keep the one you have)")"
+    [ -n "$k" ] && { printf '%s' "$k" > "$dir/tailscale_authkey.txt"; chmod 644 "$dir/tailscale_authkey.txt"; }
+    ;;
+esac
 if [ "$mq" = 1 ]; then
   pw="$(secret_ask "Broker password (Enter to keep or leave empty)")"
   [ -n "$pw" ] && { printf '%s' "$pw" > "$dir/mqtt_password.txt"; chmod 644 "$dir/mqtt_password.txt"; }

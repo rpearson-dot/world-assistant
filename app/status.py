@@ -1,4 +1,4 @@
-"""Read-only status API and a small status page.
+"""Read-only status API (the Settings page shows it).
 
 Everything here reports what the application itself knows (job runs, stored data,
 worker heartbeat). It cannot see other containers or Unraid, and it never writes.
@@ -10,15 +10,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse
 from sqlalchemy import text
 
 from app.auth import require_token
-from app.pagestyle import themed
 from app.version import COMMIT, VERSION
 
 router = APIRouter(prefix="/v1/status", tags=["status"], dependencies=[Depends(require_token)])
-page_router = APIRouter()
 
 
 def _rows(result: Any) -> list[dict[str, Any]]:
@@ -220,162 +217,3 @@ async def events_map(
             "pts": [[round(a, 4), round(b, 4)] for a, b in _sample(pts)],
         })  # fmt: skip
     return {"count": len(out), "events": out}
-
-
-PAGE = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>World Assistant status</title>
-<style>
-/*BASE_CSS*/
-  #sutbl .badge { white-space: nowrap; } #sutbl td { vertical-align: top; padding-top: 8px; padding-bottom: 8px; }
-  @media (max-width: 640px) {
-    #sutbl tr { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-    #sutbl td, #sutbl th { border: 0; padding: 0; }
-    #sutbl th { grid-column: 1 / -1; padding-top: 10px; }
-    #sutbl td:nth-child(3), #sutbl td:nth-child(4) { grid-column: 1 / -1; }
-  }
-</style></head><body><main>
-<!--NAV-->
-<h1>Status</h1>
-<form id="f" class="bar"><input id="t" type="password" placeholder="API token" autocomplete="current-password">
-<button class="primary">Load</button></form>
-<p id="msg" class="err"></p>
-<div class="card"><h2>Setup</h2>
-  <p id="sumsg" class="dim">Loading what is set up...</p>
-  <div class="scroll"><table id="sutbl"></table></div>
-  <p class="dim">Keys go in the secrets folder (or run <code>scripts/setup.sh</code> on the server), then
-  <code>docker compose up -d --force-recreate</code>. Every key is optional: a feature without one says so.</p></div>
-<div class="card"><h2>Backups</h2>
-  <p class="dim">Your places, trips, vehicles, boards and bus history. Fuel prices and road events refill by themselves
-  and are not included. Download a copy and keep it somewhere other than this server.</p>
-  <div class="row"><button id="bk" class="primary" type="button">Back up now</button>
-  <span id="bkmsg" class="dim"></span></div>
-  <table id="bklist"></table></div>
-<div class="card"><h2>Automatic updates</h2>
-  <p class="dim">When on, a job on this server checks every night at 04:00 for a newer signed release, backs up,
-  updates, checks that every page and endpoint still answers, and puts the old version back if they do not.
-  It can only apply what has been released. The one-time setup of that job is in the runbook.</p>
-  <div class="row"><label style="flex-direction:row;align-items:center;gap:8px;margin:0">
-  <input id="au" type="checkbox" style="width:auto"> Update this server automatically</label></div>
-  <p id="aumsg" class="dim"></p></div>
-<div class="bar"><button id="copy" type="button">Copy to clipboard</button>
-<button id="refresh" type="button">Refresh</button></div>
-<details class="card"><summary>Raw status</summary><pre id="out">Enter the token from api_token.txt, then Load.</pre></details>
-<script>
-const out = document.getElementById('out'), msg = document.getElementById('msg');
-const tok = document.getElementById('t');
-try { tok.value = sessionStorage.getItem('wa_token') || ''; } catch (e) {}
-async function load() {
-  msg.textContent = '';
-  try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
-  const r = await fetch('/v1/status', { headers: { Authorization: 'Bearer ' + tok.value } });
-  if (!r.ok) { msg.textContent = 'Request failed: ' + r.status; return; }
-  out.textContent = JSON.stringify(await r.json(), null, 2);
-  bkLoad(); auLoad(); suLoad();
-}
-const SU = { ready: ['good', 'Working'], limited: ['warn', 'Works, better with a key'], waiting: ['warn', 'Set up, first run pending'],
-  off: ['', 'Off'], missing: ['warn', 'Not set up'], failing: ['bad', 'Failing'] };
-function suAgo(iso) {
-  if (!iso) return '';
-  const m = Math.round((Date.now() - new Date(iso)) / 60000);
-  return m < 1 ? 'just now' : m < 120 ? m + ' min ago' : m < 2880 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' days ago';
-}
-function suRow(x) {
-  const tr = document.createElement('tr'), [cls, word] = SU[x.state] || ['', x.state];
-  const name = tr.insertCell(); name.textContent = x.name;
-  const st = tr.insertCell(), b = document.createElement('span');
-  b.className = 'badge ' + cls; b.textContent = word; st.appendChild(b);
-  const what = tr.insertCell(); what.textContent = x.unlocks; what.className = 'dim';
-  const more = tr.insertCell(), bits = [];
-  if (x.state === 'failing' && x.error) bits.push(x.error);
-  else if (x.last_ok) bits.push('Updated ' + suAgo(x.last_ok));
-  if (x.note) bits.push(x.note);
-  if (x.missing_keys && x.missing_keys.length && x.state !== 'off') bits.push('Needs: ' + x.missing_keys.join(', '));
-  more.textContent = bits.map(b => /[.!?]$/.test(b) ? b : b + '.').join(' ');
-  if (x.link && (x.state === 'missing' || x.state === 'limited' || x.state === 'off' || x.link.startsWith('/'))) {
-    const a = document.createElement('a'); a.href = x.link;
-    a.textContent = x.link.startsWith('/') ? ' Open' : ' Get a key';
-    if (!x.link.startsWith('/')) { a.target = '_blank'; a.rel = 'noopener'; }
-    more.appendChild(a);
-  }
-  return tr;
-}
-function suHead(t) { const tr = document.createElement('tr'), th = document.createElement('th'); th.colSpan = 4; th.textContent = t; tr.appendChild(th); return tr; }
-async function suLoad() {
-  const m = document.getElementById('sumsg'), tbl = document.getElementById('sutbl');
-  try {
-    const r = await fetch('/v1/setup', { headers: { Authorization: 'Bearer ' + tok.value } });
-    if (!r.ok) throw new Error('setup returned ' + r.status);
-    const d = await r.json(), all = [...d.you, ...d.keys, ...d.free];
-    tbl.replaceChildren(suHead('You'), ...d.you.map(suRow), suHead('Sources that need a free key'), ...d.keys.map(suRow),
-      suHead('Sources that need no key'), ...d.free.map(suRow));
-    const working = all.filter(x => x.state === 'ready' || x.state === 'limited').length;
-    m.textContent = working + ' of ' + all.length + ' working.' + (d.local ? ' You are on the home network, so no token is needed here.' : '');
-  } catch (e) { m.textContent = e.message; }
-}
-const AU_WORDS = { updated: 'Updated', unchanged: 'Already up to date', refused: 'Not applied',
-  rolled_back: 'Update failed its checks; the previous version is running again', failed: 'Needs attention' };
-async function auLoad() {
-  const m = document.getElementById('aumsg'), box = document.getElementById('au');
-  try {
-    const r = await fetch('/v1/auto-deploy', { headers: { Authorization: 'Bearer ' + tok.value } });
-    if (!r.ok) throw new Error('auto-deploy returned ' + r.status);
-    const d = await r.json(); box.checked = d.enabled;
-    const l = d.last_run;
-    m.textContent = 'Running ' + d.running.version + '. ' + (l
-      ? 'Last run ' + new Date(l.reported).toLocaleString() + ': ' + (AU_WORDS[l.result] || l.result)
-        + (l.message ? ' (' + l.message + ')' : '') + '.'
-      : 'The nightly job has not reported yet.');
-  } catch (e) { m.textContent = e.message; }
-}
-document.getElementById('au').onchange = async ev => {
-  const m = document.getElementById('aumsg');
-  try {
-    const r = await fetch('/v1/auto-deploy', { method: 'PUT',
-      headers: { Authorization: 'Bearer ' + tok.value, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: ev.target.checked }) });
-    if (!r.ok) throw new Error('could not save: ' + r.status);
-    await auLoad();
-  } catch (e) { ev.target.checked = !ev.target.checked; m.textContent = e.message; }
-};
-function bkRow(b) {
-  const tr = document.createElement('tr');
-  for (const t of [b.name, Math.max(1, Math.round(b.size_bytes / 1024)) + ' KB']) { const td = tr.insertCell(); td.textContent = t; }
-  const td = tr.insertCell(), a = document.createElement('button');
-  a.textContent = 'Download'; a.onclick = () => bkDownload(b.name); td.appendChild(a); return tr;
-}
-async function bkLoad() {
-  const m = document.getElementById('bkmsg'), tbl = document.getElementById('bklist');
-  try {
-    const r = await fetch('/v1/backups', { headers: { Authorization: 'Bearer ' + tok.value } });
-    if (!r.ok) throw new Error('backups returned ' + r.status);
-    const d = await r.json(); tbl.replaceChildren(...d.backups.map(bkRow));
-    m.textContent = d.backups.length ? 'Keeping the latest ' + d.keep + '.' : 'No backups yet.';
-  } catch (e) { m.textContent = e.message; }
-}
-async function bkDownload(name) {
-  const r = await fetch('/v1/backups/' + encodeURIComponent(name), { headers: { Authorization: 'Bearer ' + tok.value } });
-  if (!r.ok) { document.getElementById('bkmsg').textContent = 'download failed: ' + r.status; return; }
-  const url = URL.createObjectURL(await r.blob()), a = document.createElement('a');
-  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-}
-document.getElementById('bk').onclick = async () => {
-  const m = document.getElementById('bkmsg'); m.textContent = 'Backing up...';
-  try {
-    const r = await fetch('/v1/backups', { method: 'POST', headers: { Authorization: 'Bearer ' + tok.value } });
-    if (!r.ok) { let d = r.status; try { d = (await r.json()).detail; } catch (e) {} throw new Error(d); }
-    const b = await r.json(); await bkLoad(); m.textContent = 'Saved ' + b.name + '.';
-  } catch (e) { m.textContent = e.message; }
-};
-document.getElementById('f').onsubmit = e => { e.preventDefault(); load(); };
-document.getElementById('refresh').onclick = load;
-document.getElementById('copy').onclick = () => navigator.clipboard.writeText(out.textContent);
-if (tok.value) load();
-</script></main></body></html>"""
-
-
-@page_router.get("/status", response_class=HTMLResponse, include_in_schema=False)
-async def status_page(request: Request) -> str:
-    """The page itself holds no data; it asks for the token and calls /v1/status."""
-    return themed(PAGE, "status", request)

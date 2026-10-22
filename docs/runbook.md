@@ -36,7 +36,7 @@ failed it stops at once. To retry after a red build, fix it on `main` and run th
    docker compose -f docker-compose.yml -f docker-compose.hardened.yml pull
    docker compose -f docker-compose.yml -f docker-compose.hardened.yml up -d --no-build
    ```
-5. Check `/status`: the version and commit shown must match the release.
+5. Check Settings > System: the version and commit shown must match the release.
 
 ## Upgrade and roll back
 
@@ -90,14 +90,14 @@ with `deploy/unraid/render_icons.py`).
 
 | Symptom | Check |
 |---------|-------|
-| `/status` shows 404 | Old image still running: rebuild or pull, `up -d`. |
-| A job shows `error` on `/status` | The message is in the job row; `docker compose logs worker`. |
+| `/settings` shows 404 | Old image still running: rebuild or pull, `up -d`. |
+| A job shows `error`  in Settings | The message is in the job row; `docker compose logs worker`. |
 | Fuel login fails with 401 | Client ID and secret may be swapped. Wait 5 minutes before retrying; repeated failures extend the lockout. |
 | Fuel pull "empty 200" | Transient; the client retries. If it persists, run with `--probe` (see `fuelfinder.capture --help`). |
 | National Highways planned pull incomplete | Rate limit: planned pulls take minutes by design. The job shows `complete: false` and keeps old data. |
 | "routing engine unreachable" | Valhalla still building. `docker compose logs -f valhalla`; lower `WA_VALHALLA_THREADS` if it was killed for memory. |
 | API returns 401 | Wrong or missing token. 503 means no token is configured. |
-| Worker not running jobs | Heartbeat on `/status` is stale: check the worker container and Redis reachability. |
+| Worker not running jobs | Heartbeat in Settings > System is stale: check the worker container and Redis reachability. |
 
 ## Switches
 
@@ -112,7 +112,7 @@ password-protected Redis:
 1. `bash scripts/init-secrets.sh` (creates `redis_password.txt`; it never overwrites existing files).
 2. Delete the `WA_REDIS_URL=` line from `.env`: `sed -i '/^WA_REDIS_URL=/d' .env`
 3. `bash scripts/deploy.sh`
-4. Check `/status`: the worker heartbeat should be fresh within a minute.
+4. Check Settings > System: the worker heartbeat should be fresh within a minute.
 
 Nothing is lost: Redis only holds rate-limit counters, caches and the heartbeat, which rebuild themselves.
 The old Redis is no longer used by this app; stop it if nothing else needs it.
@@ -169,7 +169,7 @@ Merged updates go to `main` without a human reading them, so a bad update shows 
 ## Automatic updates on this server (optional, off by default)
 
 The section above keeps GitHub up to date. This one updates the server itself, from the **Automatic
-updates** switch on the `/status` page. The api cannot restart containers, so the switch is only a flag; a
+updates** switch on the Settings page (`/settings`). The api cannot restart containers, so the switch is only a flag; a
 nightly job on the server (`scripts/auto-deploy.sh`) reads it. With the switch off the job does nothing.
 
 When the switch is on, the job (04:00 every night):
@@ -206,8 +206,8 @@ than in your folder), the job refuses and says so on the status page; update the
 3. Set its schedule to Custom with `0 4 * * *`, and Apply.
 4. Try it once without changing anything:
    `cd /mnt/user/projects/world-assistant && bash scripts/auto-deploy.sh --dry-run`
-   (with the switch off it says so; switch it on at `/status` and it says what it would do).
-5. Turn the switch on at `/status`. The log is `auto-deploy.log` in the data folder.
+   (with the switch off it says so; switch it on in Settings and it says what it would do).
+5. Turn the switch on in Settings (Backups and updates). The log is `auto-deploy.log` in the data folder.
 
 If a rollback cannot undo a database change, or the previous version will not start, the job stops and the
 status page names the backup to restore ([backup.md](backup.md)); nothing else is touched.

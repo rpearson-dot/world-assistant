@@ -103,7 +103,8 @@ def judge(src: Source, s: Settings, runs: dict[str, dict[str, Any]]) -> dict[str
     """One checklist row. `runs`: the latest job_run per job name."""
     usable, missing = _key_state(src, s)
     out: dict[str, Any] = {"id": src.id, "name": src.name, "unlocks": src.unlocks, "needs_key": bool(src.keys),
-                           "link": src.link, "note": src.note, "missing_keys": missing}  # fmt: skip
+                           "link": src.link, "note": src.note, "missing_keys": missing,
+                           "keys": list(src.keys), "any_key": src.any_key, "key_optional": src.key_optional}  # fmt: skip
     mine = [runs[j] for j in src.jobs if j in runs]
     last_ok = max((r["finished_at"] for r in mine if r["status"] == "ok" and r["finished_at"]), default=None)
     out["last_ok"] = last_ok.isoformat() if isinstance(last_ok, datetime) else last_ok
@@ -154,6 +155,25 @@ async def routing(s: Settings) -> dict[str, Any]:
     return out
 
 
+async def graph(s: Settings) -> dict[str, Any]:
+    out: dict[str, Any] = {"id": "graph", "name": "Knowledge graph (Neo4j)", "link": "/graph",
+                           "unlocks": "The Graph page: how your places, trips, roads and stations connect"}  # fmt: skip
+    if not s.graph_enabled:
+        out["state"], out["note"] = OFF, "Optional container: docker-compose.graph.yml and WA_GRAPH_ENABLED=true."
+        return out
+    from app.graph import store
+
+    try:
+        rows = await store.run(store.COUNTS)
+    except store.GraphUnavailable as exc:
+        out["state"], out["error"] = FAILING, str(exc)[:300]
+        return out
+    total = sum(int(r["total"]) for r in rows)
+    out["state"] = READY if total else WAITING
+    out["note"] = f"{total} nodes" if total else "Built twice an hour; or Rebuild on the Graph page."
+    return out
+
+
 async def checklist(request: Request) -> dict[str, Any]:
     s = get_settings()
     async with request.app.state.engine.connect() as conn:
@@ -175,6 +195,7 @@ async def checklist(request: Request) -> dict[str, Any]:
          "note": "" if home else "Add a place called home on the Places page."},
         home_assistant(s, last),
         await routing(s),
+        await graph(s),
     ]  # fmt: skip
     return {"local": is_local(request, request.method), "you": you, "keys": keyed, "free": free}
 

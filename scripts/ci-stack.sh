@@ -8,6 +8,7 @@
 #   4. a backup, a deletion and a restore bring the data back
 #   5. (CI) the pages load in a real browser without script errors: scripts/page-check.py
 #   6. Home Assistant sensors reach the bundled MQTT broker, which refuses anonymous clients
+#   7. keys saved from the Settings page take effect; the graph explorer's questions run on Neo4j
 #
 # Nothing here touches the internet APIs: all pollers are switched off.
 set -euo pipefail
@@ -17,11 +18,12 @@ WORK="$(mktemp -d)"
 export WA_SECRETS_DIR="$WORK/secrets" WA_DATA_DIR="$WORK/data"
 export WA_MQTT_HOST=wa-mqtt WA_MQTT_USER=wa WA_MQTT_PUBLISH_PORT=18830 WA_API_PORT="${WA_API_PORT:-18010}" COMPOSE_PROJECT_NAME=wa-ci
 export WA_NH_POLL_ENABLED=false WA_NH_CAPTURE_ENABLED=false WA_FUEL_POLL_ENABLED=false WA_NAPTAN_POLL_ENABLED=false WA_FLOOD_POLL_ENABLED=false WA_CODEPOINT_POLL_ENABLED=false WA_ENERGY_POLL_ENABLED=false WA_TFLROADS_POLL_ENABLED=false
-export COMPOSE_FILE=docker-compose.yml:docker-compose.mqtt.yml
+export COMPOSE_FILE=docker-compose.yml:docker-compose.mqtt.yml:docker-compose.graph.yml
 unset WA_IMAGE WA_REDIS_URL
 
 mkdir -p "$WA_DATA_DIR/backups" "$WA_DATA_DIR/pgdata"
 chmod 777 "$WA_DATA_DIR/backups"
+mkdir -p "$WA_DATA_DIR/keys" && chmod 777 "$WA_DATA_DIR/keys"
 # init-secrets.sh sources .env if there is one; a stray one must not redirect the directory.
 [ -f .env ] && { echo ".env exists; this script is for a clean checkout (CI)"; exit 2; }
 bash scripts/init-secrets.sh >/dev/null
@@ -118,6 +120,32 @@ docker compose exec -T wa-mqtt mosquitto_sub -h 127.0.0.1 -u wa -P "$PW" -t 'hom
 if docker compose exec -T wa-mqtt mosquitto_sub -h 127.0.0.1 -t '#' -C 1 -W 5 >/dev/null 2>&1; then
   echo "the broker let an anonymous client in"; dump_and_fail
 fi
+
+step "a key saved from the Settings page"
+curl -fsS -X PUT -H "Content-Type: application/json" -d '{"value":"ci-key"}' "$API/v1/settings/keys/tfl_app_key" >/dev/null \
+  || { echo "could not save a key from the local network"; dump_and_fail; }
+curl -fsS "$API/v1/settings/keys" | grep -q '"name":"tfl_app_key","set":true,"source":"settings"' \
+  || { echo "the saved key is not in use"; dump_and_fail; }
+curl -fsS -X DELETE "$API/v1/settings/keys/tfl_app_key" >/dev/null || dump_and_fail
+code="$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Content-Type: application/json" -H "Origin: http://elsewhere.example" \
+  -d '{"value":"x"}' "$API/v1/settings/keys/tfl_app_key")"
+[ "$code" = "401" ] || { echo "another site could save a key ($code)"; dump_and_fail; }
+
+step "the graph explorer on Neo4j"
+for _ in $(seq 1 40); do
+  [ "$(docker compose ps --format '{{.Health}}' wa-graph)" = "healthy" ] && break
+  sleep 3
+done
+curl -fsS -X POST "$API/v1/graph/rebuild" | tee "$WORK/rebuild.json" || dump_and_fail
+for preset in around-home disruption fuel-along near-places floods buses trips; do
+  curl -fsS -X POST -H "Content-Type: application/json" -d "{\"preset\":\"$preset\"}" "$API/v1/graph/query" >/dev/null \
+    || { echo "preset $preset failed"; dump_and_fail; }
+done
+curl -fsS "$API/v1/graph/overview" >/dev/null || { echo "the overview failed"; dump_and_fail; }
+curl -fsS "$API/v1/graph/search?q=round" | grep -q '"Round trip"' || { echo "search did not find the test place"; dump_and_fail; }
+code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Content-Type: application/json" \
+  -d '{"cypher":"MATCH (n) DETACH DELETE n"}' "$API/v1/graph/query")"
+[ "$code" = "422" ] || { echo "a writing query was not refused ($code)"; dump_and_fail; }
 
 step "everything still answers after the restore"
 if ! docker compose exec -T api python -m app.smoke > "$WORK/smoke2.txt" 2>&1; then

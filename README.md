@@ -53,7 +53,7 @@ It started as a personal project on a home Unraid server. Nothing in it is speci
 | **Floods** | Environment Agency flood alerts and warnings for England, refreshed every 15 minutes, with each warned area drawn on the map; ask what covers home, or what crosses the way to work ([how](docs/floods.md)). |
 | **Stops** | Where every bus stop, station and ferry terminal in Great Britain is, from the national NaPTAN register, held locally and refreshed weekly ([how](docs/naptan.md)). |
 | **Map** | Everything with coordinates on one map, a layer at a time: places, people, corridors, closures, signs, fuel priced cheapest to dearest, stops and stations, pollen ([how](docs/map.md)). Leaflet is served from the app; only the tiles come from outside, and you choose where from. |
-| **Web pages** | `/status` (with a setup checklist), `/bus`, `/trains`, `/fuel`, `/events`, `/pollen`, `/energy`, `/places`, `/map`, `/ha` (Home Assistant setup). Small, fast, no accounts, no token on the home network. |
+| **Web app** | Installable on a phone (Add to Home Screen) with a tab bar: Buses, Trains, Map, Fuel, Energy, Events, Pollen, Places, **Graph** (the knowledge graph as nodes and edges you can search, expand and query), **Home Assistant** setup, and **Settings** (a setup wizard, what is working, keys saved from the browser, backups, updates). No accounts, no token on the home network or in a browser on your tailnet. |
 | **Operations** | One-click backups, signed releases, optional automatic updates with rollback, optional bundled key vault. |
 
 Planned (see [docs/roadmap.md](docs/roadmap.md)): live-traffic journey times, MOT and tax reminders,
@@ -100,17 +100,19 @@ bash scripts/setup.sh
 whether to add road routing, and for each key (with what it unlocks and where to get it, typed without echo).
 Then it starts the stack and prints the address. Re-run it any time; Enter keeps each answer.
 
-Then open `http://<server>:8010/status`. From your home network no token is needed. The **Setup** list shows
-what is working, what each missing key would unlock and where to get it. Add your places (start with `home`) on
+Then open `http://<server>:8010`. From your home network no token is needed. **Settings** starts a short setup wizard
+(home, keys, Home Assistant) and its Setup list shows what is working, what each missing key would unlock and where to
+get it; keys can be pasted straight in. Add your places (start with `home`) on
 `/places`, and set up Home Assistant from `/ha`. Stops, stations and postcodes load within minutes of the first
 start.
 
 Prefer files? `cp .env.example .env`, edit it, `bash scripts/init-secrets.sh`, put keys in the files it lists,
 `docker compose up -d --build`.
 
-Do not expose the port to the internet. Reach it from elsewhere over a private network such as Tailscale
-([docs/assistant.md](docs/assistant.md#reaching-it-from-outside-the-house)); from there, and from Siri Shortcuts
-and AI assistants, use the token in `api_token.txt`.
+Do not expose the port to the internet. To reach it from your phone anywhere, add the Tailscale container
+(`setup.sh` asks): it gets its own `https://world-assistant.<tailnet>.ts.net` address, for the web app, Siri
+Shortcuts and AI assistants over MCP ([docs/tailscale.md](docs/tailscale.md)). Securing MQTT from a car's OVMS
+module through to Home Assistant: [docs/mqtt-tls.md](docs/mqtt-tls.md).
 
 ## Staying up to date
 
@@ -118,7 +120,7 @@ and AI assistants, use the token in `api_token.txt`.
   Both back up first and finish with a check that every page and endpoint still answers.
 - **Released images:** releases are built once by GitHub Actions, scanned, signed and published with SBOMs,
   and deployed by digest, never by tag.
-- **Automatically (optional, off by default):** a switch on `/status` makes a nightly job install the newest
+- **Automatically (optional, off by default):** a switch in Settings makes a nightly job install the newest
   signed release, with a backup first and an automatic rollback if the post-update check fails. On GitHub,
   Dependabot checks daily and can merge safe updates once CI is green.
 
@@ -138,6 +140,8 @@ releases are signed (Sigstore) with SBOMs, and every push is scanned for secrets
 - [Runbook](docs/runbook.md): deploy, upgrade, roll back, automatic updates, troubleshoot
 - [Data sources](docs/data-sources.md): each feed, its limits, licence and credit
 - [Assistant](docs/assistant.md): Siri Shortcuts, MCP, the default place
+- [Tailscale](docs/tailscale.md): the app on your phone anywhere, Siri and MCP over your tailnet
+- [MQTT over TLS](docs/mqtt-tls.md): certificates from the car's OVMS module to Home Assistant
 - [Bus tracker](docs/bus.md), [Trains](docs/trains.md), [Leaf dashboard](docs/leaf.md), [Map](docs/map.md), [Knowledge graph](docs/graph.md)
 - [Backups](docs/backup.md): the status-page button, the deploy script and restoring
 - [Secrets and key vaults](docs/secrets.md), [bundled OpenBao](docs/openbao.md)
@@ -153,6 +157,8 @@ From outside the home network, `/v1/*` routes need `Authorization: Bearer <api_t
 | Route | Purpose |
 |-------|---------|
 | `GET /v1/status` | Job runs, event counts, corridors, fuel counts, version, worker heartbeat |
+| `GET/PUT/DELETE /v1/settings/keys/…` | Which data-source keys are set (never their values); save or forget one |
+| `GET /v1/graph/overview`, `/search`, `/expand`, `POST /v1/graph/query` | The Graph page: explore the knowledge graph; read-only Cypher |
 | `GET /v1/setup` | The setup checklist: each source, Home Assistant, routing and home, working or not, and where to get a key |
 | `GET /v1/ha/setup`, `/v1/ha/files/…`, `/v1/ha/token` | Home Assistant files of this version, what changed when, and the values for `secrets.yaml` |
 | `GET/PUT/DELETE /v1/places/{id}`, `/v1/trips/{id}`, `/v1/vehicles/{id}` | Manage places, trips, vehicles |

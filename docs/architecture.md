@@ -59,7 +59,7 @@ flowchart LR
 
 Outside the containers, on the server: `scripts/deploy.sh` (back up, update, check), and the optional
 nightly `scripts/auto-deploy.sh` ([runbook](runbook.md)). The api cannot restart containers; the
-automatic-update switch on `/status` is only a stored flag that the nightly job reads.
+automatic-update switch on Settings (`/settings`) is only a stored flag that the nightly job reads.
 
 ## Code layout
 

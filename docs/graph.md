@@ -91,3 +91,12 @@ proves that. If it fails, the error names the statement.
 
 Proximity (`NEAR`, `ALONG`) is measured by PostGIS during the build, so the distances on those
 relationships are spheroid distances from the same index the rest of WA now uses.
+
+## The Graph page
+
+`/graph` draws the graph as nodes and edges: search for a place, trip, road or station; pick a ready-made
+question (everything around home, what is on my trips' roads, fuel stations along my routes, flood warnings,
+bus trackers); tap a node for its details and double-tap (or Expand) to bring in what it connects to. Under
+**Ask with Cypher** you can write your own read-only query: return nodes, relationships or paths to see them
+drawn, or values for a table. Anything that would change the graph is refused, and the session is read-only.
+

@@ -10,6 +10,10 @@
 # init-secrets.sh generate one). In Home Assistant, add the MQTT integration with this server's address,
 # port WA_MQTT_PUBLISH_PORT (default 1883), user wa and that password. Anonymous access is off; retained
 # messages (the sensors) are kept on disk, so Home Assistant sees them straight after a restart.
+#
+# TLS (optional, docs/mqtt-tls.md): put fullchain.pem and privkey.pem in WA_DATA_DIR/mosquitto/certs and restart;
+# the broker then also listens on 8883 with TLS (published as WA_MQTT_TLS_PUBLISH_PORT). Forward only 8883, never
+# 1883, if something outside your home (a car's OVMS module) has to reach it.
 
 services:
   wa-mqtt:
@@ -21,6 +25,8 @@ services:
     ports:
       # Home Assistant connects here, so it is published to the LAN. Never forward it to the internet.
       - "${WA_MQTT_PUBLISH_PORT:-1883}:1883"
+      # TLS, only answered once certificates are in place (see above).
+      - "${WA_MQTT_TLS_PUBLISH_PORT:-8883}:8883"
     environment:
       TZ: ${TZ:-Europe/London}
       WA_MQTT_USER: ${WA_MQTT_USER:-wa}
@@ -51,6 +57,18 @@ services:
         log_type warning
         log_type notice
         EOF
+        if [ -s /mosquitto/data/certs/fullchain.pem ] && [ -s /mosquitto/data/certs/privkey.pem ]; then
+          mkdir -p /mosquitto/data/tls
+          cp /mosquitto/data/certs/fullchain.pem /mosquitto/data/certs/privkey.pem /mosquitto/data/tls/
+          chown -R mosquitto:mosquitto /mosquitto/data/tls
+          cat >> /mosquitto/data/mosquitto.conf <<EOF
+        listener 8883
+        certfile /mosquitto/data/tls/fullchain.pem
+        keyfile /mosquitto/data/tls/privkey.pem
+        tls_version tlsv1.2
+        EOF
+          echo "TLS listener on 8883"
+        fi
         chown mosquitto:mosquitto /mosquitto/data/passwd /mosquitto/data/mosquitto.conf
         exec mosquitto -c /mosquitto/data/mosquitto.conf
     healthcheck:

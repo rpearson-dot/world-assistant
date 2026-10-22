@@ -2,6 +2,7 @@
 
 One lookup, one place to configure. Order of precedence for a secret called `name`:
 
+0. For the data-source keys only (WEB_KEYS): a key saved from the Settings page, in WA_KEYS_DIR.
 1. The configured key vault (WA_SECRETS_BACKEND), if any.
 2. A file in the secrets directory: <dir>/<name> or <dir>/<name>.txt.
 3. The upper-cased environment variable (local development).
@@ -235,8 +236,31 @@ def _external(name: str, directory: Path) -> str | None:
     return value
 
 
+# Keys the Settings page may save: the data sources' own keys. Never the API token, a password or a vault login.
+WEB_KEYS = frozenset({
+    "nh_subscription_key", "nh_subscription_key_secondary", "fuel_finder_client_id", "fuel_finder_client_secret",
+    "tfl_app_key", "nr_access_token", "ticketmaster_api_key", "skiddle_api_key", "octopus_api_key", "bods_api_key",
+    "pollen_api_key",
+})  # fmt: skip
+
+
+def keys_dir() -> Path:
+    """Where the Settings page keeps the keys saved from the browser (WA_DATA_DIR/keys on the host)."""
+    return Path(os.environ.get("WA_KEYS_DIR", "/keys"))
+
+
+def web_value(name: str) -> str | None:
+    if name not in WEB_KEYS:
+        return None
+    value = _file_value(name, keys_dir())
+    return value or None
+
+
 def resolve(name: str, directory: Path, default: str = "") -> tuple[str, str]:
-    """Return (value, source) where source is vault, command, file, env or default."""
+    """Return (value, source) where source is settings, vault, command, file, env or default."""
+    saved = web_value(name)
+    if saved:
+        return saved, "settings"
     if name not in ("vault_token", "vault_role_id", "vault_secret_id"):
         value = _external(name, directory)
         if value:

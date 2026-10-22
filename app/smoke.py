@@ -26,7 +26,7 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any
 
-PAGES = ("/status", "/bus", "/trains", "/fuel", "/events", "/pollen", "/places", "/energy", "/ha")
+PAGES = ("/settings", "/bus", "/trains", "/fuel", "/events", "/pollen", "/places", "/energy", "/ha", "/graph", "/map")
 SEED = "smoke-test-place"
 SKIP_SWEEP = {"/mcp", "/healthz", "/readyz", "/v1/backups/{name}"}  # checked on their own, or a download
 TIMEOUT = 30.0
@@ -105,7 +105,7 @@ def run(base: str, token: str, *, seed: bool = False, out: Callable[[str], None]
         r.check(s == 200, f"GET {path}", f"HTTP {s}" if s != 200 else "")
     for path in PAGES:
         s, ct, b = fetch(base, path)
-        good = s == 200 and "text/html" in ct and "<nav>" in b and "<script>" in b
+        good = s == 200 and "text/html" in ct and "<nav" in b and "<script>" in b
         good = good and "/*BASE_CSS*/" not in b and "<!--NAV-->" not in b
         r.check(good, f"page {path}", f"HTTP {s}" if not good else "")
 

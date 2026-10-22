@@ -42,10 +42,10 @@ def test_status_rejects_missing_or_wrong_token(monkeypatch: pytest.MonkeyPatch) 
     assert client.get("/v1/status", headers={"Authorization": "Basic s3cret"}).status_code == 401
 
 
-def test_status_page_loads_without_token() -> None:
-    r = client.get("/status")
-    assert r.status_code == 200
-    assert "World Assistant status" in r.text
+def test_settings_page_loads_without_token() -> None:
+    r = client.get("/status")  # the old address still works
+    assert r.status_code == 200 and "/settings" in str(r.url)
+    assert "<title>Settings</title>" in r.text and "Run the setup wizard" in r.text
 
 
 def _migrate(direction: str) -> None:

@@ -18,6 +18,18 @@ token, no secret is ever in the repository or the image, and what runs is exactl
   - a change (anything but GET, HEAD, OPTIONS) comes from this server's own pages: if the browser sends an
     `Origin` it must be this host, and `Sec-Fetch-Site` must not be cross-site. So a website you visit cannot
     make your browser change anything here.
+- **Over Tailscale** (`docker-compose.tailscale.yml`), requests arrive through the Tailscale container, so they are
+  never "local". A page's own fetches are let in without the token when they come through that container (the
+  app looks up its address by name), carry Tailscale's signed-in user header, and are marked `Sec-Fetch-Site:
+  same-origin` by the browser. Siri Shortcuts, MCP clients and scripts do not send that, so they need the token
+  ([tailscale.md](tailscale.md)). `WA_TAILNET_WEB_NO_TOKEN=false` makes the pages ask too.
+- **Keys saved from Settings** go to their own folder (`WA_DATA_DIR/keys`, mode 600, mounted at `/keys`), never
+  the secrets folder. Only the data sources' keys can be written there, not the API token, passwords or vault
+  logins, and the API never returns a key, only whether one is set. A saved key wins over the secret file;
+  Forget falls back to it.
+- **The Graph page's Cypher** is read-only three ways: writing or outward-reaching clauses (CREATE, MERGE, SET,
+  DELETE, LOAD CSV, CALL ...) are refused before sending, the Neo4j session is opened in read mode, and each
+  query has a time limit and a cap on results.
 - The pages are static shells that hold no data. From the home network they hide the token box; elsewhere they
   ask for the token and keep it in the browser's `sessionStorage` for the session.
 - The Home Assistant page (`/ha`) can show the API token so it can go into Home Assistant's `secrets.yaml`.
@@ -86,7 +98,7 @@ Both are opt-in and off by default.
   are safe: patch updates of Python libraries and container images, and minor updates of Python libraries.
   Never a major version, never GitHub Actions (the built-in token cannot change workflows), never a database
   image. It cannot release unless you also set `AUTO_RELEASE`.
-- **Server side (the switch on `/status`):** the api cannot restart containers; the switch is a stored flag.
+- **Server side (the switch on Settings (`/settings`)):** the api cannot restart containers; the switch is a stored flag.
   A nightly job on the server installs only a **release image whose signature verifies against this
   repository's release workflow**; otherwise it refuses. It takes a backup first, and puts the previous
   version back if the post-update check fails. Its GitHub token is read-only (Contents: read) and lives in
