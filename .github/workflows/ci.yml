@@ -55,6 +55,16 @@ jobs:
           psql -h localhost -U wa -d wa_test -c "ALTER DATABASE wa_test SET search_path TO public"
       - name: Install locked dev dependencies
         run: pip install --require-hashes --no-deps -r requirements-dev.lock
+      - name: A Samba share for the Home Assistant copy test
+        # A real SMB server (as Home Assistant's Samba share add-on is), so copying over SMB is tested end to end.
+        run: |
+          sudo apt-get update -q >/dev/null && sudo apt-get install -y -q samba >/dev/null
+          sudo mkdir -p /srv/haconfig /run/samba && sudo useradd -M hauser && sudo chown hauser /srv/haconfig
+          printf '[global]\n  smb ports = 4445\n  interfaces = lo\n  bind interfaces only = yes\n  disable netbios = yes\n  server min protocol = SMB2_10\n[config]\n  path = /srv/haconfig\n  read only = no\n  valid users = hauser\n' \
+            | sudo tee /etc/samba/smb-test.conf >/dev/null
+          (echo hapass; echo hapass) | sudo smbpasswd -c /etc/samba/smb-test.conf -s -a hauser
+          sudo smbd -s /etc/samba/smb-test.conf -D && sleep 2
+          echo "WA_TEST_SMB=//127.0.0.1:4445/config hauser hapass /srv/haconfig" >> "$GITHUB_ENV"
       - name: Lint
         run: ruff check .
       - name: Test

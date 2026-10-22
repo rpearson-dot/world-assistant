@@ -23,6 +23,8 @@ dependencies = [
   "tenacity>=8.5",
   "aiomqtt>=2.3",
   "neo4j>=5.24",
+  # copying the Home Assistant files to its config share (the /ha page)
+  "smbprotocol>=1.14",
 ]
 
 [project.optional-dependencies]

@@ -36,6 +36,7 @@ from app.ha_locations import router as ha_locations_router
 from app.ha_routes import router as ha_routes_router
 from app.ha_setup import page_router as ha_setup_page_router
 from app.ha_setup import router as ha_setup_router
+from app.ha_smb import router as ha_smb_router
 from app.icons import router as icons_router
 from app.keys import router as keys_router
 from app.logging import configure_logging
@@ -87,6 +88,7 @@ app.include_router(status_router)
 app.include_router(setup_router)
 app.include_router(keys_router)
 app.include_router(mqtt_config_router)
+app.include_router(ha_smb_router)
 app.include_router(ha_setup_router)
 app.include_router(ha_setup_page_router)
 app.include_router(autodeploy_router)

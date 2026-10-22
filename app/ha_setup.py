@@ -48,6 +48,22 @@ ABOUT: dict[str, tuple[str, str]] = {
     "dashboards/leaf.yaml": ("Leaf", "Nissan Leaf battery and charging (with OVMS)."),
 }  # fmt: skip
 
+# For dashboards kept as files (copied over SMB): Home Assistant's YAML-mode dashboards, so they update by themselves.
+DASH_ICONS = {"fuel": "mdi:gas-station", "trains-buses": "mdi:bus-clock", "roads": "mdi:road-variant",
+              "events": "mdi:calendar-star", "pollen": "mdi:flower-pollen", "manage": "mdi:map-marker-plus",
+              "leaf": "mdi:car-electric"}  # fmt: skip
+
+
+def lovelace_yaml(dashboards: list[dict[str, Any]], folder: str = "world_assistant/dashboards") -> str:
+    lines = ["lovelace:", "  dashboards:"]
+    for f in dashboards:
+        stem = f["name"].rsplit(".", 1)[0]
+        lines += [f"    wa-{stem}:", "      mode: yaml", f"      title: {f['title']}",
+                  f"      icon: {DASH_ICONS.get(stem, 'mdi:view-dashboard')}", "      show_in_sidebar: true",
+                  f"      filename: {folder}/{f['name']}"]  # fmt: skip
+    return "\n".join(lines) + "\n"
+
+
 # The API path behind each secret the packages use.
 SECRET_PATHS: dict[str, str] = {
     "wa_events_url": "/v1/events/near",
@@ -94,8 +110,9 @@ async def setup(request: Request) -> dict[str, Any]:
     conf, _ = await load(request.app.state.engine) if hasattr(request.app.state, "engine") else (from_env(s), "env")
     mqtt = home_assistant(s, last, conf)
     mqtt.update({"bundled": conf.bundled, "user": conf.user, "publish_port": s.mqtt_publish_port})
-    return {"version": VERSION, "local": is_local(request, request.method), "mqtt": mqtt, "files": files(),
-            "secret_paths": SECRET_PATHS}  # fmt: skip
+    listed = files()
+    return {"version": VERSION, "local": is_local(request, request.method), "mqtt": mqtt, "files": listed,
+            "secret_paths": SECRET_PATHS, "lovelace_yaml": lovelace_yaml([f for f in listed if f["kind"] == "dashboard"])}  # fmt: skip
 
 
 @router.get("/token")
@@ -129,6 +146,29 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
   <label>Address Home Assistant uses for this server <input id="base" size="32"></label>
   <label>Files last copied from version <input id="since" size="8" placeholder="e.g. 0.12.0"></label></div>
   <p class="dim" id="ver"></p></div>
+<details class="card" id="smbcard"><summary>Copy straight into Home Assistant (Samba share)</summary>
+  <p class="dim">With the <b>Samba share</b> add-on in Home Assistant, World Assistant can put the files in its config folder
+  for you: the ticked packages into <code>packages/</code>, the dashboards into <code>world_assistant/dashboards/</code>
+  and, if you like, the missing lines into <code>secrets.yaml</code> (backed up first; existing lines are never changed).
+  Files that have not changed are left alone.</p>
+  <div class="row">
+    <label>Share<input id="smbaddr" size="30" placeholder="\\\\homeassistant.local\\config" autocomplete="off"></label>
+    <label>User<input id="smbuser" size="14" autocomplete="off"></label>
+    <label>Password<input id="smbpw" type="password" size="14" autocomplete="new-password"></label></div>
+  <div class="row" style="margin-top:8px"><button id="smbtest" type="button">Test</button>
+    <button id="smbsave" type="button">Save</button><button id="smbforget" type="button">Forget</button>
+    <span id="smbmsg" class="dim"></span></div>
+  <div class="checks" style="margin-top:10px">
+    <label><input id="smbpk" type="checkbox" checked> The packages ticked below</label>
+    <label><input id="smbdb" type="checkbox" checked> The dashboards</label>
+    <label><input id="smbsec" type="checkbox"> Add missing lines to secrets.yaml (includes the API token)</label></div>
+  <div class="row"><button id="smbcopy" class="primary" type="button">Copy to Home Assistant</button><span id="smbcopymsg" class="dim"></span></div>
+  <ul id="smbresult" class="dim"></ul>
+  <p class="dim">Then Developer tools &gt; YAML &gt; Check configuration, and restart. To have the copied dashboards update
+  themselves on every copy, add this to <code>configuration.yaml</code> once (merge it with any <code>lovelace:</code> you
+  already have), instead of pasting them into the raw editor:</p>
+  <pre class="yaml" id="lovelace"></pre><button id="copylove" type="button">Copy</button>
+</details>
 <ol class="steps">
 <li class="card"><h2>Connect the broker</h2><p id="mq" class="dim">Loading...</p></li>
 <li class="card"><h2>Add the packages</h2>
@@ -248,7 +288,51 @@ async function load() {
   $('db').replaceChildren(...data.files.filter(f => f.kind === 'dashboard').map(f => row(f, false)));
   secrets();
   data.files.forEach(f => fetchFile(f).catch(() => {}));
+  $('lovelace').textContent = data.lovelace_yaml;
+  smbCall('', 'GET').then(smbShow).catch(() => {});
 }
+// --- copying over SMB ---------------------------------------------------------------------------------
+function smbBody() { return { address: $('smbaddr').value.trim(), user: $('smbuser').value.trim(), password: $('smbpw').value || null }; }
+async function smbCall(path, method, body) {
+  const r = await fetch('/v1/ha/smb' + path, { method, headers: Object.assign(hdr(), body ? { 'Content-Type': 'application/json' } : {}),
+    body: body ? JSON.stringify(body) : undefined });
+  let d = null; try { d = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error((d && d.detail) || r.status);
+  return d;
+}
+function smbShow(d) {
+  $('smbaddr').value = d.address; $('smbuser').value = d.user; $('smbpw').value = '';
+  $('smbpw').placeholder = d.password_set ? 'saved: leave empty' : '';
+  if (d.last) {
+    $('smbcopymsg').textContent = 'Last copied version ' + d.last.version + ' on ' + new Date(d.last.at).toLocaleString() + '.';
+    if (!$('since').value) { $('since').value = d.last.version; }
+  }
+  if (d.address) $('smbcard').open = true;
+}
+$('smbtest').onclick = async () => {
+  $('smbmsg').textContent = 'Connecting...';
+  try { const r = await smbCall('/test', 'POST', smbBody());
+    $('smbmsg').textContent = r.ok ? 'Connected.' + (r.configuration_yaml ? ' configuration.yaml is there.' : ' No configuration.yaml here: is this the config share?')
+      + (r.packages_folder ? '' : ' (packages/ will be created.)') : 'Could not connect: ' + r.error; }
+  catch (e) { $('smbmsg').textContent = e.message; }
+};
+$('smbsave').onclick = async () => { try { smbShow(await smbCall('', 'PUT', smbBody())); $('smbmsg').textContent = 'Saved.'; } catch (e) { $('smbmsg').textContent = e.message; } };
+$('smbforget').onclick = async () => { try { smbShow(await smbCall('', 'DELETE')); $('smbmsg').textContent = 'Forgotten.'; } catch (e) { $('smbmsg').textContent = e.message; } };
+$('smbcopy').onclick = async () => {
+  $('smbcopymsg').textContent = 'Copying...'; $('smbresult').replaceChildren();
+  const packages = $('smbpk').checked ? [...document.querySelectorAll('#pk input[type=checkbox]')].filter(b => b.checked).map(b => b.dataset.path) : [];
+  try {
+    const r = await smbCall('/copy', 'POST', { packages, dashboards: $('smbdb').checked, secrets: $('smbsec').checked,
+      base_url: $('base').value.trim().replace(/\\/+$/, '') });
+    $('smbresult').replaceChildren(...r.files.map(f => { const li = document.createElement('li'); li.textContent = f.path + ': ' + f.result; return li; }));
+    if (r.secrets_differ && r.secrets_differ.length) { const li = document.createElement('li'); li.className = 'err';
+      li.textContent = 'Already in secrets.yaml with a different value (left alone, check them): ' + r.secrets_differ.join(', '); $('smbresult').append(li); }
+    $('smbcopymsg').textContent = r.ok ? 'Done. Check the configuration and restart Home Assistant.' : 'Stopped: ' + r.error;
+    if (r.ok) { $('since').value = data.version; try { localStorage.setItem('wa_ha_since', data.version); } catch (e) {} load(); }
+  } catch (e) { $('smbcopymsg').textContent = e.message; }
+};
+$('copylove').onclick = () => copyText($('lovelace').textContent).then(() => $('copylove').textContent = 'Copied');
+
 $('go').onclick = load;
 $('base').oninput = secrets;
 $('since').oninput = () => { try { localStorage.setItem('wa_ha_since', $('since').value.trim()); } catch (e) {} if (data) load(); };

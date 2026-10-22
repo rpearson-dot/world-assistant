@@ -249,8 +249,9 @@ def keys_dir() -> Path:
     return Path(os.environ.get("WA_KEYS_DIR", "/keys"))
 
 
-# Saved from Settings too, but not listed with the keys: the MQTT broker's password (app/mqtt_config.py).
-SETTINGS_SECRETS = WEB_KEYS | {"mqtt_password"}
+# Saved from the pages too, but not listed with the keys: the MQTT broker's password (app/mqtt_config.py) and
+# the password for Home Assistant's config share (app/ha_smb.py).
+SETTINGS_SECRETS = WEB_KEYS | {"mqtt_password", "ha_smb_password"}
 
 
 def web_value(name: str) -> str | None:
