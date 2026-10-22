@@ -1,0 +1,200 @@
+# World Assistant energy plan for Home Assistant: sets how full the battery is charged in each cheap Cosy window.
+#
+# Your inverter's six daily slots already match Cosy (00:00 04:00 07:00 13:00 16:00 22:00, grid charge on for
+# slots 2, 4 and 6). This file only changes the TARGET CHARGE LEVEL (Time Slot N Limit) of those three slots:
+#
+#   slot 6, 22:00-24:00  fills the battery for 00:00-04:00           set at 21:00
+#   slot 2, 04:00-07:00  fills it for 07:00-13:00 (less tomorrow's solar)   set at 21:00
+#   slot 4, 13:00-16:00  fills it for the 16:00-22:00 peak           set at 12:30
+#
+# DRY RUN FIRST: "WA energy plan: apply to inverter" starts OFF. While off, the plan is only worked out and written
+# to the logbook. Compare it with what you would choose, then switch it on.
+#
+# Install: put this file at /config/packages/wa_energy_plan.yaml and make sure configuration.yaml has
+#   homeassistant:
+#     packages: !include_dir_named packages
+# then Developer tools > YAML > Check configuration, and restart Home Assistant.
+# Needs the Forecast.Solar integration (sensor.energy_production_tomorrow). Without it solar counts as zero, which
+# only means buying a little more than necessary.
+#
+# Tune the defaults below to your house (edit the file; "initial" is applied at every restart).
+
+input_boolean:
+  wa_energy_plan_apply:
+    name: "WA energy plan: apply to inverter"
+    icon: mdi:battery-sync
+
+input_number:
+  wa_battery_kwh:
+    name: "WA battery usable capacity"
+    min: 5
+    max: 60
+    step: 0.5
+    unit_of_measurement: kWh
+    initial: 30
+  wa_floor_pct:
+    name: "WA battery reserve floor"
+    min: 5
+    max: 50
+    step: 1
+    unit_of_measurement: "%"
+    initial: 15
+  wa_min_target_pct:
+    name: "WA lowest charge target"
+    min: 10
+    max: 90
+    step: 5
+    unit_of_measurement: "%"
+    initial: 25
+  wa_max_target_pct:
+    name: "WA highest charge target"
+    min: 50
+    max: 100
+    step: 5
+    unit_of_measurement: "%"
+    initial: 95
+  wa_margin:
+    name: "WA safety margin on expected use"
+    min: 1
+    max: 2
+    step: 0.05
+    initial: 1.25
+  wa_night_load_kw:
+    name: "WA average load 00:00-04:00"
+    min: 0
+    max: 10
+    step: 0.1
+    unit_of_measurement: kW
+    initial: 0.6
+  wa_morning_load_kw:
+    name: "WA average load 07:00-13:00"
+    min: 0
+    max: 10
+    step: 0.1
+    unit_of_measurement: kW
+    initial: 1.2
+  wa_evening_load_kw:
+    name: "WA average load 16:00-22:00"
+    min: 0
+    max: 10
+    step: 0.1
+    unit_of_measurement: kW
+    initial: 2.0
+  wa_solar_morning_share:
+    name: "WA share of a day's solar before 13:00"
+    min: 0
+    max: 1
+    step: 0.05
+    initial: 0.5
+
+template:
+  - sensor:
+      - name: "WA target charge night"
+        unique_id: wa_target_charge_night
+        unit_of_measurement: "%"
+        icon: mdi:battery-charging-40
+        state: >-
+          {% set cap = states('input_number.wa_battery_kwh') | float(30) %}
+          {% set need = states('input_number.wa_night_load_kw') | float(0.6) * 4
+                        * states('input_number.wa_margin') | float(1.25) %}
+          {% set v = states('input_number.wa_floor_pct') | float(15) + need / cap * 100 %}
+          {{ [[(v / 5) | round(0) * 5, states('input_number.wa_min_target_pct') | float(25)] | max,
+              states('input_number.wa_max_target_pct') | float(95)] | min | int }}
+      - name: "WA target charge morning"
+        unique_id: wa_target_charge_morning
+        unit_of_measurement: "%"
+        icon: mdi:battery-charging-60
+        state: >-
+          {% set cap = states('input_number.wa_battery_kwh') | float(30) %}
+          {% set solar = states('sensor.energy_production_tomorrow') | float(0)
+                         * states('input_number.wa_solar_morning_share') | float(0.5) %}
+          {% set need = [states('input_number.wa_morning_load_kw') | float(1.2) * 6
+                         * states('input_number.wa_margin') | float(1.25) - solar, 0] | max %}
+          {% set v = states('input_number.wa_floor_pct') | float(15) + need / cap * 100 %}
+          {{ [[(v / 5) | round(0) * 5, states('input_number.wa_min_target_pct') | float(25)] | max,
+              states('input_number.wa_max_target_pct') | float(95)] | min | int }}
+      - name: "WA target charge evening"
+        unique_id: wa_target_charge_evening
+        unit_of_measurement: "%"
+        icon: mdi:battery-charging-80
+        state: >-
+          {% set cap = states('input_number.wa_battery_kwh') | float(30) %}
+          {% set need = states('input_number.wa_evening_load_kw') | float(2) * 6
+                        * states('input_number.wa_margin') | float(1.25) %}
+          {% set v = states('input_number.wa_floor_pct') | float(15) + need / cap * 100 %}
+          {{ [[(v / 5) | round(0) * 5, states('input_number.wa_min_target_pct') | float(25)] | max,
+              states('input_number.wa_max_target_pct') | float(95)] | min | int }}
+
+automation:
+  - id: wa_energy_plan_2100
+    alias: "WA energy plan 21:00 (tonight 22:00 and tomorrow 04:00)"
+    mode: single
+    triggers:
+      - trigger: time
+        at: "21:00:00"
+    variables:
+      night: "{{ states('sensor.wa_target_charge_night') | int(0) }}"
+      morning: "{{ states('sensor.wa_target_charge_morning') | int(0) }}"
+      night_now: "{{ states('number.office_inverter_time_slot_6_capacity') | int(0) }}"
+      morning_now: "{{ states('number.office_inverter_time_slot_2_capacity') | int(0) }}"
+      apply: "{{ is_state('input_boolean.wa_energy_plan_apply', 'on') and is_state('switch.office_inverter_allow_remote_control', 'on') }}"
+    conditions:
+      - condition: template
+        value_template: "{{ night > 0 and morning > 0 }}"
+    actions:
+      - action: logbook.log
+        data:
+          name: WA energy plan
+          message: >-
+            Slot 6 (22:00) target {{ night }}% (now {{ night_now }}%); slot 2 (04:00) target {{ morning }}%
+            (now {{ morning_now }}%); tomorrow's solar {{ states('sensor.energy_production_tomorrow') }} kWh.
+            {{ 'Applying.' if apply else 'Dry run: nothing changed.' }}
+      - if:
+          - condition: template
+            value_template: "{{ apply and (night - night_now) | abs >= 5 }}"
+        then:
+          - action: number.set_value
+            target:
+              entity_id: number.office_inverter_time_slot_6_capacity
+            data:
+              value: "{{ night }}"
+          - delay: "00:00:20"
+      - if:
+          - condition: template
+            value_template: "{{ apply and (morning - morning_now) | abs >= 5 }}"
+        then:
+          - action: number.set_value
+            target:
+              entity_id: number.office_inverter_time_slot_2_capacity
+            data:
+              value: "{{ morning }}"
+
+  - id: wa_energy_plan_1230
+    alias: "WA energy plan 12:30 (today 13:00)"
+    mode: single
+    triggers:
+      - trigger: time
+        at: "12:30:00"
+    variables:
+      evening: "{{ states('sensor.wa_target_charge_evening') | int(0) }}"
+      evening_now: "{{ states('number.office_inverter_time_slot_4_capacity') | int(0) }}"
+      apply: "{{ is_state('input_boolean.wa_energy_plan_apply', 'on') and is_state('switch.office_inverter_allow_remote_control', 'on') }}"
+    conditions:
+      - condition: template
+        value_template: "{{ evening > 0 }}"
+    actions:
+      - action: logbook.log
+        data:
+          name: WA energy plan
+          message: >-
+            Slot 4 (13:00) target {{ evening }}% (now {{ evening_now }}%).
+            {{ 'Applying.' if apply else 'Dry run: nothing changed.' }}
+      - if:
+          - condition: template
+            value_template: "{{ apply and (evening - evening_now) | abs >= 5 }}"
+        then:
+          - action: number.set_value
+            target:
+              entity_id: number.office_inverter_time_slot_4_capacity
+            data:
+              value: "{{ evening }}"
