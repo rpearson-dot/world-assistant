@@ -47,6 +47,7 @@ It started as a personal project on a home Unraid server. Nothing in it is speci
 | **Knowledge graph** | Optional Neo4j holding how the data joins up — trips to corridors, closures to corridors, stations near places — so the assistant can follow connections rather than be told where to look ([how](docs/graph.md)). Derived from Postgres and safe to throw away. |
 | **Live buses** | Where buses are right now, anywhere in Great Britain, from the Bus Open Data Service (a free key); a layer on the map and `GET /v1/live-buses` ([how](docs/live-buses.md)). The bus tracker above remains the TfL record; this is a live snapshot. |
 | **Postcodes** | Every UK postcode with a position, held locally from Ordnance Survey Code-Point Open, so adding a place no longer needs an outside service; the nearest postcode to any point ([how](docs/postcodes.md)). |
+| **Energy** | Your Octopus tariff's rates (Cosy, Agile, fixed), banded cheap / standard / peak, with the next cheap window and cheapest block, for Home Assistant to run the battery from ([how](docs/energy.md)). |
 | **Floods** | Environment Agency flood alerts and warnings for England, refreshed every 15 minutes, with each warned area drawn on the map; ask what covers home, or what crosses the way to work ([how](docs/floods.md)). |
 | **Stops** | Where every bus stop, station and ferry terminal in Great Britain is, from the national NaPTAN register, held locally and refreshed weekly ([how](docs/naptan.md)). |
 | **Map** | Everything with coordinates on one map, a layer at a time: places, people, corridors, closures, signs, fuel priced cheapest to dearest, stops and stations, pollen ([how](docs/map.md)). Leaflet is served from the app; only the tiles come from outside, and you choose where from. |
@@ -156,6 +157,7 @@ All `/v1/*` routes need `Authorization: Bearer <api_token>`. The interactive ref
 | `GET /v1/trips/{id}/cost?vehicle=` | Energy or fuel needed, range check, cost |
 | `GET /v1/live-buses` | Buses reporting a position near a place or point (needs `bods_api_key`) |
 | `GET /v1/postcodes/{postcode}`, `/v1/postcodes/near` | A postcode's position; the nearest postcodes to a point |
+| `GET /v1/energy/now`, `/rates`, `/windows` | Electricity rate now and ahead, cheap/peak windows |
 | `GET /v1/floods`, `/v1/floods/at` | Current flood warnings; those covering a place or a point |
 | `GET /v1/stops/near`, `/v1/stops/{atco}` | Bus stops, stations and terminals near a point (nearest first), or one stop by its ATCO code |
 | `GET /v1/fuel/near`, `/v1/fuel/along/{corridor}` | Cheapest fuel near a place or along a corridor; `vehicle=` ranks by saving after the detour |

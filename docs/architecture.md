@@ -80,6 +80,7 @@ app/
     naptan/             normalise, sync (the national stop register, weekly)
     codepoint/          sync (Ordnance Survey postcodes, monthly)
     bods/               client (live bus positions, SIRI-VM; nothing stored)
+    ../energy/          octopus, rates (pure), store, summary, sync, routes, ha (a self-contained domain module)
     flood/              normalise, sync (Environment Agency flood warnings, every 15 minutes)
     tfl/ rail/          TfL Unified API; National Rail via the Rail Data Marketplace
     bus/                tracker config, poller, store, events, trips
@@ -119,6 +120,7 @@ trip's corridor with the road numbers it uses. Stored events are then re-tagged.
 | `nh_sign`, `nh_sign_message` | Message signs; history, written only when the text changes |
 | `nh_corridor` | Corridor centrelines (manual, draft or routed) |
 | `postcode` | Every UK postcode with a position, from Code-Point Open, reloaded monthly ([docs/postcodes.md](postcodes.md)) |
+| `energy_rate` | Unit rates for the tariff in use, by period ([docs/energy.md](energy.md)) |
 | `flood_warning`, `flood_area` | The Environment Agency's current flood warnings, and the boundary of each area they apply to, fetched once and kept ([docs/floods.md](floods.md)) |
 | `naptan_stop` | Every bus stop, station and terminal in Great Britain with its position, reloaded weekly from NaPTAN ([docs/naptan.md](naptan.md)) |
 | `fuel_station`, `fuel_price`, `fuel_price_change` | Stations; current prices; price-change history |
