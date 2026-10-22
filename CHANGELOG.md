@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- `docs/ha/wa_energy_plan.yaml`: a Home Assistant package that sets the charge target of the three Cosy charging slots on a Deye/Sunsynk inverter from expected use and the solar forecast. Dry run until switched on ([docs/energy.md](docs/energy.md)).
+
 ### Removed
 - The Free Electricity sessions list: its community-run source stopped updating in October 2025 and Octopus now announces these on a calendar. Its sensors, setting (`WA_ENERGY_FREE_SESSIONS_ENABLED`) and probe section are gone; stored rows are cleared on the next sync.
 

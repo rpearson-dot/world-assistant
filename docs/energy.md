@@ -77,6 +77,15 @@ now (`on`/`off`, with a `joined` attribute), Next saving session starts, and Nex
 Example: when `sensor.wa_energy_saving_session_now` is `on` and its `joined` attribute is true, run the house from
 the battery.
 
+## Running the battery from Home Assistant
+
+`docs/ha/wa_energy_plan.yaml` is a Home Assistant package for a Deye/Sunsynk inverter that already has Cosy-shaped
+time slots (00:00 04:00 07:00 13:00 16:00 22:00, grid charge on for slots 2, 4 and 6). It changes only the target
+charge level of the three charging slots, from expected use and tomorrow's solar forecast (Forecast.Solar). It
+starts as a dry run that only writes to the logbook; switch on "WA energy plan: apply to inverter" when the numbers
+look right. It does not use World Assistant yet: on Cosy the cheap windows are fixed and already in the slots. WA's
+sensors come in for Saving Sessions and for tariffs whose cheap times move.
+
 ## Notes
 
 * The rates and bands are not verified against a live account by the developers; the first scheduled run is the test.
