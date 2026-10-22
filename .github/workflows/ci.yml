@@ -68,7 +68,13 @@ jobs:
       - name: Lint
         run: ruff check .
       - name: Test
-        run: python -m pytest -q
+        # Failing tests are also published as annotations, readable without downloading the log.
+        run: |
+          set +e
+          python -m pytest -q -rfE 2>&1 | tee pytest.txt
+          status=${PIPESTATUS[0]}
+          grep -E "^(FAILED|ERROR) " pytest.txt | cut -c1-400 | sed 's/^/::error title=test::/'
+          exit "$status"
 
   image:
     # Proves the image builds (no push). Releases are built by release.yml.
