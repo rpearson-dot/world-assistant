@@ -144,6 +144,10 @@ class Settings(BaseSettings):
         return read_secret("ticketmaster_api_key")
 
     @property
+    def bods_api_key(self) -> str:
+        return read_secret("bods_api_key")
+
+    @property
     def skiddle_api_key(self) -> str:
         return read_secret("skiddle_api_key")
 

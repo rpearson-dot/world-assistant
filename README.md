@@ -45,6 +45,7 @@ It started as a personal project on a home Unraid server. Nothing in it is speci
 | **Buses and trains** | Live bus tracking with on-time statistics, and train departure boards (TfL and National Rail). Departures, fuel prices and road closures are published to Home Assistant over MQTT, and fuel, roads, pollen (a map and a home graph) follow where each person is, and events show what is on near the home zone and any extra places you add (the app's location when away, else the home zone) ([how](docs/home-assistant.md)), with ready-made dashboards. |
 | **Assistant** | The same data as spoken-style answers: `/v1/ask` for Siri Shortcuts and scripts, and `/mcp` for AI assistants that speak the Model Context Protocol. |
 | **Knowledge graph** | Optional Neo4j holding how the data joins up — trips to corridors, closures to corridors, stations near places — so the assistant can follow connections rather than be told where to look ([how](docs/graph.md)). Derived from Postgres and safe to throw away. |
+| **Live buses** | Where buses are right now, anywhere in Great Britain, from the Bus Open Data Service (a free key); a layer on the map and `GET /v1/live-buses` ([how](docs/live-buses.md)). The bus tracker above remains the TfL record; this is a live snapshot. |
 | **Postcodes** | Every UK postcode with a position, held locally from Ordnance Survey Code-Point Open, so adding a place no longer needs an outside service; the nearest postcode to any point ([how](docs/postcodes.md)). |
 | **Floods** | Environment Agency flood alerts and warnings for England, refreshed every 15 minutes, with each warned area drawn on the map; ask what covers home, or what crosses the way to work ([how](docs/floods.md)). |
 | **Stops** | Where every bus stop, station and ferry terminal in Great Britain is, from the national NaPTAN register, held locally and refreshed weekly ([how](docs/naptan.md)). |
@@ -153,6 +154,7 @@ All `/v1/*` routes need `Authorization: Bearer <api_token>`. The interactive ref
 | `GET/PUT/DELETE /v1/places/{id}`, `/v1/trips/{id}`, `/v1/vehicles/{id}` | Manage places, trips, vehicles |
 | `POST /v1/trips/{id}/route` | Route a trip and (re)build its corridor |
 | `GET /v1/trips/{id}/cost?vehicle=` | Energy or fuel needed, range check, cost |
+| `GET /v1/live-buses` | Buses reporting a position near a place or point (needs `bods_api_key`) |
 | `GET /v1/postcodes/{postcode}`, `/v1/postcodes/near` | A postcode's position; the nearest postcodes to a point |
 | `GET /v1/floods`, `/v1/floods/at` | Current flood warnings; those covering a place or a point |
 | `GET /v1/stops/near`, `/v1/stops/{atco}` | Bus stops, stations and terminals near a point (nearest first), or one stop by its ATCO code |

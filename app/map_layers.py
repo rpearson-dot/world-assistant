@@ -15,7 +15,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import text
 
 from app.auth import require_token
+from app.bods import vehicles_near
+from app.config import get_settings
 from app.geoquery import POINT, distance_km, params, within_sql
+from app.integrations.bods.client import BodsError
 from app.integrations.fuelfinder.normalise import canonical_fuel
 from app.integrations.fuelfinder.queries import haversine_km
 from app.integrations.naptan.normalise import STATION_TYPES
@@ -34,6 +37,7 @@ LAYERS: dict[str, str] = {
     "fuel": "Fuel stations",
     "stops": "Bus stops and stations",
     "floods": "Flood warnings",
+    "buses": "Live buses",
     "pollen": "Allergy risk lattice",
 }
 STOPS_CAP = 3000  # nearest first; a city centre can hold far more bus stops than a map can use
@@ -217,6 +221,23 @@ async def _floods(conn: Any, centre: Point | None, radius_km: float) -> list[dic
     return out
 
 
+async def _buses(request: Request, centre: Point | None, radius_km: float) -> tuple[list[dict[str, Any]], str | None]:
+    """Buses reporting a position right now, from BODS, around the centre only (the national feed is
+    far too large to draw). Returns the features and, when there are none for a reason worth saying,
+    why. A failure here must not take the rest of the map with it."""
+    if centre is None:
+        return [], "live buses are shown around a place, not across the whole country"
+    if not get_settings().bods_api_key:
+        return [], "set the bods_api_key secret (a free BODS key) to see live buses"
+    try:
+        vehicles = await vehicles_near(request.app.state.redis, centre[0], centre[1], radius_km)
+    except BodsError as exc:
+        return [], str(exc)
+    return [_point(v["lat"], v["lon"], {k: v[k] for k in ("vehicle", "line", "operator", "destination",
+                                                          "direction", "bearing", "recorded_at")})
+            for v in vehicles], None  # fmt: skip
+
+
 async def _pollen(conn: Any, centre: Point | None, radius_km: float) -> list[dict[str, Any]]:
     res = await _near(conn, "SELECT lat, lon, forecast, changed_at FROM pollen_grid", centre, radius_km)
     out = []
@@ -239,12 +260,14 @@ async def layers(request: Request) -> dict[str, Any]:
         "fuel": "SELECT count(*) FROM fuel_station WHERE coords_ok AND NOT permanent_closure",
         "stops": "SELECT count(*) FROM naptan_stop",
         "floods": "SELECT count(*) FROM flood_warning WHERE severity_level <= 3",
+        "buses": None,  # live, not stored: there is nothing to count until it is fetched
         "pollen": "SELECT count(*) FROM pollen_grid",
     }
     out = []
     async with request.app.state.engine.connect() as conn:
         for key, name in LAYERS.items():
-            n = (await conn.execute(text(counts[key]))).scalar_one()
+            sql = counts[key]
+            n = (await conn.execute(text(sql))).scalar_one() if sql else None
             out.append({"id": key, "name": name, "features": n})
     return {"layers": out}
 
@@ -284,6 +307,7 @@ async def geojson(
             centre_name, centre = row[0], (row[1], row[2])
 
     out: dict[str, Any] = {}
+    notes: dict[str, str] = {}
     async with engine.connect() as conn:
         for key in wanted:
             if key == "places":
@@ -302,10 +326,14 @@ async def geojson(
                 features = await _stops(conn, centre, radius_km)
             elif key == "floods":
                 features = await _floods(conn, centre, radius_km)
+            elif key == "buses":
+                features, note = await _buses(request, centre, radius_km)
+                if note:
+                    notes[key] = note
             else:
                 features = await _pollen(conn, centre, radius_km)
             out[key] = _collection(features, LAYERS[key])
     where = None
     if centre is not None:
         where = {"name": centre_name, "lat": centre[0], "lon": centre[1], "radius_km": radius_km}
-    return {"centre": where, "layers": out}
+    return {"centre": where, "layers": out, "notes": notes}

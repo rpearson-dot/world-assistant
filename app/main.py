@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.assistant import router as assistant_router
 from app.autodeploy import router as autodeploy_router
 from app.backups import router as backups_router
+from app.bods import router as bods_router
 from app.bus import router as bus_router
 from app.bus_page import page_router as bus_page_router
 from app.config import get_settings
@@ -86,6 +87,7 @@ app.include_router(map_router)
 app.include_router(stops_router)
 app.include_router(floods_router)
 app.include_router(postcodes_router)
+app.include_router(bods_router)
 app.include_router(graph_router)
 app.include_router(map_page_router)
 app.include_router(fuel_router)

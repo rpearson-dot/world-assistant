@@ -69,7 +69,7 @@ app/
   secretstore.py, secretsctl.py                                     where every secret comes from
   status.py, backups.py, backup.py, autodeploy.py                   status page, backups, update switch
   places.py, trips (in places.py), vehicles.py, routing.py, geo.py places, trips, vehicles, Valhalla
-  stops.py, floods.py, postcodes.py                                              stops near a point (NaPTAN); flood warnings
+  stops.py, floods.py, postcodes.py, bods.py                                              stops near a point (NaPTAN); flood warnings
   fuel.py, events.py, pollen.py, pollen_history.py, pollen_grid.py, pollen_map.py                  fuel, events and pollen (API and pages)
   bus.py, bus_page.py, tfl.py                                       bus tracker, train boards
   assistant.py                                                      /v1/ask and /mcp tools
@@ -79,6 +79,7 @@ app/
     fuelfinder/         client, normalise, store, sync, queries, capture
     naptan/             normalise, sync (the national stop register, weekly)
     codepoint/          sync (Ordnance Survey postcodes, monthly)
+    bods/               client (live bus positions, SIRI-VM; nothing stored)
     flood/              normalise, sync (Environment Agency flood warnings, every 15 minutes)
     tfl/ rail/          TfL Unified API; National Rail via the Rail Data Marketplace
     bus/                tracker config, poller, store, events, trips
