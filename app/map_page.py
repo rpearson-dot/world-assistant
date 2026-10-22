@@ -72,6 +72,7 @@ const STYLE = {
   fuel:        { colour: '#1a7f4b', label: 'Fuel', small: true },
   stops:       { colour: '#0d6e6e', label: 'Stops', small: true },
   floods:      { colour: '#1d4ed8', label: 'Floods' },
+  buses:       { colour: '#c2410c', label: 'Live buses', small: true },
   pollen:      { colour: '#7c7c7c', label: 'Pollen', small: true }
 };
 const FLOOD = { 1: '#7a0c0c', 2: '#d92d20', 3: '#f79009' };  // severe, warning, alert
@@ -102,6 +103,7 @@ function popup(key, p) {
     p.price_at ? 'set ' + new Date(p.price_at).toLocaleDateString('en-GB') : '', p.postcode || '');
   if (key === 'stops') lines.push([p.kind ? p.kind.replace('_', ' ') : '', p.indicator, p.street].filter(Boolean).join(' · '), p.locality || '', p.id);
   if (key === 'floods') lines.push(p.severity || '', [p.river_or_sea, p.county].filter(Boolean).join(' · '), p.message ? String(p.message).slice(0, 220) : '', 'Environment Agency flood data');
+  if (key === 'buses') lines.push((p.line ? 'route ' + p.line : '') + (p.destination ? ' to ' + p.destination : ''), p.operator || '', p.recorded_at ? 'at ' + new Date(p.recorded_at).toLocaleTimeString('en-GB') : '');
   if (key === 'pollen') lines.push(p.label ? 'allergy risk: ' + p.label : 'no reading');
   for (const line of lines) if (line) box.appendChild(el('div', line, 'dim'));
   return box;
@@ -170,11 +172,12 @@ async function load() {
       show(key);
     }
     controls(counts);
+    const why = Object.entries(body.notes || {}).filter(([k]) => ON.has(k)).map(([k, v]) => STYLE[k].label + ': ' + v);
     if (body.centre) {
       map.setView([body.centre.lat, body.centre.lon], radius <= 5 ? 13 : radius <= 10 ? 12 : radius <= 25 ? 11 : 10);
-      $('note').textContent = 'Centred on ' + body.centre.name + ', within ' + body.centre.radius_km + ' km.';
+      $('note').textContent = ['Centred on ' + body.centre.name + ', within ' + body.centre.radius_km + ' km.'].concat(why).join(' ');
     } else {
-      $('note').textContent = 'Everything, wherever it is.';
+      $('note').textContent = ['Everything, wherever it is.'].concat(why).join(' ');
       const b = L.latLngBounds([]);  // layer groups have no bounds of their own: ask each shape
       for (const [key, g] of Object.entries(drawn))
         if (ON.has(key)) g.eachLayer(l => b.extend(l.getBounds ? l.getBounds() : l.getLatLng()));

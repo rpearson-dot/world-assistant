@@ -15,6 +15,7 @@ page draws them; `/v1/map/geojson` serves them to anything else.
 | `fuel` | points | Fuel Finder stations | brand, name, the price of one fuel and when it was set |
 | `stops` | points | NaPTAN: bus stops, stations, terminals | name, kind (bus stop, rail, metro, ferry, air), indicator, street. Near a point: every stop, nearest first, up to 3,000. Everywhere: one point per station only |
 | `floods` | polygons | Environment Agency, live warnings (England) | area, severity (alert, warning, severe), river or sea, the EA's message. On at first, since it is usually empty and matters when it is not |
+| `buses` | points | BODS, live (needs a free key; see [docs/live-buses.md](live-buses.md)) | route, destination, operator, when the position was reported. Off at first; around a place only, up to 15 km |
 | `pollen` | points | the allergy-risk lattice | today's risk label and level 0–4 |
 
 Bus stops are not a layer: the tracker stores a stop's id and name but not its position. Adding them

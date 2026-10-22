@@ -107,7 +107,7 @@ def schema() -> Iterator[None]:
     sync.dispose()
 
 
-ALL = "places,locations,roads,road_events,signs,fuel,stops,floods,pollen"
+ALL = "places,locations,roads,road_events,signs,fuel,stops,floods,pollen"  # buses are live, tested below
 
 
 @pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
@@ -212,3 +212,43 @@ def test_the_tile_server_is_configurable() -> None:
     assert "{z}" in s.map_tile_url and s.map_tile_attribution == "mine"
     text = TestClient(app).get("/map").text
     assert get_settings().map_tile_url in text and get_settings().map_tile_attribution in text
+
+
+@pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
+async def test_live_buses_are_drawn_around_a_place_and_explain_themselves_when_absent(
+    schema: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("API_TOKEN", "tok")
+    engine = create_async_engine(URL)  # type: ignore[arg-type]
+    try:
+        app.state.engine = engine
+        c, h = TestClient(app), {"Authorization": "Bearer tok"}
+        monkeypatch.delenv("BODS_API_KEY", raising=False)
+        monkeypatch.setattr("app.config.SECRETS_DIR", Path("/nonexistent"))
+        r = c.get("/v1/map/geojson?layers=buses,places&radius_km=5", headers=h).json()
+        assert r["layers"]["buses"]["features"] == []  # no key, so no buses, and no error
+        assert "bods_api_key" in r["notes"]["buses"]
+        assert len(r["layers"]["places"]["features"]) == 1  # the rest of the map is unaffected
+
+        monkeypatch.setenv("BODS_API_KEY", "KEY")
+
+        async def fake(redis: object, lat: float, lon: float, radius_km: float, line: str | None = None) -> list[dict]:
+            return [{"vehicle": "B1", "line": "213", "operator": "X", "destination": "Kingston",
+                     "direction": "out", "bearing": 90.0, "lat": NEAR[0], "lon": NEAR[1],
+                     "recorded_at": "2026-10-22T09:00:00+00:00"}]  # fmt: skip
+
+        monkeypatch.setattr(map_layers, "vehicles_near", fake)
+        r = c.get("/v1/map/geojson?layers=buses&radius_km=5", headers=h).json()
+        assert [f["properties"]["line"] for f in r["layers"]["buses"]["features"]] == ["213"] and not r["notes"]
+
+        wide = c.get("/v1/map/geojson?layers=buses&everywhere=true", headers=h).json()
+        assert wide["layers"]["buses"]["features"] == [] and "around a place" in wide["notes"]["buses"]
+
+        async def broken(*a: object, **k: object) -> list[dict]:
+            raise map_layers.BodsError("the bus feed answered HTTP 500")
+
+        monkeypatch.setattr(map_layers, "vehicles_near", broken)
+        r = c.get("/v1/map/geojson?layers=buses,places&radius_km=5", headers=h)
+        assert r.status_code == 200 and "HTTP 500" in r.json()["notes"]["buses"]  # a BODS outage is a note
+    finally:
+        await engine.dispose()
