@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Removed
+- The Free Electricity sessions list: its community-run source stopped updating in October 2025 and Octopus now announces these on a calendar. Its sensors, setting (`WA_ENERGY_FREE_SESSIONS_ENABLED`) and probe section are gone; stored rows are cleared on the next sync.
+
 ## [0.11.0] - 2026-10-22
 
 ### Added

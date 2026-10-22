@@ -62,12 +62,6 @@ async def sync(engine: AsyncEngine, client: httpx.AsyncClient | None = None) -> 
                 )
             except (httpx.HTTPError, octopus.OctopusError, ValueError, KeyError, TypeError) as exc:
                 result["saving_sessions_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
-        if s.energy_free_sessions_enabled:
-            try:
-                free = await kraken.fetch_free(client, s.energy_free_url)
-                result["free_sessions"] = await store.save_sessions(engine, ["free"], free)
-            except (httpx.HTTPError, octopus.OctopusError, ValueError, KeyError, TypeError) as exc:
-                result["free_sessions_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
     finally:
         if owned:
             await client.aclose()

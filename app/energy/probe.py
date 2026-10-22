@@ -1,4 +1,4 @@
-"""Show what Octopus really sends for Saving Sessions and Free Electricity, so the parsers can be checked.
+"""Show what Octopus really sends for Saving Sessions, so the parser can be checked.
 
     docker compose exec worker python -m app.energy.probe
 
@@ -64,13 +64,6 @@ async def main() -> int:
                 "skipped: needs WA_OCTOPUS_ACCOUNT and the octopus_api_key secret",
                 secrets,
             )
-        try:
-            r = await c.get(s.energy_free_url)
-            show(f"free electricity raw (HTTP {r.status_code})", r.text[:3000], secrets)
-            if r.status_code == 200:
-                show("free electricity as parsed", kraken.parse_free(r.json()), secrets)
-        except (httpx.HTTPError, OctopusError, ValueError) as exc:
-            show("free electricity failed", f"{type(exc).__name__}: {exc}", secrets)
     return 0
 
 

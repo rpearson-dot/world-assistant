@@ -1,4 +1,4 @@
-"""Saving Sessions and free-electricity sessions as Home Assistant wants them: on now, and what is next. Pure."""
+"""Saving Sessions (and boost events) as Home Assistant wants them: on now, and what is next. Pure."""
 
 from __future__ import annotations
 
@@ -37,5 +37,4 @@ def for_kind(rows: list[dict[str, Any]], kind: str, now: datetime) -> dict[str, 
 
 
 def summarise(rows: list[dict[str, Any]], now: datetime) -> dict[str, Any]:
-    return {"saving": for_kind(rows, "saving", now), "free": for_kind(rows, "free", now),
-            "boost": for_kind(rows, "boost", now)}  # fmt: skip
+    return {"saving": for_kind(rows, "saving", now), "boost": for_kind(rows, "boost", now)}  # fmt: skip

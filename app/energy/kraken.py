@@ -1,4 +1,4 @@
-"""Octopus's GraphQL API (Kraken): Saving Sessions, and the community Free Electricity feed.
+"""Octopus's GraphQL API (Kraken): Saving Sessions.
 
 The queries and the two hosts are the ones the BottlecapDave Home Assistant integration uses
 (https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy). They are not an official public contract, so
@@ -18,7 +18,6 @@ from app.energy.octopus import OctopusError
 
 TOKEN_HOST = "https://api.oegb-kraken.energy"
 BACKEND_HOST = "https://api.backend.octopus.energy"
-FREE_FEED = "https://oe-api.davidskendall.co.uk/free_electricity.json"
 
 TOKEN_MUTATION = 'mutation { obtainKrakenToken(input: { APIKey: "%s" }) { token } }'
 SESSIONS_QUERY = """query { savingSessions {
@@ -121,22 +120,6 @@ def parse_saving(data: dict[str, Any]) -> list[dict[str, Any]]:
     return list(rows.values())
 
 
-def parse_free(body: Any) -> list[dict[str, Any]]:
-    items = body.get("data") if isinstance(body, dict) else None
-    if not isinstance(items, list):
-        raise OctopusError("the free electricity feed had no data list")
-    out = []
-    for item in items:
-        if not isinstance(item, dict) or item.get("is_test"):
-            continue
-        s, e = _time(item.get("start")), _time(item.get("end"))
-        code = str(item.get("code") or item.get("id") or "")
-        if code and s and e and e > s:
-            out.append({"kind": "free", "code": code, "start_at": s, "end_at": e, "octopoints_per_kwh": None,
-                        "joined": False, "regions": None, "event_type": "FREE_ELECTRICITY"})  # fmt: skip
-    return out
-
-
 async def fetch_saving(
     client: httpx.AsyncClient, api_key: str, account: str
 ) -> list[dict[str, Any]]:
@@ -145,9 +128,3 @@ async def fetch_saving(
                           headers={"Authorization": t})  # fmt: skip
     r.raise_for_status()
     return parse_saving(_graphql(r.json()))
-
-
-async def fetch_free(client: httpx.AsyncClient, url: str = FREE_FEED) -> list[dict[str, Any]]:
-    r = await client.get(url)
-    r.raise_for_status()
-    return parse_free(r.json())

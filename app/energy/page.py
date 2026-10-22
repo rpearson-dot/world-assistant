@@ -101,15 +101,15 @@ function windowTile(k, w, band) {
 
 function sessionTiles(s) {
   const box = $('sessions'); box.replaceChildren();
-  const sv_ = s.saving || {}, fr = s.free || {};
+  const sv_ = s.saving || {};
   const one = (label, blk, joinedMatters) => {
     if (blk.now) box.append(tile('live', label + ' now', 'On', 'until ' + hm(blk.current.end) + (joinedMatters ? (blk.now_joined ? ' · you joined' : ' · you have not joined') : '')));
     const n = blk.next;
     if (n) box.append(tile('', 'Next ' + label.toLowerCase(), when(n.start), mins(n.minutes) + ' long' + (n.octopoints_per_kwh ? ' · ' + n.octopoints_per_kwh + ' Octopoints/kWh' : '') + (joinedMatters ? (n.joined ? ' · joined' : ' · not joined') : '')));
     else if (!blk.now) box.append(tile('', label, 'none announced'));
   };
-  one('Saving Session', sv_, true); one('Free electricity', fr, false);
-  $('snote').textContent = 'Saving Sessions pay you Octopoints for using less electricity in the hour. Join them in the Octopus app. Free electricity sessions come from a community-run list.';
+  one('Saving Session', sv_, true);
+  $('snote').textContent = 'Saving Sessions pay you Octopoints for using less electricity in the hour. Join them in the Octopus app.';
 }
 
 async function load() {

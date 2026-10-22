@@ -29,7 +29,7 @@ async def now(
 
 @router.get("/sessions")
 async def sessions(request: Request) -> dict[str, Any]:
-    """Saving Sessions (with whether you joined), Free Electricity sessions, and Octopus boost events: on now, next, upcoming."""
+    """Saving Sessions (with whether you joined) and Octopus boost events: on now, next, upcoming."""
     return sess.summarise(await store.load_sessions(request.app.state.engine), datetime.now(UTC))
 
 
