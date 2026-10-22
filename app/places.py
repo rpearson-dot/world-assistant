@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from app.auth import require_token
 from app.geo import PostcodeError, lookup_postcode
 from app.pagestyle import themed
+from app.postcodes import local_postcode
 
 router = APIRouter(prefix="/v1", tags=["places"], dependencies=[Depends(require_token)])
 
@@ -88,7 +89,8 @@ async def put_place(place_id: str, body: PlaceIn, request: Request) -> dict[str,
     postcode, lat, lon = body.postcode, body.lat, body.lon
     if postcode:
         try:
-            located = await lookup_postcode(postcode)
+            # the local Code-Point Open table first; postcodes.io for anything it does not know
+            located = await local_postcode(request.app.state.engine, postcode) or await lookup_postcode(postcode)
         except PostcodeError as exc:
             raise HTTPException(422, str(exc)) from exc
         postcode = located.postcode

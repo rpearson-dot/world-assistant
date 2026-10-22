@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 log = logging.getLogger("wa.jobs")
 
 KEEP_DAYS = 14
-_SKIPPED = {"disabled", "no key"}
+_SKIPPED = {"disabled", "no key", "up to date"}
 
 
 async def tracked(

@@ -47,7 +47,7 @@ flowchart LR
 
 | Component | Role |
 |-----------|------|
-| `api` | FastAPI. Serves the pages and `/v1/*`, the assistant tools (`/v1/ask`, `/mcp`) and the status, backup and automatic-update endpoints. Reads the database; calls Valhalla, postcodes.io and (cached) the event, train and pollen services on demand. |
+| `api` | FastAPI. Serves the pages and `/v1/*`, the assistant tools (`/v1/ask`, `/mcp`) and the status, backup and automatic-update endpoints. Reads the database; calls Valhalla, postcodes.io (only for a postcode the local table lacks) and (cached) the event, train and pollen services on demand. |
 | `worker` | arq scheduler. Polls the feeds that are stored (National Highways, Fuel Finder, the bus tracker, pollen history) and writes to the database. The only thing that calls National Highways and Fuel Finder. Records a heartbeat the status page shows. |
 | `migrate` | One-shot Alembic job that runs before the api and worker start. |
 | `wa-db` | PostGIS Postgres, private to the stack. Tables holding coordinates carry a generated `geog` point and a GiST index, so radius searches are indexed ([ADR 0007](adr/0007-postgis.md)). |
@@ -69,7 +69,7 @@ app/
   secretstore.py, secretsctl.py                                     where every secret comes from
   status.py, backups.py, backup.py, autodeploy.py                   status page, backups, update switch
   places.py, trips (in places.py), vehicles.py, routing.py, geo.py places, trips, vehicles, Valhalla
-  stops.py, floods.py                                               stops near a point (NaPTAN); flood warnings
+  stops.py, floods.py, postcodes.py                                              stops near a point (NaPTAN); flood warnings
   fuel.py, events.py, pollen.py, pollen_history.py, pollen_grid.py, pollen_map.py                  fuel, events and pollen (API and pages)
   bus.py, bus_page.py, tfl.py                                       bus tracker, train boards
   assistant.py                                                      /v1/ask and /mcp tools
@@ -78,6 +78,7 @@ app/
     nationalhighways/   client, normalise, match (corridor geometry), store, poller, capture
     fuelfinder/         client, normalise, store, sync, queries, capture
     naptan/             normalise, sync (the national stop register, weekly)
+    codepoint/          sync (Ordnance Survey postcodes, monthly)
     flood/              normalise, sync (Environment Agency flood warnings, every 15 minutes)
     tfl/ rail/          TfL Unified API; National Rail via the Rail Data Marketplace
     bus/                tracker config, poller, store, events, trips
@@ -116,6 +117,7 @@ trip's corridor with the road numbers it uses. Stored events are then re-tagged.
 | `nh_event`, `nh_event_corridor` | Closures and speed limits; their corridor tags |
 | `nh_sign`, `nh_sign_message` | Message signs; history, written only when the text changes |
 | `nh_corridor` | Corridor centrelines (manual, draft or routed) |
+| `postcode` | Every UK postcode with a position, from Code-Point Open, reloaded monthly ([docs/postcodes.md](postcodes.md)) |
 | `flood_warning`, `flood_area` | The Environment Agency's current flood warnings, and the boundary of each area they apply to, fetched once and kept ([docs/floods.md](floods.md)) |
 | `naptan_stop` | Every bus stop, station and terminal in Great Britain with its position, reloaded weekly from NaPTAN ([docs/naptan.md](naptan.md)) |
 | `fuel_station`, `fuel_price`, `fuel_price_change` | Stations; current prices; price-change history |
