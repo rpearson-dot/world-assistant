@@ -43,14 +43,44 @@ QUERIES: dict[str, str] = {
 }
 EVENT_CORRIDORS = "SELECT record_id, corridor_id FROM nh_event_corridor"
 
+# Proximity is PostGIS's job: ST_DWithin on the geography columns from migration 0018, index
+# assisted, rather than measuring every pair of things in Python.
+NEAR_PAIRS = """
+SELECT 'Station' AS label, s.node_id AS thing, p.id AS place,
+       ST_Distance(s.geog, p.geog) / 1000.0 AS km
+FROM fuel_station s JOIN place p ON ST_DWithin(s.geog, p.geog, :near_m)
+WHERE s.coords_ok AND NOT s.permanent_closure
+UNION ALL
+SELECT 'Location', l.id, p.id, ST_Distance(l.geog, p.geog) / 1000.0
+FROM ha_location l JOIN place p ON ST_DWithin(l.geog, p.geog, :near_m)
+"""
 
-async def read(engine: AsyncEngine) -> dict[str, Any]:
-    """One read of everything the graph is made from."""
+ALONG_PAIRS = """
+WITH lines AS (
+  SELECT c.id, ST_MakeLine(ARRAY(
+           SELECT ST_SetSRID(ST_MakePoint((pt->>1)::float8, (pt->>0)::float8), 4326)
+           FROM jsonb_array_elements(c.centreline) AS pt
+         ))::geography AS line
+  FROM nh_corridor c
+  WHERE c.enabled AND jsonb_array_length(c.centreline) > 1
+)
+SELECT s.node_id AS station, l.id AS corridor, ST_Distance(s.geog, l.line) / 1000.0 AS km
+FROM fuel_station s JOIN lines l ON ST_DWithin(s.geog, l.line, :along_m)
+WHERE s.coords_ok AND NOT s.permanent_closure
+"""
+
+
+async def read(engine: AsyncEngine, near_km: float, along_km: float) -> dict[str, Any]:
+    """One read of everything the graph is made from, proximity included."""
     out: dict[str, Any] = {}
     async with engine.connect() as conn:
         for name, sql in QUERIES.items():
             out[name] = [dict(r._mapping) for r in await conn.execute(text(sql))]
         out["event_corridors"] = [tuple(r) for r in await conn.execute(text(EVENT_CORRIDORS))]
+        out["near_pairs"] = [tuple(r) for r in await conn.execute(
+            text(NEAR_PAIRS), {"near_m": near_km * 1000.0})]  # fmt: skip
+        out["along_pairs"] = [tuple(r) for r in await conn.execute(
+            text(ALONG_PAIRS), {"along_m": along_km * 1000.0})]  # fmt: skip
     return out
 
 
@@ -58,8 +88,8 @@ async def rebuild(engine: AsyncEngine) -> dict[str, Any]:
     """Read Postgres, derive the graph, replace what Neo4j holds. Returns what it wrote."""
     s = get_settings()
     started = time.monotonic()
-    rows = await read(engine)
-    graph = model.build(**rows, near_km=s.graph_near_km, along_km=s.graph_along_km)
+    rows = await read(engine, s.graph_near_km, s.graph_along_km)
+    graph = model.build(**rows)
     built = uuid.uuid4().hex
     counts = await store.write(graph, built)
     took = round(time.monotonic() - started, 2)

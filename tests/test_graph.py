@@ -7,10 +7,18 @@ itself parses, which only a real server can.
 
 from __future__ import annotations
 
+import importlib.util
+import os
+from collections.abc import Iterator
+from pathlib import Path
 from typing import Any, Self
 
 import pytest
+import sqlalchemy as sa
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.graph import model, store
 from app.main import app
@@ -50,13 +58,16 @@ ROWS: dict[str, Any] = {
          "lat": None, "lon": None, "is_motorway": False, "is_supermarket": False},
     ],
     "location_rows": [{"id": "phone", "name": "Phone", "lat": NEAR[0], "lon": NEAR[1]}],
+    # Proximity is measured by PostGIS in build.read(); the model is handed the answers.
+    "near_pairs": [("Station", "f1", "home", 0.327), ("Location", "phone", "home", 0.327)],
+    "along_pairs": [("f1", "a3", 0.0), ("f2", "a3", 0.0)],
     "vehicle_rows": [{"id": "leaf", "name": "Leaf", "kind": "electric"}],
     "tracker_rows": [{"id": "213", "config": {"line": "213"}, "enabled": True}],
 }
 
 
 def built() -> model.Graph:
-    return model.build(**ROWS, near_km=3.0, along_km=2.0)
+    return model.build(**ROWS)
 
 
 # --- what the graph is made of ------------------------------------------------------------------
@@ -87,20 +98,18 @@ def test_a_closure_reaches_the_corridor_it_sits_on() -> None:
     assert [(r.start[1], r.end[1]) for r in rels] == [("e1", "a3")]  # the ghost event is dropped
 
 
-def test_near_uses_distance_not_hope() -> None:
+def test_near_carries_the_measured_distance() -> None:
     near = [r for r in built().rels if r.type == "NEAR"]
     pairs = {(r.start[1], r.end[1]) for r in near}
-    assert ("f1", "home") in pairs  # 0.4 km away
-    assert ("phone", "home") in pairs
-    assert ("f2", "home") not in pairs  # Birmingham
-    assert ("f3", "home") not in pairs  # no coordinates at all
-    assert all(0 <= r.props["km"] <= 3.0 for r in near)
+    assert ("f1", "home") in pairs and ("phone", "home") in pairs
+    assert ("f2", "home") not in pairs  # Birmingham: PostGIS did not return it
+    assert all(r.props["km"] == pytest.approx(0.327) for r in near)
 
 
 def test_a_station_on_the_way_is_along_the_corridor() -> None:
     along = {(r.start[1], r.end[1]) for r in built().rels if r.type == "ALONG"}
     assert ("f1", "a3") in along and ("f2", "a3") in along  # the corridor runs to Birmingham
-    assert ("f3", "a3") not in along
+    assert ("f3", "a3") not in along  # no coordinates, so PostGIS never matched it
 
 
 def test_no_relationship_points_at_a_node_that_is_not_there() -> None:
@@ -116,11 +125,11 @@ def test_an_empty_database_makes_an_empty_graph() -> None:
     assert g.counts() == {"nodes": 0, "relationships": 0}
 
 
-def test_near_line_measures_to_the_closest_point() -> None:
-    line = [HOME, FAR]
-    assert model.near_line(NEAR, line, 1.0) == pytest.approx(0.4, abs=0.2)
-    assert model.near_line(NEAR, line, 0.1) is None
-    assert model.near_line(NEAR, [], 50.0) is None
+def test_a_relationship_with_no_measured_pairs_simply_is_not_there() -> None:
+    bare = {**ROWS, "near_pairs": [], "along_pairs": []}
+    g = model.build(**bare)
+    assert not [r for r in g.rels if r.type in ("NEAR", "ALONG")]
+    assert [r for r in g.rels if r.type == "FROM"]  # the rest is unaffected
 
 
 # --- what gets written --------------------------------------------------------------------------
@@ -234,3 +243,95 @@ def test_an_unknown_label_is_refused_before_the_graph_is_asked(monkeypatch: pyte
     monkeypatch.setenv("API_TOKEN", "tok")
     c, h = TestClient(app), {"Authorization": "Bearer tok"}
     assert c.get("/v1/graph/neighbours?id=home&label=Nonsense", headers=h).status_code == 422
+
+
+# --- the proximity SQL, against a real PostGIS ---------------------------------------------------
+
+URL = os.environ.get("WA_TEST_DATABASE_URL")
+VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
+GEO_MIGRATIONS = ["0003_nh_storage", "0006_places_trips", "0007_fuel", "0009_vehicle",
+                  "0011_bus_tracking", "0016_ha_location", "0017_ha_origin", "0018_geography"]  # fmt: skip
+GEO_TABLES = ["bus_timetable", "bus_target_hit", "bus_target_day", "bus_anomaly", "bus_segment_obs",
+              "bus_stop", "bus_tracker", "vehicle", "fuel_price_change", "fuel_price", "fuel_station",
+              "ha_location", "trip", "place", "nh_sign_message", "nh_sign", "nh_event_corridor",
+              "nh_event", "nh_corridor"]  # fmt: skip
+
+
+@pytest.fixture
+def geo_schema() -> Iterator[None]:
+    sync = sa.create_engine(URL)  # type: ignore[arg-type]
+    with sync.begin() as conn:
+        for t in GEO_TABLES:
+            conn.execute(sa.text(f"DROP TABLE IF EXISTS {t} CASCADE"))
+        with Operations.context(MigrationContext.configure(conn)):
+            for name in GEO_MIGRATIONS:
+                spec = importlib.util.spec_from_file_location(name, VERSIONS / f"{name}.py")
+                assert spec and spec.loader
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                module.upgrade()
+        conn.execute(sa.text(
+            "INSERT INTO place (id, name, lat, lon) VALUES ('home', 'Home', :la, :lo), "
+            "('brum', 'Brum', :fa, :fo)"), {"la": HOME[0], "lo": HOME[1], "fa": FAR[0], "fo": FAR[1]})
+        conn.execute(sa.text(
+            "INSERT INTO ha_location (id, name, lat, lon) VALUES ('phone', 'Phone', :la, :lo)"),
+            {"la": NEAR[0], "lo": NEAR[1]})
+        conn.execute(sa.text(
+            "INSERT INTO fuel_station (node_id, trading_name, lat, lon, coords_ok) VALUES "
+            "('f1', 'Near', :la, :lo, true), ('f2', 'Far', :fa, :fo, true), "
+            "('f3', 'Nowhere', NULL, NULL, false)"),
+            {"la": NEAR[0], "lo": NEAR[1], "fa": FAR[0], "fo": FAR[1]})
+        conn.execute(sa.text(
+            "INSERT INTO nh_corridor (id, name, centreline) VALUES ('a3', 'A3', CAST(:c AS jsonb)), "
+            "('stub', 'One point only', CAST(:s AS jsonb))"),
+            {"c": f"[[{HOME[0]}, {HOME[1]}], [{FAR[0]}, {FAR[1]}]]", "s": f"[[{HOME[0]}, {HOME[1]}]]"})
+    yield
+    with sync.begin() as conn:
+        for t in GEO_TABLES:
+            conn.execute(sa.text(f"DROP TABLE IF EXISTS {t} CASCADE"))
+    sync.dispose()
+
+
+@pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
+async def test_the_generated_point_tracks_lat_and_lon_by_itself(geo_schema: None) -> None:
+    """geog is GENERATED, so it cannot drift and nothing has to remember to write it."""
+    engine = create_async_engine(URL)  # type: ignore[arg-type]
+    try:
+        async with engine.begin() as conn:
+            empty = await conn.execute(sa.text(
+                "SELECT geog IS NULL FROM fuel_station WHERE node_id = 'f3'"))
+            assert empty.scalar() is True  # no coordinates, no point in the Atlantic
+            await conn.execute(sa.text("UPDATE place SET lat = :la, lon = :lo WHERE id = 'brum'"),
+                               {"la": NEAR[0], "lo": NEAR[1]})
+            moved = await conn.execute(sa.text(
+                "SELECT ST_Distance(geog, ST_SetSRID(ST_MakePoint(:lo, :la), 4326)::geography) "
+                "FROM place WHERE id = 'brum'"), {"la": NEAR[0], "lo": NEAR[1]})
+            assert moved.scalar() == pytest.approx(0.0, abs=0.001)  # followed the update
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
+async def test_postgis_finds_what_is_near_and_what_is_on_the_way(geo_schema: None) -> None:
+    from app.graph.build import read
+
+    engine = create_async_engine(URL)  # type: ignore[arg-type]
+    try:
+        rows = await read(engine, near_km=3.0, along_km=2.0)
+        near = {(label, thing, place) for label, thing, place, _ in rows["near_pairs"]}
+        assert ("Station", "f1", "home") in near  # 0.4 km away
+        assert ("Location", "phone", "home") in near
+        assert ("Station", "f2", "home") not in near  # Birmingham
+        assert not any(t == "f3" for _, t, _ in near)  # no coordinates
+        assert all(0 <= km <= 3.0 for *_, km in rows["near_pairs"])
+
+        along = {(s, c) for s, c, _ in rows["along_pairs"]}
+        assert ("f1", "a3") in along and ("f2", "a3") in along  # the corridor runs to Birmingham
+        assert not any(c == "stub" for _, c in along)  # a one-point line is not a line
+
+        # and the whole thing assembles
+        graph = model.build(**rows)
+        assert graph.counts()["nodes"] > 0
+        assert any(r.type == "NEAR" for r in graph.rels)
+    finally:
+        await engine.dispose()

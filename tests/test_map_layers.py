@@ -20,20 +20,13 @@ from app.main import app
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
 MIGRATIONS = ["0003_nh_storage", "0006_places_trips", "0007_fuel", "0015_pollen_grid", "0016_ha_location",
-              "0017_ha_origin"]  # fmt: skip
+              "0017_ha_origin", "0018_geography"]  # fmt: skip
 TABLES = ["pollen_grid", "ha_location", "fuel_price_change", "fuel_price", "fuel_station", "trip", "place",
           "nh_sign_message", "nh_sign", "nh_event_corridor", "nh_event", "nh_corridor"]  # fmt: skip
 
 HOME = (51.5074, -0.1278)  # the centre every test measures from
 NEAR = (51.5100, -0.1300)  # about 0.4 km away
 FAR = (52.4862, -1.8904)  # Birmingham: far outside any radius used here
-
-
-def test_a_point_is_in_range_only_inside_the_radius() -> None:
-    assert map_layers.within(HOME, 5.0, *NEAR)
-    assert not map_layers.within(HOME, 5.0, *FAR)
-    assert map_layers.within(None, 5.0, *FAR)  # no centre: everything
-    assert not map_layers.within(HOME, 5.0, None, None)
 
 
 def test_a_line_is_in_range_if_any_point_is() -> None:

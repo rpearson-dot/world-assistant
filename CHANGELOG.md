@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Changed
+- PostGIS, installed since the first migration but never used, now does the distance work. Every table with coordinates gains a point column Postgres keeps in step with lat and lon by itself, and a spatial index over it (migration 0018), so "within 10 km, nearest first" is an indexed query instead of reading the table and filtering in Python. Fuel searches, the map layers and the graph's proximity all use it, and distances are now measured on the spheroid, so they move by a few hundred metres ([ADR 0007](docs/adr/0007-postgis.md)). CI tests against the same PostGIS image production runs.
+
 ### Added
 - An optional knowledge graph (Neo4j) holding how the data joins up: trips to the places and corridors they use, closures to the corridors they sit on, stations near a place or along a corridor ([docs/graph.md](docs/graph.md), [ADR 0006](docs/adr/0006-knowledge-graph.md)). `GET /v1/graph/neighbours` and `GET /v1/graph/disruption` follow those connections; `docker-compose.graph.yml` and `WA_GRAPH_ENABLED` turn it on. It owns no data — the `graph_build` job rebuilds it from Postgres twice an hour, so it is safe to drop and is left out of the backup.
 - A map of everything with coordinates, a layer at a time: saved places, Home Assistant locations, road corridors, open road events, motorway signs, fuel stations priced from cheapest to dearest, and the pollen lattice. The `/map` page draws them over street tiles, behind `GET /v1/map/layers` and `GET /v1/map/geojson` ([docs/map.md](docs/map.md)). Leaflet is served from the app itself, so no page loads a third-party script; tiles are the only outside fetch and `WA_MAP_TILE_URL` points them wherever you like.

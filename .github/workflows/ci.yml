@@ -19,7 +19,8 @@ jobs:
     timeout-minutes: 15
     services:
       postgres:
-        image: postgres:16
+        # PostGIS, as in production: the schema has geography columns and spatial indexes.
+        image: postgis/postgis:16-3.4
         env:
           POSTGRES_USER: wa
           POSTGRES_PASSWORD: wa
