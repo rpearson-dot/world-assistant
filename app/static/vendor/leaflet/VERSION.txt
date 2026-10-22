@@ -1,0 +1,12 @@
+Leaflet 1.9.4
+https://leafletjs.com  (BSD-2-Clause)
+
+Vendored from the npm registry rather than loaded from a CDN, so the pages make no
+third-party script request and the version cannot change underneath us.
+
+  npm pack leaflet@1.9.4
+  sha256  84c65a256e50657896f54c33bd857b6849ebe94c817803be818bf32a3dde0b77  leaflet-1.9.4.tgz
+  shasum  23fae724e282fa25745aff82ca4d394748db7d8d  (npm dist.shasum)
+
+Files taken from package/dist: leaflet.js, leaflet.css, images/*.png. Nothing is modified.
+To upgrade, repeat the above with the new version and replace all of them together.

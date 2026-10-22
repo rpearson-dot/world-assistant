@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     ha_fuel_max_age_h: float = 720.0  # fuel prices up to this old are published; the dashboards show each price's age
     ha_routes_max: int = 12  # trips (one direction each) Home Assistant may add; they are routed locally, so no provider cost
 
+    # The map page. Tiles are the one thing a browser fetches from outside; point these at your own
+    # tile server to stop that. The attribution is shown on the map and the licence requires it.
+    map_tile_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    map_tile_attribution: str = "© OpenStreetMap contributors"
+    map_max_zoom: int = 19
+
     # National Highways allows 10 calls per subscription key per minute.
     # Stay under it so retries and clock skew never trip the upstream limit.
     nh_rate_limit_per_minute: int = 8

@@ -44,7 +44,8 @@ It started as a personal project on a home Unraid server. Nothing in it is speci
 | **Vehicles** | Petrol/diesel (mpg) and electric (battery, health, miles per kWh). Trip cost, range check, and whether a cheaper station is worth the detour. |
 | **Buses and trains** | Live bus tracking with on-time statistics, and train departure boards (TfL and National Rail). Departures, fuel prices and road closures are published to Home Assistant over MQTT, and fuel, roads, pollen (a map and a home graph) follow where each person is, and events show what is on near the home zone and any extra places you add (the app's location when away, else the home zone) ([how](docs/home-assistant.md)), with ready-made dashboards. |
 | **Assistant** | The same data as spoken-style answers: `/v1/ask` for Siri Shortcuts and scripts, and `/mcp` for AI assistants that speak the Model Context Protocol. |
-| **Web pages** | `/status`, `/bus`, `/trains`, `/fuel`, `/events`, `/pollen`, `/places`. Small, fast, no accounts. |
+| **Map** | Everything with coordinates on one map, a layer at a time: places, people, corridors, closures, signs, fuel priced cheapest to dearest, pollen ([how](docs/map.md)). Leaflet is served from the app; only the tiles come from outside, and you choose where from. |
+| **Web pages** | `/status`, `/bus`, `/trains`, `/fuel`, `/events`, `/pollen`, `/places`, `/map`. Small, fast, no accounts. |
 | **Operations** | One-click backups, signed releases, optional automatic updates with rollback, optional bundled key vault. |
 
 Planned (see [docs/roadmap.md](docs/roadmap.md)): live-traffic journey times, MOT and tax reminders,
@@ -130,7 +131,7 @@ releases are signed (Sigstore) with SBOMs, and every push is scanned for secrets
 - [Runbook](docs/runbook.md): deploy, upgrade, roll back, automatic updates, troubleshoot
 - [Data sources](docs/data-sources.md): each feed, its limits, licence and credit
 - [Assistant](docs/assistant.md): Siri Shortcuts, MCP, the default place
-- [Bus tracker](docs/bus.md), [Trains](docs/trains.md), [Leaf dashboard](docs/leaf.md)
+- [Bus tracker](docs/bus.md), [Trains](docs/trains.md), [Leaf dashboard](docs/leaf.md), [Map](docs/map.md)
 - [Backups](docs/backup.md): the status-page button, the deploy script and restoring
 - [Secrets and key vaults](docs/secrets.md), [bundled OpenBao](docs/openbao.md)
 - [Security](docs/security.md): what is protected and how; supply chain
