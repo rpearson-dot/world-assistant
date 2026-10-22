@@ -219,6 +219,6 @@ page_router = APIRouter()
 
 
 @page_router.get("/events", response_class=HTMLResponse, include_in_schema=False)
-async def events_page() -> str:
+async def events_page(request: Request) -> str:
     """The page holds no data; it asks for the token and calls /v1/events."""
-    return themed(PAGE, "events")
+    return themed(PAGE, "events", request)

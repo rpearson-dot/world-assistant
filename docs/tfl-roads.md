@@ -19,8 +19,11 @@ boroughs', so this is the other half of "what is on my way".
   failed fetch.
 - A disruption is **unplanned** when its category or sub-category names an incident (collision, breakdown, burst
   main, flooding, hazard and so on), otherwise **planned**. TfL's categories drift, so the match is on words.
-- The position comes from the affected streets' lines when TfL gives them, otherwise its GeoJSON, otherwise its
-  point. One with no usable position is still listed but cannot be matched to a route.
+- Where it is, most exact first: the affected streets' lines when TfL gives them (about one in five, October 2026);
+  otherwise the **affected area** in its `geometry` field (a MultiPolygon, one shape per stretch of road);
+  otherwise its `geography` point. So long works match along their length, not only at the
+  one point TfL marks. One with no usable position is still listed but cannot be matched to a route.
+  `roadDisruptionLines` and `roadDisruptionImpactAreas` are present but were empty in every item seen (October 2026), so they are not read.
 - Times without an offset are read as London time (`WA_TFL_NAIVE_TZ`).
 
 ## Setting up
@@ -28,8 +31,8 @@ boroughs', so this is the other half of "what is on my way".
 Works without a key at a low rate. Put your TfL app key in the `tfl_app_key` secret for the higher limit.
 `WA_TFLROADS_POLL_ENABLED=false` turns the poll off.
 
-The TfL response shape is only partly documented, so after the first deploy run the probe and check that most
-disruptions have a position:
+The TfL response shape is only partly documented. The probe shows what came back and what each disruption is
+stored as (lines, areas or points):
 
     docker compose exec worker python -m app.integrations.tflroads.probe
     docker compose exec worker python -m app.integrations.tflroads.sync

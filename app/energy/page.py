@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from app.pagestyle import themed
@@ -148,6 +148,6 @@ page_router = APIRouter()
 
 
 @page_router.get("/energy", response_class=HTMLResponse, include_in_schema=False)
-async def energy_page() -> str:
+async def energy_page(request: Request) -> str:
     """The page holds no data; it asks for the token and calls /v1/energy."""
-    return themed(PAGE, "energy")
+    return themed(PAGE, "energy", request)

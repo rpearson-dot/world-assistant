@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from app.config import get_settings
@@ -202,11 +202,11 @@ if (tok.value) { places().then(load); }
 
 
 @page_router.get("/map", response_class=HTMLResponse, include_in_schema=False)
-async def map_page() -> str:
+async def map_page(request: Request) -> str:
     """The page holds no data; it asks for the token and calls /v1/map."""
     s = get_settings()
     cfg = json.dumps(
         {"tile_url": s.map_tile_url, "attribution": s.map_tile_attribution, "max_zoom": s.map_max_zoom},
         ensure_ascii=False,  # the page is UTF-8; "©" should read as itself in the source
     )
-    return themed(PAGE.replace("/*MAP_CONFIG*/", cfg), "map")
+    return themed(PAGE.replace("/*MAP_CONFIG*/", cfg), "map", request)

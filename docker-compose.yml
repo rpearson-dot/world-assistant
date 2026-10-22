@@ -1,11 +1,11 @@
 name: world-assistant
 
-# Built for Unraid. Redis is part of this stack (password protected). Mosquitto runs on Unraid's
-# default bridge network, where containers cannot resolve each other by name, so this stack
-# reaches it through the host's LAN IP and its published port (set in .env).
+# Redis is part of this stack (password protected). Home Assistant is optional: set WA_MQTT_HOST to the
+# broker it uses (your own, or the bundled one in docker-compose.mqtt.yml), or leave it empty.
+# scripts/setup.sh asks the questions and writes .env and the secrets for you.
 #
 #   docker compose up -d --build
-#       API at http://<unraid-ip>:${WA_API_PORT:-8010}. Touches nothing else.
+#       API at http://<server-ip>:${WA_API_PORT:-8010}. Touches nothing else.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
 #       Same, plus Traefik routing. Needs Traefik on a user-defined network.
@@ -31,9 +31,15 @@ x-app: &app
     WA_DB_HOST: wa-db
     # Default: the password-protected Redis in this stack. Leave WA_REDIS_URL unset in .env to use it.
     WA_REDIS_URL: ${WA_REDIS_URL:-redis://wa-redis:6379/0}
-    WA_MQTT_HOST: ${WA_MQTT_HOST:?set WA_MQTT_HOST in .env}
+    # Empty: nothing is published to Home Assistant. A broker on another host: its LAN IP (container names
+    # do not resolve across Docker networks). The bundled broker: wa-mqtt.
+    WA_MQTT_HOST: ${WA_MQTT_HOST:-}
     WA_MQTT_PORT: ${WA_MQTT_PORT:-1883}
     WA_MQTT_USER: ${WA_MQTT_USER:-}
+    WA_MQTT_PUBLISH_PORT: ${WA_MQTT_PUBLISH_PORT:-1883}
+    # The web pages and API need no token from the local network (docs/security.md). false: always ask.
+    WA_LOCAL_NO_TOKEN: ${WA_LOCAL_NO_TOKEN:-true}
+    WA_LOCAL_HOSTS: ${WA_LOCAL_HOSTS:-}
     WA_NH_RATE_LIMIT_PER_MINUTE: ${WA_NH_RATE_LIMIT_PER_MINUTE:-8}
     WA_NH_CAPTURE_ENABLED: ${WA_NH_CAPTURE_ENABLED:-true}
     WA_NH_POLL_ENABLED: ${WA_NH_POLL_ENABLED:-true}

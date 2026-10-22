@@ -8,7 +8,7 @@ standard library. Exits 1 if anything failed.
 
 What counts as a failure:
   * a page that does not load, still has template placeholders, or lacks the navigation
-  * a /v1 route that answers without the token, or a 500 (or any 5xx other than a deliberate JSON
+  * a /v1 route that answers from outside without the token, or a 500 (or any 5xx other than a deliberate JSON
     502/503 such as "key not set" or "upstream unavailable") from ANY GET route in the OpenAPI list
   * a route that takes longer than 30 seconds, or claims JSON but returns something else
   * with --seed: the test place not saving, or the place-based queries not answering as expected
@@ -26,7 +26,7 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any
 
-PAGES = ("/status", "/bus", "/trains", "/fuel", "/events", "/pollen", "/places", "/energy")
+PAGES = ("/status", "/bus", "/trains", "/fuel", "/events", "/pollen", "/places", "/energy", "/ha")
 SEED = "smoke-test-place"
 SKIP_SWEEP = {"/mcp", "/healthz", "/readyz", "/v1/backups/{name}"}  # checked on their own, or a download
 TIMEOUT = 30.0
@@ -41,10 +41,15 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _opener = urllib.request.build_opener(_NoRedirect)
 
 
+# Makes a request look as if it came from the internet through a proxy (TEST-NET-3, documentation only), so
+# the token checks still mean something now that local requests need no token.
+OUTSIDE = {"X-Forwarded-For": "203.0.113.9"}
+
+
 def fetch(base: str, path: str, token: str | None = None, method: str = "GET",
-          body: Any = None) -> tuple[int, str, str]:  # fmt: skip
+          body: Any = None, extra: dict[str, str] | None = None) -> tuple[int, str, str]:  # fmt: skip
     """(status, content type, body). Never raises for HTTP errors; a timeout or refusal gives status 0."""
-    headers = {"Accept": "*/*"}
+    headers = {"Accept": "*/*", **(extra or {})}
     data = None
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -104,11 +109,17 @@ def run(base: str, token: str, *, seed: bool = False, out: Callable[[str], None]
         good = good and "/*BASE_CSS*/" not in b and "<!--NAV-->" not in b
         r.check(good, f"page {path}", f"HTTP {s}" if not good else "")
 
-    # the token is required
-    s, _, _ = fetch(base, "/v1/status")
-    r.check(s == 401, "no token is refused", f"HTTP {s}")
-    s, _, _ = fetch(base, "/v1/status", "not-the-token")
-    r.check(s == 401, "wrong token is refused", f"HTTP {s}")
+    # the token is required from outside the local network
+    s, _, _ = fetch(base, "/v1/status", extra=OUTSIDE)
+    r.check(s == 401, "no token is refused from outside", f"HTTP {s}")
+    s, _, _ = fetch(base, "/v1/status", "not-the-token", extra=OUTSIDE)
+    r.check(s == 401, "wrong token is refused from outside", f"HTTP {s}")
+    s, _, _ = fetch(base, "/v1/places/x", None, "DELETE", extra={"Origin": "http://elsewhere.example"})
+    r.check(s == 401, "another site's page cannot change anything", f"HTTP {s}")
+    host = urllib.parse.urlsplit(base).hostname or ""
+    if host in ("127.0.0.1", "localhost", "::1") and os.environ.get("WA_LOCAL_NO_TOKEN", "true").lower() != "false":
+        s, _, _ = fetch(base, "/v1/status")
+        r.check(s == 200, "the local network needs no token", f"HTTP {s}")
     s, _, b = fetch(base, "/v1/status", token)
     r.check(s == 200, "GET /v1/status with the token", f"HTTP {s}")
     if s == 200:

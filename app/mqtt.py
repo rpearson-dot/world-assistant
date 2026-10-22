@@ -17,6 +17,7 @@ Message = tuple[str, str, bool]  # topic, payload, retain
 
 _BACKOFF_S = 300
 _down_until = 0.0
+last_error = ""  # why the last publish failed, for the status page ("" after a success)
 
 
 def bus_topic(prefix: str, tid: str, name: str) -> str:
@@ -80,8 +81,11 @@ def state_messages(prefix: str, tid: str, snapshot: dict[str, dict[str, Any]]) -
 
 async def publish(messages: list[Message]) -> bool:
     """Send messages over one connection. Never raises: MQTT trouble must not stop polling."""
-    global _down_until
+    global _down_until, last_error
     s = get_settings()
+    if not s.mqtt_host.strip():
+        last_error = "no broker set (WA_MQTT_HOST)"
+        return False
     if not messages or time.monotonic() < _down_until:
         return False
     try:
@@ -93,6 +97,8 @@ async def publish(messages: list[Message]) -> bool:
                 await client.publish(topic, payload, qos=1, retain=retain)
     except (aiomqtt.MqttError, OSError) as exc:
         _down_until = time.monotonic() + _BACKOFF_S
+        last_error = f"{type(exc).__name__}: {exc}"[:200]
         log.warning("MQTT publish failed (%s); retrying in %d s", type(exc).__name__, _BACKOFF_S)
         return False
+    last_error = ""
     return True

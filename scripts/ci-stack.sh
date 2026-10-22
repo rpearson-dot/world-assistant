@@ -7,6 +7,7 @@
 #   3. the last migration goes down and up again
 #   4. a backup, a deletion and a restore bring the data back
 #   5. (CI) the pages load in a real browser without script errors: scripts/page-check.py
+#   6. Home Assistant sensors reach the bundled MQTT broker, which refuses anonymous clients
 #
 # Nothing here touches the internet APIs: all pollers are switched off.
 set -euo pipefail
@@ -14,9 +15,9 @@ cd "$(dirname "$0")/.."
 
 WORK="$(mktemp -d)"
 export WA_SECRETS_DIR="$WORK/secrets" WA_DATA_DIR="$WORK/data"
-export WA_MQTT_HOST=127.0.0.1 WA_API_PORT="${WA_API_PORT:-18010}" COMPOSE_PROJECT_NAME=wa-ci
+export WA_MQTT_HOST=wa-mqtt WA_MQTT_USER=wa WA_MQTT_PUBLISH_PORT=18830 WA_API_PORT="${WA_API_PORT:-18010}" COMPOSE_PROJECT_NAME=wa-ci
 export WA_NH_POLL_ENABLED=false WA_NH_CAPTURE_ENABLED=false WA_FUEL_POLL_ENABLED=false WA_NAPTAN_POLL_ENABLED=false WA_FLOOD_POLL_ENABLED=false WA_CODEPOINT_POLL_ENABLED=false WA_ENERGY_POLL_ENABLED=false WA_TFLROADS_POLL_ENABLED=false
-export COMPOSE_FILE=docker-compose.yml
+export COMPOSE_FILE=docker-compose.yml:docker-compose.mqtt.yml
 unset WA_IMAGE WA_REDIS_URL
 
 mkdir -p "$WA_DATA_DIR/backups" "$WA_DATA_DIR/pgdata"
@@ -97,6 +98,25 @@ if command -v python3 >/dev/null && python3 -c "import playwright" 2>/dev/null; 
   WA_SMOKE_URL="$API" WA_SMOKE_TOKEN="$TOKEN" python3 scripts/page-check.py || dump_and_fail
 else
   echo "playwright is not installed here; skipped"
+fi
+
+step "Home Assistant sensors over the bundled broker"
+PW="$(cat "$WA_SECRETS_DIR/mqtt_password.txt")"
+[ -n "$PW" ] || { echo "init-secrets.sh should generate the bundled broker's password"; dump_and_fail; }
+for _ in $(seq 1 20); do
+  [ "$(docker compose ps --format '{{.Health}}' wa-mqtt)" = "healthy" ] && break
+  sleep 3
+done
+docker compose exec -T worker python -c "
+import asyncio
+from app import ha_publish
+n = asyncio.run(ha_publish.ha_sync({}))
+print(n, 'sensors published')
+raise SystemExit(0 if n > 0 else 1)" || dump_and_fail
+docker compose exec -T wa-mqtt mosquitto_sub -h 127.0.0.1 -u wa -P "$PW" -t 'homeassistant/#' -C 1 -W 10 >/dev/null \
+  || { echo "no discovery message on the broker"; dump_and_fail; }
+if docker compose exec -T wa-mqtt mosquitto_sub -h 127.0.0.1 -t '#' -C 1 -W 5 >/dev/null 2>&1; then
+  echo "the broker let an anonymous client in"; dump_and_fail
 fi
 
 step "everything still answers after the restore"

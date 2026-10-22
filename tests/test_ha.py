@@ -117,6 +117,10 @@ async def test_ha_sync_publishes_discovery_once_then_state_only(monkeypatch: pyt
 
     real = httpx.AsyncClient
     monkeypatch.setattr(mqtt, "publish", fake_publish)
+    monkeypatch.setenv("WA_MQTT_HOST", "broker.lan")
+    from app.config import get_settings
+
+    get_settings.cache_clear()
 
     def handler(r: httpx.Request) -> httpx.Response:
         if r.url.path == "/v1/status":
@@ -125,13 +129,39 @@ async def test_ha_sync_publishes_discovery_once_then_state_only(monkeypatch: pyt
 
     monkeypatch.setattr(ha_publish.httpx, "AsyncClient",
                         lambda **kw: real(transport=httpx.MockTransport(handler), base_url="http://api"))
-    ctx: dict[str, Any] = {}
-    assert await ha_publish.ha_sync(ctx) > 0
-    assert await ha_publish.ha_sync(ctx) > 0
+    notes: dict[str, str] = {}
+
+    class FakeRedis:
+        async def set(self, key: str, value: str, ex: int) -> None:
+            notes[key] = value
+
+    ctx: dict[str, Any] = {"redis": FakeRedis()}
+    try:
+        assert await ha_publish.ha_sync(ctx) > 0
+        assert await ha_publish.ha_sync(ctx) > 0
+    finally:
+        get_settings.cache_clear()
     first, second = sent
+    last = json.loads(notes[ha_publish.HA_LAST_KEY])  # what the status page shows
+    assert last["ok"] is True and last["sensors"] > 0 and last["error"] == ""
     assert any(t.endswith("/config") for t, _, _ in first)
     assert not any(t.endswith("/config") for t, _, _ in second)
     assert all(r for _, _, r in first + second)
+
+
+@pytest.mark.asyncio
+async def test_no_broker_means_home_assistant_is_simply_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Home Assistant is optional: with no WA_MQTT_HOST nothing is attempted and nothing is logged as failing."""
+    monkeypatch.delenv("WA_MQTT_HOST", raising=False)
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+    try:
+        assert get_settings().mqtt_active is False
+        assert await ha_publish.ha_sync({}) == 0
+        assert await mqtt.publish([("t", "p", True)]) is False and "no broker" in mqtt.last_error
+    finally:
+        get_settings.cache_clear()
 
 
 @pytest.mark.asyncio

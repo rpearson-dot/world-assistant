@@ -3,6 +3,8 @@
 .env
 .env.*
 secrets
+# the database and backups when kept in this folder (scripts/setup.sh's default)
+data
 samples
 docs
 tests

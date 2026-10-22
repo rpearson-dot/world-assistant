@@ -44,6 +44,8 @@ COPY alembic.ini ./
 # Tells scripts/auto-deploy.sh whether the server's compose files are new enough for this image
 COPY COMPOSE_REVISION ./
 COPY migrations ./migrations
+# Home Assistant packages and dashboards, served by the /ha page so they always match this version
+COPY homeassistant ./homeassistant
 
 USER 10001:10001
 EXPOSE 8000

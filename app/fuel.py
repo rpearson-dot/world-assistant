@@ -338,6 +338,6 @@ page_router = APIRouter()
 
 
 @page_router.get("/fuel", response_class=HTMLResponse, include_in_schema=False)
-async def fuel_page() -> str:
+async def fuel_page(request: Request) -> str:
     """The page holds no data; it asks for the token and calls /v1/fuel."""
-    return themed(PAGE, "fuel")
+    return themed(PAGE, "fuel", request)

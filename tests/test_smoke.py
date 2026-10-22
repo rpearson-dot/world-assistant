@@ -8,6 +8,7 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+import pytest
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -22,8 +23,14 @@ def toy(*, broken_route: bool = False, bad_page: bool = False, open_api: bool = 
         plain_503: bool = False, json_503: bool = False) -> FastAPI:  # fmt: skip
     app = FastAPI()
 
-    def auth(authorization: str | None = Header(None)) -> None:
-        if not open_api and authorization != f"Bearer {TOKEN}":
+    def auth(
+        authorization: str | None = Header(None),
+        x_forwarded_for: str | None = Header(None),
+        origin: str | None = Header(None),
+    ) -> None:
+        # like the real server: a direct local request needs no token; from outside, or from another site, it does
+        local = x_forwarded_for is None and origin is None
+        if not open_api and not local and authorization != f"Bearer {TOKEN}":
             raise HTTPException(401, "no")
 
     @app.get("/healthz")
@@ -149,10 +156,17 @@ def test_a_page_with_template_leftovers_is_caught() -> None:
 
 def test_an_open_api_is_caught() -> None:
     code, text = go(toy(open_api=True))
-    assert code == 1 and "FAIL no token is refused" in text
+    assert code == 1 and "FAIL no token is refused from outside" in text
 
 
 def test_an_unreachable_server_fails_cleanly() -> None:
     lines: list[str] = []
     assert smoke.run("http://127.0.0.1:1", TOKEN, out=lines.append) == 1
     assert any(line.startswith("FAIL") for line in lines)
+
+
+
+def test_the_local_check_is_skipped_when_local_access_is_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("WA_LOCAL_NO_TOKEN", "false")
+    code, text = go(toy())
+    assert code == 0 and "local network needs no token" not in text

@@ -53,7 +53,7 @@ It started as a personal project on a home Unraid server. Nothing in it is speci
 | **Floods** | Environment Agency flood alerts and warnings for England, refreshed every 15 minutes, with each warned area drawn on the map; ask what covers home, or what crosses the way to work ([how](docs/floods.md)). |
 | **Stops** | Where every bus stop, station and ferry terminal in Great Britain is, from the national NaPTAN register, held locally and refreshed weekly ([how](docs/naptan.md)). |
 | **Map** | Everything with coordinates on one map, a layer at a time: places, people, corridors, closures, signs, fuel priced cheapest to dearest, stops and stations, pollen ([how](docs/map.md)). Leaflet is served from the app; only the tiles come from outside, and you choose where from. |
-| **Web pages** | `/status`, `/bus`, `/trains`, `/fuel`, `/events`, `/pollen`, `/energy`, `/places`, `/map`. Small, fast, no accounts. |
+| **Web pages** | `/status` (with a setup checklist), `/bus`, `/trains`, `/fuel`, `/events`, `/pollen`, `/energy`, `/places`, `/map`, `/ha` (Home Assistant setup). Small, fast, no accounts, no token on the home network. |
 | **Operations** | One-click backups, signed releases, optional automatic updates with rollback, optional bundled key vault. |
 
 Planned (see [docs/roadmap.md](docs/roadmap.md)): live-traffic journey times, MOT and tax reminders,
@@ -89,29 +89,28 @@ personal project: use it, fork it, send fixes, but expect no support level.
 
 ## Quick start
 
-You need Docker with Compose, an MQTT broker you can reach (only for Home Assistant sensors; the
-stack insists on an address, a placeholder is fine if you do not use it), and the keys you want.
+You need Docker with Compose. Keys are optional and free; Home Assistant is optional.
 
 ```bash
 git clone https://github.com/rpearson-dot/World-assistant.git && cd World-assistant
-cp .env.example .env              # set the MQTT address and where your data and secrets live
-bash scripts/init-secrets.sh      # creates the secret files, generates the passwords
-# put your API keys in the secret files it lists, then:
-docker compose up -d --build
-curl http://localhost:8010/readyz
+bash scripts/setup.sh
 ```
 
-Open `http://<host>:8010/status`, paste the token from the `api_token` secret file, and press Load. Add
-your places (start with `home`) and trips on `/places`.
+`setup.sh` asks where to keep the data, whether you use Home Assistant (your broker, a bundled one, or none),
+whether to add road routing, and for each key (with what it unlocks and where to get it, typed without echo).
+Then it starts the stack and prints the address. Re-run it any time; Enter keeps each answer.
 
-For routing, add the Valhalla container (downloads a ~2 GB map on first start):
+Then open `http://<server>:8010/status`. From your home network no token is needed. The **Setup** list shows
+what is working, what each missing key would unlock and where to get it. Add your places (start with `home`) on
+`/places`, and set up Home Assistant from `/ha`. Stops, stations and postcodes load within minutes of the first
+start.
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.routing.yml up -d
-```
+Prefer files? `cp .env.example .env`, edit it, `bash scripts/init-secrets.sh`, put keys in the files it lists,
+`docker compose up -d --build`.
 
-Do not expose the port to the internet. Reach it over a private network such as Tailscale
-([docs/assistant.md](docs/assistant.md#reaching-it-from-outside-the-house)).
+Do not expose the port to the internet. Reach it from elsewhere over a private network such as Tailscale
+([docs/assistant.md](docs/assistant.md#reaching-it-from-outside-the-house)); from there, and from Siri Shortcuts
+and AI assistants, use the token in `api_token.txt`.
 
 ## Staying up to date
 
@@ -127,7 +126,7 @@ All of it is in [docs/runbook.md](docs/runbook.md).
 
 ## Security in brief
 
-Every `/v1/*` route needs a bearer token and refuses everything if none is set. Secrets are files (or an
+From outside the home network every `/v1/*` route needs a bearer token, and refuses everything if none is set; on the home network the pages and API need none ([what counts as home](docs/security.md#access)). Secrets are files (or an
 optional key vault), never environment variables or committed. The image runs as a non-root user and an
 optional hardened profile makes it read-only. Dependencies are pinned by hash, actions by commit,
 releases are signed (Sigstore) with SBOMs, and every push is scanned for secrets. See
@@ -149,11 +148,13 @@ releases are signed (Sigstore) with SBOMs, and every push is scanned for secrets
 
 ## API at a glance
 
-All `/v1/*` routes need `Authorization: Bearer <api_token>`. The interactive reference is at `/docs`.
+From outside the home network, `/v1/*` routes need `Authorization: Bearer <api_token>`. The interactive reference is at `/docs`.
 
 | Route | Purpose |
 |-------|---------|
 | `GET /v1/status` | Job runs, event counts, corridors, fuel counts, version, worker heartbeat |
+| `GET /v1/setup` | The setup checklist: each source, Home Assistant, routing and home, working or not, and where to get a key |
+| `GET /v1/ha/setup`, `/v1/ha/files/…`, `/v1/ha/token` | Home Assistant files of this version, what changed when, and the values for `secrets.yaml` |
 | `GET/PUT/DELETE /v1/places/{id}`, `/v1/trips/{id}`, `/v1/vehicles/{id}` | Manage places, trips, vehicles |
 | `POST /v1/trips/{id}/route` | Route a trip and (re)build its corridor |
 | `GET /v1/trips/{id}/cost?vehicle=` | Energy or fuel needed, range check, cost |

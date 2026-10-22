@@ -8,6 +8,7 @@ from typing import Any, ClassVar
 
 from arq import cron
 from arq.connections import RedisSettings
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import get_settings
@@ -39,7 +40,40 @@ async def startup(ctx: dict[str, Any]) -> None:
     # Fuel Finder allows 100 requests a minute and one at a time; stay well inside it.
     ctx["fuel_limiter"] = SlidingWindowLimiter(ctx["redis"], "fuel", 60)
     await heartbeat(ctx)  # alive from the first second, not after the next five-minute mark
+    await first_loads(ctx)
     log.info("world-assistant worker started (nh capture enabled=%s)", settings.nh_capture_enabled)
+
+
+# Reference data that is otherwise loaded overnight: (table, job, the setting that turns it on).
+FIRST_LOADS = (
+    ("fuel_station", "fuel_sync_stations", "fuel_poll_enabled"),
+    ("naptan_stop", "naptan_sync", "naptan_poll_enabled"),
+    ("postcode", "codepoint_sync", "codepoint_poll_enabled"),
+)
+
+
+async def first_loads(ctx: dict[str, Any]) -> list[str]:
+    """On a new install, load what would otherwise wait for tonight's run (stations, stops, postcodes).
+
+    Only for an empty table and a switched-on poll. The fixed job id means a restart does not queue it twice.
+    Fuel stations without a Fuel Finder key just skip, as they do at night.
+    """
+    settings = get_settings()
+    queued: list[str] = []
+    for table, job, switch in FIRST_LOADS:
+        if not getattr(settings, switch, False):
+            continue
+        try:
+            async with ctx["engine"].connect() as conn:
+                empty = not (await conn.execute(text(f"SELECT EXISTS (SELECT 1 FROM {table})"))).scalar_one()
+        except Exception:  # a missing table (before migrations) must not stop the worker
+            log.warning("could not check %s for a first load", table, exc_info=True)
+            continue
+        if empty and await ctx["redis"].enqueue_job(job, _job_id=f"wa:first-load:{job}", _defer_by=30):
+            queued.append(job)
+    if queued:
+        log.info("first start: loading %s now rather than tonight", ", ".join(queued))
+    return queued
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:

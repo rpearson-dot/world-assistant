@@ -4,6 +4,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-22
+
+### Added
+- **No token on the home network.** The web pages and API let in requests that come straight from a private, loopback or Tailscale address, for a home-network host name, and (for changes) from this server's own pages; the token box disappears. Anything through a reverse proxy, another site's page, or a request from outside still needs the token. `WA_LOCAL_NO_TOKEN=false` turns it off; `WA_LOCAL_HOSTS` adds host names ([docs/security.md](docs/security.md#access)).
+- **`scripts/setup.sh`**: first-time setup as questions (folders, Home Assistant broker, routing, each key with what it unlocks and where to get it, typed without echo), then it starts the stack. Safe to re-run; Enter keeps each answer.
+- **Setup checklist** on `/status` (`GET /v1/setup`): every source, Home Assistant, routing and your home place, shown as working, set up and waiting, failing (with the error) or not set up (with what it would unlock and where to get a key).
+- **Home Assistant page** (`/ha`): the broker to use, the packages to copy (with download buttons), the exact `secrets.yaml` lines for this server (token included on request), and each dashboard to copy into the raw editor, all from the running version. It marks files changed since the version you last copied (`homeassistant/manifest.json`, checked by a test).
+- **Bundled MQTT broker**, optional: `docker-compose.mqtt.yml` runs Mosquitto with a generated password and anonymous access off, for a Home Assistant that has no broker yet.
+
+### Changed
+- Home Assistant is optional: the stack no longer insists on `WA_MQTT_HOST`. Empty means nothing is published, and the Setup list says so.
+- On a new install, fuel stations, bus stops and postcodes load when the worker starts, not at the nightly run.
+- `.env.example` keeps data and keys in this folder by default (`./data`, `./secrets`, both ignored by git and Docker builds), with the Unraid paths as a comment. Existing `.env` files are untouched, and the compose defaults are unchanged.
+- The smoke check sends its "no token is refused" requests as if from outside; `init-secrets.sh` lists every key with what it is for.
+- TfL road disruptions keep the area TfL says they affect (its `geometry`, a MultiPolygon) when there are no street lines, instead of a single point, so trip conditions and `GET /v1/roads/tfl/at` now find long works anywhere along their length. Run the TfL sync (or wait 15 minutes) after updating. The probe reports how many are stored as lines, areas and points ([docs/tfl-roads.md](docs/tfl-roads.md)).
+
 ## [0.12.1] - 2026-10-22
 
 ### Changed

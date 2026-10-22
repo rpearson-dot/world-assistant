@@ -1,16 +1,33 @@
 # Security
 
-This runs on a home network. The aim is: nothing on it is reachable without a token, no secret is
-ever in the repository or the image, and what runs is exactly what CI built.
+This runs on a home network. The aim is: nothing on it is reachable from outside the home network without a
+token, no secret is ever in the repository or the image, and what runs is exactly what CI built.
 
 ## Access
 
-- `/v1/*` requires `Authorization: Bearer <token>`; the token is compared in constant time.
-  If no token is configured the API refuses everything (503) rather than running open.
-- The pages (`/status`, `/places`, `/fuel`, `/events`, `/pollen`, `/bus`, `/trains`) are static shells that hold no data. They ask for the
-  token and keep it in the browser's `sessionStorage` for the session.
+- From **outside the home network**, `/v1/*` requires `Authorization: Bearer <token>`; the token is compared in
+  constant time. If no token is configured the API refuses everything (503) rather than running open.
+- From the **home network**, the pages and the API need no token (`WA_LOCAL_NO_TOKEN=false` turns that off).
+  A request counts as local only when all of these hold ([app/localnet.py](../app/localnet.py)):
+  - it came straight from a private, loopback, link-local or Tailscale (100.64.0.0/10) address, with no
+    `Forwarded`, `X-Forwarded-*` or `X-Real-IP` header. Anything through a reverse proxy is treated as the
+    internet, because the proxy may be relaying it;
+  - the host asked for is an IP address, `localhost`, a single-label name (`nas`), a home-network name (`.lan`,
+    `.local`, `.home`, `.home.arpa`, `.internal`, `.localdomain`, `.ts.net`) or one listed in `WA_LOCAL_HOSTS`.
+    This stops another website from re-pointing its own name at this server (DNS rebinding) and reading it;
+  - a change (anything but GET, HEAD, OPTIONS) comes from this server's own pages: if the browser sends an
+    `Origin` it must be this host, and `Sec-Fetch-Site` must not be cross-site. So a website you visit cannot
+    make your browser change anything here.
+- The pages are static shells that hold no data. From the home network they hide the token box; elsewhere they
+  ask for the token and keep it in the browser's `sessionStorage` for the session.
+- The Home Assistant page (`/ha`) can show the API token so it can go into Home Assistant's `secrets.yaml`.
+  Anyone who can use the API can already see it there; with local access on, that means anyone on your home
+  network. Turn `WA_LOCAL_NO_TOKEN` off if people you do not trust share that network.
 - There is no TLS in the app. Reach it over a private network (for example Tailscale) or put a
-  reverse proxy with TLS in front. Do not expose the port to the internet.
+  reverse proxy with TLS in front. **Do not expose the port to the internet**: with port forwarding, Docker can
+  hand an outside connection to the app from its own gateway address, which is private, and it would be let in.
+- The bundled MQTT broker (`docker-compose.mqtt.yml`) has anonymous access off and a generated password. Its port
+  is published to the LAN for Home Assistant; do not forward it to the internet.
 
 ## Secrets
 
@@ -81,7 +98,7 @@ Both are opt-in and off by default.
 
 - Redis is part of the stack, has no published port and needs the `redis_password` secret. A Redis you
   point `WA_REDIS_URL` at yourself is only as safe as you make it.
-- One shared API token, no per-user accounts or scopes.
+- One shared API token, no per-user accounts or scopes. On the home network, no token at all (above).
 - The database holds your places (including home). Back it up somewhere private and treat dumps
   as sensitive. Never put real coordinates or addresses in issues, pull requests or test fixtures.
 - The dependency lock covers x86-64 Linux wheels only.

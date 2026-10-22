@@ -33,6 +33,8 @@ from app.graph import store as graph_store
 from app.graph_routes import router as graph_router
 from app.ha_locations import router as ha_locations_router
 from app.ha_routes import router as ha_routes_router
+from app.ha_setup import page_router as ha_setup_page_router
+from app.ha_setup import router as ha_setup_router
 from app.icons import router as icons_router
 from app.logging import configure_logging
 from app.map_layers import router as map_router
@@ -42,6 +44,7 @@ from app.places import router as places_router
 from app.pollen import page_router as pollen_page_router
 from app.pollen import router as pollen_router
 from app.postcodes import router as postcodes_router
+from app.setup_checklist import router as setup_router
 from app.status import page_router
 from app.status import router as status_router
 from app.stops import router as stops_router
@@ -72,11 +75,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await app.state.engine.dispose()
 
 
-app = FastAPI(title="World Assistant", version="0.12.1", lifespan=lifespan)
+app = FastAPI(title="World Assistant", version="0.13.0", lifespan=lifespan)
 # Files shipped with the app (Leaflet), so the pages load no third-party script. Read-only and
 # unauthenticated: it holds nothing private, and StaticFiles refuses paths outside the directory.
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 app.include_router(status_router)
+app.include_router(setup_router)
+app.include_router(ha_setup_router)
+app.include_router(ha_setup_page_router)
 app.include_router(autodeploy_router)
 app.include_router(backups_router)
 app.include_router(events_router)

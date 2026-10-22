@@ -69,9 +69,9 @@ def test_a_position_is_found_wherever_the_feed_puts_it() -> None:
         geometry_of({**bare, "geometry": {"type": "LineString", "coordinates": LINE}})["type"]
         == "MultiLineString"
     )
-    assert geometry_of(
-        {**bare, "geography": {"type": "Polygon", "coordinates": [[*LINE, [-0.12, 51.5]]]}}
-    )
+    # a polygon is kept as an area (closed for us if the feed leaves it open)
+    poly = geometry_of({**bare, "geography": {"type": "Polygon", "coordinates": [[*LINE, [-0.12, 51.5]]]}})
+    assert poly == {"type": "MultiPolygon", "coordinates": [[[*LINE, [-0.12, 51.5], LINE[0]]]]}
     # nothing usable, or coordinates outside Britain, is no position rather than a wrong one
     for junk in (
         {},
@@ -80,6 +80,26 @@ def test_a_position_is_found_wherever_the_feed_puts_it() -> None:
         {"geography": {"type": "Point", "coordinates": [51.5, -0.1]}},
     ):
         assert geometry_of({**bare, **junk}) is None
+
+
+AREA = [[[-0.1951, 51.4572], [-0.1937, 51.4568], [-0.1938, 51.4575], [-0.1951, 51.4572]]]
+ROAD_AREA = [[[-0.1983, 51.4526], [-0.1965, 51.4532], [-0.1967, 51.4545], [-0.1950, 51.4560],
+              [-0.1953, 51.4563], [-0.1983, 51.4526]]]  # fmt: skip
+
+
+def test_the_affected_area_is_used_when_there_are_no_street_lines() -> None:
+    """Most TfL items have no street lines but do carry "geometry", a MultiPolygon of the area affected."""
+    raw = item(streets=[], geography={"type": "Point", "coordinates": [-0.194259, 51.45711]},
+               point="[-0.194259,51.45711]", geometry={"type": "MultiPolygon", "coordinates": [AREA, ROAD_AREA]})  # fmt: skip
+    p = parse_item(raw)
+    assert p and p["geom"] == {"type": "MultiPolygon", "coordinates": [AREA, ROAD_AREA]}
+    # street lines still win where TfL gives them: they are the road itself
+    assert parse_item(item(geometry={"type": "MultiPolygon", "coordinates": [AREA]}))["geom"]["type"] == (
+        "MultiLineString"
+    )
+    # rings too small to be an area are dropped, and then the point is used
+    tiny = {"type": "MultiPolygon", "coordinates": [[[[-0.19, 51.45], [-0.19, 51.46]]]]}
+    assert parse_item(item(streets=[], geometry=tiny, point="[-0.194259,51.45711]"))["geom"]["type"] == "Point"
 
 
 def test_a_closure_on_any_street_counts_even_if_the_flag_is_missing() -> None:
@@ -174,6 +194,26 @@ async def test_disruptions_are_stored_updated_and_ended_ones_dropped(schema: Non
             "A",
             "Severe",
         )
+    finally:
+        await engine.dispose()
+
+
+@needs_db
+async def test_an_affected_area_is_stored_and_matched_along_its_length(schema: None) -> None:
+    """Works stored as an area are found anywhere along it, not only at TfL's single point."""
+    engine = create_async_engine(URL)  # type: ignore[arg-type]
+    try:
+        raw = item("AREA", streets=[], point="[-0.194259,51.45711]",
+                   geometry={"type": "MultiPolygon", "coordinates": [AREA, ROAD_AREA]})  # fmt: skip
+        assert (await sync.sync(engine, client([raw])))["positioned"] == 1
+        (kind, near_far_end, near_point) = (await rows(engine, """
+            SELECT ST_GeometryType(geom::geometry),
+                   ST_DWithin(geom, ST_SetSRID(ST_MakePoint(-0.1975, 51.4532), 4326)::geography, 75),
+                   ST_DWithin(geom, ST_SetSRID(ST_MakePoint(-0.194259, 51.45711), 4326)::geography, 75)
+            FROM tfl_road_disruption WHERE id = 'AREA'"""))[0]  # fmt: skip
+        assert kind == "ST_MultiPolygon"
+        # about 500 m south-west of TfL's point, inside the road's area: a point-only record would miss it
+        assert near_far_end and near_point
     finally:
         await engine.dispose()
 

@@ -356,6 +356,6 @@ page_router = APIRouter()
 
 
 @page_router.get("/places", response_class=HTMLResponse, include_in_schema=False)
-async def places_page() -> str:
+async def places_page(request: Request) -> str:
     """The page holds no data itself; it asks for the token and calls /v1/places."""
-    return themed(PAGE, "places")
+    return themed(PAGE, "places", request)

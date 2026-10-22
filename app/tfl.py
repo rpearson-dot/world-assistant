@@ -342,5 +342,5 @@ setInterval(() => { if (tok.value && !document.hidden) load(); }, 30000);
 
 
 @page_router.get("/trains", response_class=HTMLResponse, include_in_schema=False)
-async def trains_page() -> str:
-    return themed(PAGE, "trains")
+async def trains_page(request: Request) -> str:
+    return themed(PAGE, "trains", request)

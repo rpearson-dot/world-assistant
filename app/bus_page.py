@@ -3,7 +3,7 @@ on /fuel and /trains. No external resources, and the page never builds HTML from
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from app.pagestyle import themed
@@ -211,5 +211,5 @@ setInterval(() => { if (tok.value && !document.hidden) load(); }, 30000);
 
 
 @page_router.get("/bus", response_class=HTMLResponse, include_in_schema=False)
-async def bus_page() -> str:
-    return themed(PAGE, "bus")
+async def bus_page(request: Request) -> str:
+    return themed(PAGE, "bus", request)
