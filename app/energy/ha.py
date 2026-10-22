@@ -72,7 +72,7 @@ def energy_device(now: dict[str, Any], slots: list[dict[str, Any]]) -> Device:
         ),
         Sensor(
             "next_cheap_start",
-            "Next cheap window starts",
+            "Cheap window starts (current or next)",
             cheap.get("start"),
             icon="mdi:battery-charging",
             device_class="timestamp",
@@ -84,14 +84,14 @@ def energy_device(now: dict[str, Any], slots: list[dict[str, Any]]) -> Device:
         ),
         Sensor(
             "next_cheap_end",
-            "Next cheap window ends",
+            "Cheap window ends (current or next)",
             cheap.get("end"),
             icon="mdi:battery-charging-outline",
             device_class="timestamp",
         ),
         Sensor(
             "next_peak_start",
-            "Next peak window starts",
+            "Peak window starts (current or next)",
             peak.get("start"),
             icon="mdi:flash-alert",
             device_class="timestamp",
