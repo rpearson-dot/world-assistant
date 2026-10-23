@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Changed
+- When BODS has no timetable for a line, the message now says why for each file it tried: could not download, would not parse, had no such line, or had it but for stops away from the buses.
+
 ## [0.16.1] - 2026-10-23
 
 ### Fixed

@@ -297,7 +297,7 @@ async def test_a_timetable_for_a_route_elsewhere_is_rejected(monkeypatch: pytest
     assert noc == "ABCD" and route.line == "X26"
 
     manchester = {s: (53.48, -2.24) for s in STOPS_AT}  # the same line number, a different town
-    with pytest.raises(BodsError, match="no timetable for line"):
+    with pytest.raises(BodsError, match="no timetable for line.*rejected as not near the buses"):
         await bods_source.load_route("k", "X26", None, LONDON, bods_source.near_check(coords_at(manchester), LONDON))
 
 
