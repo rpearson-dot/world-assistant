@@ -208,12 +208,17 @@ async def trip_cost_tool(request: Request, args: dict[str, Any]) -> dict[str, An
         if not r["return_on_a_full_charge"] and r["one_way_on_a_full_charge"]:
             t += " The return needs a charge on the way."
         if "cost_gbp_at_home_rate" in r:
-            t += f" About {r['cost_gbp_at_home_rate']:.2f} pounds at your home rate."
+            where = "the cheapest rate on your tariff" if r.get("home_rate_from", "yours") != "yours" else "your home rate"
+            t += f" About {r['cost_gbp_at_home_rate']:.2f} pounds at {where}."
     else:
         t = f"{r['trip']} is {miles:.0f} miles, about {r['litres']:.0f} litres in the {r['vehicle']}."
         if "cost_gbp_typical" in r:
             t += (f" Around {r['cost_gbp_typical']:.2f} pounds at typical prices on the route, "
                   f"or {r['cost_gbp_cheapest']:.2f} at the cheapest station.")  # fmt: skip
+        elif "cost_gbp_at_own_price" in r:
+            t += f" About {r['cost_gbp_at_own_price']:.2f} pounds at your price of {r['own_pence_per_litre']:.0f}p a litre."
+        elif r.get("note"):
+            t += " " + r["note"]
     return {"text": t, "data": r}
 
 
@@ -378,7 +383,7 @@ async def handle_rpc(request: Request, msg: Any) -> dict[str, Any] | None:
         return {"jsonrpc": "2.0", "id": rid, "result": {
             "protocolVersion": asked if asked in PROTOCOLS else PROTOCOLS[0],
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": "world-assistant", "version": "0.17.4"},
+            "serverInfo": {"name": "world-assistant", "version": "0.18.0"},
             "instructions": "Personal assistant for fuel prices, trips, trains and buses. "
                             "Call list_options first to see saved ids.",
         }}  # fmt: skip

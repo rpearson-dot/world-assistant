@@ -50,7 +50,8 @@ def test_detour_can_wipe_out_a_saving() -> None:
 
 
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
-NAMES = ["0003_nh_storage", "0006_places_trips", "0007_fuel", "0008_trip_routes", "0009_vehicle"]
+NAMES = ["0003_nh_storage", "0006_places_trips", "0007_fuel", "0008_trip_routes", "0009_vehicle",
+         "0029_vehicle_own_price"]
 TABLES = ["vehicle", "fuel_price_change", "fuel_price", "fuel_station", "trip", "place",
           "nh_sign_message", "nh_sign", "nh_event_corridor", "nh_event", "nh_corridor"]  # fmt: skip
 
@@ -112,7 +113,7 @@ async def test_vehicle_api_trip_cost_and_net_saving(
     h = {"Authorization": "Bearer tok"}
     r = c.put("/v1/vehicles/estima", json={"name": "Toyota Estima hybrid", "mpg": 33}, headers=h)
     assert r.status_code == 200 and r.json()["fuel"] == "E10"
-    assert c.put("/v1/vehicles/x", json={"name": "x", "mpg": 33, "fuel": "LPG"}, headers=h).status_code == 422
+    assert c.put("/v1/vehicles/x", json={"name": "x", "mpg": 33, "fuel": "KEROSENE"}, headers=h).status_code == 422
     assert c.put("/v1/vehicles/x", json={"name": "x", "mpg": 2}, headers=h).status_code == 422
     assert [v["id"] for v in c.get("/v1/vehicles", headers=h).json()] == ["estima"]
 
@@ -143,6 +144,87 @@ async def test_vehicle_api_trip_cost_and_net_saving(
     assert ev["one_way_on_a_full_charge"] and not ev["return_on_a_full_charge"]
     assert ev["cost_gbp_at_home_rate"] == pytest.approx(ev["kwh"] * 0.25, abs=0.02)
     assert c.get("/v1/fuel/along/trip-t?vehicle=leaf", headers=h).status_code == 422
+    gas = {"name": "LPG Estima", "kind": "lpg", "mpg": 28, "fuel_pence_per_litre": 85}
+    saved = c.put("/v1/vehicles/gas", json=gas, headers=h).json()
+    assert (saved["type"], saved["fuel"]) == ("lpg", "LPG")
+    lpg = c.get("/v1/trips/t/cost?vehicle=gas", headers=h).json()
+    assert lpg["stations_considered"] == 0 and "cost_gbp_typical" not in lpg
+    assert lpg["cost_gbp_at_own_price"] == pytest.approx(lpg["litres"] * 0.85, abs=0.02)
+    assert c.get("/v1/fuel/along/trip-t?vehicle=gas", headers=h).status_code == 422
+    types = {v["id"]: v["type"] for v in c.get("/v1/vehicles", headers=h).json()}
+    assert types == {"estima": "petrol", "gas": "lpg", "leaf": "electric"}
+    assert c.delete("/v1/vehicles/gas", headers=h).status_code == 204
     assert c.delete("/v1/vehicles/leaf", headers=h).status_code == 204
     assert c.delete("/v1/vehicles/estima", headers=h).status_code == 204
     assert c.delete("/v1/vehicles/estima", headers=h).status_code == 404
+
+
+def test_the_four_types_and_their_fuels() -> None:
+    from pydantic import ValidationError
+
+    from app.vehicles import VehicleIn, type_of
+
+    petrol = VehicleIn(name="Estima", kind="petrol", mpg=33)
+    assert (petrol.kind, petrol.fuel, type_of(petrol.kind, petrol.fuel)) == ("fuel", "E10", "petrol")
+    diesel = VehicleIn(name="Van", kind="diesel", fuel="B7_PREMIUM", mpg=40)
+    assert (diesel.fuel, type_of(diesel.kind, diesel.fuel)) == ("B7_PREMIUM", "diesel")
+    lpg = VehicleIn(name="Gas", kind="lpg", mpg=28, fuel_pence_per_litre=85)
+    assert (lpg.kind, lpg.fuel, type_of(lpg.kind, lpg.fuel)) == ("fuel", "LPG", "lpg")
+    ev = VehicleIn(name="Leaf", kind="electric", battery_kwh=30, miles_per_kwh=3.6)
+    assert (ev.kind, type_of(ev.kind, ev.fuel)) == ("ev", "electric")
+    old = VehicleIn(name="Old", kind="fuel", fuel="diesel", mpg=40)  # the earlier form still works
+    assert (old.fuel, type_of(old.kind, old.fuel)) == ("B7_STANDARD", "diesel")
+    with pytest.raises(ValidationError, match="not a petrol fuel"):
+        VehicleIn(name="x", kind="petrol", fuel="B7_STANDARD", mpg=30)
+    with pytest.raises(ValidationError, match="needs mpg"):
+        VehicleIn(name="x", kind="lpg")
+
+
+async def test_an_ev_with_no_home_rate_uses_the_energy_tabs_cheapest(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app import vehicles
+    from app.energy import rates as R
+    from app.energy import store as energy_store
+
+    now = datetime(2026, 10, 23, 12, tzinfo=UTC)
+    h = timedelta(hours=1)
+    stored = [R.Period(now - 30 * h, now - 29 * h, 5.0), R.Period(now, now + 3 * h, 24.0),
+              R.Period(now + 16 * h, now + 19 * h, 7.5), R.Period(now + 19 * h, now + 22 * h, 24.0)]
+
+    async def load(engine: object, at: datetime | None = None) -> tuple[str, list[R.Period]]:
+        return "E-1R-COSY", stored
+
+    monkeypatch.setattr(energy_store, "load", load)
+    best = await vehicles.cheapest_home_rate(None, now)
+    assert best is not None and (best["pence_per_kwh"], best["over"]) == (7.5, "next 48 hours")
+    stored[:] = [R.Period(now - 30 * h, now - 29 * h, -2.0)]  # nothing ahead: the past week, negative counts as free
+    best = await vehicles.cheapest_home_rate(None, now)
+    assert best is not None and (best["pence_per_kwh"], best["over"]) == (0.0, "past week")
+    stored[:] = []
+    assert await vehicles.cheapest_home_rate(None, now) is None
+
+    trip = {"name": "T", "distance_km": 100.0, "duration_s": 3600}
+    leaf = {"name": "Leaf", "battery_kwh": 30, "soh_percent": 100, "miles_per_kwh": 4.0, "home_pence_per_kwh": None}
+    out = vehicles._ev_trip_cost(trip, leaf, {"pence_per_kwh": 7.5})
+    assert out["home_rate_from"] == "the Energy tab's cheapest rate" and out["home_pence_per_kwh"] == 7.5
+    assert out["cost_gbp_at_home_rate"] == pytest.approx(100 / 1.609344 / 4 * 0.075, abs=0.01)
+    assert "cost_gbp_at_home_rate" not in vehicles._ev_trip_cost(trip, leaf, None)
+    assert vehicles._ev_trip_cost(trip, {**leaf, "home_pence_per_kwh": 25}, {"pence_per_kwh": 7.5})["home_rate_from"] == "yours"
+
+
+def test_the_vehicles_page_script_is_valid_javascript() -> None:
+    """A Python escape once turned \\' into ' and broke the whole page; check the script parses."""
+    import re
+    import shutil
+    import subprocess
+
+    from app.vehicles_page import PAGE
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not installed")
+    script = re.search(r"<script>(.*)</script>", PAGE, re.DOTALL)
+    assert script
+    r = subprocess.run([node, "--check", "-"], input=script.group(1), capture_output=True, text=True, check=False)
+    assert r.returncode == 0, r.stderr

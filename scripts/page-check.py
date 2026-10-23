@@ -10,7 +10,7 @@ import sys
 
 from playwright.sync_api import sync_playwright
 
-PAGES = ("/settings", "/bus", "/trains", "/fuel", "/events", "/pollen", "/places", "/ha", "/graph")
+PAGES = ("/settings", "/bus", "/trains", "/fuel", "/events", "/pollen", "/places", "/vehicles", "/ha", "/graph")
 # Console messages that are the browser's own noise about a failed request, not a script fault.
 # A 4xx/5xx from a feature that is not set up (no API key) is reported by the smoke check instead.
 IGNORE = ("Failed to load resource",)
