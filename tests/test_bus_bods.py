@@ -261,7 +261,7 @@ def _patch_bods(monkeypatch: pytest.MonkeyPatch, nocs: list[str], datasets: dict
         asked.append(("noc" if noc else "search", noc or search or ""))
         return [{"url": u, "name": u} for u in datasets.get(noc or "", [])]
 
-    async def download(url: str) -> list[bytes]:
+    async def download(url: str, line: str | None = None) -> list[bytes]:
         return [TXC]
 
     monkeypatch.setattr(bods_source, "operators_of_line", operators)
@@ -307,3 +307,50 @@ async def test_with_no_stop_placed_the_check_has_nothing_to_judge_by(monkeypatch
 
     route = parse_txc(TXC, "X26")
     assert route and await bods_source.near_check(none, LONDON)(route) is True
+
+
+def _zip(files: dict[str, bytes]) -> bytes:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, doc in files.items():
+            z.writestr(name, doc)
+    return buf.getvalue()
+
+
+def _serving(body: bytes):  # type: ignore[no-untyped-def]
+    import httpx
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(lambda req: httpx.Response(200, content=body)))
+
+
+URL = "https://data.bus-data.dft.gov.uk/timetable/dataset/1/download/"
+
+
+async def test_a_big_archive_keeps_only_the_files_naming_the_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    """NXWM publishes every route in one archive, larger than one file may be; each file is checked on its own."""
+    from app.integrations.bods import client as bods_client
+
+    other = b'<TransXChange><Lines><Line id="1"><LineName>9070</LineName></Line></Lines>' + b" " * 4000 + b"</TransXChange>"
+    mine = b'<txc:TransXChange><Line><txc:LineName> 907 </txc:LineName></Line></txc:TransXChange>'
+    body = _zip({f"other{i}.xml": other for i in range(30)} | {"907.xml": mine, "readme.txt": b"907"})
+    monkeypatch.setattr(bods_client, "MAX_FILE", 5000)
+    monkeypatch.setattr(bods_client, "MAX_UNPACKED", 10**6)
+    assert await bods_client.download_txc(URL, _serving(body), line="907") == [mine]
+    assert len(await bods_client.download_txc(URL, _serving(body))) == 31  # no line: everything
+
+    monkeypatch.setattr(bods_client, "MAX_UNPACKED", 50_000)  # the whole is still capped
+    with pytest.raises(BodsError, match="archive unpacks larger"):
+        await bods_client.download_txc(URL, _serving(body), line="907")
+    monkeypatch.setattr(bods_client, "MAX_FILE", 1000)  # and so is each file
+    with pytest.raises(BodsError, match="a file in the timetable archive"):
+        await bods_client.download_txc(URL, _serving(body), line="907")
+
+
+async def test_a_damaged_archive_says_so() -> None:
+    from app.integrations.bods import client as bods_client
+
+    with pytest.raises(BodsError, match="damaged"):
+        await bods_client.download_txc(URL, _serving(b"PK\x03\x04 not really a zip"), line="1")
