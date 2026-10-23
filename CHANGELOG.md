@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [Unreleased]
 
 ### Added
+- **Modules.** World Assistant is now a small core plus modules, each one a single declaration (its keys, routes, scheduled jobs, assistant tools, optional containers and the region it covers). The routes, the worker's jobs and schedules, the assistant's tools and the Setup list are all built from those declarations, with nothing changed for you: an upgrade leaves everything on. Design: [ADR 0009](docs/adr/0009-modular-core.md); guide: [docs/modules.md](docs/modules.md).
+- **Modules page (`/modules`, linked from Settings)**: switch modules on or off with no restart, start from the essentials only, see what each needs, test a TfL, BODS or TfWM key, and see which regional modules cover your home place. A switched-off module's pages and API answer 404, its jobs do nothing and its assistant tools disappear; its data is kept. API: `/v1/modules`.
+- **Modules from outside the image** can be added (a Python entry point, or `WA_EXTRA_MODULES`). They can't replace a built-in and can always be switched off. Installing them is not automated.
+- **`scripts/setup.sh` asks where to keep your keys**: files (default), the bundled OpenBao, a Vault or OpenBao you already run, or your own key manager through a command. It also asks for the TfWM keys.
+
+### Added
 - **Transport for West Midlands (probe only)**: a reader for TfWM's GTFS-Realtime trip updates (no new dependency), the `tfwm_app_id` and `tfwm_app_key` secrets, a Setup entry, and `python -m app.integrations.tfwm.probe [stop]`, which shows the feed's stop ids and the next predicted times at a stop. Over HTTPS only unless `WA_TFWM_BASE_URL` says otherwise (the portal documents plain HTTP, which would send the key in the open). Not used by the bus tracker yet: the probe comes first.
 
 ## [0.16.1] - 2026-10-23

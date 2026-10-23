@@ -7,7 +7,6 @@ job, and what the worker last managed to publish to Home Assistant.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -19,6 +18,8 @@ from app.auth import require_token
 from app.config import Settings, get_settings
 from app.ha_publish import HA_LAST_KEY
 from app.localnet import is_local
+from app.modules import registry
+from app.modules.model import Module
 from app.mqtt_config import MqttConf, from_env, load
 
 router = APIRouter(prefix="/v1/setup", tags=["status"], dependencies=[Depends(require_token)])
@@ -28,65 +29,15 @@ router = APIRouter(prefix="/v1/setup", tags=["status"], dependencies=[Depends(re
 READY, LIMITED, WAITING, OFF, MISSING, FAILING = "ready", "limited", "waiting", "off", "missing", "failing"
 
 
-@dataclass(frozen=True)
-class Source:
-    id: str
-    name: str
-    unlocks: str
-    keys: tuple[str, ...] = ()  # secret names; empty = needs no key
-    any_key: bool = False  # one of the keys is enough (events)
-    key_optional: bool = False  # works without, better with
-    jobs: tuple[str, ...] = ()  # job_run names; empty = asked live, no stored runs
-    switch: str = ""  # Settings attribute that turns the poll on
-    link: str = ""
-    note: str = ""
-    extra_ready: tuple[str, ...] = field(default=())  # Settings attributes that count as "set up" too
+# A data source on this list is a module (app/modules). The row for each comes from its declaration.
+Source = Module
 
 
-SOURCES: tuple[Source, ...] = (
-    Source("nh", "National Highways", "Closures, speed limits and signs on motorways and major A roads",
-           keys=("nh_subscription_key",), jobs=("nh_poll_live",), switch="nh_poll_enabled",
-           link="https://developer.data.nationalhighways.co.uk/"),
-    Source("fuel", "Fuel Finder (GOV.UK)", "Prices at every UK fuel station, cheapest near you or on the way",
-           keys=("fuel_finder_client_id", "fuel_finder_client_secret"), jobs=("fuel_prices", "fuel_stations"),
-           switch="fuel_poll_enabled",
-           link="https://www.gov.uk/guidance/access-the-latest-fuel-prices-and-forecourt-data-via-api-or-email",
-           note="The API only answers UK addresses."),
-    Source("tfl", "Transport for London", "London bus times and the bus tracker, train boards, London road works",
-           keys=("tfl_app_key",), key_optional=True, jobs=("tflroads", "bus_poll"),
-           link="https://api-portal.tfl.gov.uk/", note="Works without a key at a low rate."),
-    Source("nr", "National Rail", "Live departures from any station in Great Britain",
-           keys=("nr_access_token",), link="https://raildata.org.uk/"),
-    Source("bods", "Bus Open Data Service", "Live bus positions anywhere in Britain; GPS for the bus tracker",
-           keys=("bods_api_key",), link="https://data.bus-data.dft.gov.uk/"),
-    Source("tfwm", "Transport for West Midlands", "The region's own predicted bus and tram times (West Midlands only)",
-           keys=("tfwm_app_id", "tfwm_app_key"), link="https://api-portal.tfwm.org.uk/",
-           note="Not used by the bus tracker yet: run the probe first."),
-    Source("events", "Skiddle and Ticketmaster", "What is on near a place: gigs, comedy, theatre, sport",
-           keys=("skiddle_api_key", "ticketmaster_api_key"), any_key=True,
-           link="https://developer.ticketmaster.com/", note="Either key is enough; Skiddle's is at skiddle.com/api."),
-    Source("pollen", "Polleninformation", "Pollen by allergen, today and three days ahead",
-           keys=("pollen_api_key",), jobs=("pollen_grid_sync", "pollen_sync"),
-           link="https://www.polleninformation.at/en/data-interface", note="Free for personal use; 40 requests a day."),
-    Source("octopus", "Octopus Energy", "Your electricity rates, cheap windows and Saving Sessions",
-           keys=("octopus_api_key",), jobs=("energy",), switch="energy_poll_enabled",
-           link="https://octopus.energy/dashboard/new/accounts/personal-details/api-access",
-           note="Rates also work with just a tariff code (WA_OCTOPUS_TARIFF).",
-           extra_ready=("octopus_tariff",)),
-    Source("floods", "Environment Agency", "Flood alerts and warnings in England, on the map and on your routes",
-           jobs=("flood",), switch="flood_poll_enabled"),
-    Source("tflroads", "TfL road disruptions", "London works, closures and incidents near your routes",
-           jobs=("tflroads",), switch="tflroads_poll_enabled"),
-    Source("naptan", "Bus stops and stations (NaPTAN)", "Every stop and station in Great Britain",
-           jobs=("naptan",), switch="naptan_poll_enabled", note="About 100 MB, loaded on first start."),
-    Source("boundary", "Council and region boundaries (OS Boundary-Line)",
-           "Which council, county and region a place, stop or roadwork is in",
-           jobs=("boundary",), switch="boundary_poll_enabled", note="A large download, loaded on first start."),
-    Source("usrn", "Street numbers (OS Open USRN)", "The number roadworks are reported against, with each street's line",
-           jobs=("usrn",), switch="usrn_poll_enabled", note="Large (a million and more streets), so opt in."),
-    Source("codepoint", "Postcodes (OS Code-Point Open)", "Places by postcode without an outside service",
-           jobs=("codepoint",), switch="codepoint_poll_enabled", note="About 25 MB, loaded on first start."),
-)  # fmt: skip
+def sources() -> tuple[Module, ...]:
+    return tuple(m for m in registry.modules() if m.listed)
+
+
+SOURCES = sources()  # the built-ins; outside modules appear in sources()
 
 
 def _has(s: Settings, name: str) -> bool:
@@ -199,8 +150,8 @@ async def checklist(request: Request) -> dict[str, Any]:
         last = json.loads(raw) if raw else None
     except Exception:  # noqa: BLE001 - the page must still show the rest
         last = None
-    keyed = [judge(x, s, runs) for x in SOURCES if x.keys]
-    free = [judge(x, s, runs) for x in SOURCES if not x.keys]
+    keyed = [judge(x, s, runs) for x in sources() if x.keys]
+    free = [judge(x, s, runs) for x in sources() if not x.keys]
     you = [
         {"id": "home", "name": "Your home", "unlocks": "The default place for fuel, events, pollen and the map",
          "state": READY if home else MISSING, "link": "/places",

@@ -142,6 +142,30 @@ say "Puts World Assistant on your tailnet with HTTPS, for your phone, Siri Short
 say "First, in the Tailscale admin console: turn on MagicDNS and HTTPS certificates, and create an auth key."
 tsq="$(ask "Add it? (y/n)" "$has_ts")"
 case "$tsq" in y|Y|yes) files="$files:docker-compose.tailscale.yml" ;; esac
+hr "Where to keep your keys"
+sb_now="$(env_or WA_SECRETS_BACKEND files)"
+say "World Assistant reads every key through one place. You can change this later in .env."
+say "  1) Files in the secrets folder (the default; nothing to install)"
+say "  2) OpenBao, a key vault that runs here next to it (set up after the stack starts)"
+say "  3) A key vault you already run (HashiCorp Vault or OpenBao)"
+say "  4) Your own key manager, through a command (1Password, Bitwarden, pass, sops, AWS, Azure, Google)"
+case "$sb_now" in vault) sb_def=3 ;; command) sb_def=4 ;; *) sb_def=1 ;; esac
+sb="$(ask "Choose 1, 2, 3 or 4" "$sb_def")"
+case "$sb" in
+  2) say "After the stack starts, run:  bash scripts/openbao.sh setup   (it creates the vault and switches this on)"
+     env_set WA_SECRETS_BACKEND files ;;
+  3) env_set WA_SECRETS_BACKEND vault
+     env_set WA_VAULT_ADDR "$(ask "Vault address, e.g. https://vault.lan:8200" "$(env_get WA_VAULT_ADDR)")"
+     case ":$files:" in *:docker-compose.vault.yml:*) ;; *) files="$files:docker-compose.vault.yml" ;; esac
+     say "Put its sign-in (vault_token, or vault_role_id and vault_secret_id) in the secrets folder; see docs/secrets.md." ;;
+  4) env_set WA_SECRETS_BACKEND command
+     cmd="$(ask "Command that prints the value of {name}, e.g. op read op://Vault/{name}/password" "$(env_get WA_SECRETS_COMMAND | sed "s/^'//; s/'\$//")")"
+     case "$cmd" in
+       *"'"*) say "That command has a single quote, which .env cannot hold here. Set WA_SECRETS_COMMAND in .env by hand." ;;
+       *) env_set WA_SECRETS_COMMAND "'$cmd'" ;;  # quoted: it has spaces, and .env is read by the shell too
+     esac ;;
+  *) env_set WA_SECRETS_BACKEND files ;;
+esac
 env_set COMPOSE_FILE "$files"
 
 hr "Secret files"
@@ -182,6 +206,8 @@ key fuel_finder_client_secret "Fuel Finder (client secret)" "the same page"
 key tfl_app_key "TfL: London buses, the bus tracker, train boards (works without, slower)" "https://api-portal.tfl.gov.uk/"
 key nr_access_token "National Rail: live departures from any station" "https://raildata.org.uk/"
 key bods_api_key "Bus Open Data Service: live bus positions anywhere in Britain" "https://data.bus-data.dft.gov.uk/"
+key tfwm_app_id "Transport for West Midlands: the region's own bus and tram times (application ID)" "https://api-portal.tfwm.org.uk/"
+key tfwm_app_key "Transport for West Midlands (application key)" "the same page"
 key skiddle_api_key "Skiddle: what is on near you" "https://www.skiddle.com/api/"
 key ticketmaster_api_key "Ticketmaster: concerts, sport and shows near you" "https://developer.ticketmaster.com/"
 key pollen_api_key "Polleninformation: pollen forecasts (personal use, 40 requests a day)" "https://www.polleninformation.at/en/data-interface"
