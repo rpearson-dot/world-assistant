@@ -224,7 +224,7 @@ def test_the_vehicles_page_script_is_valid_javascript() -> None:
     node = shutil.which("node")
     if not node:
         pytest.skip("node not installed")
-    script = re.search(r"<script>(.*)</script>", PAGE, re.S)
+    script = re.search(r"<script>(.*)</script>", PAGE, re.DOTALL)
     assert script
     r = subprocess.run([node, "--check", "-"], input=script.group(1), capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
