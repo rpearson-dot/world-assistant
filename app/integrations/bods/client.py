@@ -138,8 +138,7 @@ async def fetch_vehicles(api_key: str, box: Box, client: httpx.AsyncClient | Non
 
 
 DATASET_URL = "https://data.bus-data.dft.gov.uk/api/v1/dataset/"
-MAX_DOWNLOAD = 80 * 1024 * 1024
-MAX_DATASETS = 12  # timetable files tried while looking for a line
+MAX_DATASETS = 100  # timetable datasets listed per operator (one page; operators publish a handful to a few dozen)
 
 
 async def operators_of_line(api_key: str, line: str, box: Box, client: httpx.AsyncClient | None = None) -> list[str]:
@@ -187,36 +186,54 @@ async def find_datasets(
             for d in rows if isinstance(d, dict) and isinstance(d.get("url"), str)]  # fmt: skip
 
 
-async def download_txc(url: str, client: httpx.AsyncClient | None = None) -> list[bytes]:
-    """The XML documents at a timetable URL: one file, or every .xml inside a zip."""
-    import io
+async def download_txc(url: str, client: httpx.AsyncClient | None = None, line: str | None = None) -> list[bytes]:
+    """The XML documents at a timetable URL: one file, or the .xml files inside a zip.
+
+    No size limit: someone who switches buses on wants the operator's whole timetable, and a big operator
+    publishes every route in one archive (National Express West Midlands: well over 80 MB unpacked). The
+    download goes to a temporary file, the archive is read one file at a time, and with `line` only the files
+    that name that line are kept, so memory holds one timetable file at a time."""
+    import tempfile
     import zipfile
 
     if not url.startswith("https://data.bus-data.dft.gov.uk/"):
         raise BodsError("refusing to download a timetable from outside BODS")
     owned = client is None
-    client = client or httpx.AsyncClient(timeout=120.0, follow_redirects=True)
-    try:
+    client = client or httpx.AsyncClient(timeout=httpx.Timeout(60.0, read=600.0), follow_redirects=True)
+    with tempfile.TemporaryFile() as tmp:
         try:
-            r = await client.get(url)
+            async with client.stream("GET", url) as r:
+                if r.status_code != 200:
+                    raise BodsError(f"the timetable download answered HTTP {r.status_code}")
+                async for chunk in r.aiter_bytes(1 << 20):
+                    tmp.write(chunk)
         except httpx.HTTPError as exc:
             raise BodsError(f"the timetable could not be downloaded: {type(exc).__name__}") from exc
-        if r.status_code != 200:
-            raise BodsError(f"the timetable download answered HTTP {r.status_code}")
-        body = r.content
-    finally:
-        if owned:
-            await client.aclose()
-    if len(body) > MAX_DOWNLOAD:
-        raise BodsError("the timetable download was larger than expected")
-    if body[:2] != b"PK":
-        return [body]
-    out, total = [], 0
-    with zipfile.ZipFile(io.BytesIO(body)) as z:
-        for info in z.infolist():
-            if info.filename.lower().endswith(".xml"):
-                total += info.file_size
-                if total > MAX_DOWNLOAD:
-                    raise BodsError("the timetable archive unpacks larger than expected")
-                out.append(z.read(info))
+        finally:
+            if owned:
+                await client.aclose()
+        tmp.seek(0)
+        if tmp.read(2) != b"PK":
+            tmp.seek(0)
+            body = tmp.read()
+            return [body] if line is None or names_line(body, line) else []
+        out = []
+        try:
+            with zipfile.ZipFile(tmp) as z:
+                for info in z.infolist():
+                    if not info.filename.lower().endswith(".xml"):
+                        continue
+                    doc = z.read(info)
+                    if line is None or names_line(doc, line):
+                        out.append(doc)
+        except zipfile.BadZipFile as exc:
+            raise BodsError(f"the timetable archive is damaged: {exc}") from exc
     return out
+
+
+def names_line(doc: bytes, line: str) -> bool:
+    """Whether a TransXChange document has a <LineName> of `line` (a quick look before parsing it)."""
+    import re
+
+    pat = rb"<(?:[\w.-]+:)?LineName>\s*" + re.escape(line.strip().encode()) + rb"\s*</"
+    return re.search(pat, doc, re.IGNORECASE) is not None

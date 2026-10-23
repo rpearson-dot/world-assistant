@@ -4,6 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.17.2] - 2026-10-23
+
+### Fixed
+- **BODS timetables from big operators.** National Express West Midlands (and others) publish every route in one archive, larger than the 80 MB that was allowed, so line 907 found no timetable. There is now no size limit (whoever switches buses on wants the whole timetable): the download goes to a temporary file, the archive is read one file at a time and only the files naming the line are kept. Every timetable dataset the operator publishes is tried, not just the first 12. The per-file note says how many files named the line and how many had it.
+
 ## [0.17.1] - 2026-10-23
 
 ### Fixed

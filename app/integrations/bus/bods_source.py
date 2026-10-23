@@ -22,7 +22,6 @@ from itertools import pairwise
 from typing import Any
 
 from app.integrations.bods.client import (
-    MAX_DATASETS,
     BodsError,
     Box,
     download_txc,
@@ -182,10 +181,10 @@ async def load_route(
     if not tried:
         raise BodsError(f"BODS has no timetable files for {', '.join(nocs)} (some operators, such as TfL's bus companies, do not publish them)")
     notes: list[str] = []
-    for n, ds in tried[:MAX_DATASETS]:
+    for n, ds in tried:
         name = str(ds.get("name") or ds.get("id") or "a file")[:40]
         try:
-            bodies = await download_txc(ds["url"])
+            bodies = await download_txc(ds["url"], line=line)
         except BodsError as exc:
             notes.append(f"{name}: {exc}")
             continue
@@ -202,7 +201,7 @@ async def load_route(
             if check is None or await check(route):
                 return route, n
             rejected += 1
-        notes.append(f"{name}: {len(bodies)} files, line in {found}" + (", all rejected as not near the buses" if rejected else ""))
+        notes.append(f"{name}: {len(bodies)} files name the line, {found} had it" + (", all rejected as not near the buses" if rejected else ""))
     why = "; ".join(notes[:5]) + (f"; and {len(notes) - 5} more" if len(notes) > 5 else "")
     raise BodsError(f"BODS has no timetable for line {line!r}" + (" near there" if box else "") + (f" ({why})" if why else ""))
 
