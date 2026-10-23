@@ -14,7 +14,7 @@ published protobuf layout. `python -m app.integrations.tfwm.probe` checks it.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import IO, Any
 
 import httpx
 
@@ -66,3 +66,27 @@ class TfwmClient:
 
     async def schedule_zip(self) -> bytes:
         return await self._get("/gtfs/tfwm_gtfs.zip")
+
+    async def download(self, path: str, out: IO[bytes]) -> int:
+        """Stream a large file (the GTFS timetable) into `out`, with no size limit. Returns the bytes written."""
+        return await stream_to(f"{self._base}{path}", out, self._params)
+
+
+async def stream_to(url: str, out: IO[bytes], params: dict[str, str] | None = None) -> int:
+    """GET url into an open file. Raises TfwmError with the reason when it cannot."""
+    n = 0
+    try:
+        async with (
+            httpx.AsyncClient(timeout=httpx.Timeout(60.0, read=600.0), follow_redirects=True) as client,
+            client.stream("GET", url, params=params) as r,
+        ):
+            if r.status_code in (401, 403):
+                raise TfwmError(f"HTTP {r.status_code}: refused (key, or sign-in needed)")
+            if r.status_code != 200:
+                raise TfwmError(f"HTTP {r.status_code}")
+            async for chunk in r.aiter_bytes(1 << 20):
+                out.write(chunk)
+                n += len(chunk)
+    except httpx.HTTPError as exc:
+        raise TfwmError(f"could not be reached: {type(exc).__name__}: {exc}"[:300]) from exc
+    return n

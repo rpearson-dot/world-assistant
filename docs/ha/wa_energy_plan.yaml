@@ -14,6 +14,9 @@
 # from the grid by itself. The cost is a lost reward, never a loss of supply. Sessions outside 16:00-22:00 are only
 # flagged. Needs World Assistant's Energy sensors (sensor.wa_energy_saving_session_*).
 #
+# SLOT CHECK: "WA inverter slot check" compares the inverter's slot start times and grid-charge switches with the
+# above. If any differ, the plan logs what changed and does not apply, even when switched on.
+#
 # DRY RUN FIRST: "WA energy plan: apply to inverter" starts OFF. While off, the plan is only worked out and written
 # to the logbook. Compare it with what you would choose, then switch it on.
 #
@@ -116,6 +119,39 @@ input_number:
 
 template:
   - sensor:
+      # Are the inverter's slots still the ones this plan is written for? If a start time or a grid-charge switch
+      # has been changed on the inverter, the plan only logs (never applies) until they are put back.
+      - name: "WA inverter slot check"
+        unique_id: wa_inverter_slot_check
+        icon: mdi:timetable
+        state: >-
+          {% set want = {'1': '00:00', '2': '04:00', '3': '07:00', '4': '13:00', '5': '16:00', '6': '22:00'} %}
+          {% set ns = namespace(bad=0, unknown=0) %}
+          {% for n, t in want.items() %}
+            {% set v = states('text.office_inverter_time_slot_' ~ n ~ '_start') %}
+            {% if v in ['unknown', 'unavailable'] %}{% set ns.unknown = ns.unknown + 1 %}
+            {% elif v[:5] != t %}{% set ns.bad = ns.bad + 1 %}{% endif %}
+          {% endfor %}
+          {% for n in ['2', '4', '6'] %}
+            {% set v = states('switch.office_inverter_time_slot_' ~ n ~ '_on') %}
+            {% if v in ['unknown', 'unavailable'] %}{% set ns.unknown = ns.unknown + 1 %}
+            {% elif v != 'on' %}{% set ns.bad = ns.bad + 1 %}{% endif %}
+          {% endfor %}
+          {{ 'mismatch' if ns.bad else ('unchecked' if ns.unknown else 'ok') }}
+        attributes:
+          problems: >-
+            {% set want = {'1': '00:00', '2': '04:00', '3': '07:00', '4': '13:00', '5': '16:00', '6': '22:00'} %}
+            {% set ns = namespace(out=[]) %}
+            {% for n, t in want.items() %}
+              {% set v = states('text.office_inverter_time_slot_' ~ n ~ '_start') %}
+              {% if v not in ['unknown', 'unavailable'] and v[:5] != t %}
+                {% set ns.out = ns.out + ['slot ' ~ n ~ ' starts ' ~ v[:5] ~ ', expected ' ~ t] %}{% endif %}
+            {% endfor %}
+            {% for n in ['2', '4', '6'] %}
+              {% if states('switch.office_inverter_time_slot_' ~ n ~ '_on') == 'off' %}
+                {% set ns.out = ns.out + ['slot ' ~ n ~ ' grid charge is off'] %}{% endif %}
+            {% endfor %}
+            {{ ns.out | join('; ') }}
       - name: "WA target charge night"
         unique_id: wa_target_charge_night
         unit_of_measurement: "%"
@@ -169,7 +205,10 @@ automation:
       morning: "{{ states('sensor.wa_target_charge_morning') | int(0) }}"
       night_now: "{{ states('number.office_inverter_time_slot_6_capacity') | int(0) }}"
       morning_now: "{{ states('number.office_inverter_time_slot_2_capacity') | int(0) }}"
-      apply: "{{ is_state('input_boolean.wa_energy_plan_apply', 'on') and is_state('switch.office_inverter_allow_remote_control', 'on') }}"
+      slots: "{{ states('sensor.wa_inverter_slot_check') }}"
+      apply: >-
+        {{ is_state('input_boolean.wa_energy_plan_apply', 'on') and is_state('switch.office_inverter_allow_remote_control', 'on')
+           and not is_state('sensor.wa_inverter_slot_check', 'mismatch') }}
     conditions:
       - condition: template
         value_template: "{{ night > 0 and morning > 0 }}"
@@ -180,7 +219,13 @@ automation:
           message: >-
             Slot 6 (22:00) target {{ night }}% (now {{ night_now }}%); slot 2 (04:00) target {{ morning }}%
             (now {{ morning_now }}%); tomorrow's solar {{ states('sensor.energy_production_tomorrow') }} kWh.
-            {{ 'Applying.' if apply else 'Dry run: nothing changed.' }}
+            {% if slots == 'mismatch' %}Not applied: the inverter's slots have changed ({{ state_attr('sensor.wa_inverter_slot_check', 'problems') }}).
+            {% elif apply %}Applying.
+            {% elif is_state('input_boolean.wa_energy_plan_apply', 'on') %}Not applied: the inverter's remote control is
+            {{ 'missing' if states('switch.office_inverter_allow_remote_control') in ['unknown', 'unavailable'] else 'off' }}
+            (switch.office_inverter_allow_remote_control); turn it on to let the plan change the slots.
+            {% else %}Dry run: nothing changed.{% endif %}
+            {% if slots == 'unchecked' %}(Slot times could not be read, so they were not checked.){% endif %}
       - if:
           - condition: template
             value_template: "{{ apply and (night - night_now) | abs >= 5 }}"
@@ -210,7 +255,10 @@ automation:
     variables:
       evening: "{{ states('sensor.wa_target_charge_evening') | int(0) }}"
       evening_now: "{{ states('number.office_inverter_time_slot_4_capacity') | int(0) }}"
-      apply: "{{ is_state('input_boolean.wa_energy_plan_apply', 'on') and is_state('switch.office_inverter_allow_remote_control', 'on') }}"
+      slots: "{{ states('sensor.wa_inverter_slot_check') }}"
+      apply: >-
+        {{ is_state('input_boolean.wa_energy_plan_apply', 'on') and is_state('switch.office_inverter_allow_remote_control', 'on')
+           and not is_state('sensor.wa_inverter_slot_check', 'mismatch') }}
     conditions:
       - condition: template
         value_template: "{{ evening > 0 }}"
@@ -220,7 +268,13 @@ automation:
           name: WA energy plan
           message: >-
             Slot 4 (13:00) target {{ evening }}% (now {{ evening_now }}%).
-            {{ 'Applying.' if apply else 'Dry run: nothing changed.' }}
+            {% if slots == 'mismatch' %}Not applied: the inverter's slots have changed ({{ state_attr('sensor.wa_inverter_slot_check', 'problems') }}).
+            {% elif apply %}Applying.
+            {% elif is_state('input_boolean.wa_energy_plan_apply', 'on') %}Not applied: the inverter's remote control is
+            {{ 'missing' if states('switch.office_inverter_allow_remote_control') in ['unknown', 'unavailable'] else 'off' }}
+            (switch.office_inverter_allow_remote_control); turn it on to let the plan change the slots.
+            {% else %}Dry run: nothing changed.{% endif %}
+            {% if slots == 'unchecked' %}(Slot times could not be read, so they were not checked.){% endif %}
       - if:
           - condition: template
             value_template: "{{ apply and (evening - evening_now) | abs >= 5 }}"
