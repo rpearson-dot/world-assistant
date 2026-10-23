@@ -15,8 +15,6 @@ import re
 import xml.etree.ElementTree as ET  # a DOCTYPE is refused before parsing
 from dataclasses import dataclass, field
 
-MAX_BYTES = 80 * 1024 * 1024  # a big operator's file; more means something is wrong
-
 _DURATION = re.compile(r"^P(?:\d+D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$")
 _WEEKDAYS = {"monday", "tuesday", "wednesday", "thursday", "friday", "mondaytofriday",
              "mondaytosaturday", "mondaytosunday", "notsaturday", "notsunday", "notweekend"}  # fmt: skip
@@ -117,8 +115,6 @@ def _is_weekday(profile: ET.Element | None) -> bool:
 
 def parse_txc(body: bytes, line: str) -> Route | None:
     """The route for `line` from one TXC document, or None when the file has no such line."""
-    if len(body) > MAX_BYTES:
-        raise TxcError("the timetable file was larger than expected")
     lowered = body[:4096].lower() + body[-4096:].lower()
     if b"<!doctype" in lowered or b"<!entity" in lowered:
         raise TxcError("the timetable file carried a DOCTYPE, which it should not")

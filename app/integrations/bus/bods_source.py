@@ -22,7 +22,6 @@ from itertools import pairwise
 from typing import Any
 
 from app.integrations.bods.client import (
-    MAX_DATASETS,
     BodsError,
     Box,
     download_txc,
@@ -182,7 +181,7 @@ async def load_route(
     if not tried:
         raise BodsError(f"BODS has no timetable files for {', '.join(nocs)} (some operators, such as TfL's bus companies, do not publish them)")
     notes: list[str] = []
-    for n, ds in tried[:MAX_DATASETS]:
+    for n, ds in tried:
         name = str(ds.get("name") or ds.get("id") or "a file")[:40]
         try:
             bodies = await download_txc(ds["url"], line=line)

@@ -138,10 +138,7 @@ async def fetch_vehicles(api_key: str, box: Box, client: httpx.AsyncClient | Non
 
 
 DATASET_URL = "https://data.bus-data.dft.gov.uk/api/v1/dataset/"
-MAX_DOWNLOAD = 200 * 1024 * 1024  # the archive as downloaded
-MAX_FILE = 80 * 1024 * 1024  # one timetable file inside it (txc.MAX_BYTES)
-MAX_UNPACKED = 3 * 1024 * 1024 * 1024  # everything inside it: big operators publish every route in one
-MAX_DATASETS = 12  # timetable files tried while looking for a line
+MAX_DATASETS = 100  # timetable datasets listed per operator (one page; operators publish a handful to a few dozen)
 
 
 async def operators_of_line(api_key: str, line: str, box: Box, client: httpx.AsyncClient | None = None) -> list[str]:
@@ -192,47 +189,45 @@ async def find_datasets(
 async def download_txc(url: str, client: httpx.AsyncClient | None = None, line: str | None = None) -> list[bytes]:
     """The XML documents at a timetable URL: one file, or the .xml files inside a zip.
 
-    A big operator publishes every route in one archive (National Express West Midlands: well over 80 MB
-    unpacked), so each file is checked on its own: none may be larger than one timetable can be, and with
-    `line` only the files that name that line are kept, so memory holds one file at a time."""
-    import io
+    No size limit: someone who switches buses on wants the operator's whole timetable, and a big operator
+    publishes every route in one archive (National Express West Midlands: well over 80 MB unpacked). The
+    download goes to a temporary file, the archive is read one file at a time, and with `line` only the files
+    that name that line are kept, so memory holds one timetable file at a time."""
+    import tempfile
     import zipfile
 
     if not url.startswith("https://data.bus-data.dft.gov.uk/"):
         raise BodsError("refusing to download a timetable from outside BODS")
     owned = client is None
-    client = client or httpx.AsyncClient(timeout=180.0, follow_redirects=True)
-    try:
+    client = client or httpx.AsyncClient(timeout=httpx.Timeout(60.0, read=600.0), follow_redirects=True)
+    with tempfile.TemporaryFile() as tmp:
         try:
-            r = await client.get(url)
+            async with client.stream("GET", url) as r:
+                if r.status_code != 200:
+                    raise BodsError(f"the timetable download answered HTTP {r.status_code}")
+                async for chunk in r.aiter_bytes(1 << 20):
+                    tmp.write(chunk)
         except httpx.HTTPError as exc:
             raise BodsError(f"the timetable could not be downloaded: {type(exc).__name__}") from exc
-        if r.status_code != 200:
-            raise BodsError(f"the timetable download answered HTTP {r.status_code}")
-        body = r.content
-    finally:
-        if owned:
-            await client.aclose()
-    if len(body) > MAX_DOWNLOAD:
-        raise BodsError("the timetable download was larger than expected")
-    if body[:2] != b"PK":
-        return [body] if line is None or names_line(body, line) else []
-    out, total = [], 0
-    try:
-        with zipfile.ZipFile(io.BytesIO(body)) as z:
-            for info in z.infolist():
-                if not info.filename.lower().endswith(".xml"):
-                    continue
-                if info.file_size > MAX_FILE:
-                    raise BodsError(f"a file in the timetable archive unpacks larger than expected ({info.filename[:60]})")
-                total += info.file_size
-                if total > MAX_UNPACKED:
-                    raise BodsError("the timetable archive unpacks larger than expected")
-                doc = z.read(info)
-                if line is None or names_line(doc, line):
-                    out.append(doc)
-    except zipfile.BadZipFile as exc:
-        raise BodsError(f"the timetable archive is damaged: {exc}") from exc
+        finally:
+            if owned:
+                await client.aclose()
+        tmp.seek(0)
+        if tmp.read(2) != b"PK":
+            tmp.seek(0)
+            body = tmp.read()
+            return [body] if line is None or names_line(body, line) else []
+        out = []
+        try:
+            with zipfile.ZipFile(tmp) as z:
+                for info in z.infolist():
+                    if not info.filename.lower().endswith(".xml"):
+                        continue
+                    doc = z.read(info)
+                    if line is None or names_line(doc, line):
+                        out.append(doc)
+        except zipfile.BadZipFile as exc:
+            raise BodsError(f"the timetable archive is damaged: {exc}") from exc
     return out
 
 

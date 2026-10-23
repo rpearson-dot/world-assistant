@@ -329,24 +329,17 @@ def _serving(body: bytes):  # type: ignore[no-untyped-def]
 URL = "https://data.bus-data.dft.gov.uk/timetable/dataset/1/download/"
 
 
-async def test_a_big_archive_keeps_only_the_files_naming_the_line(monkeypatch: pytest.MonkeyPatch) -> None:
-    """NXWM publishes every route in one archive, larger than one file may be; each file is checked on its own."""
+async def test_a_big_archive_keeps_only_the_files_naming_the_line() -> None:
+    """NXWM publishes every route in one archive: no size limit, and only the files naming the line are kept."""
     from app.integrations.bods import client as bods_client
 
     other = b'<TransXChange><Lines><Line id="1"><LineName>9070</LineName></Line></Lines>' + b" " * 4000 + b"</TransXChange>"
     mine = b'<txc:TransXChange><Line><txc:LineName> 907 </txc:LineName></Line></txc:TransXChange>'
-    body = _zip({f"other{i}.xml": other for i in range(30)} | {"907.xml": mine, "readme.txt": b"907"})
-    monkeypatch.setattr(bods_client, "MAX_FILE", 5000)
-    monkeypatch.setattr(bods_client, "MAX_UNPACKED", 10**6)
+    body = _zip({f"other{i}.xml": other for i in range(300)} | {"907.xml": mine, "readme.txt": b"907"})
     assert await bods_client.download_txc(URL, _serving(body), line="907") == [mine]
-    assert len(await bods_client.download_txc(URL, _serving(body))) == 31  # no line: everything
-
-    monkeypatch.setattr(bods_client, "MAX_UNPACKED", 50_000)  # the whole is still capped
-    with pytest.raises(BodsError, match="archive unpacks larger"):
-        await bods_client.download_txc(URL, _serving(body), line="907")
-    monkeypatch.setattr(bods_client, "MAX_FILE", 1000)  # and so is each file
-    with pytest.raises(BodsError, match="a file in the timetable archive"):
-        await bods_client.download_txc(URL, _serving(body), line="907")
+    assert len(await bods_client.download_txc(URL, _serving(body))) == 301  # no line: everything
+    assert await bods_client.download_txc(URL, _serving(mine), line="907") == [mine]  # a plain XML file
+    assert await bods_client.download_txc(URL, _serving(other), line="907") == []
 
 
 async def test_a_damaged_archive_says_so() -> None:
