@@ -4,6 +4,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Fixed
+- **`WA_TFWM_BASE_URL`, `WA_EXTRA_MODULES`, `WA_HA_PUBLISH` and `WA_HA_INTERVAL_MIN` set in `.env` now take effect.** Compose did not pass them into the containers. A test now checks that every setting in `.env.example` is passed.
+- **TfWM connection errors say what went wrong.** `https://api.tfwm.org.uk` presents ITO World's `*.itoworld.com` certificate, so HTTPS fails; the error now says so and how to use plain HTTP instead (`WA_TFWM_BASE_URL=http://api.tfwm.org.uk`, which sends the key unencrypted).
+
 ## [0.17.2] - 2026-10-23
 
 ### Fixed

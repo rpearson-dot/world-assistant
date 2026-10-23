@@ -54,7 +54,13 @@ x-app: &app
     WA_BOUNDARY_POLL_ENABLED: ${WA_BOUNDARY_POLL_ENABLED:-true}
     WA_BOUNDARY_KINDS: ${WA_BOUNDARY_KINDS:-region,county,district}
     WA_USRN_POLL_ENABLED: ${WA_USRN_POLL_ENABLED:-false}
+    # TfWM's HTTPS address presents another company's certificate; http://api.tfwm.org.uk works (key unencrypted)
+    WA_TFWM_BASE_URL: ${WA_TFWM_BASE_URL:-}
+    # Modules from outside the image (docs/modules.md)
+    WA_EXTRA_MODULES: ${WA_EXTRA_MODULES:-}
     WA_FLOOD_POLL_ENABLED: ${WA_FLOOD_POLL_ENABLED:-true}
+    WA_HA_PUBLISH: ${WA_HA_PUBLISH:-true}
+    WA_HA_INTERVAL_MIN: ${WA_HA_INTERVAL_MIN:-5}
     WA_TFLROADS_POLL_ENABLED: ${WA_TFLROADS_POLL_ENABLED:-true}
     WA_ENERGY_POLL_ENABLED: ${WA_ENERGY_POLL_ENABLED:-true}
     WA_OCTOPUS_ACCOUNT: ${WA_OCTOPUS_ACCOUNT:-}
