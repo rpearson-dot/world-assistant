@@ -300,10 +300,24 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
 ]}  # fmt: skip
 
 
+async def _available(request: Request) -> set[str]:
+    """Tool names whose module is on. A tool no module claims is always available."""
+    from app.modules import registry
+    from app.modules.gate import enabled
+
+    try:
+        on = await enabled(request.app.state.engine)
+    except Exception:  # noqa: BLE001 - the choice must not take the assistant down
+        return set(TOOLS)
+    return {n for n in TOOLS if (registry.module_of_tool(n) or "core") in on}
+
+
 async def run_tool(request: Request, name: str, args: dict[str, Any]) -> dict[str, Any]:
     tool = TOOLS.get(name)
     if tool is None:
         raise ToolError(f"Unknown tool {name!r}.")
+    if name not in await _available(request):
+        raise ToolError(f"The module behind {name!r} is switched off. Turn it on at /modules.")
     try:
         return await tool.run(request, args)
     except (ValueError, TypeError) as exc:
@@ -314,9 +328,10 @@ async def run_tool(request: Request, name: str, args: dict[str, Any]) -> dict[st
 
 
 @router.get("/v1/ask")
-async def ask_index() -> list[dict[str, Any]]:
+async def ask_index(request: Request) -> list[dict[str, Any]]:
+    on = await _available(request)
     return [{"tool": t.name, "description": t.description, "arguments": t.schema.get("properties", {})}
-            for t in TOOLS.values()]  # fmt: skip
+            for t in TOOLS.values() if t.name in on]  # fmt: skip
 
 
 @router.post("/v1/ask/{name}", response_model=None)
@@ -363,7 +378,7 @@ async def handle_rpc(request: Request, msg: Any) -> dict[str, Any] | None:
         return {"jsonrpc": "2.0", "id": rid, "result": {
             "protocolVersion": asked if asked in PROTOCOLS else PROTOCOLS[0],
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": "world-assistant", "version": "0.16.1"},
+            "serverInfo": {"name": "world-assistant", "version": "0.17.0"},
             "instructions": "Personal assistant for fuel prices, trips, trains and buses. "
                             "Call list_options first to see saved ids.",
         }}  # fmt: skip
@@ -371,7 +386,8 @@ async def handle_rpc(request: Request, msg: Any) -> dict[str, Any] | None:
         return {"jsonrpc": "2.0", "id": rid, "result": {}}
     if method == "tools/list":
         return {"jsonrpc": "2.0", "id": rid, "result": {"tools": [
-            {"name": t.name, "description": t.description, "inputSchema": t.schema} for t in TOOLS.values()]}}  # fmt: skip
+            {"name": t.name, "description": t.description, "inputSchema": t.schema}
+            for t in TOOLS.values() if t.name in await _available(request)]}}  # fmt: skip
     if method == "tools/call":
         name, args = params.get("name"), params.get("arguments") or {}
         if not isinstance(name, str) or name not in TOOLS or not isinstance(args, dict):

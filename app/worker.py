@@ -12,23 +12,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import get_settings
-from app.energy.sync import energy_sync
-from app.graph.build import graph_build
-from app.ha_publish import ha_sync
-from app.integrations.boundaryline.sync import boundary_sync
-from app.integrations.bus.poller import poll_bus
-from app.integrations.codepoint.sync import codepoint_sync
-from app.integrations.flood.sync import flood_poll
-from app.integrations.fuelfinder.sync import fuel_sync_prices, fuel_sync_stations
-from app.integrations.localevents.sync import events_sync
-from app.integrations.naptan.sync import naptan_sync
-from app.integrations.nationalhighways.capture import capture_job
-from app.integrations.nationalhighways.poller import poll_live, poll_planned
-from app.integrations.tflroads.sync import tflroads_poll
-from app.integrations.usrn.sync import usrn_sync
 from app.logging import configure_logging
-from app.pollen_grid import pollen_grid_sync
-from app.pollen_history import pollen_sync
+from app.modules import registry
+from app.modules.gate import gated
 from app.ratelimit import SlidingWindowLimiter
 
 log = logging.getLogger("wa.worker")
@@ -93,80 +79,30 @@ async def heartbeat(ctx: dict[str, Any]) -> None:
     await ctx["redis"].set("wa:worker:heartbeat", datetime.now(UTC).isoformat(), ex=600)
 
 
-_LIVE_MIN = max(1, min(60, get_settings().nh_live_interval_min))
-_FUEL_MIN = max(5, min(60, get_settings().fuel_price_interval_min))
-_HA_MIN = max(1, min(60, get_settings().ha_interval_min))
-_PLANNED_HOURS = max(1, min(24, get_settings().nh_planned_interval_hours))
+def _jobs() -> tuple[list[Any], list[Any]]:
+    """Every module's worker jobs and their schedules, each wrapped so it stands down while its module is off."""
+    settings = get_settings()
+    functions: list[Any] = [heartbeat]
+    crons: list[Any] = [cron(heartbeat, minute=set(range(0, 60, 5)))]
+    for module_id, job in registry.worker_jobs():
+        try:
+            fn = gated(registry.import_string(job.func), module_id)
+        except Exception:
+            log.warning("job %s of module %s could not be loaded", job.func, module_id, exc_info=True)
+            continue
+        functions.append(fn)
+        if job.cron is not None:
+            spec = job.cron(settings) if callable(job.cron) else job.cron
+            crons.append(cron(fn, **spec))
+    return functions, crons
+
+
+_FUNCTIONS, _CRONS = _jobs()
 
 
 class WorkerSettings:
-    functions: ClassVar[list] = [
-        heartbeat,
-        capture_job,
-        poll_live,
-        poll_planned,
-        fuel_sync_stations,
-        fuel_sync_prices,
-        poll_bus,
-        pollen_sync,
-        pollen_grid_sync,
-        ha_sync,
-        graph_build,
-        naptan_sync,
-        flood_poll,
-        energy_sync,
-        tflroads_poll,
-        codepoint_sync,
-        boundary_sync,
-        usrn_sync,
-        events_sync,
-    ]
-    cron_jobs: ClassVar[list] = [
-        cron(heartbeat, minute=set(range(0, 60, 5))),
-        # Bus tracker: every 30 s; the job returns at once outside each tracker's poll window.
-        cron(poll_bus, hour={*range(5, 11), *range(14, 19)}, second={0, 30}, timeout=25, max_tries=1),
-        # Every 20 minutes. A run is paced by the rate limiter, so allow it time.
-        cron(capture_job, minute={0, 20, 40}, timeout=1500, max_tries=1),
-        # Live feeds (offset from the capture run). Interval is WA_NH_LIVE_INTERVAL_MIN.
-        cron(poll_live, minute=set(range(2, 60, _LIVE_MIN)), timeout=280, max_tries=1),
-        # Planned works: many large pages, so allow it time. WA_NH_PLANNED_INTERVAL_HOURS.
-        # Fuel prices every WA_FUEL_PRICE_INTERVAL_MIN minutes (a full pull takes ~4 minutes);
-        # stations once a day.
-        cron(fuel_sync_prices, minute=set(range(14, 60, _FUEL_MIN)), timeout=900, max_tries=1),
-        cron(fuel_sync_stations, hour={3}, minute={20}, timeout=900, max_tries=1),
-        # Pollen history for saved places, once a day (the provider allows 40 requests a day in all).
-        cron(pollen_sync, hour={4}, minute={25}, timeout=300, max_tries=1),
-        # Nationwide pollen lattice: the stalest points, twice a day (the provider allows 40 requests a day in all).
-        cron(pollen_grid_sync, hour={3, 15}, minute={40}, timeout=3000, max_tries=1),
-        # Home Assistant sensors. WA_HA_INTERVAL_MIN (default 5) must divide into the hour sensibly.
-        cron(ha_sync, minute=set(range(1, 60, _HA_MIN)), timeout=120, max_tries=1),
-        # Knowledge graph, rebuilt from Postgres twice an hour. It returns at once when switched off.
-        cron(graph_build, minute={8, 38}, timeout=300, max_tries=1),
-        # Flood warnings: the EA updates its list every 15 minutes.
-        cron(flood_poll, minute={5, 20, 35, 50}, timeout=240, max_tries=1),
-        # TfL road disruptions: the whole London list, every 15 minutes.
-        cron(tflroads_poll, minute={7, 22, 37, 52}, timeout=120, max_tries=1),
-        # Energy rates: Octopus publishes tomorrow's mid-afternoon; every 30 minutes keeps today fresh.
-        cron(energy_sync, minute={3, 33}, timeout=120, max_tries=1),
-        # Postcodes: checked daily, downloaded only when missing or a month old (OS publishes quarterly).
-        cron(codepoint_sync, hour={3}, minute={10}, timeout=1800, max_tries=1),
-        # Administrative boundaries (twice a year) and street numbers (once a year, off unless asked for):
-        # checked daily, downloaded only when missing or old.
-        cron(boundary_sync, hour={3}, minute={30}, timeout=3600, max_tries=1),
-        cron(usrn_sync, hour={4}, minute={5}, timeout=7200, max_tries=1),
-        # What's on near your places, copied so the graph can relate it: every six hours. Needs an events key.
-        cron(events_sync, hour={0, 6, 12, 18}, minute={12}, timeout=300, max_tries=1),
-        # The national stop register changes slowly: checked daily, downloaded (~100 MB) only when the table
-        # is empty or a week old.
-        cron(naptan_sync, hour={2}, minute={50}, timeout=1800, max_tries=1),
-        cron(
-            poll_planned,
-            hour=set(range(0, 24, _PLANNED_HOURS)),
-            minute={50},
-            timeout=1500,
-            max_tries=1,
-        ),
-    ]
+    functions: ClassVar[list] = _FUNCTIONS
+    cron_jobs: ClassVar[list] = _CRONS
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(get_settings().redis_dsn)

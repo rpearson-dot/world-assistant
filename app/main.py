@@ -14,49 +14,11 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.assistant import router as assistant_router
-from app.autodeploy import router as autodeploy_router
-from app.backups import router as backups_router
-from app.bods import router as bods_router
-from app.bus import router as bus_router
-from app.bus_page import page_router as bus_page_router
-from app.conditions import router as conditions_router
 from app.config import get_settings
-from app.energy.page import page_router as energy_page_router
-from app.energy.routes import router as energy_router
-from app.events import page_router as events_page_router
-from app.events import router as events_router
-from app.floods import router as floods_router
-from app.fuel import page_router as fuel_page_router
-from app.fuel import router as fuel_router
 from app.graph import store as graph_store
-from app.graph_routes import page_router as graph_page_router
-from app.graph_routes import router as graph_router
-from app.ha_locations import router as ha_locations_router
-from app.ha_routes import router as ha_routes_router
-from app.ha_setup import page_router as ha_setup_page_router
-from app.ha_setup import router as ha_setup_router
-from app.ha_smb import router as ha_smb_router
-from app.icons import router as icons_router
-from app.keys import router as keys_router
 from app.logging import configure_logging
-from app.map_layers import router as map_router
-from app.map_page import page_router as map_page_router
-from app.mqtt_config import router as mqtt_config_router
-from app.places import page_router as places_page_router
-from app.places import router as places_router
-from app.pollen import page_router as pollen_page_router
-from app.pollen import router as pollen_router
-from app.postcodes import router as postcodes_router
-from app.settings_page import page_router as settings_page_router
-from app.setup_checklist import router as setup_router
-from app.status import router as status_router
-from app.stops import router as stops_router
-from app.tfl import page_router as tfl_page_router
-from app.tfl import router as tfl_router
-from app.tflroads import router as tflroads_router
-from app.vehicles import router as vehicles_router
-from app.webapp import router as webapp_router
+from app.modules import registry
+from app.modules.gate import ModuleGate
 
 log = logging.getLogger("wa.api")
 
@@ -80,50 +42,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await app.state.engine.dispose()
 
 
-app = FastAPI(title="World Assistant", version="0.16.1", lifespan=lifespan)
+app = FastAPI(title="World Assistant", version="0.17.0", lifespan=lifespan)
 # Files shipped with the app (Leaflet), so the pages load no third-party script. Read-only and
 # unauthenticated: it holds nothing private, and StaticFiles refuses paths outside the directory.
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
-app.include_router(status_router)
-app.include_router(setup_router)
-app.include_router(keys_router)
-app.include_router(mqtt_config_router)
-app.include_router(ha_smb_router)
-app.include_router(ha_setup_router)
-app.include_router(ha_setup_page_router)
-app.include_router(autodeploy_router)
-app.include_router(backups_router)
-app.include_router(events_router)
-app.include_router(ha_locations_router)
-app.include_router(ha_routes_router)
-app.include_router(icons_router)
-app.include_router(events_page_router)
-app.include_router(pollen_router)
-app.include_router(pollen_page_router)
-app.include_router(places_router)
-app.include_router(map_router)
-app.include_router(stops_router)
-app.include_router(conditions_router)
-app.include_router(floods_router)
-app.include_router(tflroads_router)
-app.include_router(energy_router)
-app.include_router(energy_page_router)
-app.include_router(postcodes_router)
-app.include_router(bods_router)
-app.include_router(graph_router)
-app.include_router(graph_page_router)
-app.include_router(map_page_router)
-app.include_router(fuel_router)
-app.include_router(bus_router)
-app.include_router(assistant_router)
-app.include_router(bus_page_router)
-app.include_router(tfl_router)
-app.include_router(tfl_page_router)
-app.include_router(vehicles_router)
-app.include_router(fuel_page_router)
-app.include_router(places_page_router)
-app.include_router(settings_page_router)
-app.include_router(webapp_router)
+for _module_id, _path in registry.router_paths():
+    app.include_router(registry.import_string(_path))
+app.add_middleware(ModuleGate)  # a switched-off module's routes answer 404 (see app/modules/gate.py)
 
 
 @app.get("/healthz")

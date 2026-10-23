@@ -66,6 +66,8 @@ PAGE = """<!doctype html>
 </section>
 
 <section data-pane="keys" hidden>
+  <div class="card"><h2>Modules</h2>
+  <p class="dim">Choose what World Assistant does and see what each part needs. <a href="/modules">Open Modules</a>.</p></div>
   <div class="card"><h2>Keys</h2>
   <p class="dim">Every key is free and optional; a feature without its key says so. Keys saved here are kept on the
   server in its own keys folder and work straight away. They are never shown again, only whether one is set.</p>
