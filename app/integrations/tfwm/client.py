@@ -44,7 +44,11 @@ class TfwmClient:
             async with httpx.AsyncClient(timeout=60.0, follow_redirects=False) as client:
                 r = await client.get(f"{self._base}{path}", params=self._params)
         except httpx.HTTPError as exc:
-            raise TfwmError(f"TfWM could not be reached: {type(exc).__name__}") from exc
+            detail = str(exc) or type(exc).__name__
+            if "CERTIFICATE_VERIFY_FAILED" in detail or "certificate" in detail.lower():
+                detail += (" (TfWM's HTTPS address presents another company's certificate; set"
+                           " WA_TFWM_BASE_URL=http://api.tfwm.org.uk in .env to use plain HTTP)")  # fmt: skip
+            raise TfwmError(f"TfWM could not be reached: {type(exc).__name__}: {detail}"[:400]) from exc
         if r.status_code in (401, 403):
             raise TfwmError("TfWM refused the key (check tfwm_app_id and tfwm_app_key)")
         if r.status_code != 200:

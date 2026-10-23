@@ -349,3 +349,16 @@ def test_all_but_mode_keeps_the_rest_when_one_is_flipped(monkeypatch: pytest.Mon
 def test_the_modules_page_is_served() -> None:
     page = TestClient(app).get("/modules")
     assert page.status_code == 200 and "Modules" in page.text and "/v1/modules" in page.text
+
+
+def test_every_setting_in_env_example_reaches_the_containers() -> None:
+    """A setting in .env does nothing unless compose passes it in (WA_TFWM_BASE_URL was missed once)."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    named = set(re.findall(r"\bWA_[A-Z0-9_]+", (root / ".env.example").read_text()))
+    compose = (root / "docker-compose.yml").read_text()
+    host_only = {"WA_HOST"}  # read by docker-compose.traefik.yml, not the app
+    missing = sorted(v for v in named - host_only if f"{v}:" not in compose and f"${{{v}" not in compose)
+    assert not missing, f"in .env.example but not passed by docker-compose.yml: {missing}"
