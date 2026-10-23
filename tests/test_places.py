@@ -57,7 +57,7 @@ async def test_lookup_postcode_errors() -> None:
 def test_places_page_loads_without_token() -> None:
     r = client.get("/places")
     assert r.status_code == 200
-    assert "Places, trips and vehicles" in r.text
+    assert "Places and trips" in r.text
 
 
 def test_places_need_a_token(monkeypatch: pytest.MonkeyPatch) -> None:

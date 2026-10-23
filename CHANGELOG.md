@@ -4,6 +4,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- **Vehicles tab** (`/vehicles`), moved out of Places: each vehicle runs on **Petrol, Diesel, LPG or Electric**, with its grade (unleaded E10 or super E5; diesel B7, premium, B10 or HVO), and can be edited in place.
+- **The Fuel tab offers only your vehicles' fuels**, each named with the vehicles that use it; tick **All fuels** for the rest (remembered). With no vehicles saved, every fuel is offered.
+- **LPG**: Fuel Finder publishes no LPG prices, so an LPG vehicle takes your own price per litre and its trip cost uses it. Migration 0029 (`vehicle.fuel_pence_per_litre`).
+- **Electric trip costs use the Energy tab's cheapest rate** (the lowest in the next 48 hours, else the past week; a negative Agile price counts as free) when no home rate is given. `GET /v1/vehicles/home-rate` shows it; a trip cost says which rate it used.
+
+### Changed
+- `/v1/vehicles` rows gain `type` (petrol, diesel, lpg, electric); `kind` accepts those four as well as the earlier `fuel` and `ev`.
+
 ## [0.17.4] - 2026-10-23
 
 ### Fixed

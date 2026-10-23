@@ -138,6 +138,8 @@ async def along(
     if veh:
         if veh["kind"] == "ev":
             raise HTTPException(422, "electric vehicles don't use fuel prices; see /v1/trips/{id}/cost")
+        if veh["fuel"] == "LPG":
+            raise HTTPException(422, "no station prices are published for LPG (Fuel Finder covers petrol and diesel)")
         fuel = veh["fuel"]
     corridor = next(
         (c for c in await load_corridors(engine, only_enabled=False) if c.id == corridor_id), None
@@ -209,8 +211,8 @@ PAGE = """<!doctype html>
   <label>Search<select id="mode"><option value="place">Near a place</option>
     <option value="corridor">Along a corridor</option></select></label>
   <label>Where<select id="where"></select></label>
-  <label>Fuel<select id="fuel"><option>E10</option><option>E5</option>
-    <option>B7_STANDARD</option><option>B7_PREMIUM</option><option>B10</option><option>HVO</option></select></label>
+  <label>Fuel<select id="fuel"></select></label>
+  <label id="allfl" hidden style="display:flex;align-items:center;gap:6px;align-self:end;padding-bottom:8px"><input id="allf" type="checkbox"> All fuels</label>
   <label id="distl">Radius km<input id="dist" type="number" value="5" min="0.5" max="50" step="0.5"></label>
   <label>Show<input id="limit" type="number" value="10" min="1" max="50"></label>
   <label>Prices no older than<select id="age"><option value="24">1 day</option><option value="48" selected>2 days</option>
@@ -229,7 +231,27 @@ PAGE = """<!doctype html>
 <script>const $ = id => document.getElementById(id);
 const tok = $('t'), msg = $('msg');
 try { tok.value = sessionStorage.getItem('wa_token') || ''; } catch (e) {}
-let places = [], corridors = [];
+let places = [], corridors = [], mine = new Map();  // mine: fuel code -> your vehicles that use it
+const FUELS = [['E10', 'Unleaded (E10)'], ['E5', 'Super unleaded (E5)'], ['B7_STANDARD', 'Diesel (B7)'],
+  ['B7_PREMIUM', 'Premium diesel'], ['B10', 'B10 biodiesel'], ['HVO', 'HVO']];
+let allFuels = false;
+try { allFuels = localStorage.getItem('wa_fuel_all') === '1'; } catch (e) {}
+function fillFuels() {  // only the fuels your vehicles use, unless you ask for all (or have none saved)
+  const was = $('fuel').value, narrow = mine.size && !allFuels;
+  const list = narrow ? FUELS.filter(([c]) => mine.has(c)) : FUELS;
+  $('fuel').replaceChildren(...list.map(([c, l]) => new Option(l + (mine.has(c) ? ' - ' + mine.get(c).join(', ') : ''), c)));
+  if (list.some(([c]) => c === was)) $('fuel').value = was;
+  $('allfl').hidden = !mine.size; $('allf').checked = allFuels;
+}
+async function loadVehicles() {
+  mine = new Map();
+  try {
+    for (const v of await get('/v1/vehicles')) {
+      if (v.kind !== 'ev' && FUELS.some(([c]) => c === v.fuel)) mine.set(v.fuel, [...(mine.get(v.fuel) || []), v.name]);
+    }
+  } catch (e) {}  // the Vehicles module is off, or none saved: every fuel is offered
+  fillFuels();
+}
 const homeId = ps => (ps.find(p => p.kind === 'home') || ps.find(p => p.id === 'home') || ps[0] || {}).id;
 let chosen = new Set(), superOn = false;
 try { chosen = new Set(JSON.parse(localStorage.getItem('wa_fuel_brands') || '[]')); superOn = localStorage.getItem('wa_fuel_super') === '1'; } catch (e) {}
@@ -294,6 +316,7 @@ async function load() {
   msg.textContent = '';
   try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
   try {
+    await loadVehicles();
     places = await get('/v1/places');
     corridors = (await get('/v1/status')).corridors;
     fillWhere();
@@ -331,6 +354,8 @@ async function search() {
 }
 $('clear').onclick = () => { chosen.clear(); superOn = false; saveChoice(); search(); };
 $('go').onclick = load; $('search').onclick = search; $('mode').onchange = fillWhere;
+$('allf').onchange = () => { allFuels = $('allf').checked; try { localStorage.setItem('wa_fuel_all', allFuels ? '1' : '0'); } catch (e) {} fillFuels(); };
+fillFuels();
 if (tok.value) load();
 </script></main></body></html>"""
 

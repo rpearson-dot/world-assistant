@@ -198,7 +198,7 @@ PAGE = """<!doctype html>
 <style>
 /*BASE_CSS*/</style></head><body><main>
 <!--NAV-->
-<h1>Places, trips and vehicles</h1>
+<h1>Places and trips</h1>
 <form id="auth" class="bar"><input id="t" type="password" placeholder="API token" autocomplete="current-password">
 <button class="primary">Load</button></form>
 <p id="msg" class="err"></p>
@@ -219,19 +219,7 @@ PAGE = """<!doctype html>
   <button>Add trip</button>
 </form></div>
 
-<div class="card"><h2>Vehicles</h2>
-<table id="vehicles"><tbody></tbody></table>
-<form id="addveh" class="row" style="margin-top:10px">
-  <label>Name <input id="vname" placeholder="e.g. Toyota Estima" required></label>
-  <label>Type <select id="vkind"><option value="fuel">Petrol or diesel</option><option value="ev">Electric</option></select></label>
-  <span id="vfuelf" class="row"><label>Real-world mpg (UK) <input id="vmpg" type="number" step="0.1" min="5" max="150" placeholder="e.g. 33"></label>
-    <label>Fuel <select id="vfuel"><option value="E10">Petrol (E10)</option><option value="E5">Super unleaded (E5)</option><option value="B7_STANDARD">Diesel (B7)</option></select></label></span>
-  <span id="vevf" class="row" hidden><label>Battery size, kWh <input id="vbat" type="number" step="0.1" min="5" max="300" placeholder="e.g. 30"></label>
-    <label>Battery health, % <input id="vsoh" type="number" step="1" min="31" max="100" value="100"></label>
-    <label>Miles per kWh <input id="vmpk" type="number" step="0.1" min="0.5" max="10" placeholder="e.g. 3.6"></label>
-    <label>Home electricity, p/kWh <input id="vhome" type="number" step="0.1" min="0" max="200" placeholder="e.g. 15"></label></span>
-  <button>Add vehicle</button>
-</form><p id="vmsg" class="err"></p></div>
+<p class="dim">Vehicles have their own tab: <a href="/vehicles">Vehicles</a>.</p>
 
 <script>
 const tok = document.getElementById('t'), msg = document.getElementById('msg');
@@ -293,7 +281,7 @@ function condCell(tr, t) {
 async function load() {
   msg.textContent = '';
   try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
-  const [places, trips, vehicles] = await Promise.all([api('GET', '/v1/places'), api('GET', '/v1/trips'), api('GET', '/v1/vehicles')]);
+  const [places, trips] = await Promise.all([api('GET', '/v1/places'), api('GET', '/v1/trips')]);
   const pb = document.querySelector('#places tbody'); pb.replaceChildren();
   for (const p of places) {
     const tr = document.createElement('tr');
@@ -308,14 +296,6 @@ async function load() {
     const more = condCell(tr, t);
     routeBtn(tr, t); delBtn(tr, '/v1/trips/' + t.id);
     tb.appendChild(tr); if (more) tb.appendChild(more);
-  }
-  const vb = document.querySelector('#vehicles tbody'); vb.replaceChildren(); vehicleIds = vehicles.map(v => v.id);
-  for (const v of vehicles) {
-    const tr = document.createElement('tr');
-    cell(tr, v.name);
-    cell(tr, v.kind === 'ev' ? (v.battery_kwh + ' kWh at ' + v.soh_percent + '%, ' + v.miles_per_kwh + ' mi/kWh')
-                              : (v.mpg + ' mpg, ' + v.fuel));
-    delBtn(tr, '/v1/vehicles/' + v.id); vb.appendChild(tr);
   }
   for (const id of ['tfrom', 'tto']) {
     const sel = document.getElementById(id); sel.replaceChildren();
@@ -340,30 +320,6 @@ document.getElementById('addtrip').onsubmit = e => {
   e.preventDefault();
   const f = document.getElementById('tfrom').value, t = document.getElementById('tto').value;
   run(() => api('PUT', '/v1/trips/' + f + '-to-' + t, { from_place: f, to_place: t }));
-};
-const num = id => { const v = document.getElementById(id).value; return v === '' ? null : Number(v); };
-function showKind() {  // the fields shown always follow the kind chosen, also after the form is cleared
-  const ev = document.getElementById('vkind').value === 'ev';
-  document.getElementById('vfuelf').hidden = ev;
-  document.getElementById('vevf').hidden = !ev;
-  document.getElementById('vmpg').required = !ev;  // the browser then points at the empty box itself
-  for (const id of ['vbat', 'vmpk']) document.getElementById(id).required = ev;
-}
-showKind();
-document.getElementById('vkind').onchange = showKind;
-let vehicleIds = [];
-document.getElementById('addveh').onsubmit = e => {
-  e.preventDefault();
-  const name = document.getElementById('vname').value, kind = document.getElementById('vkind').value;
-  const body = kind === 'ev'
-    ? { name, kind, battery_kwh: num('vbat'), soh_percent: num('vsoh') || 100, miles_per_kwh: num('vmpk'),
-        home_pence_per_kwh: num('vhome') }
-    : { name, kind, mpg: num('vmpg'), fuel: document.getElementById('vfuel').value };
-  const id = slug(name);
-  const vmsg = document.getElementById('vmsg');
-  if (!id) { vmsg.textContent = 'Give the vehicle a name with at least one letter or digit.'; return; }
-  if (vehicleIds.includes(id) && !confirm('A vehicle called "' + name + '" is already saved. Replace it?')) return;
-  run(async () => { await api('PUT', '/v1/vehicles/' + id, body); e.target.reset(); showKind(); }, vmsg);
 };
 if (tok.value) run(() => Promise.resolve());
 </script></main></body></html>"""
