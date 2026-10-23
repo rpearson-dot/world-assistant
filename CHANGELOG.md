@@ -4,6 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- **Council and region boundaries (OS Boundary-Line)**: regions, counties and districts or boroughs, loaded on first start, simplified so they stay small, and reloaded twice a year. `WA_BOUNDARY_KINDS` adds wards, parishes and constituencies. Shown on the Setup list ([docs/boundaries.md](docs/boundaries.md)). Migration 0027.
+- **Street numbers (OS Open USRN)**: every street's USRN and line, the number roadworks are reported against. A million and more streets, so off unless `WA_USRN_POLL_ENABLED=true`.
+- Both read an OS GeoPackage with no new dependency, and `--list` shows what a download holds. Not yet run against the live OS downloads.
+
 ## [0.15.0] - 2026-10-22
 
 ### Added

@@ -76,6 +76,11 @@ SOURCES: tuple[Source, ...] = (
            jobs=("tflroads",), switch="tflroads_poll_enabled"),
     Source("naptan", "Bus stops and stations (NaPTAN)", "Every stop and station in Great Britain",
            jobs=("naptan",), switch="naptan_poll_enabled", note="About 100 MB, loaded on first start."),
+    Source("boundary", "Council and region boundaries (OS Boundary-Line)",
+           "Which council, county and region a place, stop or roadwork is in",
+           jobs=("boundary",), switch="boundary_poll_enabled", note="A large download, loaded on first start."),
+    Source("usrn", "Street numbers (OS Open USRN)", "The number roadworks are reported against, with each street's line",
+           jobs=("usrn",), switch="usrn_poll_enabled", note="Large (a million and more streets), so opt in."),
     Source("codepoint", "Postcodes (OS Code-Point Open)", "Places by postcode without an outside service",
            jobs=("codepoint",), switch="codepoint_poll_enabled", note="About 25 MB, loaded on first start."),
 )  # fmt: skip

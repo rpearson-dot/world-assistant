@@ -117,6 +117,12 @@ class Settings(BaseSettings):
     valhalla_url: str = "http://valhalla:8002"
     fuel_poll_enabled: bool = False
     codepoint_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
+    boundary_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
+    boundary_kinds: str = "region,county,district"  # also: ward, parish, constituency (much bigger)
+    boundary_simplify_m: float = 20.0  # metres of detail dropped from each boundary as it is loaded
+    boundary_url: str = "https://api.os.uk/downloads/v1/products/BoundaryLine/downloads?area=GB&format=GeoPackage&redirect"
+    usrn_poll_enabled: bool = False  # large (a million and more streets), so opt in
+    usrn_url: str = "https://api.os.uk/downloads/v1/products/OpenUSRN/downloads?area=GB&format=GeoPackage&redirect"
     codepoint_url: str = "https://api.os.uk/downloads/v1/products/CodePointOpen/downloads?area=GB&format=CSV&redirect"
     tflroads_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
     energy_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
