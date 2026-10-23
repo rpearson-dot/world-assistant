@@ -220,7 +220,11 @@ automation:
             Slot 6 (22:00) target {{ night }}% (now {{ night_now }}%); slot 2 (04:00) target {{ morning }}%
             (now {{ morning_now }}%); tomorrow's solar {{ states('sensor.energy_production_tomorrow') }} kWh.
             {% if slots == 'mismatch' %}Not applied: the inverter's slots have changed ({{ state_attr('sensor.wa_inverter_slot_check', 'problems') }}).
-            {% elif apply %}Applying.{% else %}Dry run: nothing changed.{% endif %}
+            {% elif apply %}Applying.
+            {% elif is_state('input_boolean.wa_energy_plan_apply', 'on') %}Not applied: the inverter's remote control is
+            {{ 'missing' if states('switch.office_inverter_allow_remote_control') in ['unknown', 'unavailable'] else 'off' }}
+            (switch.office_inverter_allow_remote_control); turn it on to let the plan change the slots.
+            {% else %}Dry run: nothing changed.{% endif %}
             {% if slots == 'unchecked' %}(Slot times could not be read, so they were not checked.){% endif %}
       - if:
           - condition: template
@@ -265,7 +269,11 @@ automation:
           message: >-
             Slot 4 (13:00) target {{ evening }}% (now {{ evening_now }}%).
             {% if slots == 'mismatch' %}Not applied: the inverter's slots have changed ({{ state_attr('sensor.wa_inverter_slot_check', 'problems') }}).
-            {% elif apply %}Applying.{% else %}Dry run: nothing changed.{% endif %}
+            {% elif apply %}Applying.
+            {% elif is_state('input_boolean.wa_energy_plan_apply', 'on') %}Not applied: the inverter's remote control is
+            {{ 'missing' if states('switch.office_inverter_allow_remote_control') in ['unknown', 'unavailable'] else 'off' }}
+            (switch.office_inverter_allow_remote_control); turn it on to let the plan change the slots.
+            {% else %}Dry run: nothing changed.{% endif %}
             {% if slots == 'unchecked' %}(Slot times could not be read, so they were not checked.){% endif %}
       - if:
           - condition: template

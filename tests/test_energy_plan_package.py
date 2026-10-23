@@ -53,3 +53,13 @@ def test_both_planning_automations_respect_the_check() -> None:
     for aid in ("wa_energy_plan_2100", "wa_energy_plan_1230"):
         auto = next(a for a in PLAN["automation"] if a["id"] == aid)
         assert "wa_inverter_slot_check" in auto["variables"]["apply"]
+
+
+def test_switched_on_but_remote_control_off_or_missing_says_why() -> None:
+    _, _, apply, msg = _render(GOOD | {"switch.office_inverter_allow_remote_control": "off"})
+    assert not apply and "Not applied: the inverter's remote control is off" in msg
+    missing = {k: v for k, v in GOOD.items() if k != "switch.office_inverter_allow_remote_control"}
+    _, _, apply, msg = _render(missing)
+    assert not apply and "remote control is missing" in msg
+    _, _, apply, msg = _render(GOOD | {"input_boolean.wa_energy_plan_apply": "off"})
+    assert not apply and msg.endswith("Dry run: nothing changed.")
