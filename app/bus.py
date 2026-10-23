@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import time
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -14,11 +14,16 @@ from sqlalchemy import text
 
 from app.auth import require_token
 from app.config import get_settings
+from app.integrations.bods.client import BodsError, Box, box_around
+from app.integrations.bods.txc import TxcError
 from app.integrations.bus import store
+from app.integrations.bus.bods_source import BodsLineClient
 from app.integrations.bus.config import TrackerConfig
 from app.integrations.bus.events import (
     condition_summary,
+    journey_rows,
     outlook,
+    pair_arrivals,
     result_log,
     sentence,
     slot_reliability,
@@ -27,7 +32,7 @@ from app.integrations.bus.events import (
 from app.integrations.bus.poller import Lookup, in_window
 from app.integrations.bus.setup import SetupError, build_config, describe, return_config
 from app.integrations.tfl.client import TflClient, TflError
-from app.places import check_slug
+from app.places import check_slug, place_or_default
 from app.ratelimit import SlidingWindowLimiter
 
 router = APIRouter(prefix="/v1/bus", tags=["bus"], dependencies=[Depends(require_token)])
@@ -47,17 +52,52 @@ def _tfl(request: Request) -> TflClient:
     )
 
 
-async def _sequences(request: Request, line: str) -> dict[str, list[dict[str, str]]]:
+async def _home_box(request: Request, place: str | None, lat: float | None, lon: float | None) -> Box | None:
+    """A box round the given point or place (default: home) to look for a line's buses in; None if no place is saved."""
+    if lat is None or lon is None:
+        try:
+            pid = await place_or_default(request, place)
+        except HTTPException:
+            return None
+        async with request.app.state.engine.connect() as conn:
+            row = (await conn.execute(text("SELECT lat, lon FROM place WHERE id = :p"), {"p": pid})).first()
+        if row is None:
+            return None
+        lat, lon = row
+    return box_around(lat, lon, 15.0)
+
+
+async def _sequences(
+    request: Request, line: str, source: str | None = None, operator: str | None = None,
+    place: str | None = None, lat: float | None = None, lon: float | None = None,
+) -> tuple[dict[str, list[dict[str, str]]], dict[str, Any]]:
+    """The line's stops by direction and where they came from: TfL when it knows the line (it has predictions),
+    otherwise BODS. `source` forces one, as the setup page does after the stops step."""
     if not re.fullmatch(r"[A-Za-z0-9-]{1,20}", line):
         raise HTTPException(422, "that does not look like a line name")
+    tfl_problem = ""
+    if source != "bods":
+        try:
+            async with _tfl(request) as c:
+                seqs = {d: await c.route_sequence(line, d) for d in ("outbound", "inbound")}
+            if any(seqs.values()):
+                return seqs, {"source": "tfl", "operator": None}
+            tfl_problem = f"TfL has no stops for line {line!r}"
+        except TflError as exc:
+            tfl_problem = str(exc)
+        if source == "tfl":
+            raise HTTPException(404 if "not found" in tfl_problem else 502, tfl_problem)
+    key = get_settings().bods_api_key
+    if not key:
+        raise HTTPException(404, f"{tfl_problem or 'Not a TfL line'}. For lines outside London add a free BODS key under Settings > Keys.")
+    client = BodsLineClient(key, operator, await _home_box(request, place, lat, lon))
     try:
-        async with _tfl(request) as c:
-            seqs = {d: await c.route_sequence(line, d) for d in ("outbound", "inbound")}
-    except TflError as exc:
-        raise HTTPException(502, str(exc)) from exc
+        seqs = {d: await client.route_sequence(line, d) for d in ("outbound", "inbound")}
+    except (BodsError, TxcError) as exc:
+        raise HTTPException(404 if "no timetable" in str(exc) else 502, f"{tfl_problem + '; ' if tfl_problem else ''}{exc}") from exc
     if not any(seqs.values()):
-        raise HTTPException(404, f"TfL has no stops for line {line!r}")
-    return seqs
+        raise HTTPException(404, f"no stops found for line {line!r}")
+    return seqs, {"source": "bods", "operator": client.noc}
 
 
 class SetupIn(BaseModel):
@@ -73,6 +113,8 @@ class SetupIn(BaseModel):
         description="also track the way back (the other side of each stop), earliest bus; needs return_deadline",
     )
     return_deadline: str | None = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$", description="the way back: arrive by")
+    source: Literal["tfl", "bods"] | None = Field(None, description="as reported when the stops were listed")
+    operator: str | None = Field(None, pattern=r"^[A-Za-z0-9]{2,10}$", description="BODS only, as reported with the stops")
 
 
 _HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
@@ -121,9 +163,15 @@ async def change_settings(request: Request, body: SettingsIn) -> dict[str, Any]:
 
 
 @router.get("/lines/{line}/stops")
-async def line_stops(request: Request, line: str) -> dict[str, Any]:
-    """The stops on a line in each direction, for choosing a journey."""
-    return describe(await _sequences(request, line))
+async def line_stops(
+    request: Request, line: str,
+    place: str | None = Query(None, description="where to look for the line's buses outside London; default: home"),
+    lat: float | None = Query(None, ge=49.5, le=61.0), lon: float | None = Query(None, ge=-8.7, le=2.0),
+) -> dict[str, Any]:
+    """The stops on a line in each direction, for choosing a journey. London lines come from TfL (with
+    arrival predictions); any other line in Britain comes from BODS (GPS positions and the operator's timetable)."""
+    seqs, src = await _sequences(request, line, None, None, place, lat, lon)
+    return {**describe(seqs), "_source": src["source"], "_operator": src["operator"]}
 
 
 @router.post("/setup")
@@ -136,11 +184,13 @@ async def setup(request: Request, body: SetupIn) -> dict[str, Any]:
     back_id = f"{body.name}-return"
     if body.return_earliest:
         check_slug(back_id)
-    seqs = await _sequences(request, body.line)
+    seqs, src = await _sequences(request, body.line, body.source, body.operator)
     try:
         cfg = build_config(
             body.line, seqs, body.board, body.target, body.watch, body.earliest, body.deadline
         )
+        if src["source"] == "bods":
+            cfg.update(source="bods", operator=src["operator"])
         TrackerConfig.model_validate(cfg)
     except (SetupError, ValueError) as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -148,6 +198,8 @@ async def setup(request: Request, body: SetupIn) -> dict[str, Any]:
     if body.return_earliest and body.return_deadline:
         try:
             back = return_config(body.line, seqs, body.board, body.target, body.return_earliest, body.return_deadline)
+            if src["source"] == "bods":
+                back.update(source="bods", operator=src["operator"])
             TrackerConfig.model_validate(back)
         except (SetupError, ValueError) as exc:
             raise HTTPException(422, f"the way back: {exc}") from exc
@@ -157,7 +209,7 @@ async def setup(request: Request, body: SetupIn) -> dict[str, Any]:
             await store.upsert_tracker(conn, back_id, back, True)
     names = {s["sid"]: s["label"] for s in cfg["stops"]}
     t = cfg["target"]
-    out: dict[str, Any] = {"id": body.name, "direction": t["direction"], "board": names[cfg["stops"][0]["sid"]],
+    out: dict[str, Any] = {"id": body.name, "source": src["source"], "direction": t["direction"], "board": names[cfg["stops"][0]["sid"]],
                            "stops_tracked": [s["label"] for s in cfg["stops"]],
                            "return_side_found": t["alight_return"] is not None}  # fmt: skip
     if back is not None:
@@ -303,6 +355,14 @@ async def target(
             {"t": tid, "d": the_day})]  # fmt: skip
     hit_slots = {h["slot"] for h in hits if h["slot"]}
     slots = list(d[0]) if d else []
+    async with request.app.state.engine.connect() as conn:
+        due = await store.get_timetable(conn, tid, cfg.sid(cfg.target.alight), max_age_days=60)
+    is_today = the_day == now.date().isoformat()
+    journeys = journey_rows(
+        slots, hits, pair_arrivals(slots, due or []), now.hour * 60 + now.minute if is_today else None,
+        lambda t: t.astimezone(tz).strftime("%H:%M") if t else None,
+    )
+    labels = {s.key: s.label for s in cfg.stops}
     pending = [s for s in slots if s not in hit_slots]
     last = hits[-1] if hits else None
     since = (now - timedelta(days=HISTORY_DAYS)).date()
@@ -322,7 +382,8 @@ async def target(
     return {
         "day": the_day, "earliest": cfg.earliest, "deadline": cfg.deadline,
         "board": cfg.target.board, "tracking_now": in_window(cfg, now), "scheduled": slots, "pending": pending,
-        "hits": hits, "last_bus": last, "outlook": chance,
+        "hits": hits, "last_bus": last, "outlook": chance, "journeys": journeys,
+        "board_label": labels.get(cfg.target.board, ""), "alight_label": labels.get(cfg.target.alight, ""),
         "summary": sentence(last, cfg.deadline, tz),
     }  # fmt: skip
 

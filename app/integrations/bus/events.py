@@ -175,6 +175,50 @@ def slots_in_window(
     return [t for t in times if lo <= to_minutes(t) <= hi]
 
 
+def pair_arrivals(slots: Sequence[str], arrivals: Sequence[str]) -> dict[str, str]:
+    """The scheduled time at the target stop for each departure: buses keep their order, so each
+    departure takes the first timetabled time at the target after it that no earlier one has used."""
+    out: dict[str, str] = {}
+    used: set[str] = set()
+    for slot in sorted(slots, key=to_minutes):
+        for a in sorted(arrivals, key=to_minutes):
+            if a not in used and to_minutes(a) > to_minutes(slot):
+                out[slot] = a
+                used.add(a)
+                break
+    return out
+
+
+def journey_rows(
+    slots: Sequence[str], hits: Sequence[dict[str, Any]], arrivals: dict[str, str], now_minutes: int | None,
+    fmt: Any,
+) -> list[dict[str, Any]]:
+    """One row per scheduled bus today: when it was due to leave and to arrive, when it did, and whether it
+    arrived. A bus with no arrival is "not yet" until RESOLVE_AFTER_MIN past its scheduled departure
+    (now_minutes None: the day is over, so it is a miss). `fmt` turns a timestamp into 'HH:MM'."""
+    by_slot = {h["slot"]: h for h in hits if h.get("slot")}
+    rows: list[dict[str, Any]] = []
+    for slot in sorted({*slots, *by_slot}, key=to_minutes):
+        h = by_slot.get(slot)
+        due = arrivals.get(slot)
+        row: dict[str, Any] = {"slot": slot, "due_arrive": due, "left": fmt(h["board_at"]) if h else None,
+                               "arrived": fmt(h["arrive_at"]) if h else None, "late_min": None}  # fmt: skip
+        if h:
+            row["status"] = "arrived"
+            if due and row["arrived"]:
+                row["late_min"] = to_minutes(row["arrived"]) - to_minutes(due)
+        elif now_minutes is None or now_minutes > to_minutes(slot) + RESOLVE_AFTER_MIN:
+            row["status"] = "missed"
+        else:
+            row["status"] = "waiting"
+        rows.append(row)
+    for h in hits:  # a bus that made it but matched no slot still belongs in the list
+        if not h.get("slot"):
+            rows.append({"slot": None, "due_arrive": None, "left": fmt(h["board_at"]), "arrived": fmt(h["arrive_at"]),
+                         "late_min": None, "status": "arrived"})  # fmt: skip
+    return rows
+
+
 def slot_reliability(
     days: Sequence[dict[str, Any]], today: str, now_minutes: int
 ) -> list[dict[str, Any]]:

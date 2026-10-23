@@ -27,7 +27,7 @@ PAGE = """<!doctype html>
     <div class="dim" id="status"></div></div></div>
   <div class="card"><h2>Next buses</h2><div id="next" class="next"></div></div>
   <div class="grid">
-    <div class="card"><h2>Reached the target stop today</h2><table id="hits"></table><p id="pending" class="dim"></p></div>
+    <div class="card"><h2>Today's buses</h2><table id="hits"></table><p id="pending" class="dim"></p></div>
     <div class="card"><h2>Leg times today</h2><table id="cond"></table></div>
   </div>
   <div class="grid">
@@ -39,8 +39,9 @@ PAGE = """<!doctype html>
 <div class="card" id="setupcard">
   <h2>Set up a tracker</h2>
   <div class="form">
-    <div class="row"><label style="flex:1 1 120px">Bus route <input id="line" value="213" maxlength="20"></label>
+    <div class="row"><label style="flex:1 1 120px">Bus route <input id="line" placeholder="e.g. 213, 93, X26" maxlength="20"></label>
       <button id="load" type="button" style="align-self:end">Find the stops</button></div>
+    <p class="dim" id="srcnote">Any route in Britain. London routes use TfL's live predictions; others use Bus Open Data (BODS), which needs a free key under Settings.</p>
     <div id="steps" class="form hidden">
       <label>Where do you get on?<select id="board"></select></label>
       <label>Where do you need to get to?<select id="target"></select>
@@ -51,7 +52,7 @@ PAGE = """<!doctype html>
       <div class="row">
         <label>Earliest bus I would catch <input id="earliest" type="time" value="07:00"></label>
         <label>I must arrive by <input id="deadline" type="time" value="08:10"></label>
-        <label>Tracker name <input id="name" value="main" maxlength="40"></label>
+        <label>Tracker name <input id="name" placeholder="the route number" maxlength="40"></label>
       </div>
       <label style="flex-direction:row;align-items:center;gap:8px"><input id="back" type="checkbox" style="width:auto">
         Also track the way back <span class="hint">the other side of each stop, from where you got off to where you got on</span></label>
@@ -124,11 +125,19 @@ async function load() {
       next.appendChild(box);
     }
     if (!next.children.length) next.appendChild(el('p', 'No buses predicted at your stops right now.', 'dim'));
-    table('hits', ['Arrived', 'Left start', 'Timetable', 'Late / early', ''],
-      target ? target.hits.map(h => [hhmm(h.arrive_at), hhmm(h.board_at), h.slot || '',
-        h.delay_min == null ? '' : badge((h.delay_min > 0 ? '+' : '') + h.delay_min + ' min', h.delay_min >= 5 ? 'bad' : h.delay_min >= 2 ? 'warn' : 'good'),
-        h.via_return ? el('span', 'ended here', 'dim') : '']) : [], 'None confirmed yet.');
-    $('pending').textContent = target && target.pending.length ? 'Scheduled but not yet seen: ' + target.pending.join(', ') : '';
+    const lab = n => (n || '').split(' (')[0];
+    const mins = m => badge((m > 0 ? '+' : '') + m + ' min', m >= 5 ? 'bad' : m >= 2 ? 'warn' : 'good');
+    const rows = target ? (target.journeys || []) : [];
+    table('hits', ['Scheduled', 'Actual', 'Scheduled', 'Late / early', 'Arrived today?'],
+      rows.map(j => [j.slot || '', j.left || '', j.due_arrive || '', j.late_min == null ? '' : mins(j.late_min),
+        j.status === 'arrived' ? badge('Arrived ' + (j.arrived || ''), 'good')
+          : j.status === 'missed' ? badge('Did not arrive', 'bad') : el('span', 'Not yet', 'dim')]),
+      'No buses scheduled in the window.');
+    const t = $('hits');
+    if (rows.length) { const g = t.tHead.insertRow(0);
+      for (const [text, span] of [[lab(target.board_label) || 'Start', 2], [lab(target.alight_label) || 'Target', 2], ['', 1]]) {
+        const c = el('th', text, 'group'); c.colSpan = span; c.style.textAlign = 'center'; g.appendChild(c); } }
+    $('pending').textContent = '';
     table('cond', ['Leg', 'Usual', 'Last 30 min', ''], cond.map(c => [c.from + ' to ' + c.to,
       c.day_avg_min == null ? '' : c.day_avg_min + ' min', c.recent_avg_min == null ? '' : c.recent_avg_min + ' min',
       c.delta_min == null ? '' : badge((c.delta_min > 0 ? '+' : '') + c.delta_min + ' min', c.delta_min >= 3 ? 'bad' : c.delta_min >= 1.5 ? 'warn' : 'good')]),
@@ -160,11 +169,11 @@ function anomalyBase(a) {
   return a.type;
 }
 /* ---- guided setup ---- */
-let stops = null; const watched = new Map();
+let stops = null, src = {}; const watched = new Map(); const dirs = () => Object.keys(stops).filter(k => !k.startsWith('_'));
 const label = (d, s) => s.name + ' (towards ' + stops[d].towards + ')';
 function fillBoard() {
   const b = $('board'); b.replaceChildren();
-  for (const d of Object.keys(stops)) { const g = document.createElement('optgroup'); g.label = 'Towards ' + stops[d].towards;
+  for (const d of dirs()) { const g = document.createElement('optgroup'); g.label = 'Towards ' + stops[d].towards;
     for (const s of stops[d].stops.slice(0, -1)) { const o = new Option(label(d, s), s.id); o.dataset.dir = d; g.appendChild(o); } b.appendChild(g); }
   fillTarget();
 }
@@ -182,7 +191,12 @@ function drawChips() {
 }
 $('load').onclick = async () => {
   $('setupmsg').textContent = ''; msg.textContent = '';
-  try { stops = await api('GET', '/v1/bus/lines/' + encodeURIComponent($('line').value.trim()) + '/stops'); fillBoard(); $('steps').classList.remove('hidden'); }
+  try { stops = await api('GET', '/v1/bus/lines/' + encodeURIComponent($('line').value.trim()) + '/stops');
+    src = { source: stops._source, operator: stops._operator };
+    $('srcnote').textContent = src.source === 'bods'
+      ? 'Stops and times from the Bus Open Data Service. Where each bus is comes from its GPS, so the countdown is an estimate (no traffic).'
+      : 'Stops and live predictions from TfL.';
+    fillBoard(); $('steps').classList.remove('hidden'); }
   catch (e) { msg.textContent = e.message; }
 };
 $('board').onchange = fillTarget;
@@ -191,7 +205,8 @@ $('addwatch').onclick = () => { const o = $('watch').selectedOptions[0]; if (o) 
 $('save').onclick = async () => {
   try {
     const r = await api('POST', '/v1/bus/setup', { line: $('line').value.trim(), board: $('board').value, target: $('target').value,
-      watch: [...watched.keys()], earliest: $('earliest').value, deadline: $('deadline').value, name: $('name').value.trim() || 'main',
+      watch: [...watched.keys()], earliest: $('earliest').value, deadline: $('deadline').value,
+      name: $('name').value.trim() || $('line').value.trim().toLowerCase(), source: src.source, operator: src.operator,
       ...($('back').checked ? { return_earliest: $('bearliest').value, return_deadline: $('bdeadline').value } : {}) });
     $('setupmsg').className = 'ok'; $('setupmsg').textContent = 'Tracking ' + r.stops_tracked.join(', ') + '.' +
       (r.return_side_found ? ' The opposite-side stop at your destination was found automatically.' : '') +

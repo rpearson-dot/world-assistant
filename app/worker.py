@@ -15,14 +15,17 @@ from app.config import get_settings
 from app.energy.sync import energy_sync
 from app.graph.build import graph_build
 from app.ha_publish import ha_sync
+from app.integrations.boundaryline.sync import boundary_sync
 from app.integrations.bus.poller import poll_bus
 from app.integrations.codepoint.sync import codepoint_sync
 from app.integrations.flood.sync import flood_poll
 from app.integrations.fuelfinder.sync import fuel_sync_prices, fuel_sync_stations
+from app.integrations.localevents.sync import events_sync
 from app.integrations.naptan.sync import naptan_sync
 from app.integrations.nationalhighways.capture import capture_job
 from app.integrations.nationalhighways.poller import poll_live, poll_planned
 from app.integrations.tflroads.sync import tflroads_poll
+from app.integrations.usrn.sync import usrn_sync
 from app.logging import configure_logging
 from app.pollen_grid import pollen_grid_sync
 from app.pollen_history import pollen_sync
@@ -49,6 +52,7 @@ FIRST_LOADS = (
     ("fuel_station", "fuel_sync_stations", "fuel_poll_enabled"),
     ("naptan_stop", "naptan_sync", "naptan_poll_enabled"),
     ("postcode", "codepoint_sync", "codepoint_poll_enabled"),
+    ("boundary", "boundary_sync", "boundary_poll_enabled"),
 )
 
 
@@ -113,6 +117,9 @@ class WorkerSettings:
         energy_sync,
         tflroads_poll,
         codepoint_sync,
+        boundary_sync,
+        usrn_sync,
+        events_sync,
     ]
     cron_jobs: ClassVar[list] = [
         cron(heartbeat, minute=set(range(0, 60, 5))),
@@ -143,6 +150,12 @@ class WorkerSettings:
         cron(energy_sync, minute={3, 33}, timeout=120, max_tries=1),
         # Postcodes: checked daily, downloaded only when missing or a month old (OS publishes quarterly).
         cron(codepoint_sync, hour={3}, minute={10}, timeout=1800, max_tries=1),
+        # Administrative boundaries (twice a year) and street numbers (once a year, off unless asked for):
+        # checked daily, downloaded only when missing or old.
+        cron(boundary_sync, hour={3}, minute={30}, timeout=3600, max_tries=1),
+        cron(usrn_sync, hour={4}, minute={5}, timeout=7200, max_tries=1),
+        # What's on near your places, copied so the graph can relate it: every six hours. Needs an events key.
+        cron(events_sync, hour={0, 6, 12, 18}, minute={12}, timeout=300, max_tries=1),
         # The national stop register changes slowly: checked daily, downloaded (~100 MB) only when the table
         # is empty or a week old.
         cron(naptan_sync, hour={2}, minute={50}, timeout=1800, max_tries=1),
