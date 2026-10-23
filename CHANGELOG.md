@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- **Transport for West Midlands (probe only)**: a reader for TfWM's GTFS-Realtime trip updates (no new dependency), the `tfwm_app_id` and `tfwm_app_key` secrets, a Setup entry, and `python -m app.integrations.tfwm.probe [stop]`, which shows the feed's stop ids and the next predicted times at a stop. Over HTTPS only unless `WA_TFWM_BASE_URL` says otherwise (the portal documents plain HTTP, which would send the key in the open). Not used by the bus tracker yet: the probe comes first.
+
 ## [0.16.1] - 2026-10-23
 
 ### Fixed

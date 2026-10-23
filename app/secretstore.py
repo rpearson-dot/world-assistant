@@ -64,6 +64,8 @@ KNOWN: tuple[Known, ...] = (
     Known("skiddle_api_key", False, "Skiddle events API key"),
     Known("octopus_api_key", False, "Octopus Energy API key (finds your tariff from the account number)"),
     Known("bods_api_key", False, "Bus Open Data Service key (live buses outside London)"),
+    Known("tfwm_app_id", False, "Transport for West Midlands application ID"),
+    Known("tfwm_app_key", False, "Transport for West Midlands application key"),
     Known("pollen_api_key", False, "Polleninformation (Austrian Pollen Information Service) API key"),
     Known("redis_password", False, "Password of the stack's own Redis"),
     Known("mqtt_password", False, "MQTT broker password"),
@@ -240,7 +242,7 @@ def _external(name: str, directory: Path) -> str | None:
 WEB_KEYS = frozenset({
     "nh_subscription_key", "nh_subscription_key_secondary", "fuel_finder_client_id", "fuel_finder_client_secret",
     "tfl_app_key", "nr_access_token", "ticketmaster_api_key", "skiddle_api_key", "octopus_api_key", "bods_api_key",
-    "pollen_api_key",
+    "tfwm_app_id", "tfwm_app_key", "pollen_api_key",
 })  # fmt: skip
 
 

@@ -88,6 +88,8 @@ x-app: &app
     - nr_access_token
     - skiddle_api_key
     - bods_api_key
+    - tfwm_app_id
+    - tfwm_app_key
     - octopus_api_key
     - ticketmaster_api_key
     - pollen_api_key
@@ -217,6 +219,10 @@ secrets:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/octopus_api_key.txt
   bods_api_key:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/bods_api_key.txt
+  tfwm_app_id:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/tfwm_app_id.txt
+  tfwm_app_key:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/tfwm_app_key.txt
   skiddle_api_key:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/skiddle_api_key.txt
   ticketmaster_api_key:

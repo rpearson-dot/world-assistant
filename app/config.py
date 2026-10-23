@@ -118,6 +118,7 @@ class Settings(BaseSettings):
     fuel_poll_enabled: bool = False
     codepoint_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
     boundary_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
+    tfwm_base_url: str = ""  # default https://api.tfwm.org.uk; the portal documents plain http, which this will not use unasked
     boundary_kinds: str = "region,county,district"  # also: ward, parish, constituency (much bigger)
     boundary_simplify_m: float = 20.0  # metres of detail dropped from each boundary as it is loaded
     boundary_url: str = "https://api.os.uk/downloads/v1/products/BoundaryLine/downloads?area=GB&format=GeoPackage&redirect"
@@ -180,6 +181,14 @@ class Settings(BaseSettings):
     @property
     def bods_api_key(self) -> str:
         return read_secret("bods_api_key")
+
+    @property
+    def tfwm_app_id(self) -> str:
+        return read_secret("tfwm_app_id")
+
+    @property
+    def tfwm_app_key(self) -> str:
+        return read_secret("tfwm_app_key")
 
     @property
     def skiddle_api_key(self) -> str:
