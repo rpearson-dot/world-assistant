@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- **Energy plan (Home Assistant) checks the inverter's slots before changing anything.** A new sensor, "WA inverter slot check", compares the six slot start times (00:00 04:00 07:00 13:00 16:00 22:00) and the grid-charge switches of slots 2, 4 and 6 with what the plan is written for. If any differ, the plan writes what changed to the logbook and does not apply, even when switched on. An inverter integration that does not expose slot times is not blocked; the logbook says they were not checked.
+
 ## [0.18.0] - 2026-10-23
 
 ### Added
