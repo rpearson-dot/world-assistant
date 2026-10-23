@@ -35,6 +35,9 @@ With it switched off, every graph endpoint answers 503 and says so. Nothing else
 | `BusTracker` | bus tracker | line |
 | `BusStop` | stop a bus tracker watches | name, indicator, position (from NaPTAN) |
 | `FloodWarning` | live flood alert, warning or severe warning | area, level, severity, county, river or sea |
+| `Area` | region, county or district (kinds from `WA_BOUNDARY_KINDS`) that something is in | name, kind, code |
+| `Disruption` | live TfL road disruption (works, incidents, closures) | location, category, severity, planned or not |
+| `LocalEvent` | event in the next fortnight from Skiddle or Ticketmaster | name, day, venue, town, type |
 
 | Relationship | Meaning |
 | --- | --- |
@@ -47,6 +50,15 @@ With it switched off, every graph endpoint answers 503 and says so. Nothing else
 | `(BusTracker)-[:CALLS_AT]->(BusStop)` | a stop on a tracker's route |
 | `(FloodWarning)-[:COVERS]->(Place)` | the warned area contains the place |
 | `(FloodWarning)-[:CROSSES]->(Corridor)` | the warned area crosses the corridor |
+| `(Disruption)-[:AFFECTS]->(Corridor)` | a TfL disruption lying along that corridor |
+| `(Disruption\|LocalEvent)-[:NEAR {km}]->(Place)` | close to a place |
+| `(Place\|BusStop\|Disruption\|LocalEvent)-[:IN]->(Area)` | inside that area |
+| `(Area)-[:IN]->(Area)` | a district in its county, a county in its region |
+
+Only areas something is in are written, plus the wider areas above them, so the graph does not carry every
+district in Britain. Boundaries need the OS Boundary-Line load ([boundaries](boundaries.md)); events need the
+events sync (`WA_EVENTS_SYNC_ENABLED`, a Skiddle or Ticketmaster key). Fuel stations are not put in areas:
+thousands of them would bury the areas.
 
 `WA_GRAPH_NEAR_KM` (3 km) and `WA_GRAPH_ALONG_KM` (2 km) decide how close counts.
 
@@ -100,3 +112,10 @@ bus trackers); tap a node for its details and double-tap (or Expand) to bring in
 **Ask with Cypher** you can write your own read-only query: return nodes, relationships or paths to see them
 drawn, or values for a table. Anything that would change the graph is refused, and the session is read-only.
 
+
+### Customise the view
+
+Under **Customise the view** on the page: tick which kinds of thing and which links to show, choose a colour for
+each kind, size nodes by how connected they are, show names always, only when zoomed in, or never, hide the link
+names, and set node size and spread. Hiding a kind only hides it; it stays loaded, so ticking it again brings it
+back. The choices are kept in this browser (not on the server); **Reset the view** clears them.

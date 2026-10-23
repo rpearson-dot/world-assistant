@@ -19,13 +19,16 @@ PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER, BUS_STOP
     "Place", "Trip", "Corridor", "RoadEvent", "Station", "Location", "Vehicle", "BusTracker", "BusStop",
     "FloodWarning",
 )  # fmt: skip
-LABELS = (PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER, BUS_STOP, FLOOD)
+AREA, DISRUPTION, LOCAL_EVENT = "Area", "Disruption", "LocalEvent"
+LABELS = (PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER, BUS_STOP, FLOOD,
+          AREA, DISRUPTION, LOCAL_EVENT)
 
 # Relationship types.
 FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT, COVERS, CROSSES = (
     "FROM", "TO", "USES", "AFFECTS", "ALONG", "NEAR", "DRIVES", "CALLS_AT", "COVERS", "CROSSES",
 )  # fmt: skip
-TYPES = (FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT, COVERS, CROSSES)
+IN = "IN"
+TYPES = (FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT, COVERS, CROSSES, IN)
 
 
 @dataclass(frozen=True)
@@ -145,6 +148,48 @@ def flood_reach(covers: Iterable[tuple[str, str]], crosses: Iterable[tuple[str, 
             *(Rel(CROSSES, (FLOOD, w), (CORRIDOR, c)) for w, c in crosses)]  # fmt: skip
 
 
+def disruptions(rows: Iterable[dict[str, Any]], affects: Iterable[tuple[str, str]]) -> tuple[list[Node], list[Rel]]:
+    """Live TfL road disruptions (roadworks, collisions, closures) and the corridors they fall on."""
+    nodes = [Node(DISRUPTION, r["id"], {"name": r.get("location") or r["id"], "category": r.get("category"),
+                                        "severity": r.get("severity"), "scope": r.get("scope"),
+                                        "status": r.get("status"), "closure": r.get("has_closures")})
+             for r in rows]  # fmt: skip
+    known = {n.id for n in nodes}
+    return nodes, [Rel(AFFECTS, (DISRUPTION, d), (CORRIDOR, c)) for d, c in affects if d in known]
+
+
+def local_events(rows: Iterable[dict[str, Any]]) -> list[Node]:
+    """What's on in the next fortnight (Skiddle, Ticketmaster), held by the events sync."""
+    return [Node(LOCAL_EVENT, r["id"], {"name": r["name"], "source": r.get("source"), "type": r.get("type"),
+                                        "day": str(r["day"]) if r.get("day") else None,
+                                        "venue": r.get("venue"), "town": r.get("town"),
+                                        "lat": r.get("lat"), "lon": r.get("lon")})
+            for r in rows]  # fmt: skip
+
+
+def areas(
+    rows: Iterable[dict[str, Any]], inside: Iterable[tuple[str, str, str]], parents: Iterable[tuple[str, str]]
+) -> tuple[list[Node], list[Rel]]:
+    """Administrative areas (Boundary-Line) and what sits in them.
+
+    `inside` is (label, thing id, area id) and `parents` is (area id, wider area id), both worked out
+    by PostGIS. Only areas something is in, and the wider areas above those, are kept: the graph is for
+    how things join up, not a copy of every district in Britain.
+    """
+    by_id = {r["id"]: r for r in rows}
+    up = dict(parents)
+    keep: set[str] = set()
+    for _, _, a in inside:
+        while a in by_id and a not in keep:
+            keep.add(a)
+            a = up.get(a, "")
+    nodes = [Node(AREA, a, {"name": by_id[a]["name"], "kind": by_id[a]["kind"], "code": by_id[a].get("code")})
+             for a in sorted(keep)]  # fmt: skip
+    rels = [Rel(IN, (label, thing), (AREA, a)) for label, thing, a in inside if a in keep]
+    rels += [Rel(IN, (AREA, c), (AREA, p)) for c, p in parents if c in keep and p in keep]
+    return nodes, rels
+
+
 def near_places(pairs: Iterable[tuple[str, str, str, float]]) -> list[Rel]:
     """NEAR relationships from (label, thing id, place id, km) measured by PostGIS."""
     return [Rel(NEAR, (label, thing), (PLACE, place), {"km": round(float(km), 3)})
@@ -178,6 +223,12 @@ def build(
     flood_rows: Sequence[dict[str, Any]] = (),
     flood_covers: Sequence[tuple[str, str]] = (),
     flood_crosses: Sequence[tuple[str, str]] = (),
+    disruption_rows: Sequence[dict[str, Any]] = (),
+    disruption_corridors: Sequence[tuple[str, str]] = (),
+    local_event_rows: Sequence[dict[str, Any]] = (),
+    area_rows: Sequence[dict[str, Any]] = (),
+    inside_pairs: Sequence[tuple[str, str, str]] = (),
+    area_parents: Sequence[tuple[str, str]] = (),
     near_pairs: Sequence[tuple[str, str, str, float]] = (),
     along_pairs: Sequence[tuple[str, str, float]] = (),
 ) -> Graph:
@@ -192,13 +243,19 @@ def build(
     tracker_nodes = trackers(tracker_rows)
     stop_nodes, stop_rels = bus_stops(bus_stop_rows, calls_at)
     flood_nodes = floods(flood_rows)
+    disruption_nodes, disruption_rels = disruptions(disruption_rows, disruption_corridors)
+    event_here = local_events(local_event_rows)
+    area_nodes, area_rels = areas(area_rows, inside_pairs, area_parents)
 
     nodes = [*place_nodes, *trip_nodes, *corridor_nodes, *event_nodes, *station_nodes,
-             *location_nodes, *vehicle_nodes, *tracker_nodes, *stop_nodes, *flood_nodes]  # fmt: skip
+             *location_nodes, *vehicle_nodes, *tracker_nodes, *stop_nodes, *flood_nodes,
+             *disruption_nodes, *event_here, *area_nodes]  # fmt: skip
     rels = [
         *trip_rels,
         *event_rels,
         *stop_rels,
+        *disruption_rels,
+        *area_rels,
         *flood_reach(flood_covers, flood_crosses),
         *near_places(near_pairs),
         *along_corridors(along_pairs),

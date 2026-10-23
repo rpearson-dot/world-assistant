@@ -123,6 +123,10 @@ class Settings(BaseSettings):
     boundary_url: str = "https://api.os.uk/downloads/v1/products/BoundaryLine/downloads?area=GB&format=GeoPackage&redirect"
     usrn_poll_enabled: bool = False  # large (a million and more streets), so opt in
     usrn_url: str = "https://api.os.uk/downloads/v1/products/OpenUSRN/downloads?area=GB&format=GeoPackage&redirect"
+    events_sync_enabled: bool = True  # copies what's on near your places every six hours; needs an events key
+    events_sync_days: int = 14
+    events_sync_places: int = 5
+    events_sync_radius_km: float = 10.0
     codepoint_url: str = "https://api.os.uk/downloads/v1/products/CodePointOpen/downloads?area=GB&format=CSV&redirect"
     tflroads_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
     energy_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off

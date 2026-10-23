@@ -50,6 +50,14 @@ FLOODS = (
     "SELECT w.id, a.label AS name, w.severity_level AS level, w.severity, a.county, a.river_or_sea "
     "FROM flood_warning w JOIN flood_area a ON a.notation = w.area WHERE w.severity_level <= 3"
 )
+DISRUPTIONS = (
+    "SELECT id, category, severity, scope, status, location, has_closures FROM tfl_road_disruption "
+    "WHERE geom IS NOT NULL AND (ends_at IS NULL OR ends_at > now())"
+)
+LOCAL_EVENTS = (
+    "SELECT id, source, name, day, type, venue, town, lat, lon FROM local_event WHERE day >= CURRENT_DATE"
+)
+AREAS = "SELECT id, kind, name, code FROM boundary WHERE kind = ANY(:kinds)"
 EVENT_CORRIDORS = "SELECT record_id, corridor_id FROM nh_event_corridor"
 CALLS_AT = "SELECT DISTINCT tracker, sid FROM bus_stop"
 
@@ -67,6 +75,58 @@ UNION ALL
 SELECT 'BusStop', n.atco, p.id, ST_Distance(n.geog, p.geog) / 1000.0
 FROM naptan_stop n JOIN place p ON ST_DWithin(n.geog, p.geog, :near_m)
 WHERE n.atco IN (SELECT sid FROM bus_stop)
+UNION ALL
+SELECT 'LocalEvent', e.id, p.id, ST_Distance(e.geog, p.geog) / 1000.0
+FROM local_event e JOIN place p ON ST_DWithin(e.geog, p.geog, :near_m)
+WHERE e.day >= CURRENT_DATE
+UNION ALL
+SELECT 'Disruption', d.id, p.id, ST_Distance(d.geom, p.geog) / 1000.0
+FROM tfl_road_disruption d JOIN place p ON ST_DWithin(d.geom, p.geog, :near_m)
+WHERE d.geom IS NOT NULL AND (d.ends_at IS NULL OR d.ends_at > now())
+"""
+
+# Which disruptions lie along a watched corridor (same buffer as fuel stations).
+DISRUPTION_CORRIDORS = """
+WITH lines AS (
+  SELECT c.id, ST_MakeLine(ARRAY(
+           SELECT ST_SetSRID(ST_MakePoint((pt->>1)::float8, (pt->>0)::float8), 4326)
+           FROM jsonb_array_elements(c.centreline) AS pt
+         ))::geography AS line
+  FROM nh_corridor c
+  WHERE c.enabled AND jsonb_array_length(c.centreline) > 1
+)
+SELECT d.id, l.id FROM tfl_road_disruption d JOIN lines l ON ST_DWithin(d.geom, l.line, :along_m)
+WHERE d.geom IS NOT NULL AND (d.ends_at IS NULL OR d.ends_at > now())
+"""
+
+# What lies inside which administrative area (Boundary-Line, kinds chosen in settings). Stations are left
+# out: thousands of them would bury the areas.
+INSIDE_PAIRS = """
+SELECT 'Place' AS label, p.id AS thing, b.id AS area
+FROM place p JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, p.geog::geometry)
+UNION ALL
+SELECT 'BusStop', n.atco, b.id
+FROM naptan_stop n JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, n.geog::geometry)
+WHERE n.atco IN (SELECT sid FROM bus_stop)
+UNION ALL
+SELECT 'LocalEvent', e.id, b.id
+FROM local_event e JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, e.geog::geometry)
+WHERE e.day >= CURRENT_DATE
+UNION ALL
+SELECT 'Disruption', d.id, b.id
+FROM tfl_road_disruption d JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, d.geom::geometry)
+WHERE d.geom IS NOT NULL AND (d.ends_at IS NULL OR d.ends_at > now())
+"""
+
+# The next wider area each area sits in (a ward in a district, a district in a county, a county in a region).
+AREA_PARENTS = """
+WITH ranked AS (
+  SELECT id, geom, CASE kind WHEN 'region' THEN 3 WHEN 'county' THEN 2 WHEN 'district' THEN 1 ELSE 0 END AS rank
+  FROM boundary WHERE kind = ANY(:kinds)
+)
+SELECT DISTINCT ON (c.id) c.id, p.id
+FROM ranked c JOIN ranked p ON p.rank > c.rank AND ST_Intersects(p.geom, ST_PointOnSurface(c.geom))
+ORDER BY c.id, p.rank
 """
 
 # Which saved places a live warning's area contains, and which corridors it crosses.
@@ -107,9 +167,12 @@ WHERE s.coords_ok AND NOT s.permanent_closure
 """
 
 
-async def read(engine: AsyncEngine, near_km: float, along_km: float) -> dict[str, Any]:
+async def read(
+    engine: AsyncEngine, near_km: float, along_km: float, area_kinds: list[str] | None = None
+) -> dict[str, Any]:
     """One read of everything the graph is made from, proximity included."""
     out: dict[str, Any] = {}
+    area_kinds = area_kinds or ["region", "county", "district"]
     async with engine.connect() as conn:
         for name, sql in QUERIES.items():
             out[name] = [dict(r._mapping) for r in await conn.execute(text(sql))]
@@ -117,6 +180,14 @@ async def read(engine: AsyncEngine, near_km: float, along_km: float) -> dict[str
         out["flood_rows"] = [dict(r._mapping) for r in await conn.execute(text(FLOODS))]
         out["flood_covers"] = [tuple(r) for r in await conn.execute(text(FLOOD_COVERS))]
         out["flood_crosses"] = [tuple(r) for r in await conn.execute(text(FLOOD_CROSSES))]
+        out["disruption_rows"] = [dict(r._mapping) for r in await conn.execute(text(DISRUPTIONS))]
+        out["local_event_rows"] = [dict(r._mapping) for r in await conn.execute(text(LOCAL_EVENTS))]
+        kinds = {"kinds": area_kinds}
+        out["area_rows"] = [dict(r._mapping) for r in await conn.execute(text(AREAS), kinds)]
+        out["inside_pairs"] = [tuple(r) for r in await conn.execute(text(INSIDE_PAIRS), kinds)]
+        out["area_parents"] = [tuple(r) for r in await conn.execute(text(AREA_PARENTS), kinds)]
+        out["disruption_corridors"] = [tuple(r) for r in await conn.execute(
+            text(DISRUPTION_CORRIDORS), {"along_m": along_km * 1000.0})]  # fmt: skip
         out["calls_at"] = [tuple(r) for r in await conn.execute(text(CALLS_AT))]
         out["near_pairs"] = [tuple(r) for r in await conn.execute(
             text(NEAR_PAIRS), {"near_m": near_km * 1000.0})]  # fmt: skip
@@ -129,7 +200,8 @@ async def rebuild(engine: AsyncEngine) -> dict[str, Any]:
     """Read Postgres, derive the graph, replace what Neo4j holds. Returns what it wrote."""
     s = get_settings()
     started = time.monotonic()
-    rows = await read(engine, s.graph_near_km, s.graph_along_km)
+    kinds = [k.strip() for k in s.boundary_kinds.split(",") if k.strip()]
+    rows = await read(engine, s.graph_near_km, s.graph_along_km, kinds)
     graph = model.build(**rows)
     built = uuid.uuid4().hex
     counts = await store.write(graph, built)
