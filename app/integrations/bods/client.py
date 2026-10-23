@@ -135,3 +135,88 @@ async def fetch_vehicles(api_key: str, box: Box, client: httpx.AsyncClient | Non
     finally:
         if owned:
             await client.aclose()
+
+
+DATASET_URL = "https://data.bus-data.dft.gov.uk/api/v1/dataset/"
+MAX_DOWNLOAD = 80 * 1024 * 1024
+MAX_DATASETS = 12  # timetable files tried while looking for a line
+
+
+async def operators_of_line(api_key: str, line: str, box: Box, client: httpx.AsyncClient | None = None) -> list[str]:
+    """Operator codes (NOC) of the buses reporting this line inside the box, most buses first."""
+    vehicles = await fetch_vehicles(api_key, box, client)
+    counts: dict[str, int] = {}
+    for v in vehicles:
+        if (v.get("line") or "").upper() == line.upper() and v.get("operator"):
+            counts[v["operator"]] = counts.get(v["operator"], 0) + 1
+    return sorted(counts, key=lambda n: -counts[n])
+
+
+async def find_datasets(
+    api_key: str, *, noc: str | None = None, search: str | None = None, limit: int = MAX_DATASETS,
+    client: httpx.AsyncClient | None = None,
+) -> list[dict[str, Any]]:
+    """Published timetable datasets, [{id, name, url, operator}], for an operator or a search word."""
+    if not api_key:
+        raise BodsError("the bods_api_key secret is not set")
+    params: dict[str, Any] = {"api_key": api_key, "status": "published", "limit": limit}
+    if noc:
+        params["noc"] = noc
+    if search:
+        params["search"] = search
+    owned = client is None
+    client = client or httpx.AsyncClient(timeout=30.0, follow_redirects=True)
+    try:
+        try:
+            r = await client.get(DATASET_URL, params=params)
+        except httpx.HTTPError as exc:
+            raise BodsError(f"the timetable list could not be reached: {type(exc).__name__}") from exc
+        if r.status_code in (401, 403):
+            raise BodsError("BODS refused the key (check the bods_api_key secret)")
+        if r.status_code != 200:
+            raise BodsError(f"the timetable list answered HTTP {r.status_code}")
+        try:
+            rows = r.json().get("results") or []
+        except (ValueError, AttributeError) as exc:
+            raise BodsError("the timetable list was not JSON") from exc
+    finally:
+        if owned:
+            await client.aclose()
+    return [{"id": d.get("id"), "name": d.get("name") or "", "url": d.get("url"),
+             "operator": d.get("operatorName") or ""}
+            for d in rows if isinstance(d, dict) and isinstance(d.get("url"), str)]  # fmt: skip
+
+
+async def download_txc(url: str, client: httpx.AsyncClient | None = None) -> list[bytes]:
+    """The XML documents at a timetable URL: one file, or every .xml inside a zip."""
+    import io
+    import zipfile
+
+    if not url.startswith("https://data.bus-data.dft.gov.uk/"):
+        raise BodsError("refusing to download a timetable from outside BODS")
+    owned = client is None
+    client = client or httpx.AsyncClient(timeout=120.0, follow_redirects=True)
+    try:
+        try:
+            r = await client.get(url)
+        except httpx.HTTPError as exc:
+            raise BodsError(f"the timetable could not be downloaded: {type(exc).__name__}") from exc
+        if r.status_code != 200:
+            raise BodsError(f"the timetable download answered HTTP {r.status_code}")
+        body = r.content
+    finally:
+        if owned:
+            await client.aclose()
+    if len(body) > MAX_DOWNLOAD:
+        raise BodsError("the timetable download was larger than expected")
+    if body[:2] != b"PK":
+        return [body]
+    out, total = [], 0
+    with zipfile.ZipFile(io.BytesIO(body)) as z:
+        for info in z.infolist():
+            if info.filename.lower().endswith(".xml"):
+                total += info.file_size
+                if total > MAX_DOWNLOAD:
+                    raise BodsError("the timetable archive unpacks larger than expected")
+                out.append(z.read(info))
+    return out

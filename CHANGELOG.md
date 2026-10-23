@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Changed
 - **Bus page, today's buses**: one row for every scheduled bus, split into the start stop (scheduled, actual), the target stop (scheduled, late or early) and **Arrived today?** (arrived at a time, did not arrive, or not yet). The target stop's scheduled time comes from its TfL timetable, matched to each departure in order. `GET /v1/bus/trackers/{id}/target` gains `journeys`, `board_label` and `alight_label`.
+### Added
+- **Bus tracker for any route in Britain.** Type any route number on the Bus page. London lines still use TfL (stops, timetable, live predictions). Any other line uses the Bus Open Data Service: the operator's timetable file gives the stops and weekday times, and each bus's GPS position, placed along the route, gives the countdown (an estimate: distance at a typical bus speed, no traffic). Needs the `bods_api_key`. Tracker names default to the route number, so a second route no longer replaces the first. `GET /v1/bus/lines/{line}/stops` reports `_source` and `_operator`; a tracker config gains `source` and `operator`. A probe shows what BODS sends for a line: `python -m app.integrations.bus.bods_probe 213` ([docs/bus.md](docs/bus.md)). Not yet run against the live service.
 
 ## [0.15.0] - 2026-10-22
 

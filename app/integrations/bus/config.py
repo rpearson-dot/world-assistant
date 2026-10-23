@@ -4,7 +4,7 @@ about a particular journey is built into the code or the repository."""
 from __future__ import annotations
 
 import re
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -47,6 +47,12 @@ class Target(BaseModel):
 
 class TrackerConfig(BaseModel):
     line: str = Field(pattern=r"^[A-Za-z0-9-]{1,20}$")
+    source: Literal["tfl", "bods"] = Field(
+        "tfl",
+        description="where the route and the countdown come from: TfL (London lines, with predictions) or "
+        "BODS (any line in Britain, from GPS positions and the operator's timetable)",
+    )
+    operator: str | None = Field(None, pattern=r"^[A-Za-z0-9]{2,10}$", description="BODS only: the operator's NOC code")
     stops: list[StopOfInterest] = Field(min_length=1, max_length=30)
     target: Target | None = None
     segments: list[tuple[str, str]] | None = Field(

@@ -1,7 +1,8 @@
 # Bus tracker
 
-Follows every bus on one TfL line, times the legs between stops you care about, and records
-which buses reached a target stop before a deadline (weekdays only by default).
+Follows every bus on one line, times the legs between stops you care about, and records
+which buses reached a target stop before a deadline (weekdays only by default). London lines
+use TfL; any other line in Britain uses the Bus Open Data Service (BODS).
 
 Nothing about a particular journey is in the code. You supply the stops as configuration.
 
@@ -11,6 +12,23 @@ Open `/bus`, under **Set up a tracker** enter the route number and press **Find 
 where you get on and where you need to get to, add any busy stops to time on the way, set your
 times and press **Start tracking**. The direction, the opposite-side stop at your destination (for
 buses that terminate there) and the stop before it are worked out for you from TfL's route data.
+
+### Any route in Britain
+
+Type any route number. If TfL knows the line, the tracker uses TfL's stops, timetable and live arrival
+predictions. If not, and a BODS key is set (`bods_api_key`, free at data.bus-data.dft.gov.uk), it uses BODS:
+
+- the operator is found from the buses running that line near your home (or the place you give), and its
+  timetable file gives the stops in order and the weekday times;
+- where each bus is comes from its GPS position, placed along the route, and the countdown is the distance
+  ahead at a typical bus speed. It does not see traffic, so it is looser than TfL's predictions;
+- stop positions come from the national stop register (NaPTAN), which loads on first start;
+- everything after that (legs, which buses reached the target, reliability, events) is the same.
+
+Each tracker is named after its route by default, so a second route does not replace the first. Without a BODS
+key a non-London line is explained, not guessed. To see what BODS sends for a line:
+
+    docker compose exec worker python -m app.integrations.bus.bods_probe 213 [lat lon]
 
 ### The way back
 

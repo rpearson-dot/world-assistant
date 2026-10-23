@@ -39,8 +39,9 @@ PAGE = """<!doctype html>
 <div class="card" id="setupcard">
   <h2>Set up a tracker</h2>
   <div class="form">
-    <div class="row"><label style="flex:1 1 120px">Bus route <input id="line" value="213" maxlength="20"></label>
+    <div class="row"><label style="flex:1 1 120px">Bus route <input id="line" placeholder="e.g. 213, 93, X26" maxlength="20"></label>
       <button id="load" type="button" style="align-self:end">Find the stops</button></div>
+    <p class="dim" id="srcnote">Any route in Britain. London routes use TfL's live predictions; others use Bus Open Data (BODS), which needs a free key under Settings.</p>
     <div id="steps" class="form hidden">
       <label>Where do you get on?<select id="board"></select></label>
       <label>Where do you need to get to?<select id="target"></select>
@@ -51,7 +52,7 @@ PAGE = """<!doctype html>
       <div class="row">
         <label>Earliest bus I would catch <input id="earliest" type="time" value="07:00"></label>
         <label>I must arrive by <input id="deadline" type="time" value="08:10"></label>
-        <label>Tracker name <input id="name" value="main" maxlength="40"></label>
+        <label>Tracker name <input id="name" placeholder="the route number" maxlength="40"></label>
       </div>
       <label style="flex-direction:row;align-items:center;gap:8px"><input id="back" type="checkbox" style="width:auto">
         Also track the way back <span class="hint">the other side of each stop, from where you got off to where you got on</span></label>
@@ -168,11 +169,11 @@ function anomalyBase(a) {
   return a.type;
 }
 /* ---- guided setup ---- */
-let stops = null; const watched = new Map();
+let stops = null, src = {}; const watched = new Map(); const dirs = () => Object.keys(stops).filter(k => !k.startsWith('_'));
 const label = (d, s) => s.name + ' (towards ' + stops[d].towards + ')';
 function fillBoard() {
   const b = $('board'); b.replaceChildren();
-  for (const d of Object.keys(stops)) { const g = document.createElement('optgroup'); g.label = 'Towards ' + stops[d].towards;
+  for (const d of dirs()) { const g = document.createElement('optgroup'); g.label = 'Towards ' + stops[d].towards;
     for (const s of stops[d].stops.slice(0, -1)) { const o = new Option(label(d, s), s.id); o.dataset.dir = d; g.appendChild(o); } b.appendChild(g); }
   fillTarget();
 }
@@ -190,7 +191,12 @@ function drawChips() {
 }
 $('load').onclick = async () => {
   $('setupmsg').textContent = ''; msg.textContent = '';
-  try { stops = await api('GET', '/v1/bus/lines/' + encodeURIComponent($('line').value.trim()) + '/stops'); fillBoard(); $('steps').classList.remove('hidden'); }
+  try { stops = await api('GET', '/v1/bus/lines/' + encodeURIComponent($('line').value.trim()) + '/stops');
+    src = { source: stops._source, operator: stops._operator };
+    $('srcnote').textContent = src.source === 'bods'
+      ? 'Stops and times from the Bus Open Data Service. Where each bus is comes from its GPS, so the countdown is an estimate (no traffic).'
+      : 'Stops and live predictions from TfL.';
+    fillBoard(); $('steps').classList.remove('hidden'); }
   catch (e) { msg.textContent = e.message; }
 };
 $('board').onchange = fillTarget;
@@ -199,7 +205,8 @@ $('addwatch').onclick = () => { const o = $('watch').selectedOptions[0]; if (o) 
 $('save').onclick = async () => {
   try {
     const r = await api('POST', '/v1/bus/setup', { line: $('line').value.trim(), board: $('board').value, target: $('target').value,
-      watch: [...watched.keys()], earliest: $('earliest').value, deadline: $('deadline').value, name: $('name').value.trim() || 'main',
+      watch: [...watched.keys()], earliest: $('earliest').value, deadline: $('deadline').value,
+      name: $('name').value.trim() || $('line').value.trim().toLowerCase(), source: src.source, operator: src.operator,
       ...($('back').checked ? { return_earliest: $('bearliest').value, return_deadline: $('bdeadline').value } : {}) });
     $('setupmsg').className = 'ok'; $('setupmsg').textContent = 'Tracking ' + r.stops_tracked.join(', ') + '.' +
       (r.return_side_found ? ' The opposite-side stop at your destination was found automatically.' : '') +
