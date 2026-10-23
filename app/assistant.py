@@ -383,7 +383,7 @@ async def handle_rpc(request: Request, msg: Any) -> dict[str, Any] | None:
         return {"jsonrpc": "2.0", "id": rid, "result": {
             "protocolVersion": asked if asked in PROTOCOLS else PROTOCOLS[0],
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": "world-assistant", "version": "0.18.0"},
+            "serverInfo": {"name": "world-assistant", "version": "0.18.1"},
             "instructions": "Personal assistant for fuel prices, trips, trains and buses. "
                             "Call list_options first to see saved ids.",
         }}  # fmt: skip

@@ -90,7 +90,7 @@ starts as a dry run that only writes to the logbook; switch on "WA energy plan: 
 look right. On Cosy the cheap windows are fixed and already in the slots, so WA is not needed for those. WA's Saving Session
 sensors are used to raise the 13:00 target when you have joined a session between 16:00 and 22:00, to warn if the
 battery runs low during a joined session, and to flag a joined session outside 16:00-22:00 that the plan does not
-handle. Nothing in the package switches the grid off or limits what the inverter can draw: any shortfall is taken
+handle. Before applying, it checks the inverter's slot start times and grid-charge switches (sensor "WA inverter slot check"); if someone has changed them it only logs what differs. Nothing in the package switches the grid off or limits what the inverter can draw: any shortfall is taken
 from the grid by the inverter itself, so the cost of a shortfall is a smaller reward, not a loss of supply.
 
 ## Notes
