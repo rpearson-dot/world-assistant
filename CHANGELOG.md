@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- **TfWM route probe**: `python -m app.integrations.tfwm.routes_probe 907 [lat lon]` finds which of TfWM's internal route ids is a bus line, since the portal has no route list. It tries TfWM's GTFS timetable, BODS's West Midlands GTFS (built by the same company) and matching the line's stops against the stops TfWM's live trips call at, and reports each. Nothing is stored.
+
 ## [0.18.0] - 2026-10-23
 
 ### Added
