@@ -222,26 +222,32 @@ PAGE = """<!doctype html>
 <div class="card"><h2>Vehicles</h2>
 <table id="vehicles"><tbody></tbody></table>
 <form id="addveh" class="row" style="margin-top:10px">
-  <input id="vname" placeholder="Name, e.g. Toyota Estima" required>
-  <select id="vkind"><option value="fuel">Petrol or diesel</option><option value="ev">Electric</option></select>
-  <span id="vfuelf" class="row"><input id="vmpg" type="number" step="0.1" placeholder="Real-world mpg (UK)">
-    <select id="vfuel"><option>E10</option><option>E5</option><option>B7_STANDARD</option></select></span>
-  <span id="vevf" class="row" hidden><input id="vbat" type="number" step="0.1" placeholder="Battery kWh">
-    <input id="vsoh" type="number" step="1" placeholder="Health %" value="100">
-    <input id="vmpk" type="number" step="0.1" placeholder="Miles per kWh">
-    <input id="vhome" type="number" step="0.1" placeholder="Home pence per kWh"></span>
+  <label>Name <input id="vname" placeholder="e.g. Toyota Estima" required></label>
+  <label>Type <select id="vkind"><option value="fuel">Petrol or diesel</option><option value="ev">Electric</option></select></label>
+  <span id="vfuelf" class="row"><label>Real-world mpg (UK) <input id="vmpg" type="number" step="0.1" min="5" max="150" placeholder="e.g. 33"></label>
+    <label>Fuel <select id="vfuel"><option value="E10">Petrol (E10)</option><option value="E5">Super unleaded (E5)</option><option value="B7_STANDARD">Diesel (B7)</option></select></label></span>
+  <span id="vevf" class="row" hidden><label>Battery size, kWh <input id="vbat" type="number" step="0.1" min="5" max="300" placeholder="e.g. 30"></label>
+    <label>Battery health, % <input id="vsoh" type="number" step="1" min="31" max="100" value="100"></label>
+    <label>Miles per kWh <input id="vmpk" type="number" step="0.1" min="0.5" max="10" placeholder="e.g. 3.6"></label>
+    <label>Home electricity, p/kWh <input id="vhome" type="number" step="0.1" min="0" max="200" placeholder="e.g. 15"></label></span>
   <button>Add vehicle</button>
-</form></div>
+</form><p id="vmsg" class="err"></p></div>
 
 <script>
 const tok = document.getElementById('t'), msg = document.getElementById('msg');
 try { tok.value = sessionStorage.getItem('wa_token') || ''; } catch (e) {}
 const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+const FIELD = { battery_kwh: 'Battery size', soh_percent: 'Battery health', miles_per_kwh: 'Miles per kWh',
+  home_pence_per_kwh: 'Home electricity', mpg: 'Real-world mpg', name: 'Name', fuel: 'Fuel', postcode: 'Postcode' };
 async function api(method, path, body) {
   const r = await fetch(path, { method, headers: { Authorization: 'Bearer ' + tok.value,
     'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
   if (!r.ok) {
     let d = r.status; try { d = (await r.json()).detail; } catch (e) {}
+    if (Array.isArray(d)) d = d.map(x => {  // a form the API refused: say which box and why
+      const f = (x.loc || []).filter(k => k !== 'body').pop();
+      return (typeof f === 'string' ? (FIELD[f] || f.replace(/_/g, ' ')) + ': ' : '') + (x.msg || '').replace(/^Value error, /, '');
+    }).join('; ');
     throw new Error(typeof d === 'string' ? d : JSON.stringify(d));
   }
   return r.status === 204 ? null : r.json();
@@ -303,7 +309,7 @@ async function load() {
     routeBtn(tr, t); delBtn(tr, '/v1/trips/' + t.id);
     tb.appendChild(tr); if (more) tb.appendChild(more);
   }
-  const vb = document.querySelector('#vehicles tbody'); vb.replaceChildren();
+  const vb = document.querySelector('#vehicles tbody'); vb.replaceChildren(); vehicleIds = vehicles.map(v => v.id);
   for (const v of vehicles) {
     const tr = document.createElement('tr');
     cell(tr, v.name);
@@ -316,9 +322,9 @@ async function load() {
     for (const p of places) { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; sel.appendChild(o); }
   }
 }
-async function run(fn) {
-  msg.textContent = '';
-  try { await fn(); await load(); } catch (e) { msg.textContent = e.message; }
+async function run(fn, out = msg) {  // out: where a failure is shown, next to the form that caused it
+  msg.textContent = ''; out.textContent = '';
+  try { await fn(); await load(); } catch (e) { out.textContent = e.message; }
 }
 document.getElementById('auth').onsubmit = e => { e.preventDefault(); run(() => Promise.resolve()); };
 document.getElementById('addplace').onsubmit = e => {
@@ -336,10 +342,16 @@ document.getElementById('addtrip').onsubmit = e => {
   run(() => api('PUT', '/v1/trips/' + f + '-to-' + t, { from_place: f, to_place: t }));
 };
 const num = id => { const v = document.getElementById(id).value; return v === '' ? null : Number(v); };
-document.getElementById('vkind').onchange = e => {
-  document.getElementById('vfuelf').hidden = e.target.value === 'ev';
-  document.getElementById('vevf').hidden = e.target.value !== 'ev';
-};
+function showKind() {  // the fields shown always follow the kind chosen, also after the form is cleared
+  const ev = document.getElementById('vkind').value === 'ev';
+  document.getElementById('vfuelf').hidden = ev;
+  document.getElementById('vevf').hidden = !ev;
+  document.getElementById('vmpg').required = !ev;  // the browser then points at the empty box itself
+  for (const id of ['vbat', 'vmpk']) document.getElementById(id).required = ev;
+}
+showKind();
+document.getElementById('vkind').onchange = showKind;
+let vehicleIds = [];
 document.getElementById('addveh').onsubmit = e => {
   e.preventDefault();
   const name = document.getElementById('vname').value, kind = document.getElementById('vkind').value;
@@ -347,7 +359,11 @@ document.getElementById('addveh').onsubmit = e => {
     ? { name, kind, battery_kwh: num('vbat'), soh_percent: num('vsoh') || 100, miles_per_kwh: num('vmpk'),
         home_pence_per_kwh: num('vhome') }
     : { name, kind, mpg: num('vmpg'), fuel: document.getElementById('vfuel').value };
-  run(async () => { await api('PUT', '/v1/vehicles/' + slug(name), body); e.target.reset(); });
+  const id = slug(name);
+  const vmsg = document.getElementById('vmsg');
+  if (!id) { vmsg.textContent = 'Give the vehicle a name with at least one letter or digit.'; return; }
+  if (vehicleIds.includes(id) && !confirm('A vehicle called "' + name + '" is already saved. Replace it?')) return;
+  run(async () => { await api('PUT', '/v1/vehicles/' + id, body); e.target.reset(); showKind(); }, vmsg);
 };
 if (tok.value) run(() => Promise.resolve());
 </script></main></body></html>"""

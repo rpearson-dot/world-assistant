@@ -4,6 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.17.4] - 2026-10-23
+
+### Fixed
+- **Places > Vehicles: a second car could not be added.** The boxes had only grey hints, which vanish once a box has a value (Battery health starts at 100), so a battery size typed into the wrong box left Battery size empty; the save was refused and the reason shown at the top of the page, out of sight. Every box now has a label, the browser points at an empty required box, a refusal is shown under the form and names the box, the fields shown follow the chosen type after a save, and saving a name that already exists asks before replacing it.
+
 ## [0.17.3] - 2026-10-23
 
 ### Added
