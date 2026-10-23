@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Changed
+- **Graph page: "Customise the view" is a panel beside the graph**, on the left, with the details on the right; **Hide** gives the graph the room (remembered, **Customise** brings it back). The Graph page now uses the window's full width. On a phone the panel sits below the graph.
+
 ## [0.18.0] - 2026-10-23
 
 ### Added
