@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import bus
-from app.integrations.bods.client import BodsError
+from app.integrations.bods.client import BodsError, Box
 from app.integrations.bods.txc import TxcError, parse_txc, seconds
 from app.integrations.bus import bods_source
 from app.integrations.bus.bods_source import Stop, arrivals, place_on_route, stop_distances
@@ -143,7 +143,7 @@ class _NoTfl:
 class _FakeBods:
     noc = "ABCD"
 
-    def __init__(self, key: str, operator: str | None = None, box: object = None) -> None:
+    def __init__(self, key: str, operator: str | None = None, box: object = None, check: object = None) -> None:
         self.line_asked = ""
 
     async def route_sequence(self, line: str, direction: str) -> list[dict[str, str]]:
@@ -189,7 +189,7 @@ def test_without_a_bods_key_the_reason_says_what_to_do(client: TestClient, monke
 def test_the_bods_client_reads_each_file_once(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
 
-    async def load(key: str, line: str, noc: str | None = None, box: object = None) -> Any:
+    async def load(key: str, line: str, noc: str | None = None, box: object = None, check: object = None) -> Any:
         calls.append(line)
         return parse_txc(TXC, line), "ABCD"
 
@@ -243,3 +243,67 @@ async def test_a_poll_of_a_bods_line_turns_positions_into_predictions(monkeypatc
     assert box.min_lon < -0.30 and box.max_lon > -0.27 and box.min_lat < 51.40 < box.max_lat  # round the whole route
     with pytest.raises(BodsError, match="stop register"):
         await poller._bods_arrivals(_Engine(), cfg, [{"direction": "outbound", "pos": 0, "sid": "GONE", "name": ""}], NOW)  # type: ignore[arg-type]
+
+
+# --- the wrong-route guard -----------------------------------------------------------------------------
+
+LONDON = Box(-0.4, 51.2, -0.1, 51.5)  # where the buses are
+STOPS_AT = {"0100A": (51.37, -0.25), "0100B": (51.38, -0.24), "0100C": (51.39, -0.23), "0100D": (51.40, -0.22)}
+
+
+def _patch_bods(monkeypatch: pytest.MonkeyPatch, nocs: list[str], datasets: dict[str, list[str]]) -> list[tuple[str, str]]:
+    asked: list[tuple[str, str]] = []
+
+    async def operators(key: str, line: str, box: Box) -> list[str]:
+        return nocs
+
+    async def find(key: str, noc: str | None = None, search: str | None = None, **k: object) -> list[dict[str, str]]:
+        asked.append(("noc" if noc else "search", noc or search or ""))
+        return [{"url": u, "name": u} for u in datasets.get(noc or "", [])]
+
+    async def download(url: str) -> list[bytes]:
+        return [TXC]
+
+    monkeypatch.setattr(bods_source, "operators_of_line", operators)
+    monkeypatch.setattr(bods_source, "find_datasets", find)
+    monkeypatch.setattr(bods_source, "download_txc", download)
+    return asked
+
+
+async def test_a_line_number_alone_is_never_searched_for(monkeypatch: pytest.MonkeyPatch) -> None:
+    """TfL's bus companies publish no timetable files; the old code then searched the number across Britain."""
+    asked = _patch_bods(monkeypatch, ["TFLO"], {})
+    with pytest.raises(BodsError, match="no timetable files for TFLO"):
+        await bods_source.load_route("k", "X26", None, LONDON)
+    assert asked == [("noc", "TFLO")]  # and no search call
+
+
+async def test_without_an_operator_or_a_place_it_says_what_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_bods(monkeypatch, [], {})
+    with pytest.raises(BodsError, match="give its operator or a place"):
+        await bods_source.load_route("k", "X26")
+
+
+async def test_a_timetable_for_a_route_elsewhere_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_bods(monkeypatch, ["ABCD"], {"ABCD": ["u"]})
+
+    def coords_at(where: dict[str, tuple[float, float]]):  # type: ignore[no-untyped-def]
+        async def coords(sids: list[str]) -> dict[str, tuple[float, float]]:
+            return {s: where[s] for s in sids if s in where}
+        return coords
+
+    here = bods_source.near_check(coords_at(STOPS_AT), LONDON)
+    route, noc = await bods_source.load_route("k", "X26", None, LONDON, here)
+    assert noc == "ABCD" and route.line == "X26"
+
+    manchester = {s: (53.48, -2.24) for s in STOPS_AT}  # the same line number, a different town
+    with pytest.raises(BodsError, match="no timetable for line"):
+        await bods_source.load_route("k", "X26", None, LONDON, bods_source.near_check(coords_at(manchester), LONDON))
+
+
+async def test_with_no_stop_placed_the_check_has_nothing_to_judge_by(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def none(sids: list[str]) -> dict[str, tuple[float, float]]:
+        return {}
+
+    route = parse_txc(TXC, "X26")
+    assert route and await bods_source.near_check(none, LONDON)(route) is True

@@ -4,6 +4,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-10-23
+
+### Fixed
+- **BODS no longer picks the wrong route.** With no timetable files for an operator (TfL's bus companies publish none), it used to search the line number across Britain and take the first match, which was a different route 213. It now uses only the operator's own files, says plainly when there are none, and rejects a timetable whose stops are not near the buses it is following. London lines keep using TfL.
+- **`boundaryline.sync --list` and `usrn.sync --list` crashed without `--file`.** They now download the file to look inside it.
+
 ## [0.16.0] - 2026-10-23
 
 ### Added

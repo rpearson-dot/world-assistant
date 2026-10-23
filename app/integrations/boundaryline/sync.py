@@ -213,13 +213,13 @@ async def _cli(args: argparse.Namespace) -> int:
     kinds = wanted_kinds(args.kinds or settings.boundary_kinds)
     try:
         if args.list:
-            path = Path(args.file)
-            if path.suffix.lower() == ".zip":
-                with tempfile.TemporaryDirectory(prefix="boundary-") as tmp:
-                    for row in describe(osgpkg.unpack(path, Path(tmp))):
-                        print(row)
-            else:
-                for row in describe(path):
+            with tempfile.TemporaryDirectory(prefix="boundary-") as tmp:
+                path = Path(args.file) if args.file else Path(tmp) / "boundary-line.zip"
+                if not args.file:
+                    print("Downloading the Boundary-Line file to look inside it (large; use --file to reuse one)...")
+                    await download(settings.boundary_url, path)
+                gpkg = osgpkg.unpack(path, Path(tmp)) if zipfile.is_zipfile(path) else path
+                for row in describe(gpkg):
                     print(row)
             return 0
         engine = create_async_engine(settings.database_url, pool_pre_ping=True)

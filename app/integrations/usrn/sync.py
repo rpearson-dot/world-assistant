@@ -129,12 +129,13 @@ async def _cli(args: argparse.Namespace) -> int:
     settings = get_settings()
     try:
         if args.list:
-            path = Path(args.file)
-            if path.suffix.lower() == ".zip":
-                with tempfile.TemporaryDirectory(prefix="usrn-") as tmp:
-                    print(describe(osgpkg.unpack(path, Path(tmp))))
-            else:
-                print(describe(path))
+            with tempfile.TemporaryDirectory(prefix="usrn-") as tmp:
+                path = Path(args.file) if args.file else Path(tmp) / "usrn.zip"
+                if not args.file:
+                    print("Downloading the Open USRN file to look inside it (large; use --file to reuse one)...")
+                    await download(settings.usrn_url, path)
+                gpkg = osgpkg.unpack(path, Path(tmp)) if zipfile.is_zipfile(path) else path
+                print(describe(gpkg))
             return 0
         engine = create_async_engine(settings.database_url, pool_pre_ping=True)
         try:
