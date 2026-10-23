@@ -243,3 +243,11 @@ async def prune_positions(conn: AsyncConnection, days: int) -> None:
     await conn.execute(
         text("DELETE FROM bus_position WHERE recorded_at < now() - make_interval(days => :d)"), {"d": days}
     )
+
+
+async def stop_coords(conn: AsyncConnection, sids: list[str]) -> dict[str, tuple[float, float]]:
+    """(lat, lon) of each stop that the national stop register (NaPTAN) knows."""
+    if not sids:
+        return {}
+    rows = await conn.execute(text("SELECT atco, lat, lon FROM naptan_stop WHERE atco = ANY(:s)"), {"s": sids})
+    return {r[0]: (float(r[1]), float(r[2])) for r in rows}

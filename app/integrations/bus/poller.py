@@ -12,7 +12,9 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from app.config import get_settings
-from app.integrations.bus import live, store
+from app.integrations.bods.client import BodsError, Box, fetch_vehicles
+from app.integrations.bus import bods_source, live, store
+from app.integrations.bus.bods_source import BodsLineClient
 from app.integrations.bus.config import TrackerConfig
 from app.integrations.bus.events import (
     assign_slots,
@@ -163,7 +165,7 @@ def build_snapshot(
 
 
 async def _sequences(
-    conn: AsyncConnection, client: TflClient, tid: str, cfg: TrackerConfig
+    conn: AsyncConnection, client: Any, tid: str, cfg: TrackerConfig
 ) -> list[dict[str, Any]]:
     rows = await store.load_sequences(conn, tid)
     if rows:
@@ -177,7 +179,7 @@ async def _sequences(
 
 
 async def _slots(
-    conn: AsyncConnection, client: TflClient, tid: str, cfg: TrackerConfig
+    conn: AsyncConnection, client: Any, tid: str, cfg: TrackerConfig
 ) -> list[str]:
     if not cfg.target:
         return []
@@ -186,7 +188,7 @@ async def _slots(
     if times is None:
         try:
             times = await client.timetable_times(cfg.line, board, cfg.target.direction)
-        except TflError as exc:
+        except (TflError, BodsError) as exc:
             log.warning("timetable fetch failed: %s", exc)
             return []
         await store.save_timetable(conn, tid, board, times)
@@ -218,9 +220,29 @@ async def _live_fixes(
         return []
 
 
+async def _bods_arrivals(
+    engine: AsyncEngine, cfg: TrackerConfig, rows: list[dict[str, Any]], now: float
+) -> list[dict[str, Any]]:
+    """Predictions for a BODS-sourced line: the buses' GPS positions placed along the route's stops."""
+    key = get_settings().bods_api_key
+    async with engine.connect() as conn:
+        coords = await store.stop_coords(conn, [r["sid"] for r in rows])
+    routes: dict[str, list[bods_source.Stop]] = {}
+    for r in sorted(rows, key=lambda x: (x["direction"], x["pos"])):
+        if r["sid"] in coords:
+            routes.setdefault(r["direction"], []).append(bods_source.Stop(r["sid"], r["name"] or "", *coords[r["sid"]]))
+    pts = [(s.lat, s.lon) for stops in routes.values() for s in stops]
+    if not pts:
+        raise BodsError("the national stop register has none of this route's stops (has NaPTAN loaded yet?)")
+    margin = 0.01
+    box = Box(min(p[1] for p in pts) - margin, min(p[0] for p in pts) - margin,
+              max(p[1] for p in pts) + margin, max(p[0] for p in pts) + margin)  # fmt: skip
+    return bods_source.arrivals(await fetch_vehicles(key, box), routes, cfg.line, now)
+
+
 async def poll_one(
     engine: AsyncEngine,
-    client: TflClient,
+    client: Any,
     row: dict[str, Any],
     now: float,
     publisher: Publisher | None = None,
@@ -232,14 +254,15 @@ async def poll_one(
     if not in_window(cfg, local):
         return "outside window"
     async with engine.begin() as conn:
-        lookup = Lookup(await _sequences(conn, client, tid, cfg))
+        seq_rows = await _sequences(conn, client, tid, cfg)
+        lookup = Lookup(seq_rows)
         slots = await _slots(conn, client, tid, cfg)
         await store.ensure_day(conn, tid, local.date(), slots)
         current = await store.get_tracker(conn, tid)
     state = (current or row).get("state") or new_state()
-    preds = await client.line_arrivals(cfg.line)
+    preds = await (_bods_arrivals(engine, cfg, seq_rows, now) if cfg.source == "bods" else client.line_arrivals(cfg.line))
     out = process_poll(cfg, state, preds, lookup, now, local.date(), tz, slots)
-    fixes = await _live_fixes(engine, cfg, state, preds, lookup, local)
+    fixes = [] if cfg.source == "bods" else await _live_fixes(engine, cfg, state, preds, lookup, local)
     live.attach(out["anomalies"], {v["vehicle"]: v for v in fixes}, lookup.towards)
     async with engine.begin() as conn:
         if fixes:
@@ -290,10 +313,12 @@ async def poll_bus(ctx: dict[str, Any]) -> str:
         async with TflClient(key, limiter=limiter) as client:
             for row in due:
                 try:
+                    conf = row["config"]
+                    src = BodsLineClient(settings.bods_api_key, conf.get("operator")) if conf.get("source") == "bods" else client
                     results.append(
-                        f"{row['id']}: {await poll_one(engine, client, row, now)}"
+                        f"{row['id']}: {await poll_one(engine, src, row, now)}"
                     )
-                except (TflError, RateLimitExceeded) as exc:
+                except (TflError, BodsError, RateLimitExceeded) as exc:
                     log.warning("bus poll %s failed: %s", row["id"], exc)
                     results.append(f"{row['id']}: {type(exc).__name__}")
         return "; ".join(results)

@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- **Bus tracker for any route in Britain.** Type any route number on the Bus page. London lines still use TfL (stops, timetable, live predictions). Any other line uses the Bus Open Data Service: the operator's timetable file gives the stops and weekday times, and each bus's GPS position, placed along the route, gives the countdown (an estimate: distance at a typical bus speed, no traffic). Needs the `bods_api_key`. Tracker names default to the route number, so a second route no longer replaces the first. `GET /v1/bus/lines/{line}/stops` reports `_source` and `_operator`; a tracker config gains `source` and `operator`. A probe shows what BODS sends for a line: `python -m app.integrations.bus.bods_probe 213` ([docs/bus.md](docs/bus.md)). Not yet run against the live service.
+
 ## [0.15.0] - 2026-10-22
 
 ### Added
