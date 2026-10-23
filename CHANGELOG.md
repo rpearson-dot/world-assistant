@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-23
+
 ### Added
 - **Vehicles tab** (`/vehicles`), moved out of Places: each vehicle runs on **Petrol, Diesel, LPG or Electric**, with its grade (unleaded E10 or super E5; diesel B7, premium, B10 or HVO), and can be edited in place.
 - **The Fuel tab offers only your vehicles' fuels**, each named with the vehicles that use it; tick **All fuels** for the rest (remembered). With no vehicles saved, every fuel is offered.
