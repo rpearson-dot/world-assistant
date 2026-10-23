@@ -4,6 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-10-23
+
+### Fixed
+- **`scripts/deploy.sh` creates any missing secret files before starting.** Upgrading to 0.17.0 failed with "bind source path does not exist: …/tfwm_app_id.txt" until `scripts/init-secrets.sh` was run by hand. Existing files are never changed.
+
 ## [0.17.0] - 2026-10-23
 
 ### Added

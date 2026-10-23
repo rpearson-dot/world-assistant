@@ -58,6 +58,10 @@ else
   echo "The api is not running, so there is nothing to back up yet."
 fi
 
+# A release can add a secret file that compose mounts. Create any that are missing (empty; existing files
+# are never touched) so the start cannot fail with "bind source path does not exist".
+bash scripts/init-secrets.sh >/dev/null || echo "Could not check the secret files; if the start fails on a missing file, run: bash scripts/init-secrets.sh"
+
 if [ -n "${WA_IMAGE:-}" ]; then
   docker compose pull
   docker compose up -d --no-build
