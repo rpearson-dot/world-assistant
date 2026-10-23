@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- **Bus disruptions module (BODS, optional, off by default)**: every 10 minutes, the bus, tram and ferry disruptions local authorities publish to BODS (SIRI-SX) that are current and within 25 km of a saved place, at `GET /v1/bus-disruptions`. Only some authorities publish (Greater Manchester, West of England, South and West Yorkshire, Merseyside, Cornwall, Devon, Hampshire and a few more; not London or the Midlands), so it is suggested on the Modules page only there and needs `WA_BUS_DISRUPTIONS_POLL_ENABLED=true`. Open-ended ones older than 90 days are dropped as left over. Migration 0030. [docs/bus-disruptions.md](docs/bus-disruptions.md).
+
 ## [0.18.0] - 2026-10-23
 
 ### Added
