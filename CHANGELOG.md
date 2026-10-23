@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.17.3] - 2026-10-23
+
 ### Added
 - **BODS disruptions probe**: `python -m app.integrations.bods.disruptions_probe [lat lon] [km]` reads the bus, tram and ferry disruptions local authorities publish to BODS (SIRI-SX, same `bods_api_key`), lists who publishes, and shows the ones within 25 km of home (by the stops and places they name). Nothing is stored yet: the probe shows whether coverage is worth a module.
 
