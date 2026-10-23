@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- **BODS disruptions probe**: `python -m app.integrations.bods.disruptions_probe [lat lon] [km]` reads the bus, tram and ferry disruptions local authorities publish to BODS (SIRI-SX, same `bods_api_key`), lists who publishes, and shows the ones within 25 km of home (by the stops and places they name). Nothing is stored yet: the probe shows whether coverage is worth a module.
+
 ### Fixed
 - **`WA_TFWM_BASE_URL`, `WA_EXTRA_MODULES`, `WA_HA_PUBLISH` and `WA_HA_INTERVAL_MIN` set in `.env` now take effect.** Compose did not pass them into the containers. A test now checks that every setting in `.env.example` is passed.
 - **TfWM connection errors say what went wrong.** `https://api.tfwm.org.uk` presents ITO World's `*.itoworld.com` certificate, so HTTPS fails; the error now says so and how to use plain HTTP instead (`WA_TFWM_BASE_URL=http://api.tfwm.org.uk`, which sends the key unencrypted).
