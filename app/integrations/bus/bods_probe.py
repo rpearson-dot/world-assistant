@@ -49,10 +49,16 @@ async def main(line: str, lat: float | None, lon: float | None) -> int:
             print("  ", {k: v.get(k) for k in ("vehicle", "operator", "destination", "direction", "bearing", "recorded_at")})
         nocs = await operators_of_line(s.bods_api_key, line, box)
         print("operators:", nocs or "none seen (no bus running now?)")
-        for n in nocs[:2] or [None]:
-            sets = await find_datasets(s.bods_api_key, noc=n) if n else await find_datasets(s.bods_api_key, search=line)
-            print(f"timetable datasets for {n or 'the search'}: {len(sets)}", [d['name'][:40] for d in sets[:4]])
-        route, noc = await bods_source.load_route(s.bods_api_key, line, nocs[0] if nocs else None, box)
+        for n in nocs[:2]:
+            sets = await find_datasets(s.bods_api_key, noc=n)
+            print(f"timetable datasets for {n}: {len(sets)}", [d['name'][:40] for d in sets[:4]])
+
+        async def coords_of(sids: list[str]) -> dict[str, tuple[float, float]]:
+            async with engine.connect() as c:
+                return await store.stop_coords(c, sids)
+
+        route, noc = await bods_source.load_route(s.bods_api_key, line, nocs[0] if nocs else None, box,
+                                                  bods_source.near_check(coords_of, box))
         seq = route.sequences()
         for d, stops in seq.items():
             print(f"{d}: {len(stops)} stops", (stops[0]["name"], "...", stops[-1]["name"]) if stops else "")

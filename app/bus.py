@@ -17,7 +17,7 @@ from app.config import get_settings
 from app.integrations.bods.client import BodsError, Box, box_around
 from app.integrations.bods.txc import TxcError
 from app.integrations.bus import store
-from app.integrations.bus.bods_source import BodsLineClient
+from app.integrations.bus.bods_source import BodsLineClient, near_check
 from app.integrations.bus.config import TrackerConfig
 from app.integrations.bus.events import (
     condition_summary,
@@ -90,7 +90,13 @@ async def _sequences(
     key = get_settings().bods_api_key
     if not key:
         raise HTTPException(404, f"{tfl_problem or 'Not a TfL line'}. For lines outside London add a free BODS key under Settings > Keys.")
-    client = BodsLineClient(key, operator, await _home_box(request, place, lat, lon))
+    box = await _home_box(request, place, lat, lon)
+
+    async def coords_of(sids: list[str]) -> dict[str, tuple[float, float]]:
+        async with request.app.state.engine.connect() as conn:
+            return await store.stop_coords(conn, sids)
+
+    client = BodsLineClient(key, operator, box, near_check(coords_of, box) if box else None)
     try:
         seqs = {d: await client.route_sequence(line, d) for d in ("outbound", "inbound")}
     except (BodsError, TxcError) as exc:

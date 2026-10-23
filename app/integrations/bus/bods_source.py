@@ -15,6 +15,7 @@ shape BODS documents.
 from __future__ import annotations
 
 import math
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
@@ -141,15 +142,45 @@ def arrivals(
     return out
 
 
-async def load_route(api_key: str, line: str, noc: str | None = None, box: Box | None = None) -> tuple[Route, str | None]:
-    """Find the line's timetable on BODS: through its operator (given, or read from the buses near `box`),
-    or by searching for the line number. Returns the route and the operator code that had it."""
+RouteCheck = Callable[[Route], Awaitable[bool]]
+
+
+def near_check(coords_of: Callable[[list[str]], Awaitable[dict[str, tuple[float, float]]]], box: Box, margin_km: float = 10.0) -> RouteCheck:
+    """A check that a timetable is for the route the buses are on: most of its stops that NaPTAN can place must
+    lie in `box` (grown by `margin_km`). Line numbers repeat across Britain, so a name match alone proves nothing.
+    With no stop placed at all there is nothing to judge by, so it passes."""
+    pad_lat = margin_km / 111.0
+    pad_lon = margin_km / (111.0 * max(math.cos(math.radians((box.min_lat + box.max_lat) / 2)), 0.1))
+
+    async def check(route: Route) -> bool:
+        sids = sorted({x["id"] for stops in route.sequences().values() for x in stops})
+        placed = await coords_of(sids)
+        if not placed:
+            return True
+        inside = sum(1 for lat, lon in placed.values()
+                     if box.min_lat - pad_lat <= lat <= box.max_lat + pad_lat
+                     and box.min_lon - pad_lon <= lon <= box.max_lon + pad_lon)  # fmt: skip
+        return inside * 2 >= len(placed)
+
+    return check
+
+
+async def load_route(
+    api_key: str, line: str, noc: str | None = None, box: Box | None = None, check: RouteCheck | None = None
+) -> tuple[Route, str | None]:
+    """Find the line's timetable on BODS through its operator (given, or read from the buses near `box`).
+
+    There is deliberately no search by line number alone: the same number is a different route in every town, and
+    the first match is usually the wrong one. `check` (see `near_check`) rejects a timetable whose stops are
+    not where the buses are. Returns the route and the operator code that had it."""
     nocs = [noc] if noc else (await operators_of_line(api_key, line, box) if box else [])
-    tried: list[tuple[str | None, dict[str, Any]]] = []
+    if not nocs:
+        raise BodsError(f"BODS has no operator for line {line!r}" + (" near there: no bus is running it now" if box else ": give its operator or a place"))
+    tried: list[tuple[str, dict[str, Any]]] = []
     for n in nocs:
         tried += [(n, d) for d in await find_datasets(api_key, noc=n)]
     if not tried:
-        tried = [(None, d) for d in await find_datasets(api_key, search=line)]
+        raise BodsError(f"BODS has no timetable files for {', '.join(nocs)} (some operators, such as TfL's bus companies, do not publish them)")
     for n, ds in tried[:MAX_DATASETS]:
         try:
             bodies = await download_txc(ds["url"])
@@ -160,7 +191,7 @@ async def load_route(api_key: str, line: str, noc: str | None = None, box: Box |
                 route = parse_txc(body, line)
             except TxcError:
                 continue
-            if route is not None:
+            if route is not None and (check is None or await check(route)):
                 return route, n
     raise BodsError(f"BODS has no timetable for line {line!r}" + (" near there" if box else ""))
 
@@ -168,13 +199,13 @@ async def load_route(api_key: str, line: str, noc: str | None = None, box: Box |
 class BodsLineClient:
     """The two calls the tracker makes of a timetable source (the stop order, the times at a stop), from BODS."""
 
-    def __init__(self, api_key: str, noc: str | None = None, box: Box | None = None) -> None:
-        self._key, self.noc, self._box = api_key, noc, box
+    def __init__(self, api_key: str, noc: str | None = None, box: Box | None = None, check: RouteCheck | None = None) -> None:
+        self._key, self.noc, self._box, self._check = api_key, noc, box, check
         self._route: dict[str, Route] = {}
 
     async def route(self, line: str) -> Route:
         if line not in self._route:
-            self._route[line], found = await load_route(self._key, line, self.noc, self._box)
+            self._route[line], found = await load_route(self._key, line, self.noc, self._box, self._check)
             self.noc = self.noc or found
         return self._route[line]
 
