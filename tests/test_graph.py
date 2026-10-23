@@ -73,6 +73,18 @@ ROWS: dict[str, Any] = {
                    {"id": "w2", "name": "Elsewhere", "level": 3, "severity": "Flood Alert"}],
     "flood_covers": [("w1", "home"), ("w1", "ghost-place")],
     "flood_crosses": [("w1", "a3")],
+    "disruption_rows": [{"id": "d1", "category": "Works", "severity": "Moderate", "scope": "planned",
+                         "status": "Active", "location": "High Road, New Malden", "has_closures": False}],
+    "disruption_corridors": [("d1", "a3"), ("ghost", "a3")],
+    "local_event_rows": [{"id": "skiddle:1", "source": "skiddle", "name": "Gig", "day": "2026-11-01",
+                          "type": "LIVE", "venue": "Hall", "town": "Kingston", "lat": NEAR[0], "lon": NEAR[1]}],
+    "area_rows": [{"id": "district:K", "kind": "district", "name": "Kingston", "code": "E1"},
+                  {"id": "county:L", "kind": "county", "name": "Greater London", "code": "E2"},
+                  {"id": "region:SE", "kind": "region", "name": "South East", "code": "E3"},
+                  {"id": "district:Empty", "kind": "district", "name": "Nobody lives here", "code": "E4"}],
+    "inside_pairs": [("Place", "home", "district:K"), ("Disruption", "d1", "district:K"),
+                     ("LocalEvent", "skiddle:1", "district:K"), ("Place", "ghost", "district:K")],
+    "area_parents": [("district:K", "county:L"), ("county:L", "region:SE"), ("district:Empty", "county:L")],
 }
 
 
@@ -111,6 +123,25 @@ def test_a_flood_warning_covers_the_places_and_crosses_the_corridors_postgis_fou
     assert crosses == {("w1", "a3")}
 
 
+def test_areas_keep_only_what_something_is_in_and_the_areas_above_those() -> None:
+    g = built()
+    assert sorted(n.id for n in g.nodes if n.label == "Area") == ["county:L", "district:K", "region:SE"]
+    ins = {(r.start, r.end[1]) for r in g.rels if r.type == "IN"}
+    assert (("Place", "home"), "district:K") in ins
+    assert (("Disruption", "d1"), "district:K") in ins and (("LocalEvent", "skiddle:1"), "district:K") in ins
+    assert (("Area", "district:K"), "county:L") in ins and (("Area", "county:L"), "region:SE") in ins
+    assert not any(a == "district:Empty" for _, a in ins)
+    assert not any(s == ("Place", "ghost") for s, _ in ins)
+
+
+def test_disruptions_and_events_become_nodes() -> None:
+    g = built()
+    assert [n.id for n in g.nodes if n.label == "Disruption"] == ["d1"]
+    assert [n.props["name"] for n in g.nodes if n.label == "LocalEvent"] == ["Gig"]
+    affects = {(r.start[1], r.end[1]) for r in g.rels if r.type == "AFFECTS"}
+    assert ("d1", "a3") in affects and ("ghost", "a3") not in affects
+
+
 def test_trips_join_their_places_and_corridor() -> None:
     rels = {(r.type, r.start[1], r.end[1]) for r in built().rels}
     assert ("FROM", "commute", "home") in rels
@@ -120,7 +151,7 @@ def test_trips_join_their_places_and_corridor() -> None:
 
 
 def test_a_closure_reaches_the_corridor_it_sits_on() -> None:
-    rels = [r for r in built().rels if r.type == "AFFECTS"]
+    rels = [r for r in built().rels if r.type == "AFFECTS" and r.start[0] == "RoadEvent"]
     assert [(r.start[1], r.end[1]) for r in rels] == [("e1", "a3")]  # the ghost event is dropped
 
 
@@ -277,8 +308,8 @@ URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
 GEO_MIGRATIONS = ["0003_nh_storage", "0006_places_trips", "0007_fuel", "0009_vehicle",
                   "0011_bus_tracking", "0016_ha_location", "0017_ha_origin", "0018_geography",
-                  "0020_naptan", "0021_flood"]  # fmt: skip
-GEO_TABLES = ["flood_warning", "flood_area", "naptan_stop", "bus_timetable", "bus_target_hit", "bus_target_day", "bus_anomaly", "bus_segment_obs",
+                  "0020_naptan", "0021_flood", "0025_tfl_road", "0027_boundary_usrn", "0028_local_event"]  # fmt: skip
+GEO_TABLES = ["local_event", "usrn", "boundary", "tfl_road_disruption", "flood_warning", "flood_area", "naptan_stop", "bus_timetable", "bus_target_hit", "bus_target_day", "bus_anomaly", "bus_segment_obs",
               "bus_stop", "bus_tracker", "vehicle", "fuel_price_change", "fuel_price", "fuel_station",
               "ha_location", "trip", "place", "nh_sign_message", "nh_sign", "nh_event_corridor",
               "nh_event", "nh_corridor"]  # fmt: skip
@@ -326,6 +357,19 @@ def geo_schema() -> Iterator[None]:
         conn.execute(sa.text("INSERT INTO flood_area (notation, label, geom) VALUES "
                              "('wide', 'Wide area', ST_GeogFromText(:wkt)), ('gone', 'Ended', ST_GeogFromText(:wkt))"),
                      {"wkt": "POLYGON((0 51.4, -1.95 51.4, -1.95 52.6, 0 52.6, 0 51.4))"})
+        # a district inside a county, both round home; a disruption and a (future) event at the near point
+        for bid, kind, ring in (("district:K", "district", "-0.2 51.4, -0.1 51.4, -0.1 51.6, -0.2 51.6, -0.2 51.4"),
+                                ("county:L", "county", "-0.5 51.2, 0.3 51.2, 0.3 51.8, -0.5 51.8, -0.5 51.2")):
+            conn.execute(sa.text("INSERT INTO boundary (id, kind, name, seen, geom) VALUES "
+                                 "(:i, :k, :i, now(), ST_Multi(ST_GeomFromText(:w, 4326)))"),
+                         {"i": bid, "k": kind, "w": f"POLYGON(({ring}))"})
+        conn.execute(sa.text("INSERT INTO tfl_road_disruption (id, scope, seen, geom) VALUES "
+                             "('d1', 'planned', now(), ST_SetSRID(ST_MakePoint(:lo, :la), 4326)::geography)"),
+                     {"la": NEAR[0], "lo": NEAR[1]})
+        conn.execute(sa.text("INSERT INTO local_event (id, source, name, day, lat, lon, seen) VALUES "
+                             "('skiddle:1', 'skiddle', 'Gig', CURRENT_DATE + 3, :la, :lo, now()), "
+                             "('skiddle:old', 'skiddle', 'Past', CURRENT_DATE - 3, :la, :lo, now())"),
+                     {"la": NEAR[0], "lo": NEAR[1]})
         conn.execute(sa.text("INSERT INTO flood_warning (id, area, severity_level, severity, seen) VALUES "
                              "('wide', 'wide', 2, 'Flood Warning', now()), ('gone', 'gone', 4, 'Gone', now())"))
     yield
@@ -374,6 +418,15 @@ async def test_postgis_finds_what_is_near_and_what_is_on_the_way(geo_schema: Non
         assert [r["id"] for r in rows["flood_rows"]] == ["wide"]  # the ended warning is not live
         assert ("wide", "home") in rows["flood_covers"] and ("wide", "brum") in rows["flood_covers"]
         assert rows["flood_crosses"] == [("wide", "a3")]
+
+        assert [r["id"] for r in rows["disruption_rows"]] == ["d1"]
+        assert [r["id"] for r in rows["local_event_rows"]] == ["skiddle:1"]  # the past one is gone
+        assert ("LocalEvent", "skiddle:1", "home") in near and ("Disruption", "d1", "home") in near
+        inside = {(label, thing, area) for label, thing, area in rows["inside_pairs"]}
+        assert ("Place", "home", "district:K") in inside and ("Place", "home", "county:L") in inside
+        assert ("Place", "brum", "district:K") not in inside
+        assert ("district:K", "county:L") in rows["area_parents"]
+        assert ("d1", "a3") in rows["disruption_corridors"]
 
         along = {(s, c) for s, c, _ in rows["along_pairs"]}
         assert ("f1", "a3") in along and ("f2", "a3") in along  # the corridor runs to Birmingham

@@ -11,6 +11,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ### Added
 - **Council and region boundaries (OS Boundary-Line)**: regions, counties and districts or boroughs, loaded on first start, simplified so they stay small, and reloaded twice a year. `WA_BOUNDARY_KINDS` adds wards, parishes and constituencies. Shown on the Setup list ([docs/boundaries.md](docs/boundaries.md)). Migration 0027.
 - **Street numbers (OS Open USRN)**: every street's USRN and line, the number roadworks are reported against. A million and more streets, so off unless `WA_USRN_POLL_ENABLED=true`.
+- **Knowledge graph: areas, road disruptions and what's on**: `Area` nodes (the regions, counties and districts your places, stops, events and disruptions sit in, with `IN` links up the hierarchy; only areas something is in), `Disruption` nodes (live TfL road works and incidents, `AFFECTS` the corridors they lie along, `NEAR` places) and `LocalEvent` nodes (Skiddle and Ticketmaster, `NEAR` and `IN`). New ready-made questions for each.
+- **What's on is now stored** (`local_event`, migration 0028): every six hours the next two weeks around your saved places are copied from Skiddle and Ticketmaster (`WA_EVENTS_SYNC_*`), so the graph can relate them. Does nothing without a key.
+- **Graph page > Customise the view**: choose which kinds of thing and which links are shown, pick each kind's colour, size nodes by how connected they are, show names always, when zoomed in or never, hide link names, and set node size and spread. Remembered in the browser; Reset puts it back.
 - Both read an OS GeoPackage with no new dependency, and `--list` shows what a download holds. Not yet run against the live OS downloads.
 
 ## [0.15.0] - 2026-10-22

@@ -23,6 +23,11 @@ PAGE = """<!doctype html>
   .legend span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--dim); }
   .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
   #detail table td { font-size: 13px; vertical-align: top; word-break: break-word; } #detail table td:first-child { color: var(--dim); white-space: nowrap; }
+  .view { display: grid; gap: 10px; margin-top: 8px; }
+  .view .grp { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+  .view label { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; }
+  .view input[type=color] { width: 22px; height: 22px; padding: 0; border: 0; background: none; }
+  .view .k { font-size: 12px; color: var(--dim); min-width: 78px; }
   .found { display: grid; gap: 4px; margin-top: 6px; } .found button { text-align: left; }
   @media (max-width: 760px) { .stage { grid-template-columns: 1fr; } .canvaswrap { height: 58vh; } }
 </style></head><body><main>
@@ -49,6 +54,19 @@ PAGE = """<!doctype html>
     <div class="legend" id="legend"></div></div>
   <div class="card" id="detail"><h2>Details</h2><p class="dim">Tap a node to see what it is.</p></div>
 </div>
+<details class="card" style="margin-top:12px"><summary>Customise the view</summary>
+  <div class="view">
+    <div><div class="k">Show these things</div><div class="grp" id="vLabels"></div></div>
+    <div><div class="k">Show these links</div><div class="grp" id="vTypes"></div></div>
+    <div class="grp"><span class="k">Size nodes by</span>
+      <select id="vSize"><option value="fixed">All the same</option><option value="degree">How connected they are</option></select>
+      <span class="k">Names</span>
+      <select id="vNames"><option value="zoom">When zoomed in</option><option value="always">Always</option><option value="never">Never</option></select>
+      <label><input type="checkbox" id="vEdgeNames" checked> Link names</label></div>
+    <div class="grp"><span class="k">Node size</span><input type="range" id="vScale" min="0.5" max="2" step="0.1" value="1">
+      <span class="k">Spread</span><input type="range" id="vSpread" min="0.5" max="2.5" step="0.1" value="1"></div>
+    <div class="grp"><button id="vReset" type="button">Reset the view</button><span class="dim">Saved in this browser.</span></div>
+  </div></details>
 <details class="card" style="margin-top:12px"><summary>Ask with Cypher</summary>
   <p class="dim">Read-only: anything that would change the graph is refused. Return nodes, relationships or paths to see them drawn,
   or values to see a table. Labels: <span id="labels"></span>.</p>
@@ -68,8 +86,15 @@ async function api(path, opts) {
   return d;
 }
 const COLORS = { Place: '#1a7f4b', Trip: '#1f6feb', Corridor: '#7c3aed', RoadEvent: '#d92d20', Station: '#dc6803', Location: '#0e9384',
-  Vehicle: '#667085', BusTracker: '#4f46e5', BusStop: '#ca8a04', FloodWarning: '#0891b2' };
-const color = l => COLORS[l] || '#98a2b3';
+  Vehicle: '#667085', BusTracker: '#4f46e5', BusStop: '#ca8a04', FloodWarning: '#0891b2',
+  Area: '#b54708', Disruption: '#c11574', LocalEvent: '#2e90fa' };
+const DEFAULT_VIEW = { hiddenLabels: [], hiddenTypes: [], colors: {}, size: 'fixed', names: 'zoom', edgeNames: true, scale: 1, spread: 1 };
+let V = Object.assign({}, DEFAULT_VIEW);
+try { Object.assign(V, JSON.parse(localStorage.getItem('wa_graph_view') || '{}')); } catch (e) {}
+function saveView() { try { localStorage.setItem('wa_graph_view', JSON.stringify(V)); } catch (e) {} }
+const color = l => V.colors[l] || COLORS[l] || '#98a2b3';
+const shown = n => !V.hiddenLabels.includes(n.label);
+const linkShown = e => !V.hiddenTypes.includes(e.type);
 
 // --- the graph and its layout --------------------------------------------------------------------------
 const cv = $('cv'), ctx = cv.getContext('2d');
@@ -84,19 +109,23 @@ function merge(g, around) {
       nodes.set(n.key, Object.assign({ x: c.x + Math.cos(a) * d, y: c.y + Math.sin(a) * d, vx: 0, vy: 0 }, n)); }
   }
   for (const e of g.edges) if (nodes.has(e.from) && nodes.has(e.to)) edges.set(e.key, e);
-  alpha = 1; legend(); loop();
+  degrees(); alpha = 1; legend(); loop();
+}
+function degrees() {
+  for (const n of nodes.values()) n.deg = 0;
+  for (const e of edges.values()) { const a = nodes.get(e.from), b = nodes.get(e.to); if (a && b) { a.deg++; b.deg++; } }
 }
 function tick() {
-  const list = [...nodes.values()], k = alpha;
+  const list = [...nodes.values()].filter(shown), k = alpha, sp = V.spread;
   for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
     const a = list[i], b = list[j]; let dx = b.x - a.x, dy = b.y - a.y, d2 = dx * dx + dy * dy || 0.01;
-    if (d2 > 160000) continue;
-    const f = 1800 / d2 * k, d = Math.sqrt(d2); dx /= d; dy /= d;
+    if (d2 > 160000 * sp) continue;
+    const f = 1800 * sp / d2 * k, d = Math.sqrt(d2); dx /= d; dy /= d;
     a.vx -= dx * f; a.vy -= dy * f; b.vx += dx * f; b.vy += dy * f;
   }
   for (const e of edges.values()) {
-    const a = nodes.get(e.from), b = nodes.get(e.to); if (!a || !b) continue;
-    const dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) || 0.01, f = (d - 90) * 0.04 * k;
+    const a = nodes.get(e.from), b = nodes.get(e.to); if (!a || !b || !shown(a) || !shown(b) || !linkShown(e)) continue;
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) || 0.01, f = (d - 90 * sp) * 0.04 * k;
     a.vx += dx / d * f; a.vy += dy / d * f; b.vx -= dx / d * f; b.vy -= dy / d * f;
   }
   for (const n of list) {
@@ -119,17 +148,19 @@ function draw() {
   ctx.clearRect(0, 0, cv.width, cv.height);
   ctx.lineWidth = 1.2 * dpr; ctx.font = (11 * dpr) + 'px system-ui, sans-serif';
   for (const e of edges.values()) {
-    const a = nodes.get(e.from), b = nodes.get(e.to); if (!a || !b) continue;
+    const a = nodes.get(e.from), b = nodes.get(e.to); if (!a || !b || !shown(a) || !shown(b) || !linkShown(e)) continue;
     const [x1, y1] = toScreen(a.x, a.y), [x2, y2] = toScreen(b.x, b.y);
     const hot = sel && (sel.key === a.key || sel.key === b.key);
     ctx.strokeStyle = hot ? dim : 'rgba(128,128,128,.35)'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-    if (view.k > 0.9 || hot) { ctx.fillStyle = dim; ctx.textAlign = 'center'; ctx.fillText(e.type, (x1 + x2) / 2, (y1 + y2) / 2 - 3 * dpr); }
+    if (V.edgeNames && (view.k > 0.9 || hot)) { ctx.fillStyle = dim; ctx.textAlign = 'center'; ctx.fillText(e.type, (x1 + x2) / 2, (y1 + y2) / 2 - 3 * dpr); }
   }
   for (const n of nodes.values()) {
-    const [x, y] = toScreen(n.x, n.y), r = (n === sel ? 11 : 8) * dpr * Math.max(0.7, Math.min(1.4, view.k));
+    if (!shown(n)) continue;
+    const base = V.size === 'degree' ? 6 + Math.min(14, Math.sqrt(n.deg || 0) * 3) : 8;
+    const [x, y] = toScreen(n.x, n.y), r = (n === sel ? base + 3 : base) * V.scale * dpr * Math.max(0.7, Math.min(1.4, view.k));
     ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fillStyle = color(n.label); ctx.fill();
     if (n === sel) { ctx.lineWidth = 3 * dpr; ctx.strokeStyle = ink; ctx.stroke(); ctx.lineWidth = 1.2 * dpr; }
-    if (view.k > 0.55 || n === sel) {
+    if (n === sel || V.names === 'always' || (V.names === 'zoom' && view.k > 0.55)) {
       ctx.fillStyle = ink; ctx.textAlign = 'left'; const name = String(n.name || '');
       ctx.fillText(name.length > 28 ? name.slice(0, 27) + '...' : name, x + r + 4 * dpr, y + 4 * dpr);
     }
@@ -137,7 +168,7 @@ function draw() {
 }
 function hit(px, py) {
   const [wx, wy] = toWorld(px, py); let best = null, bd = (16 / view.k) ** 2;
-  for (const n of nodes.values()) { const d = (n.x - wx) ** 2 + (n.y - wy) ** 2; if (d < bd) { bd = d; best = n; } }
+  for (const n of nodes.values()) { if (!shown(n)) continue; const d = (n.x - wx) ** 2 + (n.y - wy) ** 2; if (d < bd) { bd = d; best = n; } }
   return best;
 }
 
@@ -202,7 +233,7 @@ function select(n) {
 }
 function remove(n) {
   nodes.delete(n.key); for (const [k, e] of edges) if (e.from === n.key || e.to === n.key) edges.delete(k);
-  select(null); legend();
+  select(null); degrees(); legend();
 }
 async function show(promise, around) {
   $('msg').textContent = '';
@@ -217,10 +248,37 @@ async function expand(n) {
   select(nodes.get(n.key));
 }
 function legend() {
-  const seen = new Set([...nodes.values()].map(n => n.label));
+  const seen = new Set([...nodes.values()].filter(shown).map(n => n.label));
   $('legend').replaceChildren(...[...seen].sort().map(l => { const s = document.createElement('span'); s.innerHTML = '<i></i>';
     s.querySelector('i').style.background = color(l); s.append(l); return s; }));
 }
+// --- the view settings: what is shown, how it looks ---------------------------------------------------
+const TYPES_LIST = ['FROM', 'TO', 'USES', 'AFFECTS', 'ALONG', 'NEAR', 'DRIVES', 'CALLS_AT', 'COVERS', 'CROSSES', 'IN'];
+function toggle(list, v, on) { const i = list.indexOf(v); if (on && i >= 0) list.splice(i, 1); else if (!on && i < 0) list.push(v); }
+function buildView(labels) {
+  $('vLabels').replaceChildren(...labels.map(l => {
+    const w = document.createElement('label'), c = document.createElement('input'), col = document.createElement('input');
+    c.type = 'checkbox'; c.checked = !V.hiddenLabels.includes(l);
+    c.onchange = () => { toggle(V.hiddenLabels, l, c.checked); saveView(); alpha = 0.5; legend(); loop(); };
+    col.type = 'color'; col.value = color(l);
+    col.oninput = () => { V.colors[l] = col.value; saveView(); legend(); draw(); };
+    w.append(c, col, l); return w; }));
+  $('vTypes').replaceChildren(...TYPES_LIST.map(t => {
+    const w = document.createElement('label'), c = document.createElement('input');
+    c.type = 'checkbox'; c.checked = !V.hiddenTypes.includes(t);
+    c.onchange = () => { toggle(V.hiddenTypes, t, c.checked); saveView(); alpha = 0.5; loop(); };
+    w.append(c, t); return w; }));
+  $('vSize').value = V.size; $('vNames').value = V.names; $('vEdgeNames').checked = V.edgeNames;
+  $('vScale').value = V.scale; $('vSpread').value = V.spread;
+}
+$('vSize').onchange = () => { V.size = $('vSize').value; saveView(); draw(); };
+$('vNames').onchange = () => { V.names = $('vNames').value; saveView(); draw(); };
+$('vEdgeNames').onchange = () => { V.edgeNames = $('vEdgeNames').checked; saveView(); draw(); };
+$('vScale').oninput = () => { V.scale = +$('vScale').value; saveView(); draw(); };
+$('vSpread').oninput = () => { V.spread = +$('vSpread').value; saveView(); alpha = 0.6; loop(); };
+$('vReset').onclick = () => { V = Object.assign({}, DEFAULT_VIEW, { hiddenLabels: [], hiddenTypes: [], colors: {} }); saveView(); buildView(knownLabels); legend(); alpha = 0.6; loop(); };
+let knownLabels = Object.keys(COLORS);
+
 let searchTimer = 0;
 $('q').oninput = () => {
   clearTimeout(searchTimer); const q = $('q').value.trim();
@@ -259,9 +317,11 @@ async function load() {
     const p = await api('/v1/graph/presets');
     $('preset').replaceChildren(new Option('Ready-made questions...', ''), ...p.presets.map(x => new Option(x.title, x.id)));
     $('labels').textContent = p.labels.join(', ');
+    knownLabels = p.labels; buildView(knownLabels);
   } catch (e) { $('msg').textContent = e.message; return; }
   show(api('/v1/graph/overview'));
 }
 $('go').onclick = load;
+buildView(knownLabels);
 if (tok.value) load(); else size();
 </script></main></body></html>"""
