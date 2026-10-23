@@ -4,17 +4,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
-### Changed
-- **Bus page, today's buses**: one row for every scheduled bus, split into the start stop (scheduled, actual), the target stop (scheduled, late or early) and **Arrived today?** (arrived at a time, did not arrive, or not yet). The target stop's scheduled time comes from its TfL timetable, matched to each departure in order. `GET /v1/bus/trackers/{id}/target` gains `journeys`, `board_label` and `alight_label`.
+## [0.16.0] - 2026-10-23
+
 ### Added
 - **Bus tracker for any route in Britain.** Type any route number on the Bus page. London lines still use TfL (stops, timetable, live predictions). Any other line uses the Bus Open Data Service: the operator's timetable file gives the stops and weekday times, and each bus's GPS position, placed along the route, gives the countdown (an estimate: distance at a typical bus speed, no traffic). Needs the `bods_api_key`. Tracker names default to the route number, so a second route no longer replaces the first. `GET /v1/bus/lines/{line}/stops` reports `_source` and `_operator`; a tracker config gains `source` and `operator`. A probe shows what BODS sends for a line: `python -m app.integrations.bus.bods_probe 213` ([docs/bus.md](docs/bus.md)). Not yet run against the live service.
-### Added
 - **Council and region boundaries (OS Boundary-Line)**: regions, counties and districts or boroughs, loaded on first start, simplified so they stay small, and reloaded twice a year. `WA_BOUNDARY_KINDS` adds wards, parishes and constituencies. Shown on the Setup list ([docs/boundaries.md](docs/boundaries.md)). Migration 0027.
 - **Street numbers (OS Open USRN)**: every street's USRN and line, the number roadworks are reported against. A million and more streets, so off unless `WA_USRN_POLL_ENABLED=true`.
+- Both read an OS GeoPackage with no new dependency, and `--list` shows what a download holds. Not yet run against the live OS downloads.
 - **Knowledge graph: areas, road disruptions and what's on**: `Area` nodes (the regions, counties and districts your places, stops, events and disruptions sit in, with `IN` links up the hierarchy; only areas something is in), `Disruption` nodes (live TfL road works and incidents, `AFFECTS` the corridors they lie along, `NEAR` places) and `LocalEvent` nodes (Skiddle and Ticketmaster, `NEAR` and `IN`). New ready-made questions for each.
 - **What's on is now stored** (`local_event`, migration 0028): every six hours the next two weeks around your saved places are copied from Skiddle and Ticketmaster (`WA_EVENTS_SYNC_*`), so the graph can relate them. Does nothing without a key.
 - **Graph page > Customise the view**: choose which kinds of thing and which links are shown, pick each kind's colour, size nodes by how connected they are, show names always, when zoomed in or never, hide link names, and set node size and spread. Remembered in the browser; Reset puts it back.
-- Both read an OS GeoPackage with no new dependency, and `--list` shows what a download holds. Not yet run against the live OS downloads.
+
+### Changed
+- **Bus page, today's buses**: one row for every scheduled bus, split into the start stop (scheduled, actual), the target stop (scheduled, late or early) and **Arrived today?** (arrived at a time, did not arrive, or not yet). The target stop's scheduled time comes from its TfL timetable, matched to each departure in order. `GET /v1/bus/trackers/{id}/target` gains `journeys`, `board_label` and `alight_label`.
 
 ## [0.15.0] - 2026-10-22
 
