@@ -92,3 +92,37 @@ def test_copying_to_a_real_share() -> None:
     again = copy_files(share, user, pw, files, None)
     assert {f["result"] for f in again["files"]} == {"unchanged"}, again
     assert copy_files(share, user, "wrong", files, None)["error"].startswith("the share refused")
+
+
+def test_the_inverter_name_is_saved_and_used_in_every_download_and_copy(db: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import ha_setup, ha_smb
+
+    c = TestClient(app)
+    d = c.get("/v1/ha/setup", headers={"Authorization": "Bearer tok"}).json()
+    assert d["inverter"] == "office_inverter"  # as shipped, until one is saved
+    plan = next(f for f in d["files"] if f["path"] == "packages/wa_energy_plan.yaml")
+    assert plan["inverter"] and not next(f for f in d["files"] if f["path"] == "dashboards/fuel.yaml")["inverter"]
+    h = {"Authorization": "Bearer tok"}
+    assert c.put("/v1/ha/inverter", headers=h, json={"name": "Garage Inverter"}).status_code == 422
+    assert c.put("/v1/ha/inverter", headers=h, json={"name": "sensor.garage_deye_battery_soc"}).json() == {"inverter": "garage_deye"}
+    assert c.get("/v1/ha/setup", headers=h).json()["inverter"] == "garage_deye"
+    for path in ("packages/wa_energy_plan.yaml", "dashboards/home-charging.yaml"):
+        body = c.get(f"/v1/ha/files/{path}", headers=h).text
+        assert "office_inverter" not in body and "sensor.garage_deye_battery_soc" in body, path
+
+    sent: dict[str, str] = {}
+
+    def fake_copy(share: object, user: str, pw: str, files: dict[str, str], secrets: object) -> dict[str, object]:
+        sent.update(files)
+        return {"ok": False, "error": "test"}
+
+    async def conf(request: object) -> tuple[object, str, str]:
+        return ha_smb.parse_share(r"\\ha\config"), "u", "p"
+
+    monkeypatch.setattr(ha_smb, "copy_files", fake_copy)
+    monkeypatch.setattr(ha_smb, "_conf", conf)
+    c.post("/v1/ha/smb/copy", headers=h, json={"packages": ["packages/wa_energy_plan.yaml"], "dashboards": True})
+    assert "switch.garage_deye_time_slot_" in sent["packages/wa_energy_plan.yaml"]
+    assert "office_inverter" not in sent["packages/wa_energy_plan.yaml"]
+    assert "garage_deye" in sent["world_assistant/dashboards/home-charging.yaml"]
+    assert ha_setup.inverter_name("  OFFICE_INVERTER ") == "office_inverter"

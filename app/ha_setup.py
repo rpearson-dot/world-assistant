@@ -15,6 +15,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
+from pydantic import BaseModel
+from sqlalchemy import text
 
 from app.auth import require_token
 from app.config import get_settings
@@ -41,8 +43,8 @@ ABOUT: dict[str, tuple[str, str]] = {
     "packages/world_assistant_bus.yaml": ("Bus tracker times", "Change the bus tracker's times from the dashboard."),
     "packages/wa_energy_plan.yaml": ("Energy plan (battery charging)", (
         "Sets the battery's charge targets from expected use, Forecast.Solar and your battery health max, and charges "
-        "from the grid in Free Electricity hours you joined. Written for a Deye/Sunsynk inverter named office_inverter "
-        "with Cosy-shaped slots: change the entity names to match yours. Starts as a dry run.")),
+        "from the grid in Free Electricity hours you joined. For a Deye/Sunsynk inverter with Cosy-shaped slots: set "
+        "your inverter's entity name above first. Starts as a dry run.")),
     "dashboards/home-charging.yaml": ("Home charging", (
         "Battery, solar, prices, free hours and Saving Sessions, the charge plan and its tuning. "
         "Needs the energy plan package.")),
@@ -69,6 +71,47 @@ def lovelace_yaml(dashboards: list[dict[str, Any]], folder: str = "world_assista
                   f"      icon: {DASH_ICONS.get(stem, 'mdi:view-dashboard')}", "      show_in_sidebar: true",
                   f"      filename: {folder}/{f['name']}"]  # fmt: skip
     return "\n".join(lines) + "\n"
+
+
+# The inverter's entity name: the shipped files say office_inverter (sensor.office_inverter_battery_soc and so on);
+# each copy and download says the name saved on the /ha page instead.
+INVERTER_KEY = "ha_inverter"
+DEFAULT_INVERTER = "office_inverter"
+INVERTER_NAME = re.compile(r"^[a-z][a-z0-9_]{0,60}$")
+
+
+def inverter_name(raw: str) -> str:
+    """'office_inverter', or pasted as an entity id ('sensor.office_inverter_battery_soc'): the name, or ValueError."""
+    name = raw.strip().lower()
+    if "." in name:
+        name = name.split(".", 1)[1]
+        for tail in ("_battery_soc", "_battery_state_of_charge"):
+            name = name.removesuffix(tail)
+    if not INVERTER_NAME.match(name):
+        raise ValueError("an entity name is lower case letters, digits and _, like office_inverter")
+    return name
+
+
+def render(body: str, inverter: str) -> str:
+    return body if inverter == DEFAULT_INVERTER else body.replace(DEFAULT_INVERTER, inverter)
+
+
+async def saved_inverter(engine: Any) -> str:
+    try:
+        async with engine.connect() as conn:
+            v = (await conn.execute(text("SELECT value FROM app_setting WHERE key = :k"), {"k": INVERTER_KEY})).scalar()
+    except Exception:  # noqa: BLE001 - no database (or no table yet): the files as shipped
+        return DEFAULT_INVERTER
+    return v["name"] if isinstance(v, dict) and isinstance(v.get("name"), str) else DEFAULT_INVERTER
+
+
+async def request_inverter(request: Request) -> str:
+    engine = getattr(request.app.state, "engine", None)
+    return await saved_inverter(engine) if engine is not None else DEFAULT_INVERTER
+
+
+class InverterIn(BaseModel):
+    name: str
 
 
 # The API path behind each secret the packages use.
@@ -100,7 +143,7 @@ def files() -> list[dict[str, Any]]:
         body = path.read_text()
         title, about = ABOUT.get(rel, (path.stem, ""))
         out.append({"path": rel, "kind": rel.split("/", 1)[0].rstrip("s"), "name": path.name, "title": title,
-                    "about": about, "changed_in": meta.get("changed_in", ""),
+                    "about": about, "changed_in": meta.get("changed_in", ""), "inverter": DEFAULT_INVERTER in body,
                     "secrets": sorted(set(SECRET.findall(body)))})  # fmt: skip
     return out
 
@@ -119,6 +162,7 @@ async def setup(request: Request) -> dict[str, Any]:
     mqtt.update({"bundled": conf.bundled, "user": conf.user, "publish_port": s.mqtt_publish_port})
     listed = files()
     return {"version": VERSION, "local": is_local(request, request.method), "mqtt": mqtt, "files": listed,
+            "inverter": await request_inverter(request), "inverter_default": DEFAULT_INVERTER,
             "secret_paths": SECRET_PATHS, "lovelace_yaml": lovelace_yaml([f for f in listed if f["kind"] == "dashboard"])}  # fmt: skip
 
 
@@ -128,12 +172,28 @@ async def token() -> dict[str, str]:
     return {"token": get_settings().api_token}
 
 
+@router.put("/inverter")
+async def put_inverter(body: InverterIn, request: Request) -> dict[str, str]:
+    """The inverter's entity name, used in every copy and download of the files that name it (the energy plan)."""
+    try:
+        name = inverter_name(body.name)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    async with request.app.state.engine.begin() as conn:
+        await conn.execute(text(
+            "INSERT INTO app_setting (key, value, updated_at) VALUES (:k, CAST(:v AS jsonb), now()) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()"),
+            {"k": INVERTER_KEY, "v": json.dumps({"name": name})})  # fmt: skip
+    return {"inverter": name}
+
+
 @router.get("/files/{kind}/{name}", response_class=PlainTextResponse)
-async def file(kind: str, name: str) -> PlainTextResponse:
+async def file(kind: str, name: str, request: Request) -> PlainTextResponse:
     rel = f"{kind}/{name}"
     if rel not in manifest() or not (HA_DIR / rel).is_file():  # only the files we ship: no path tricks
         raise HTTPException(404, "no such file")
-    return PlainTextResponse((HA_DIR / rel).read_text(), media_type="text/yaml; charset=utf-8",
+    body = render((HA_DIR / rel).read_text(), await request_inverter(request))
+    return PlainTextResponse(body, media_type="text/yaml; charset=utf-8",
                              headers={"Content-Disposition": f'attachment; filename="{name}"'})  # fmt: skip
 
 
@@ -152,6 +212,11 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="card"><div class="row">
   <label>Address Home Assistant uses for this server <input id="base" size="32"></label>
   <label>Files last copied from version <input id="since" size="8" placeholder="e.g. 0.12.0"></label></div>
+  <div class="row"><label>Inverter entity name (for the energy plan)
+    <input id="inv" size="24" autocomplete="off" placeholder="office_inverter"></label>
+    <button id="invsave" type="button">Save</button><span id="invmsg" class="dim"></span></div>
+  <p class="dim">The part between <code>sensor.</code> and <code>_battery_soc</code> in your inverter's battery sensor (you can
+  paste the whole entity id). The energy plan and Home charging files are written with it.</p>
   <p class="dim" id="ver"></p></div>
 <details class="card" id="smbcard"><summary>Copy straight into Home Assistant (Samba share)</summary>
   <p class="dim">With the <b>Samba share</b> add-on in Home Assistant, World Assistant can put the files in its config folder
@@ -296,8 +361,21 @@ async function load() {
   secrets();
   data.files.forEach(f => fetchFile(f).catch(() => {}));
   $('lovelace').textContent = data.lovelace_yaml;
+  $('inv').value = data.inverter;
   smbCall('', 'GET').then(smbShow).catch(() => {});
 }
+$('invsave').onclick = async () => {
+  $('invmsg').textContent = 'Saving...';
+  try {
+    const r = await fetch('/v1/ha/inverter', { method: 'PUT', headers: Object.assign(hdr(), { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name: $('inv').value }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || r.status);
+    $('inv').value = d.inverter;
+    if (data) data.files.filter(f => f.inverter).forEach(f => { delete texts[f.path]; fetchFile(f).catch(() => {}); });
+    $('invmsg').textContent = 'Saved: the energy plan and Home charging files now use ' + d.inverter + '. Copy them again.';
+  } catch (e) { $('invmsg').textContent = e.message; }
+};
 // --- copying over SMB ---------------------------------------------------------------------------------
 function smbBody() { return { address: $('smbaddr').value.trim(), user: $('smbuser').value.trim(), password: $('smbpw').value || null }; }
 async function smbCall(path, method, body) {
