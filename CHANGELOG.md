@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-24
+
 ### Added
 - **The energy plan works with any Octopus tariff.** World Assistant now works out the inverter's six daily slots from your real rates (`/v1/energy/schedule`, Home Assistant `sensor.wa_energy_charge_schedule`): a slot starts at each cheap window, grid charge on, and at its end, up to three windows a day (the cheapest), for Cosy, Go, Flux or Agile alike. Each charging slot says what it must cover until the next cheap window: night, day and evening hours of load, the share of today's and tomorrow's solar in that time (so the afternoon window now counts the sun after 16:00), stopping at a joined Free Electricity hour, and whether a joined Saving Session falls in it. A joined Saving Session inside a charging window is warned about.
   - The Home Assistant package applies it: every 15 minutes and when the schedule changes it sets each charging slot's target and the others to the battery floor, and with the new "WA energy plan: set slot times from the tariff" switched on it also writes the slot start times and grid-charge switches (in an order that keeps them sorted). Off, it only applies when the inverter's slots already match, as before. The logbook gets one entry per new plan, not one per run.
