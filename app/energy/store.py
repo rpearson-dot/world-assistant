@@ -86,7 +86,7 @@ async def load_sessions(engine: AsyncEngine) -> list[dict[str, Any]]:
             (
                 await conn.execute(
                     text(
-                        "SELECT kind, code, start_at, end_at, octopoints_per_kwh, joined, regions FROM energy_session "
+                        "SELECT kind, code, start_at, end_at, octopoints_per_kwh, joined, regions, event_type FROM energy_session "
                         "WHERE end_at > now() ORDER BY start_at"
                     )
                 )

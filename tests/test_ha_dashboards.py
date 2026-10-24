@@ -28,7 +28,13 @@ def _jinja() -> Any:
 
 
 def test_the_static_dashboards_are_here() -> None:
-    assert {p.stem for p in DASHBOARDS} == {"pollen", "fuel", "trains-buses", "roads", "events", "manage", "leaf"}
+    assert {p.stem for p in DASHBOARDS} == {"pollen", "fuel", "trains-buses", "roads", "events", "manage", "leaf",
+                                            "home-charging"}  # fmt: skip
+
+
+def _cards(view: dict) -> list[dict]:
+    """A view's cards: masonry views list them, sections views keep them in each section."""
+    return list(view.get("cards") or []) + [c for sec in view.get("sections") or [] for c in sec.get("cards") or []]
 
 
 FOOTER_TYPES = {"buttons", "graph"}  # all Home Assistant accepts; anything else is a Configuration error
@@ -39,7 +45,7 @@ def test_card_footers_are_a_type_home_assistant_knows(path: Path) -> None:
     """A markdown footer renders as a red "Configuration error" box, so notes go in their own card."""
     doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     for view in doc["views"]:
-        for card in view["cards"]:
+        for card in _cards(view):
             for c in [card, *(card.get("cards") or []), *( [card["card"]] if card.get("card") else [])]:
                 foot = c.get("footer") if isinstance(c, dict) else None
                 if foot:
@@ -49,11 +55,13 @@ def test_card_footers_are_a_type_home_assistant_knows(path: Path) -> None:
 @pytest.mark.parametrize("path", DASHBOARDS, ids=lambda p: p.stem)
 def test_dashboard_is_valid(path: Path) -> None:
     env = _jinja().Environment()
+    for name in ("as_local", "from_json", "to_json", "as_datetime", "as_timestamp", "timestamp_custom"):  # Home Assistant's
+        env.filters.setdefault(name, lambda v, *a: v)
     doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert doc["title"] and doc["views"]
     for view in doc["views"]:
-        assert view["path"] and view["cards"]
-        for card in view["cards"]:
+        assert view["path"] and _cards(view)
+        for card in _cards(view):
             assert card["type"]
             if card["type"] == "markdown":
                 assert "\n" in card["content"], "use a literal block (|): folding breaks tables"
@@ -481,3 +489,34 @@ def test_leaf_is_quiet_when_a_sensor_is_missing() -> None:
     """A car asleep or an entity not yet created must not produce a false warning."""
     out = _env({}).from_string(_card("leaf", 1)).render()
     assert "Nothing to do." in out and "⚠️" not in out and "🛞" not in out
+
+
+def test_home_charging_plan_table_renders() -> None:
+    """The plan card as Home Assistant shows it: one table row per charging window, and the health max suggestion."""
+    import json
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    doc = yaml.safe_load((ROOT / "homeassistant" / "dashboards" / "home-charging.yaml").read_text(encoding="utf-8"))
+    cards = [c for v in doc["views"] for c in _cards(v) if c["type"] == "markdown"]
+    env = _jinja().Environment()
+    env.filters |= {"as_local": lambda d: d.astimezone(ZoneInfo("Europe/London")), "from_json": json.loads,
+                    "int": lambda v, d=0: int(float(v)) if str(v).replace(".", "", 1).isdigit() else d}  # fmt: skip
+    st = {"sensor.wa_target_charge_night": "25", "sensor.wa_target_charge_morning": "30", "sensor.wa_target_charge_evening": "80",
+          "sensor.wa_target_charge_night#wanted": "25", "sensor.wa_target_charge_morning#wanted": "30",
+          "sensor.wa_target_charge_evening#wanted": "95", "sensor.wa_target_charge_evening#over_health_max": True,
+          "number.office_inverter_time_slot_6_capacity": "80", "number.office_inverter_time_slot_2_capacity": "80",
+          "number.office_inverter_time_slot_4_capacity": "70", "input_number.wa_max_target_pct": "80",
+          "sensor.energy_production_tomorrow": "7.8", "sensor.wa_inverter_slot_check": "ok",
+          "input_text.wa_free_restore": json.dumps({"slot": 4, "cap": 70, "on": "on", "end": "2026-10-25T14:00:00+00:00"}),
+          "sensor.wa_energy_free_electricity_next_start#upcoming": [
+              {"start": "2026-10-25T13:00:00+00:00", "end": "2026-10-25T14:00:00+00:00", "joined": True},
+              {"start": "2026-10-25T14:00:00+00:00", "end": "2026-10-25T15:00:00+00:00", "joined": False}]}  # fmt: skip
+    funcs = {"states": lambda e: str(st.get(e, "unknown")), "is_state": lambda e, v: st.get(e) == v,
+             "state_attr": lambda e, a: st.get(f"{e}#{a}"), "as_datetime": datetime.fromisoformat}  # fmt: skip
+    free, plan = (env.from_string(c["content"]).render(**funcs) for c in cards)
+    assert "- Sun 13:00-14:00: ✅ joined" in free and "- Sun 14:00-15:00: not joined" in free
+    assert "Charging free now**: slot 4 until 14:00, then put back to 70%." in free
+    lines = [x for x in plan.splitlines() if x.startswith("|")]
+    assert len(lines) == 5 and lines[4] == "| 13:00 slot 4 | the 16:00-22:00 peak | 95% | **80%** ⚠️ | 70% | 12:30 |"
+    assert "Suggest raising the health max**: 13:00 slot 4 wants 95%" in plan

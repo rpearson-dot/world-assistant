@@ -109,19 +109,3 @@ async def fetch_rates(
             break
     return rows
 
-
-def pick_mpan(account: dict[str, Any]) -> str:
-    """The import meter's MPAN (Free Electricity sessions are asked for per meter). Export meters are skipped."""
-    for prop in account.get("properties") or []:
-        for point in prop.get("electricity_meter_points") or []:
-            if not point.get("is_export") and point.get("mpan"):
-                return str(point["mpan"])
-    raise OctopusError("no electricity import meter (MPAN) found on the account")
-
-
-async def discover_mpan(client: httpx.AsyncClient, account: str, api_key: str) -> str:
-    r = await client.get(f"{BASE}/v1/accounts/{account}/", auth=(api_key, ""))
-    if r.status_code in (401, 403):
-        raise OctopusError("Octopus refused the API key (check octopus_api_key and the account number)")
-    r.raise_for_status()
-    return pick_mpan(r.json())

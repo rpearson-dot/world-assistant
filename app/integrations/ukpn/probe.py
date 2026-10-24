@@ -47,6 +47,9 @@ async def main(lat: float | None, lon: float | None) -> int:
             print(f"   id {ds.id}: {ds.title}")
             print("   fields:", ", ".join(f"{f.get('name')}:{f.get('type')}" for f in ds.fields)[:900])
             try:
+                if kind == "rota":
+                    print("   published as a document, not map data: a place cannot be looked up in it")
+                    continue
                 if kind in AREAS:
                     recs = await c.at_point(ds, lat, lon)
                     print(f"   at the point: {len(recs)}", [N.area(r, kind) for r in recs[:3]])
@@ -64,8 +67,10 @@ async def main(lat: float | None, lon: float | None) -> int:
             r = recs[0]
             if kind == "faults":
                 f = N.fault(r, now)
-                print("   read as:", {k: f[k] for k in ("id", "planned", "status", "postcodes", "customers", "started_at",
-                                                        "restore_at", "lat", "lon")})  # fmt: skip
+                print("   read as:", {k: f[k] for k in ("id", "planned", "status", "active", "postcodes", "customers",
+                                                        "started_at", "restore_at", "ended_at", "lat", "lon")})  # fmt: skip
+                live = [N.fault(x, now) for x in await c.export(ds)]
+                print(f"   in the feed now: {len(live)}, still in progress: {sum(x['active'] for x in live)}")
             elif kind.startswith("works"):
                 w = N.works(r, kind.split("_")[1], now)
                 print("   read as:", {k: w[k] for k in ("id", "street", "town", "usrn", "category", "traffic",

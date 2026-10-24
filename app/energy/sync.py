@@ -62,13 +62,6 @@ async def sync(engine: AsyncEngine, client: httpx.AsyncClient | None = None) -> 
                 )
             except (httpx.HTTPError, octopus.OctopusError, ValueError, KeyError, TypeError) as exc:
                 result["saving_sessions_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
-            try:  # Free Electricity sessions, asked for per import meter
-                mpan = s.octopus_mpan.strip() or await octopus.discover_mpan(client, s.octopus_account.strip(),
-                                                                             s.octopus_api_key)  # fmt: skip
-                free = await kraken.fetch_free(client, s.octopus_api_key, s.octopus_account.strip(), mpan)
-                result["free_electricity"] = await store.save_sessions(engine, ["free"], free)
-            except (httpx.HTTPError, octopus.OctopusError, ValueError, KeyError, TypeError) as exc:
-                result["free_electricity_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
     finally:
         if owned:
             await client.aclose()

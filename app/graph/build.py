@@ -92,7 +92,7 @@ FROM ukpn_fault f JOIN place p ON ST_DWithin(f.geog, p.geog, :near_m)
 UNION ALL
 SELECT 'StreetWork', w.id, p.id, ST_Distance(w.geog, p.geog) / 1000.0
 FROM ukpn_works w JOIN place p ON ST_DWithin(w.geog, p.geog, :near_m)
-WHERE w.ends_at IS NULL OR w.ends_at > now()
+WHERE w.stage = 'open' OR w.ends_at IS NULL OR w.ends_at > now()
 UNION ALL
 SELECT 'LocalEvent', e.id, p.id, ST_Distance(e.geog, p.geog) / 1000.0
 FROM local_event e JOIN place p ON ST_DWithin(e.geog, p.geog, :near_m)
@@ -184,11 +184,11 @@ WITH lines AS (
   WHERE c.enabled AND jsonb_array_length(c.centreline) > 1
 )
 SELECT w.id, l.id FROM ukpn_works w JOIN lines l ON ST_DWithin(w.geog, l.line, :along_m)
-WHERE w.ends_at IS NULL OR w.ends_at > now()
+WHERE w.stage = 'open' OR w.ends_at IS NULL OR w.ends_at > now()
 """
 STREET_WORKS = """
 SELECT w.id, w.stage, w.street, w.traffic, w.starts_at, w.ends_at FROM ukpn_works w
-WHERE (w.ends_at IS NULL OR w.ends_at > now()) AND (w.id = ANY(:ids)
+WHERE (w.stage = 'open' OR w.ends_at IS NULL OR w.ends_at > now()) AND (w.id = ANY(:ids)
   OR EXISTS (SELECT 1 FROM place p WHERE ST_DWithin(w.geog, p.geog, :near_m)))
 """
 

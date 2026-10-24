@@ -45,9 +45,13 @@ def sentence(now_: dict[str, Any], tz: ZoneInfo, now: datetime) -> str:
     elif saving.get("next"):
         text += f" The next Saving Session starts {_t(saving['next']['start'], tz, now)}; you have not joined it."
     free = (now_.get("sessions") or {}).get("free") or {}
-    if free.get("now"):
-        text += f" Electricity is free now, until {_t(free['current']['end'], tz, now)}."
+    if free.get("now_joined"):
+        text += f" Electricity is free now, until {_t(free['current']['end'], tz, now)}; you joined this one."
+    elif free.get("next_joined"):
+        n = free["next_joined"]
+        text += f" Your next free electricity ({n['type']}) is {_t(n['start'], tz, now)} to {_t(n['end'], tz, now)}; you joined it."
     elif free.get("next"):
-        text += (f" Free electricity next from {_t(free['next']['start'], tz, now)} "
-                 f"to {_t(free['next']['end'], tz, now)}.")  # fmt: skip
+        n = free["next"]
+        text += (f" Free electricity ({n['type']}) is next on from {_t(n['start'], tz, now)} to {_t(n['end'], tz, now)}; "
+                 "you have not joined it.")  # fmt: skip
     return text

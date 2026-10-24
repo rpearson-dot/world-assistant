@@ -183,7 +183,7 @@ SELECT w.id, w.stage, w.street, w.town, w.traffic, w.category, w.description, w.
        ST_Distance(w.geog, r.line) AS metres
 FROM ukpn_works w, route r
 WHERE w.geog IS NOT NULL AND ST_DWithin(w.geog, r.line, :buffer)
-  AND (w.ends_at IS NULL OR w.ends_at >= :frm) AND (w.starts_at IS NULL OR w.starts_at <= :horizon)
+  AND (w.stage = 'open' OR w.ends_at IS NULL OR w.ends_at >= :frm) AND (w.starts_at IS NULL OR w.starts_at <= :horizon)
 """
 TRIP_SQL = "SELECT id, name, corridor_id, distance_km, duration_s, roads, enabled FROM trip WHERE id = :id"
 

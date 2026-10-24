@@ -63,10 +63,28 @@ Every 30 minutes WA also reads:
 * **Saving Sessions** from Octopus's GraphQL API (needs the key and account number): the announced events, and
   whether you have joined each. WA never joins for you; do that in the Octopus app.
 
-* **Free Electricity sessions** from Octopus's official query (`customerFlexibilityCampaignEvents`, campaign
-  `free_electricity`), for your account and import meter (found from the account; set `WA_OCTOPUS_MPAN` if it has
-  several). Octopus does not say which sessions you signed up for, so they are shown as announced for your account.
-  Home Assistant: Free electricity now (`on`/`off`) and Next free electricity starts.
+* **Free Electricity** (Power Ups, Weekend Happy Hours) from the same Saving Sessions feed, where Octopus lists them
+  by type (`WEEKEND_HAPPY_HOUR`, `TURN_UP`) and says which hours you joined. You sign up hour by hour, so your joined
+  hours come first. Home Assistant: `sensor.wa_energy_free_electricity_now` is `on` only during an hour you joined
+  (attribute `announced_now` says whether any is on); `sensor.wa_energy_free_electricity_next_start` is your next
+  joined hour, else the next announced one, with attributes `end`, `joined`, `type` and `upcoming`.
+
+  To act on it (an inverter, a car charger), trigger on the timestamp and check `joined`:
+
+  ```yaml
+  triggers:
+    - trigger: time
+      at: sensor.wa_energy_free_electricity_next_start
+      id: start
+    - trigger: state
+      entity_id: sensor.wa_energy_free_electricity_now
+      from: "on"
+      to: "off"
+      id: stop
+  conditions:
+    - condition: template
+      value_template: "{{ trigger.id == 'stop' or state_attr('sensor.wa_energy_free_electricity_next_start', 'joined') }}"
+  ```
 
 The queries follow the BottlecapDave Home Assistant integration and are not an official Octopus contract, so a
 change at Octopus could break them. The rates keep working if the sessions fail. To see exactly what Octopus
@@ -84,15 +102,27 @@ the battery.
 
 ## Running the battery from Home Assistant
 
-`docs/ha/wa_energy_plan.yaml` is a Home Assistant package for a Deye/Sunsynk inverter that already has Cosy-shaped
+The energy plan (`wa_energy_plan.yaml`, on the Home Assistant page, /ha) is a Home Assistant package for a Deye/Sunsynk inverter that already has Cosy-shaped
 time slots (00:00 04:00 07:00 13:00 16:00 22:00, grid charge on for slots 2, 4 and 6). It changes only the target
 charge level of the three charging slots, from expected use and tomorrow's solar forecast (Forecast.Solar). It
 starts as a dry run that only writes to the logbook; switch on "WA energy plan: apply to inverter" when the numbers
 look right. On Cosy the cheap windows are fixed and already in the slots, so WA is not needed for those. WA's Saving Session
 sensors are used to raise the 13:00 target when you have joined a session between 16:00 and 22:00, to warn if the
 battery runs low during a joined session, and to flag a joined session outside 16:00-22:00 that the plan does not
-handle. Before applying, it checks the inverter's slot start times and grid-charge switches (sensor "WA inverter slot check"); if someone has changed them it only logs what differs. Nothing in the package switches the grid off or limits what the inverter can draw: any shortfall is taken
+handle. In a **Free Electricity hour you have joined** it sets that hour's slot to charge from the grid to 100%
+(so the house runs from the grid and the battery fills, for free) and puts the slot back when the hour ends; the 04:00
+target only covers the morning up to a joined free hour. No slot is charged above "WA battery health max charge"
+(80% by default, for long battery life); when a window would need more to reach the next cheap window, the plan
+stops at the max and suggests raising it. Before applying, it checks the inverter's slot start times and grid-charge switches (sensor "WA inverter slot check"); if someone has changed them it only logs what differs. Nothing in the package switches the grid off or limits what the inverter can draw: any shortfall is taken
 from the grid by the inverter itself, so the cost of a shortfall is a smaller reward, not a loss of supply.
+
+### Home charging dashboard
+
+The Home charging dashboard (`home-charging.yaml`, on /ha) is a Home Assistant dashboard for all of this, with built-in cards only:
+battery, solar, house and grid now; the price now and next; free hours announced (joined or not) and Saving
+Sessions; Forecast.Solar today, still to come and tomorrow; the three charge targets next to what the inverter is
+set to; the apply switch and slot check; a logbook of every decision the plan made; and the tuning sliders. Add a
+dashboard from scratch, open its raw configuration editor, and paste the file in, or copy it over Samba from /ha.
 
 ## Notes
 

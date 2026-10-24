@@ -10,13 +10,23 @@ def _iso(d: datetime) -> str:
     return d.isoformat()
 
 
+# What Octopus calls its event types, in words.
+TYPES = {"TURN_DOWN": "Saving Session", "TURN_UP": "Power Up", "WEEKEND_HAPPY_HOUR": "Weekend Happy Hour",
+         "FREE_ELECTRICITY": "Free Electricity"}  # fmt: skip
+
+
+def label(event_type: str | None) -> str:
+    return TYPES.get(event_type or "", (event_type or "Free Electricity").replace("_", " ").title())
+
+
 def _view(s: dict[str, Any], now: datetime) -> dict[str, Any]:
     start, end = s["start_at"], s["end_at"]
     return {"code": s["code"], "start": _iso(start), "end": _iso(end),
             "minutes": round((end - start).total_seconds() / 60),
             "starts_in_minutes": max(0, round((start - now).total_seconds() / 60)),
             "octopoints_per_kwh": s.get("octopoints_per_kwh"), "joined": bool(s.get("joined")),
-            "regions": s["regions"].split(",") if s.get("regions") else None}  # fmt: skip
+            "regions": s["regions"].split(",") if s.get("regions") else None,
+            "type": label(s.get("event_type"))}  # fmt: skip
 
 
 def for_kind(rows: list[dict[str, Any]], kind: str, now: datetime) -> dict[str, Any]:
@@ -37,9 +47,9 @@ def for_kind(rows: list[dict[str, Any]], kind: str, now: datetime) -> dict[str, 
 
 
 def free_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Free Electricity from both places Octopus puts it: Power Up events in the Saving Sessions feed ("boost",
-    which also say whether you joined) and the official Free Electricity query ("free"). One session in both is
-    shown once, joined if either says so."""
+    """Free Electricity: the events in the Saving Sessions feed that are not Saving Sessions (Power Ups, Weekend
+    Happy Hours; "boost"), which say whether you joined. Rows of kind "free" are merged in too; one session listed
+    twice is shown once, joined if either says so."""
     merged: dict[tuple[Any, Any], dict[str, Any]] = {}
     for r in rows:
         if r["kind"] not in ("boost", "free"):
