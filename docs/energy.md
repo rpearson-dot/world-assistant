@@ -121,6 +121,9 @@ Deye/Sunsynk-style inverter with six daily time slots. It works with any Octopus
   back when the hour ends; a charging slot before a joined free hour only covers the time up to it.
 * With "WA energy plan: set slot times from the tariff" on, the plan also writes the slot start times and grid-charge
   switches; off, it only applies when they already match ("WA inverter slot check").
+* Outcomes go to the logbook too ("Outcomes" on the dashboard): at the end of each charging window, the target and
+  what the battery reached; at the start of the next, the lowest it went and what was bought at dearer rates; and a
+  daily summary at midnight. They show what happened, applied or not, so they are the record to tune against.
 * It starts as a dry run that only writes to the logbook; switch on "WA energy plan: apply to inverter" when the
   numbers look right. Nothing in the package switches the grid off: any shortfall is taken from the grid by the
   inverter itself, so the cost of a shortfall is money, never a loss of supply.

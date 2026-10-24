@@ -300,3 +300,82 @@ def test_the_schedule_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     assert d["available"] and d["tariff"] == "E-1R-COSY" and len(d["slots"]) == 6
     assert [s["start"] for s in d["slots"] if s["charge"]] == ["04:00", "13:00", "22:00"]
     get_settings.cache_clear()
+
+
+# --- the outcome log -------------------------------------------------------------------------------------------------
+
+WINDOWS = build(rates(COSY), NOW, LONDON)["windows"]
+
+
+def _outcome(states: dict[str, Any], at: datetime) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    a = auto("wa_energy_outcome")
+    v: dict[str, Any] = {}
+    for k, tpl in a["variables"].items():
+        v[k] = render(tpl, states, at, **v)
+    return v, a["actions"]
+
+
+def _base(**extra: Any) -> dict[str, Any]:
+    st = SETTINGS | INVERTER | {"sensor.wa_energy_charge_schedule#windows": WINDOWS, "sensor.wa_battery_charge_rate": "4.8"}
+    st |= {"sensor.wa_charge_targets#slots": targets(st)}
+    return st | extra
+
+
+def test_a_charging_window_says_whether_it_reached_its_target() -> None:
+    mark = json.dumps({"kind": "charge", "from": "13:00", "soc": 31, "imp": 100.0, "chg": 10.0, "pv": 5.0})
+    st = _base(**{"input_text.wa_outcome_mark": mark, "sensor.office_inverter_battery_soc": "54",
+                  "sensor.wa_grid_import_total": "110.5", "sensor.wa_battery_charge_total": "19.4",
+                  "sensor.wa_solar_total": "6.0"})  # fmt: skip
+    at = datetime(2026, 10, 24, 16, 0, 5, tzinfo=LONDON)
+    v, actions = _outcome(st, at)
+    assert (v["ended"], v["started"], v["target"]) == (2, 0, 55)
+    branch = actions[0]["then"][0]["then"]
+    for k, tpl in branch[0]["variables"].items():
+        v[k] = render(tpl, st, at, **v)
+    msg = words(branch[1]["data"]["message"], st, **v)
+    assert msg == ("Charging 13:00-16:00: target 55%, reached 54%. Started at 31%, added 9.4 kWh to the battery, "
+                   "10.5 kWh from the grid.")  # fmt: skip
+    st["sensor.office_inverter_battery_soc"] = "45"
+    v, _ = _outcome(st, at)
+    for k, tpl in branch[0]["variables"].items():
+        v[k] = render(tpl, st, at, **v)
+    assert "reached 45% (10% short; at 4.8 kW the window adds at most about 36%)." in words(branch[1]["data"]["message"], st, **v)
+    day = render(branch[2]["data"]["value"], st | {"input_text.wa_outcome_day": json.dumps({"imp": 95.0, "chg": 8, "pv": 1, "cheap": 2.0})}, at, **v)
+    assert day["cheap"] == 12.5  # 2 earlier + 10.5 in this window
+
+
+def test_the_next_window_reports_the_stretch_before_it() -> None:
+    mark = json.dumps({"kind": "cover", "from": "16:00", "soc": 54, "imp": 110.5, "chg": 19.4, "pv": 6.0})
+    st = _base(**{"input_text.wa_outcome_mark": mark, "sensor.office_inverter_battery_soc": "23", "input_number.wa_outcome_min_soc": "22.0",
+                  "sensor.wa_grid_import_total": "110.8", "sensor.wa_battery_charge_total": "19.4", "sensor.wa_solar_total": "6.4"})  # fmt: skip
+    at = datetime(2026, 10, 24, 22, 0, 5, tzinfo=LONDON)
+    v, actions = _outcome(st, at)
+    assert (v["ended"], v["started"]) == (0, 3)
+    branch = actions[1]["then"]
+    for k, tpl in branch[0]["variables"].items():
+        v[k] = render(tpl, st, at, **v)
+    assert words(branch[1]["then"][0]["data"]["message"], st, **v) == (
+        "Between windows 16:00-22:00: lowest 22% (floor 20%), now 23%. Bought 0.3 kWh at dearer rates; solar 0.4 kWh.")
+    v["low"] = 18
+    assert "lowest 18% (below the 20% floor)" in words(branch[1]["then"][0]["data"]["message"], st, **v)
+
+
+def test_midnight_sums_up_the_day() -> None:
+    st = _base(**{"input_text.wa_outcome_mark": "", "sensor.office_inverter_battery_soc": "40", "sensor.wa_grid_import_total": "120.0",
+                  "sensor.wa_battery_charge_total": "30.0", "sensor.wa_solar_total": "9.0",
+                  "input_text.wa_outcome_day": json.dumps({"imp": 100.0, "chg": 12.0, "pv": 2.5, "cheap": 18.2})})  # fmt: skip
+    at = datetime(2026, 10, 25, 0, 0, 5, tzinfo=LONDON)
+    v, actions = _outcome(st, at)
+    assert v["ended"] == 3 and render(auto("wa_energy_outcome")["conditions"][0]["value_template"], st, at, **v) is True
+    branch = actions[2]["then"]
+    day = render(branch[0]["variables"]["day"], st, at)
+    v |= {"day": day, **{k: render(t, st, at, **v, day=day) for k, t in branch[1]["then"][0]["variables"].items()}}
+    assert words(branch[1]["then"][1]["data"]["message"], st, **v) == (
+        "Yesterday: bought 20.0 kWh from the grid, 18.2 kWh in cheap windows and 1.8 kWh outside them; the battery took "
+        "18.0 kWh; solar 6.5 kWh.")
+    assert render(branch[2]["data"]["value"], st, at, **v) == {"imp": 120.0, "chg": 30.0, "pv": 9.0, "cheap": 0}
+
+
+def test_nothing_is_logged_between_boundaries() -> None:
+    v, _ = _outcome(_base(**{"sensor.office_inverter_battery_soc": "50"}), datetime(2026, 10, 24, 14, 30, 5, tzinfo=LONDON))
+    assert render(auto("wa_energy_outcome")["conditions"][0]["value_template"], {}, **v) is False

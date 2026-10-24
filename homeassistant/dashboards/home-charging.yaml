@@ -197,6 +197,13 @@ views:
               entity_id: input_boolean.wa_energy_plan_apply
             grid_options:
               columns: full
+          - type: logbook
+            title: Outcomes
+            hours_to_show: 168
+            target:
+              entity_id: input_text.wa_outcome_mark
+            grid_options:
+              columns: full
 
       - type: grid
         cards:
