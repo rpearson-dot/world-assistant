@@ -33,7 +33,7 @@ def _render(states: dict[str, str]) -> tuple[str, str, bool, str]:
 
 
 def test_slots_as_expected_apply() -> None:
-    assert _render(dict(GOOD)) == ("ok", "", True, "Slot 4 (13:00) target 75% (now 70%). Applying.")
+    assert _render(dict(GOOD)) == ("ok", "", True, "Slot 4 (13:00) target 75% (now 70%). Floor 20% (slots 1, 3, 5 now 0%, 0%, 0%). Applying.")
 
 
 def test_a_changed_slot_is_reported_and_nothing_applied() -> None:
@@ -148,7 +148,7 @@ def test_a_free_hour_you_did_not_join_does_nothing() -> None:
 
 def test_the_morning_target_only_covers_the_hours_before_a_joined_free_hour() -> None:
     sensor = next(x for x in PLAN["template"][0]["sensor"] if x["unique_id"] == "wa_wanted_charge_morning")
-    base = {"input_number.wa_battery_kwh": "30", "input_number.wa_floor_pct": "15", "input_number.wa_morning_load_kw": "1.2",
+    base = {"input_number.wa_battery_kwh": "30", "input_number.wa_floor_pct": "20", "input_number.wa_morning_load_kw": "1.2",
             "input_number.wa_margin": "1.25", "input_number.wa_min_target_pct": "25", "input_number.wa_max_target_pct": "95",
             "input_number.wa_solar_morning_share": "0.5", "sensor.energy_production_tomorrow": "0"}  # fmt: skip
     at_nine = datetime(2026, 10, 24, 20, 0, tzinfo=UTC)  # 21:00 BST, the evening before
@@ -157,11 +157,11 @@ def test_the_morning_target_only_covers_the_hours_before_a_joined_free_hour() ->
         env, funcs = _ha_env(base | extra, at_nine)
         return int(env.from_string(sensor["state"]).render(**funcs).strip())
 
-    assert target({}) == 45  # 15% + 1.2 kW x 6 h x 1.25 = 9 kWh = 30%
-    assert target(_free("2026-10-25T09:00:00+00:00")) == 25  # free from 09:00: 2 h = 3 kWh = 10%, floored at 25%
-    assert target(_free("2026-10-25T09:00:00+00:00", joined=False)) == 45
-    assert target(_free("2026-10-25T13:00:00+00:00")) == 45  # the afternoon hour changes nothing here
-    assert target({"sensor.energy_production_tomorrow": "7.8"}) == 30  # less half of tomorrow's solar
+    assert target({}) == 50  # 20% + 1.2 kW x 6 h x 1.25 = 9 kWh = 30%
+    assert target(_free("2026-10-25T09:00:00+00:00")) == 30  # free from 09:00: 2 h = 3 kWh = 10%
+    assert target(_free("2026-10-25T09:00:00+00:00", joined=False)) == 50
+    assert target(_free("2026-10-25T13:00:00+00:00")) == 50  # the afternoon hour changes nothing here
+    assert target({"sensor.energy_production_tomorrow": "7.8"}) == 35  # less half of tomorrow's solar
 
 
 def json_loads(s: str) -> Any:
@@ -180,7 +180,7 @@ def test_targets_stop_at_the_battery_health_max_and_say_what_was_wanted() -> Non
         assert env.from_string(evening["attributes"]["over_health_max"]).render(**funcs).strip() == over
     # the wanted level is no longer capped by the health max (only at 100%)
     wanted = sensors["wa_wanted_charge_evening"]
-    env, funcs = _ha_env({"input_number.wa_battery_kwh": "30", "input_number.wa_floor_pct": "15",
+    env, funcs = _ha_env({"input_number.wa_battery_kwh": "30", "input_number.wa_floor_pct": "20",
                           "input_number.wa_evening_load_kw": "3.5", "input_number.wa_margin": "1.25",
                           "input_number.wa_min_target_pct": "25"}, datetime(2026, 10, 24, 11, 30, tzinfo=UTC))  # fmt: skip
     assert int(env.from_string(wanted["state"]).render(**funcs).strip()) == 100  # 15% + 26 kWh: more than the battery
@@ -198,3 +198,26 @@ def test_free_hours_never_charge_above_the_health_max() -> None:
         "number.office_inverter_time_slot_4_capacity": "65", "switch.office_inverter_time_slot_4_on": "on",
         "input_number.wa_free_target_pct": "100", "input_number.wa_max_target_pct": "80", "input_text.wa_free_restore": ""}  # fmt: skip
     assert _vars("wa_energy_free_start", states, datetime(2026, 10, 25, 12, 59, tzinfo=UTC))["target"] == 80
+
+
+def test_the_floor_is_set_on_the_discharge_slots_unless_a_free_hour_has_one() -> None:
+    for aid in ("wa_energy_plan_2100", "wa_energy_plan_1230"):
+        auto = next(a for a in PLAN["automation"] if a["id"] == aid)
+        floor = next(a for a in auto["actions"] if "repeat" in a)["repeat"]
+        assert floor["for_each"] == [1, 3, 5]
+    vars_, cond = floor["sequence"][0]["variables"], floor["sequence"][1]["if"][0]["value_template"]
+    import json
+
+    def run(slot: int, now_pct: str, restore: str, apply: bool = True) -> bool:
+        states = {f"number.office_inverter_time_slot_{slot}_capacity": now_pct, "input_number.wa_floor_pct": "20",
+                  "input_text.wa_free_restore": restore}  # fmt: skip
+        env, funcs = _ha_env(states, datetime(2026, 10, 24, 20, tzinfo=UTC))
+        ctx = {"repeat": {"item": slot}, "apply": apply, **funcs}
+        got = {k: env.from_string(v).render(**ctx).strip() for k, v in vars_.items()}
+        ctx |= {"floor": int(got["floor"]), "floor_now": int(got["floor_now"]), "borrowed": got["borrowed"] == "True"}
+        return env.from_string(cond).render(**ctx).strip() == "True"
+
+    assert run(1, "10.0", "") and not run(1, "20", "") and not run(1, "10", "", apply=False)
+    assert not run(3, "10", json.dumps({"slot": 3, "cap": 10, "on": "off", "end": "x"}))  # a free hour has it now
+    assert run(5, "10", json.dumps({"slot": 3, "cap": 10, "on": "off", "end": "x"}))
+    assert not run(1, "unavailable", "")  # cannot read it: leave it alone

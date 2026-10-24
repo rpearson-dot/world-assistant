@@ -506,7 +506,8 @@ def test_home_charging_plan_table_renders() -> None:
           "sensor.wa_target_charge_night#wanted": "25", "sensor.wa_target_charge_morning#wanted": "30",
           "sensor.wa_target_charge_evening#wanted": "95", "sensor.wa_target_charge_evening#over_health_max": True,
           "number.office_inverter_time_slot_6_capacity": "80", "number.office_inverter_time_slot_2_capacity": "80",
-          "number.office_inverter_time_slot_4_capacity": "70.0", "input_number.wa_max_target_pct": "80",
+          "number.office_inverter_time_slot_4_capacity": "70.0", "number.office_inverter_time_slot_1_capacity": "10.0",
+          "number.office_inverter_time_slot_3_capacity": "10", "input_number.wa_floor_pct": "20.0", "input_number.wa_max_target_pct": "80",
           "sensor.energy_production_tomorrow": "7.8", "sensor.wa_inverter_slot_check": "ok",
           "input_text.wa_free_restore": json.dumps({"slot": 4, "cap": 70, "on": "on", "end": "2026-10-25T14:00:00+00:00"}),
           "sensor.wa_energy_free_electricity_next_start#upcoming": [
@@ -518,5 +519,6 @@ def test_home_charging_plan_table_renders() -> None:
     assert "- Sun 13:00-14:00: ✅ joined" in free and "- Sun 14:00-15:00: not joined" in free
     assert "Charging free now**: slot 4 until 14:00, then put back to 70%." in free
     lines = [x for x in plan.splitlines() if x.startswith("|")]
-    assert len(lines) == 5 and lines[4] == "| 13:00 slot 4 | the 16:00-22:00 peak | 95% | **80%** ⚠️ | 70% | 12:30 |"
+    assert len(lines) == 6 and lines[4] == "| 13:00 slot 4 | the 16:00-22:00 peak | 95% | **80%** ⚠️ | 70% | 12:30 |"
+    assert lines[5] == "| Slots 1, 3, 5 | lowest discharge | 20% | **20%** | 10%, 10%, 0% | 21:00, 12:30 |"
     assert "Suggest raising the health max**: 13:00 slot 4 wants 95%" in plan

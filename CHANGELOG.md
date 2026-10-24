@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- **Battery floor in the energy plan** ("WA battery floor", 20% by default, was a 15% reserve). Every charge target is the floor plus what the house needs, and at 21:00 and 12:30 the non-charging slots (1, 3 and 5) are set to the floor, since their target is how low the inverter lets the battery discharge (it was 10%). A slot borrowed by a Free Electricity hour is left alone. The Home charging dashboard shows the floor and what slots 1, 3 and 5 are set to.
+
 ### Fixed
 - Home charging dashboard: the inverter's slot targets show as whole percentages (80%, not 80.0%).
 
