@@ -188,5 +188,6 @@ def free_sensors(free: dict[str, Any]) -> list[Sensor]:
                attributes={"end": cur.get("end")}),
         Sensor("free_electricity_next_start", "Next free electricity starts", nxt.get("start"), icon="mdi:calendar-clock",
                device_class="timestamp",
-               attributes={"end": nxt.get("end"), "minutes": nxt.get("minutes"), "upcoming": free.get("upcoming") or []}),
+               attributes={"end": nxt.get("end"), "minutes": nxt.get("minutes"), "joined": nxt.get("joined"),
+                           "upcoming": free.get("upcoming") or []}),
     ]  # fmt: skip

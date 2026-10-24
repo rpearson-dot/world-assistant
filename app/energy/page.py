@@ -116,7 +116,7 @@ function sessionTiles(s) {
     else if (!blk.now) box.append(tile('', label, 'none announced'));
   };
   one('Saving Session', sv_, true);
-  one('Free electricity', s.free || {}, false);
+  one('Free electricity', s.free || {}, (s.free && s.free.next && s.free.next.joined) || false);
   $('snote').textContent = 'Saving Sessions pay you Octopoints for using less electricity in the hour; Free Electricity sessions make '
     + 'electricity free for the hour. Sign up to both in the Octopus app.';
 }
