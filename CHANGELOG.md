@@ -14,21 +14,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   - **Local carbon intensity** half-hourly at the grid supply point feeding home: now, and the cleanest block ahead, as a card on the **Energy tab**.
   - API `/v1/power/cuts`, `/works`, `/supply`, `/carbon`; assistant tool `power`; Home Assistant **Power** device (power cut at home, cuts and works nearby, rota block, carbon intensity, cleanest hours); graph `PowerCut`, `StreetWork` and `Substation` nodes, with `FEEDS` from grid supply point to primary to local substation to your place, and works `AFFECTS` the corridors they lie on.
   - Datasets are found by their published title, and fields by name, so the portal can rename things; `python -m app.integrations.ukpn.probe` shows exactly what it finds. Migration 0031.
-
-### Added
 - **TfL stations: layout, facilities and closures** (module `tflstations`, London; on by default, `WA_TFL_STATIONS_POLL_ENABLED`). Every Underground, Overground, DLR, Elizabeth line and tram station with its lines, fare zone, entrances, platforms (and which way they go), facilities (lifts, toilets, car park, wifi) and step-free access, loaded nightly from TfL's StopPoint API; and what is closed now (lifts out of service, escalators, entrances), every 10 minutes. Stations in one building (a TfL "hub", such as Wimbledon's District line, tram and rail) share their closures. Migration 0030.
 - **Lift alerts on the Trains tab**: each board shows lifts and step-free routes out of service at its station (and the others in the same building), with a summary at the top. Boards at National Rail-only stations are named as not covered by TfL's data, rather than shown as "all working".
 - **API**: `GET /v1/stations?q=` (search), `/v1/stations/near` (around a saved place), `/v1/stations/{id}` (in full), `/v1/stations/alerts` (closures; `lifts_only`, and which of the stations asked about TfL covers).
 - **Assistant (MCP) tool `station`**: a station's lines, zone, entrances, platforms, facilities and closures, or the stations near a place and what is closed there.
 - **Graph**: `RailStation`, `Line`, `Entrance` and `StationClosure` nodes, with `SERVES`, `HAS`, `AT` and `INTERCHANGE` links, `NEAR` your places and `IN` their areas, searchable by name; ready-made questions for stations near your places and closures at them.
+- **Bus disruptions module (BODS, optional, off by default)**: every 10 minutes, the bus, tram and ferry disruptions local authorities publish to BODS (SIRI-SX) that are current and within 25 km of a saved place, at `GET /v1/bus-disruptions`. Only some authorities publish (Greater Manchester, West of England, South and West Yorkshire, Merseyside, Cornwall, Devon, Hampshire and a few more; not London or the Midlands), so it is suggested on the Modules page only there and needs `WA_BUS_DISRUPTIONS_POLL_ENABLED=true`. Open-ended ones older than 90 days are dropped as left over. Migration 0032. [docs/bus-disruptions.md](docs/bus-disruptions.md).
+
+### Changed
+- **Graph page: "Customise the view" is a panel beside the graph**, on the left, with the details on the right; **Hide** gives the graph the room (remembered, **Customise** brings it back). The Graph page now uses the window's full width. On a phone the panel sits below the graph.
 
 ## [0.18.1] - 2026-10-23
 
 ### Added
 - **TfWM route probe**: `python -m app.integrations.tfwm.routes_probe 907 [lat lon]` finds which of TfWM's internal route ids is a bus line, since the portal has no route list. It tries TfWM's GTFS timetable, BODS's West Midlands GTFS (built by the same company) and matching the line's stops against the stops TfWM's live trips call at, and reports each. Nothing is stored.
 - **Energy plan (Home Assistant) checks the inverter's slots before changing anything.** A new sensor, "WA inverter slot check", compares the six slot start times (00:00 04:00 07:00 13:00 16:00 22:00) and the grid-charge switches of slots 2, 4 and 6 with what the plan is written for. If any differ, the plan writes what changed to the logbook and does not apply, even when switched on. An inverter integration that does not expose slot times is not blocked; the logbook says they were not checked. When the plan is switched on but the inverter's remote control (`switch.office_inverter_allow_remote_control`) is off or missing, the logbook now says that is why nothing was applied.
-### Changed
-- **Graph page: "Customise the view" is a panel beside the graph**, on the left, with the details on the right; **Hide** gives the graph the room (remembered, **Customise** brings it back). The Graph page now uses the window's full width. On a phone the panel sits below the graph.
 
 ## [0.18.0] - 2026-10-23
 
