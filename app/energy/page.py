@@ -135,7 +135,7 @@ async function carbon() {
 // Power cuts at home and nearby, and what supplies home (UK Power Networks). Hidden when home is not on their network.
 async function power() {
   try {
-    const [s, c] = await Promise.all([get('/v1/power/supply'), get('/v1/power/cuts?km=5')]);
+    const [s, c, h] = await Promise.all([get('/v1/power/supply'), get('/v1/power/cuts?km=5'), get('/v1/power/history?days=365')]);
     if (!s.checked || !s.on_network) { $('powercard').hidden = true; return; }
     const box = $('power'); box.replaceChildren();
     const here = (s.cuts || [])[0];
@@ -144,6 +144,9 @@ async function power() {
       : tile('', 'At home', 'Power on', 'no cut reported'));
     box.append(tile('', 'Within 5 km', String(c.count), c.count === 1 ? 'power cut' : 'power cuts'));
     if (s.rota_block) box.append(tile('', 'Rota block', s.rota_block.code, 'used only in a national supply emergency'));
+    box.append(tile('', 'At home, past year', String(h.unplanned), (h.unplanned === 1 ? 'unplanned cut' : 'unplanned cuts')
+      + (h.longest_hours ? ' · longest ' + h.longest_hours + ' h' : '') + (h.planned ? ' · ' + h.planned + ' planned' : '')
+      + (h.recording_since ? ' · since ' + new Date(h.recording_since).toLocaleDateString('en-GB') : '')));
     const list = $('cutlist'); list.replaceChildren();
     for (const x of (c.cuts || []).slice(0, 8)) {
       const p = el('p', x.at_place ? 'closure lift' : 'dim');
@@ -154,7 +157,8 @@ async function power() {
     }
     const chain = [['grid_supply_point', 'grid supply point'], ['primary', 'primary substation'], ['secondary', 'local substation']]
       .filter(([k]) => s[k]).map(([k, label]) => label + ' ' + s[k].name);
-    $('pnote').textContent = (chain.length ? 'Home is fed from ' + chain.join(', then ') + '. ' : '') + 'From UK Power Networks (CC BY 4.0), every 15 minutes.';
+    $('pnote').textContent = (chain.length ? 'Home is fed from ' + chain.join(', then ') + '. ' : '')
+      + 'From UK Power Networks (CC BY 4.0): read hourly, every 15 minutes while a cut is at home. Every cut is kept.';
     $('powercard').hidden = false;
   } catch (e) { $('powercard').hidden = true; }  // the module is off, or no data yet
 }

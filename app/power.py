@@ -122,3 +122,34 @@ async def supply(request: Request, place: str | None = None) -> dict[str, Any]:
         "secondary": (by.get("secondary") or [None])[0], "rota_block": (by.get("rota") or [None])[0],
         "power_cut_now": bool(here), "cuts": here, "carbon": carbon_now,
     }  # fmt: skip
+
+
+def history_row(r: Any) -> dict[str, Any]:
+    end = r.ended_at or r.last_seen
+    start = r.started_at or r.first_seen
+    return {"id": r.id, "planned": r.planned, "description": r.description, "postcodes": list(r.postcodes or [])[:30],
+            "customers": r.customers_max, "started": _iso(start), "ended": _iso(r.ended_at), "ongoing": r.ended_at is None,
+            "hours": round((end - start).total_seconds() / 3600, 1) if end and start else None,
+            "first_promised": _iso(r.first_restore_at), "last_promised": _iso(r.last_restore_at),
+            "late": bool(r.ended_at and r.first_restore_at and r.ended_at > r.first_restore_at),
+            "places": list(r.places or []), "home": r.home}  # fmt: skip
+
+
+@router.get("/history")
+async def history(request: Request, place: str | None = None, days: int = Query(365, ge=1, le=3650),
+                  limit: int = Query(200, ge=1, le=2000)) -> dict[str, Any]:  # fmt: skip
+    """Every power cut recorded at a saved place (home by default) in the last `days`: how long it lasted, how many
+    homes, and whether power came back later than first promised. Kept for good (ukpn_fault_history)."""
+    pid = await place_or_default(request, place)
+    async with request.app.state.engine.connect() as conn:
+        rows = (await conn.execute(text(
+            "SELECT * FROM ukpn_fault_history WHERE :p = ANY(places) AND first_seen >= now() - make_interval(days => :d) "
+            "ORDER BY first_seen DESC LIMIT :limit"), {"p": pid, "d": days, "limit": limit})).all()  # fmt: skip
+        recorded = (await conn.execute(text("SELECT min(first_seen), count(*) FROM ukpn_fault_history"))).first()
+    items = [history_row(r) for r in rows]
+    unplanned = [i for i in items if i["planned"] is not True]
+    hours = [i["hours"] for i in unplanned if i["hours"] is not None and not i["ongoing"]]
+    return {"place": pid, "days": days, "count": len(items), "unplanned": len(unplanned),
+            "planned": len(items) - len(unplanned), "total_hours_unplanned": round(sum(hours), 1),
+            "longest_hours": max(hours, default=None), "late": sum(i["late"] for i in items),
+            "recording_since": _iso(recorded[0]), "recorded_network_wide": recorded[1], "cuts": items}  # fmt: skip

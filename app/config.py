@@ -134,6 +134,8 @@ class Settings(BaseSettings):
     # UK Power Networks (London, South East, East): power cuts, street works, carbon intensity. Reads nothing unless
     # a saved place is on their network. The compose file turns it on.
     ukpn_poll_enabled: bool = False
+    ukpn_fault_interval_min: int = 60  # how often power cuts are read normally
+    ukpn_fault_alert_interval_min: int = 15  # while a cut affects home (the job runs every 15 minutes and decides)
     energy_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
     octopus_account: str = ""  # e.g. A-1234ABCD; with the octopus_api_key secret this finds the tariff
     octopus_tariff: str = ""  # optional override, e.g. E-1R-COSY-22-12-08-A; needs no key

@@ -6,7 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Added
 - **UK Power Networks** (module `ukpn`, London, the South East and the East of England; `ukpn_api_key` optional, `WA_UKPN_POLL_ENABLED`, on by default but reads nothing unless a saved place is on their network). From their open data portal (CC BY 4.0):
-  - **Power cuts**, planned and unplanned, every 15 minutes: at a place (by its postcode, or within 1 km) and nearby, with customers affected and the estimated restoration time.
+  - **Power cuts**, planned and unplanned, read hourly, and every 15 minutes while a cut is at home (`WA_UKPN_FAULT_INTERVAL_MIN`, `WA_UKPN_FAULT_ALERT_INTERVAL_MIN`). **Every cut is kept for good** (`ukpn_fault_history`): first and last seen, when it ended, the most homes affected, the restoration time first and last promised, and which of your places it was at. `/v1/power/history`, a past-year line on the Energy card, a Home Assistant sensor and the assistant ("how many power cuts have we had this year?").
+  - Current power cuts: at a place (by its postcode, or within 1 km) and nearby, with customers affected and the estimated restoration time.
   - **Their street and road works**, under way (every 2 hours) and proposed (daily). They join TfL and National Highways on **Trip conditions** (a road closure counts as serious, signals or a lane closure as moderate), and are kept with each record as published.
   - **What supplies each place**: whether it is on their network or an independent operator's, its grid supply point, primary and local substation, and its **rota load disconnection block**.
   - **Energy tab: a Power cuts card**: power at home (red when there is a cut, with the time power should be back), cuts within 5 km with homes affected and postcodes, your rota block, and the substations home is fed from.

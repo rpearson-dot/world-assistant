@@ -313,7 +313,7 @@ async def station_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]
     r = await _wrap(alerts(request, None, bool(args.get("lifts_only"))))
     return {"text": f"{r['count']} closures across TfL stations now.", "data": r}
 async def power_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.power import carbon, cuts, supply, works
+    from app.power import carbon, cuts, history, supply, works
 
     place = args.get("place")
     what = str(args.get("about") or "cuts")
@@ -329,6 +329,14 @@ async def power_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
         rota = f" Rota block {s['rota_block']['code']}." if s.get("rota_block") else ""
         cut = " There is a power cut here now." if s["power_cut_now"] else " No power cut here now."
         return {"text": "Fed from " + ", ".join(chain) + "." + rota + cut, "data": s}
+    if what == "history":
+        h = await _wrap(history(request, place, int(args.get("days") or 365), 200))
+        if not h["count"]:
+            return {"text": "No power cuts recorded there" + (f" since {h['recording_since'][:10]}." if h["recording_since"] else "."), "data": h}
+        longest = f" The longest lasted {h['longest_hours']:g} hours." if h["longest_hours"] else ""
+        late = f" Power came back later than first promised {h['late']} time(s)." if h["late"] else ""
+        return {"text": f"{h['unplanned']} unplanned and {h['planned']} planned power cut(s) recorded there in the last "
+                        f"{h['days']} days.{longest}{late}", "data": h}  # fmt: skip
     if what == "carbon":
         c = await _wrap(carbon(request, place, float(args.get("hours") or 3)))
         if not c["available"]:
@@ -391,7 +399,7 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool("power", "Electricity from UK Power Networks: power cuts near a saved place (default), their street works, what "
          "supplies the place (substations, rota block), or local carbon intensity and the cleanest hours ahead.",
          {"type": "object", "properties": _props(
-             about=("string", "cuts (default), works, supply or carbon"),
+             about=("string", "cuts (default), history, works, supply or carbon"), days=("integer", "history: how far back, default 365"),
              place=("string", "id of a saved place; default: home"), km=("number", "how far to look"),
              hours=("number", "carbon: length of the cleanest block, default 3"))}, power_tool),
     Tool("bus", "Bus tracker: has a bus made it to the target stop before the deadline, and next buses at your stops.",

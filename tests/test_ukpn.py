@@ -161,7 +161,7 @@ def schema() -> Iterator[None]:
     assert spec and spec.loader
     mig = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mig)
-    tables = ("ukpn_carbon", "ukpn_place_area", "ukpn_works", "ukpn_fault", "place")
+    tables = ("ukpn_carbon", "ukpn_place_area", "ukpn_works", "ukpn_fault_history", "ukpn_fault", "place", "app_setting")
     with sync.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
         for t in tables:
@@ -169,6 +169,8 @@ def schema() -> Iterator[None]:
         conn.execute(text("CREATE TABLE place (id text primary key, name text, kind text, postcode text, lat float8, "
                           "lon float8, geog geography(Point, 4326) GENERATED ALWAYS AS "
                           "(ST_SetSRID(ST_MakePoint(lon, lat), 4326)::geography) STORED)"))  # fmt: skip
+        conn.execute(text("CREATE TABLE app_setting (key text primary key, value jsonb not null, "
+                          "updated_at timestamptz not null default now())"))  # fmt: skip
         conn.execute(text("INSERT INTO place (id, name, kind, postcode, lat, lon) VALUES "
                           f"('home', 'Home', 'home', 'KT3 4ZZ', {HOME[0]}, {HOME[1]})"))  # fmt: skip
         with Operations.context(MigrationContext.configure(conn)):
@@ -203,7 +205,7 @@ async def test_synced_and_asked_everywhere(schema: None, monkeypatch: pytest.Mon
         placed = await sync.sync_places(engine, c, now)
         assert placed["areas"] == 4 and "rota: " in placed["skipped"][0]  # no rota dataset in this fake portal
         assert await sync.covered(engine)
-        assert await sync.sync_faults(engine, c, now) == {"power_cuts": 2, "planned": 1, "placed": 2}
+        assert await sync.sync_faults(engine, c, now) == {"power_cuts": 2, "planned": 1, "placed": 2, "ended": 0, "at_home": True}
         assert (await sync.sync_works(engine, c, "open", now))["open_works"] == 1
         assert (await sync.sync_works(engine, c, "proposed", now))["proposed_works"] == 1
         assert await sync.sync_carbon(engine, c, now) == {"readings": 5, "grid_supply_points": 1}
@@ -284,3 +286,60 @@ def test_works_on_a_route_read_as_trip_conditions() -> None:
     item = ukpn_item(r)
     assert (item["source"], item["level"], item["closure"]) == ("ukpn", 3, True)
     assert item["headline"] == "Electricity works (proposed) (Road closure)" and item["where"] == "Kingston Road, New Malden"
+
+
+@pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
+async def test_hourly_until_a_cut_is_at_home_and_every_cut_is_kept(schema: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import get_settings
+    from app.integrations.ukpn import sync
+    from app.main import app
+
+    uc.forget()
+    monkeypatch.setenv("API_TOKEN", "tok")
+    get_settings.cache_clear()
+    engine = create_async_engine(URL, poolclass=NullPool)  # type: ignore[arg-type]
+    t0 = datetime.now(UTC).replace(microsecond=0)
+    feed = EXPORTS["ukpn-national-energy-outage"]
+    saved = list(feed)
+    try:
+        assert (await sync.faults_due(engine, t0))[0]  # never read: read now
+        feed[:] = [LIVE]  # one cut, far from home (Bishop's Stortford)
+        async with uc.UkpnClient("k", transport=portal([])) as c:
+            got = await sync.sync_faults(engine, c, t0)
+            assert got["at_home"] is False
+            assert not (await sync.faults_due(engine, t0 + timedelta(minutes=20)))[0]  # hourly
+            due, why = await sync.faults_due(engine, t0 + timedelta(minutes=60))
+            assert due and why == "every 60 minutes"
+
+            feed[:] = [LIVE, {**NEO, "estimatedrestorationdate": (t0 + timedelta(hours=1)).isoformat(),
+                              "creationdatetime": (t0 - timedelta(minutes=30)).isoformat()}]  # now one at home  # fmt: skip
+            t1 = t0 + timedelta(minutes=60)
+            assert (await sync.sync_faults(engine, c, t1))["at_home"] is True
+            due, why = await sync.faults_due(engine, t1 + timedelta(minutes=15))
+            assert due and why == "every 15 minutes (a cut is at home)"
+
+            feed[:] = [{**NEO, "nocustomeraffected": "210", "estimatedrestorationdate": (t1 + timedelta(hours=2)).isoformat()}]
+            t2 = t1 + timedelta(minutes=15)
+            got = await sync.sync_faults(engine, c, t2)
+            assert got["ended"] == 1  # the Bishop's Stortford cut left the feed: closed in the history
+            feed[:] = []  # power back at home
+            t3 = t2 + timedelta(hours=3)
+            got = await sync.sync_faults(engine, c, t3)
+            assert (got["ended"], got["at_home"]) == (1, False)
+            assert not (await sync.faults_due(engine, t3 + timedelta(minutes=15)))[0]  # back to hourly
+        async with engine.connect() as conn:
+            kept = {r.id: r for r in await conn.execute(text("SELECT * FROM ukpn_fault_history"))}
+        home = kept["INCD-123456-Z"]
+        assert home.home and home.places == ["home"] and home.customers_max == 210 and home.ended_at == t3
+        assert home.first_restore_at == t0 + timedelta(hours=1) and home.last_restore_at == t1 + timedelta(hours=2)
+        assert kept["INCD-999"].ended_at == t2 and not kept["INCD-999"].home
+
+        app.state.engine = engine
+        h = TestClient(app).get("/v1/power/history", headers={"Authorization": "Bearer tok"}).json()
+        assert (h["count"], h["unplanned"], h["late"]) == (1, 1, 1)  # back later than first promised
+        assert h["cuts"][0]["hours"] == pytest.approx(4.8, abs=0.1)  # from 30 minutes before t0 to t3 and h["recorded_network_wide"] == 2
+    finally:
+        feed[:] = saved
+        await engine.dispose()
+        get_settings.cache_clear()
+        uc.forget()

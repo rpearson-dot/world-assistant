@@ -45,6 +45,30 @@ def upgrade() -> None:
     op.execute("CREATE INDEX ix_ukpn_fault_geog ON ukpn_fault USING GIST (geog)")
     op.execute("CREATE INDEX ix_ukpn_fault_postcodes ON ukpn_fault USING GIN (postcodes)")
 
+    # Every power cut ever seen, kept: when it was first and last seen, when it ended (left the feed), the worst
+    # count of homes, the restoration estimates first and last given, and which saved places it was at.
+    op.create_table(
+        "ukpn_fault_history",
+        sa.Column("id", sa.Text(), primary_key=True),
+        sa.Column("planned", sa.Boolean()),
+        sa.Column("description", sa.Text()),
+        sa.Column("postcodes", pg.ARRAY(sa.Text()), nullable=False, server_default="{}"),
+        sa.Column("customers_max", sa.Integer()),
+        sa.Column("started_at", TS),
+        sa.Column("first_restore_at", TS),
+        sa.Column("last_restore_at", TS),
+        sa.Column("status_last", sa.Text()),
+        sa.Column("first_seen", TS, nullable=False),
+        sa.Column("last_seen", TS, nullable=False),
+        sa.Column("ended_at", TS),  # null while it is still in the feed
+        sa.Column("places", pg.ARRAY(sa.Text()), nullable=False, server_default="{}"),  # saved places it was at
+        sa.Column("home", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column("lat", sa.Float()),
+        sa.Column("lon", sa.Float()),
+    )
+    op.create_index("ix_ukpn_fault_history_started", "ukpn_fault_history", ["first_seen"])
+    op.execute("CREATE INDEX ix_ukpn_fault_history_places ON ukpn_fault_history USING GIN (places)")
+
     op.create_table(
         "ukpn_works",
         sa.Column("id", sa.Text(), primary_key=True),
@@ -86,5 +110,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    for t in ("ukpn_carbon", "ukpn_place_area", "ukpn_works", "ukpn_fault"):
+    for t in ("ukpn_carbon", "ukpn_place_area", "ukpn_works", "ukpn_fault_history", "ukpn_fault"):
         op.drop_table(t)

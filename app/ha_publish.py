@@ -321,7 +321,8 @@ def roads_device(status: dict[str, Any], events: list[dict[str, Any]] | None = N
     return Device("roads", "Roads", sensors)
 
 
-def power_device(supply: dict[str, Any], cuts: dict[str, Any], works: dict[str, Any], carbon: dict[str, Any]) -> Device:
+def power_device(supply: dict[str, Any], cuts: dict[str, Any], works: dict[str, Any], carbon: dict[str, Any],
+                 history: dict[str, Any] | None = None) -> Device:
     """Power at home (UK Power Networks): a cut there now, cuts nearby, street works nearby, and how clean the local
     electricity is now and when it is cleanest."""
     here = supply.get("cuts") or []
@@ -338,6 +339,12 @@ def power_device(supply: dict[str, Any], cuts: dict[str, Any], works: dict[str, 
                state_class="measurement", attributes={"open": works.get("open", 0), "proposed": works.get("proposed", 0),
                                                       "works": (works.get("works") or [])[:20]}),
     ]  # fmt: skip
+    if history is not None:
+        sensors.append(Sensor("cuts_at_home_year", "Power cuts at home, past year", history.get("unplanned", 0),
+                              icon="mdi:history", state_class="measurement",
+                              attributes={"planned": history.get("planned", 0), "longest_hours": history.get("longest_hours"),
+                                          "total_hours": history.get("total_hours_unplanned"), "late": history.get("late", 0),
+                                          "recording_since": history.get("recording_since")}))  # fmt: skip
     if supply.get("rota_block"):
         sensors.append(Sensor("rota_block", "Rota load disconnection block", supply["rota_block"].get("code"),
                               icon="mdi:calendar-clock"))  # fmt: skip
@@ -465,7 +472,7 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
         if not supply.get("on_network"):
             raise ValueError("home is not on UK Power Networks' network (or not looked up yet)")
         return power_device(supply, await _get(c, "/v1/power/cuts"), await _get(c, "/v1/power/works"),
-                            await _get(c, "/v1/power/carbon"))  # fmt: skip
+                            await _get(c, "/v1/power/carbon"), await _get(c, "/v1/power/history", days=365))  # fmt: skip
 
     for name, build in (("trips", trips), ("energy", energy), ("power", power), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
         await attempt(name, build)

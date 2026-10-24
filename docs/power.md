@@ -5,7 +5,7 @@ Assistant reads their open data portal (licence CC BY 4.0) for:
 
 | What | How often | Where you see it |
 |---|---|---|
-| Power cuts, planned and unplanned | every 15 minutes | Home Assistant "Power cut at home", assistant, graph |
+| Power cuts, planned and unplanned | hourly; every 15 minutes while a cut is at home |  Home Assistant "Power cut at home", assistant, graph |
 | Their street works, under way | every 2 hours | Trip conditions, assistant, graph |
 | Their proposed street works | daily | Trip conditions (planned), assistant |
 | What supplies each place: grid supply point, primary and local substation, rota block, independent operator | daily | `/v1/power/supply`, assistant, graph |
@@ -33,3 +33,8 @@ published title and fields by their names, so a renamed field shows up there fir
 
 Rota load disconnection blocks apply only in a national electricity supply emergency (the Electricity Supply
 Emergency Code); the block tells you which published rota your home would follow.
+
+## History
+
+Every power cut seen is kept in `ukpn_fault_history`, with the saved places it was at. `GET /v1/power/history?place=home&days=365`
+lists them: how long each lasted, how many homes, and whether power came back later than first promised.

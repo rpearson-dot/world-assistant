@@ -1,6 +1,7 @@
 """UK Power Networks: read the portal on a schedule and keep what is about your places.
 
-    power cuts          every 15 minutes   all of them (a few hundred at most)
+    power cuts          hourly; every 15 minutes while a cut affects home. Every cut seen is also kept for good
+                        (ukpn_fault_history), with the places it was at
     street works now    every 2 hours      all of them, so a trip's whole route can be checked
     proposed works      daily              all of them
     your places         daily              which licence area, independent operator, grid supply point, primary and
@@ -34,6 +35,37 @@ log = logging.getLogger("wa.ukpn")
 
 AREA_KINDS = ("boundary", "idno", "gsp", "primary", "secondary", "rota")
 SUSPICIOUS_EMPTY_OVER = 20
+AT_PLACE_M = 1000  # a cut this close to a saved place, or naming its postcode, is at that place (as app/power.py)
+
+# Which saved places each current cut is at (by postcode, or by distance).
+AT_PLACES = """
+SELECT f.id, array_agg(p.id ORDER BY p.id) AS places,
+       bool_or(p.kind = 'home' OR p.id = 'home') AS home
+FROM ukpn_fault f JOIN place p
+  ON (p.postcode IS NOT NULL AND upper(trim(p.postcode)) = ANY(f.postcodes))
+  OR coalesce(ST_DWithin(f.geog, p.geog, :m), false)
+GROUP BY f.id
+"""
+# Keep every cut: insert the new, update the ongoing, and close the ones no longer in the feed.
+HISTORY_UPSERT = """
+INSERT INTO ukpn_fault_history (id, planned, description, postcodes, customers_max, started_at, first_restore_at,
+  last_restore_at, status_last, first_seen, last_seen, ended_at, places, home, lat, lon)
+SELECT f.id, f.planned, f.description, f.postcodes, f.customers, f.started_at, f.restore_at, f.restore_at, f.status,
+       f.seen, f.seen, NULL, coalesce(a.places, '{}'), coalesce(a.home, false), f.lat, f.lon
+FROM ukpn_fault f LEFT JOIN at_places a ON a.id = f.id
+ON CONFLICT (id) DO UPDATE SET
+  planned = EXCLUDED.planned, description = coalesce(EXCLUDED.description, ukpn_fault_history.description),
+  postcodes = (SELECT array_agg(DISTINCT x) FROM unnest(ukpn_fault_history.postcodes || EXCLUDED.postcodes) x),
+  customers_max = GREATEST(ukpn_fault_history.customers_max, EXCLUDED.customers_max),
+  started_at = coalesce(ukpn_fault_history.started_at, EXCLUDED.started_at),
+  first_restore_at = coalesce(ukpn_fault_history.first_restore_at, EXCLUDED.last_restore_at),
+  last_restore_at = coalesce(EXCLUDED.last_restore_at, ukpn_fault_history.last_restore_at),
+  status_last = coalesce(EXCLUDED.status_last, ukpn_fault_history.status_last),
+  last_seen = EXCLUDED.last_seen, ended_at = NULL,
+  places = (SELECT coalesce(array_agg(DISTINCT x), '{}') FROM unnest(ukpn_fault_history.places || EXCLUDED.places) x),
+  home = ukpn_fault_history.home OR EXCLUDED.home, lat = coalesce(EXCLUDED.lat, ukpn_fault_history.lat),
+  lon = coalesce(EXCLUDED.lon, ukpn_fault_history.lon)
+"""
 
 
 async def covered(engine: AsyncEngine) -> bool:
@@ -64,8 +96,39 @@ async def sync_faults(engine: AsyncEngine, c: UkpnClient, now: datetime | None =
                 "INSERT INTO ukpn_fault (id, planned, status, description, postcodes, customers, started_at, restore_at, "
                 "lat, lon, detail, seen) VALUES (:id, :planned, :status, :description, :postcodes, :customers, "
                 ":started_at, :restore_at, :lat, :lon, CAST(:detail AS jsonb), :seen)"), _json(rows))  # fmt: skip
+        await conn.execute(text(f"WITH at_places AS ({AT_PLACES}) {HISTORY_UPSERT}"), {"m": AT_PLACE_M})
+        ended = (await conn.execute(text(
+            "UPDATE ukpn_fault_history SET ended_at = :now WHERE ended_at IS NULL "
+            "AND id NOT IN (SELECT id FROM ukpn_fault)"), {"now": now})).rowcount  # fmt: skip
+        home = await home_affected(conn)
+        await conn.execute(text(  # when the feed was last read, even if it had no cuts in it (see faults_due)
+            "INSERT INTO app_setting (key, value) VALUES ('ukpn_faults_read', CAST(:v AS jsonb)) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()"),
+            {"v": json.dumps({"at": now.isoformat(), "home": home})})  # fmt: skip
     return {"power_cuts": len(rows), "planned": sum(r["planned"] is True for r in rows),
-            "placed": sum(r["lat"] is not None for r in rows)}  # fmt: skip
+            "placed": sum(r["lat"] is not None for r in rows), "ended": ended, "at_home": home}  # fmt: skip
+
+
+async def home_affected(conn: Any) -> bool:
+    """Is a current cut (planned or not) at home: naming its postcode, or within 1 km?"""
+    return bool((await conn.execute(text(
+        "SELECT EXISTS (SELECT 1 FROM ukpn_fault f JOIN place p ON (p.kind = 'home' OR p.id = 'home') AND "
+        "((p.postcode IS NOT NULL AND upper(trim(p.postcode)) = ANY(f.postcodes)) "
+        "OR coalesce(ST_DWithin(f.geog, p.geog, :m), false)))"), {"m": AT_PLACE_M})).scalar())  # fmt: skip
+
+
+async def faults_due(engine: AsyncEngine, now: datetime | None = None) -> tuple[bool, str]:
+    """Read power cuts now? Hourly normally; every 15 minutes while a cut is at home (the job runs every 15)."""
+    s = get_settings()
+    now = now or datetime.now(UTC)
+    async with engine.connect() as conn:
+        read = (await conn.execute(text("SELECT value FROM app_setting WHERE key = 'ukpn_faults_read'"))).scalar()
+        home = await home_affected(conn)
+    last = datetime.fromisoformat(read["at"]) if isinstance(read, dict) and read.get("at") else None
+    every = s.ukpn_fault_alert_interval_min if home else s.ukpn_fault_interval_min
+    if last is None or now - last >= timedelta(minutes=every - 2):  # a little slack for the job's own timing
+        return True, f"every {every} minutes" + (" (a cut is at home)" if home else "")
+    return False, f"next read due {every} minutes after the last" + (" (a cut is at home)" if home else "")
 
 
 async def sync_works(engine: AsyncEngine, c: UkpnClient, stage: str, now: datetime | None = None) -> dict[str, int]:
@@ -168,7 +231,15 @@ def _job(name: str, run: Any, needs_cover: bool = True) -> Any:
     return job
 
 
-ukpn_faults = _job("ukpn_faults", sync_faults)
+async def _faults_when_due(engine: AsyncEngine, c: UkpnClient) -> Any:
+    due, why = await faults_due(engine)
+    if not due:
+        log.debug("power cuts not read: %s", why)
+        return "up to date"  # recorded as skipped on the status page
+    return {**(await sync_faults(engine, c)), "pace": why}
+
+
+ukpn_faults = _job("ukpn_faults", _faults_when_due)
 ukpn_works_open = _job("ukpn_works", lambda e, c: sync_works(e, c, "open"))
 ukpn_works_proposed = _job("ukpn_proposed", lambda e, c: sync_works(e, c, "proposed"))
 ukpn_places = _job("ukpn_places", sync_places, needs_cover=False)
