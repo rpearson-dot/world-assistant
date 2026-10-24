@@ -198,7 +198,7 @@ async def test_synced_and_asked_everywhere(schema: None, monkeypatch: pytest.Mon
     for rows in EXPORTS.values():  # put the half-hours, starts and ends around the real clock
         for r in rows:
             if "carbon_intensity" in r:
-                r["datetime"] = (now.replace(minute=0, second=0, microsecond=0)
+                r["datetime"] = (now.replace(minute=0 if now.minute < 30 else 30, second=0, microsecond=0)
                                  + (datetime.fromisoformat(r["datetime"]) - NOW)).isoformat()  # fmt: skip
     assert not await sync.covered(engine)  # nothing is read before the places are looked up
     async with uc.UkpnClient("k", transport=portal([])) as c:
