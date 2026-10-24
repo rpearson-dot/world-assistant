@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [0.19.1] - 2026-10-24
 
+### Added
+- **Home Assistant energy plan: Free Electricity.** One minute before a Free Electricity hour you have joined, the slot it falls in charges from the grid to "WA target during free electricity" (100%), so the house runs from the grid and the battery fills for free; the slot's own target and grid-charge switch are put back when the hour ends (back-to-back hours handled, and after a restart). The 04:00 target only covers the morning up to a joined free hour tomorrow. Hours you have not joined are ignored; dry run and slot check apply as before. Every plan decision is now logged against "WA energy plan: apply to inverter".
+- **Home charging dashboard** for Home Assistant (`docs/ha/wa_home_charging_dashboard.yaml`, built-in cards): power flows, prices, free hours and Saving Sessions, Forecast.Solar, the charge targets against the inverter's settings, the plan's decisions and its tuning.
+
 ### Fixed
 - **UK Power Networks, read as the portal really sends it** (from the first live probe):
   - Power cuts: the restoration time came out as 1970 (the `restored` customer count was read as a date); it now comes from `etr`, and when power actually came back from `date_of_restoration`. Planned/unplanned is read from `planned` (TRUE/FALSE), the id from `fault_id`, homes affected from `confirmed_off` + `restored`.

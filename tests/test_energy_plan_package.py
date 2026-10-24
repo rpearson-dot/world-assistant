@@ -63,3 +63,108 @@ def test_switched_on_but_remote_control_off_or_missing_says_why() -> None:
     assert not apply and "remote control is missing" in msg
     _, _, apply, msg = _render(GOOD | {"input_boolean.wa_energy_plan_apply": "off"})
     assert not apply and msg.endswith("Dry run: nothing changed.")
+
+
+# --- Free Electricity and the morning target ---------------------------------------------------------------------
+
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+LONDON = ZoneInfo("Europe/London")
+
+
+def _ha_env(states: dict[str, Any], now: datetime) -> tuple[Any, dict[str, Any]]:
+    import json
+
+    env = jinja2.Environment(extensions=["jinja2.ext.do"])
+    as_dt = lambda v, default=None: datetime.fromisoformat(v) if isinstance(v, str) and v[:2] == "20" else default
+    env.filters |= {"as_local": lambda d: d.astimezone(LONDON), "from_json": json.loads, "to_json": json.dumps,
+                    "int": lambda v, d=0: int(float(v)) if str(v).replace(".", "", 1).isdigit() else d,
+                    "float": lambda v, d=0.0: float(v) if str(v).replace(".", "", 1).isdigit() else d,
+                    "string": str, "as_datetime": as_dt}  # fmt: skip
+    funcs = {"states": lambda e: str(states.get(e, "unknown")), "is_state": lambda e, v: states.get(e) == v,
+             "state_attr": lambda e, a: states.get(f"{e}#{a}"), "as_datetime": as_dt, "now": lambda: now,
+             "timedelta": timedelta, "none": None}  # fmt: skip
+    return env, funcs
+
+
+def _free(start: str, joined: bool = True) -> dict[str, Any]:
+    end = (datetime.fromisoformat(start) + timedelta(hours=1)).isoformat()
+    return {"sensor.wa_energy_free_electricity_next_start": start,
+            "sensor.wa_energy_free_electricity_next_start#end": end,
+            "sensor.wa_energy_free_electricity_next_start#joined": joined,
+            "sensor.wa_energy_free_electricity_next_start#type": "Weekend Happy Hour"}  # fmt: skip
+
+
+def _vars(auto_id: str, states: dict[str, Any], now: datetime) -> dict[str, Any]:
+    """The automation's variables, rendered in order as Home Assistant does (each sees the ones before)."""
+    env, funcs = _ha_env(states, now)
+    auto = next(a for a in PLAN["automation"] if a["id"] == auto_id)
+    out: dict[str, Any] = {}
+    for k, tpl in auto["variables"].items():
+        text_ = env.from_string(tpl).render(**funcs, **out).strip()
+        try:
+            import ast
+
+            out[k] = ast.literal_eval(text_)
+        except (ValueError, SyntaxError):
+            out[k] = text_
+    return out
+
+
+def test_a_joined_free_hour_picks_its_slot_and_keeps_what_to_put_back() -> None:
+    sunday = datetime(2026, 10, 25, 12, 59, tzinfo=UTC)  # GMT from 02:00 on 25 October
+    states = dict(GOOD) | _free("2026-10-25T13:00:00+00:00") | {
+        "number.office_inverter_time_slot_4_capacity": "65", "switch.office_inverter_time_slot_4_on": "on",
+        "input_number.wa_free_target_pct": "100", "sensor.wa_inverter_slot_check": "ok", "input_text.wa_free_restore": ""}  # fmt: skip
+    v = _vars("wa_energy_free_start", states, sunday)
+    assert (v["slot"], v["target"], v["cap_now"], v["on_now"], v["joined"], v["apply"]) == (4, 100, 65, "on", True, True)
+    assert v["saved"] == {}
+    # an hour in the 07:00-13:00 window, whose grid charge is normally off
+    states |= _free("2026-10-25T10:00:00+00:00") | {"number.office_inverter_time_slot_3_capacity": "10",
+                                                    "switch.office_inverter_time_slot_3_on": "off"}  # fmt: skip
+    v = _vars("wa_energy_free_start", states, sunday)
+    assert (v["slot"], v["cap_now"], v["on_now"]) == (3, 10, "off")
+    # summer time: 13:00 BST is 12:00 UTC, still slot 4
+    assert _vars("wa_energy_free_start", states | _free("2026-06-07T12:00:00+00:00"), sunday)["slot"] == 4
+    # the value saved to put back: back-to-back hours in the same slot keep the first one's settings
+    auto = next(a for a in PLAN["automation"] if a["id"] == "wa_energy_free_start")
+    save = auto["actions"][1]["then"][1]["data"]["value"]
+    env, funcs = _ha_env(states, sunday)
+    first = env.from_string(save).render(**funcs, saved={}, slot=4, cap_now=65, on_now="on", end="E1").strip()
+    assert json_loads(first) == {"slot": 4, "cap": 65, "on": "on", "end": "E1"}
+    again = env.from_string(save).render(**funcs, saved=json_loads(first), slot=4, cap_now=100, on_now="on", end="E2")
+    assert json_loads(again) == {"slot": 4, "cap": 65, "on": "on", "end": "E2"}
+
+
+def test_a_free_hour_you_did_not_join_does_nothing() -> None:
+    env, funcs = _ha_env({}, datetime(2026, 10, 25, 6, 59, tzinfo=UTC))
+    auto = next(a for a in PLAN["automation"] if a["id"] == "wa_energy_free_start")
+    cond = auto["conditions"][0]["value_template"]
+    assert env.from_string(cond).render(joined=False, end="x", on_now="on").strip() == "False"
+    assert env.from_string(cond).render(joined=True, end="x", on_now="unavailable").strip() == "False"
+    assert env.from_string(cond).render(joined=True, end="x", on_now="off").strip() == "True"
+
+
+def test_the_morning_target_only_covers_the_hours_before_a_joined_free_hour() -> None:
+    sensor = next(x for x in PLAN["template"][0]["sensor"] if x["unique_id"] == "wa_target_charge_morning")
+    base = {"input_number.wa_battery_kwh": "30", "input_number.wa_floor_pct": "15", "input_number.wa_morning_load_kw": "1.2",
+            "input_number.wa_margin": "1.25", "input_number.wa_min_target_pct": "25", "input_number.wa_max_target_pct": "95",
+            "input_number.wa_solar_morning_share": "0.5", "sensor.energy_production_tomorrow": "0"}  # fmt: skip
+    at_nine = datetime(2026, 10, 24, 20, 0, tzinfo=UTC)  # 21:00 BST, the evening before
+
+    def target(extra: dict[str, Any]) -> int:
+        env, funcs = _ha_env(base | extra, at_nine)
+        return int(env.from_string(sensor["state"]).render(**funcs).strip())
+
+    assert target({}) == 45  # 15% + 1.2 kW x 6 h x 1.25 = 9 kWh = 30%
+    assert target(_free("2026-10-25T09:00:00+00:00")) == 25  # free from 09:00: 2 h = 3 kWh = 10%, floored at 25%
+    assert target(_free("2026-10-25T09:00:00+00:00", joined=False)) == 45
+    assert target(_free("2026-10-25T13:00:00+00:00")) == 45  # the afternoon hour changes nothing here
+    assert target({"sensor.energy_production_tomorrow": "7.8"}) == 30  # less half of tomorrow's solar
+
+
+def json_loads(s: str) -> Any:
+    import json
+
+    return json.loads(s.strip())

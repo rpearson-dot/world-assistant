@@ -1,0 +1,211 @@
+# World Assistant "Home charging" dashboard for Home Assistant. Built-in cards only (no HACS).
+#
+# Install: Settings > Dashboards > Add dashboard > New dashboard from scratch, name it "Home charging", open it,
+# then the pencil (edit) > three dots > Raw configuration editor, paste this whole file, and Save.
+#
+# Needs: the energy plan package (docs/ha/wa_energy_plan.yaml), World Assistant 0.19.1 or later publishing to Home
+# Assistant over MQTT (the wa_energy_* and wa_power_* sensors), and Forecast.Solar. If Forecast.Solar's sensors
+# are named differently on your system (sensor.energy_production_tomorrow_2 for a second array, say), change them
+# here and in the package.
+
+title: Home charging
+views:
+  - title: Home charging
+    path: home-charging
+    icon: mdi:home-battery
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Now
+          - type: gauge
+            entity: sensor.office_inverter_battery_soc
+            name: Battery
+            min: 0
+            max: 100
+            needle: true
+            severity:
+              red: 0
+              yellow: 20
+              green: 40
+          - type: tile
+            entity: sensor.office_inverter_pv_total_power
+            name: Solar
+          - type: tile
+            entity: sensor.office_inverter_load_total_power
+            name: House
+          - type: tile
+            entity: sensor.office_inverter_battery_power
+            name: Battery (+ discharging)
+          - type: tile
+            entity: sensor.office_inverter_grid_import_today
+            name: Imported today
+          - type: tile
+            entity: sensor.wa_energy_rate
+            name: Price now
+          - type: tile
+            entity: sensor.wa_energy_band
+            name: Band
+          - type: tile
+            entity: sensor.wa_energy_next_change
+            name: Price changes
+          - type: tile
+            entity: sensor.wa_energy_next_rate
+            name: Then
+          # these two appear once UK Power Networks is set up (ukpn_api_key)
+          - type: tile
+            entity: sensor.wa_power_power_cut_home
+            name: Power cut at home
+          - type: tile
+            entity: sensor.wa_power_carbon_intensity
+            name: Grid carbon now
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Free electricity and Saving Sessions
+          - type: tile
+            entity: sensor.wa_energy_free_electricity_now
+            name: Free electricity now
+            grid_options:
+              columns: 12
+          - type: tile
+            entity: sensor.wa_energy_free_electricity_next_start
+            name: Next free hour
+            grid_options:
+              columns: 12
+          - type: tile
+            entity: sensor.wa_energy_saving_session_now
+            name: Saving Session now
+          - type: tile
+            entity: sensor.wa_energy_saving_session_next_joined_start
+            name: Next joined Saving Session
+          - type: markdown
+            content: >-
+              {% set f = 'sensor.wa_energy_free_electricity_next_start' %}
+              {% set up = state_attr(f, 'upcoming') or [] %}
+              {% if up %}**Free hours announced**{% for u in up[:8] %}
+
+              - {{ (as_datetime(u.start) | as_local).strftime('%a %H:%M') }}-{{ (as_datetime(u.end) | as_local).strftime('%H:%M') }}
+              {{ '✅ joined' if u.joined else '— not joined (join in the Octopus app)' }}{% endfor %}
+              {% else %}No free electricity announced.{% endif %}
+              {% set r = states('input_text.wa_free_restore') %}
+              {% if r.startswith('{') %}
+
+              ⚡ **Charging free now**: slot {{ (r | from_json).slot }} until
+              {{ (as_datetime((r | from_json).end) | as_local).strftime('%H:%M') }}, then put back to
+              {{ (r | from_json).cap }}%.{% endif %}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Solar
+          - type: tile
+            entity: sensor.power_production_now
+            name: Solar forecast now
+          - type: tile
+            entity: sensor.energy_production_today
+            name: Today
+          - type: tile
+            entity: sensor.energy_production_today_remaining
+            name: Still to come today
+          - type: tile
+            entity: sensor.energy_production_tomorrow
+            name: Tomorrow
+          - type: history-graph
+            title: Battery and solar, last 24 hours
+            hours_to_show: 24
+            entities:
+              - entity: sensor.office_inverter_battery_soc
+                name: Battery
+              - entity: sensor.office_inverter_pv_total_power
+                name: Solar actual
+              - entity: sensor.power_production_now
+                name: Solar forecast
+              - entity: sensor.office_inverter_load_total_power
+                name: House
+            grid_options:
+              columns: full
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Charge plan
+          - type: tile
+            entity: input_boolean.wa_energy_plan_apply
+            name: Apply to inverter (off = dry run)
+            features:
+              - type: toggle
+            grid_options:
+              columns: 12
+          - type: tile
+            entity: switch.office_inverter_allow_remote_control
+            name: Inverter remote control
+          - type: tile
+            entity: sensor.wa_inverter_slot_check
+            name: Slot check
+          - type: markdown
+            content: >-
+              {% set rows = [
+                ['22:00 slot 6', 'covers 00:00-04:00', 'sensor.wa_target_charge_night', 'number.office_inverter_time_slot_6_capacity', '21:00'],
+                ['04:00 slot 2', 'covers 07:00-13:00, less solar', 'sensor.wa_target_charge_morning', 'number.office_inverter_time_slot_2_capacity', '21:00'],
+                ['13:00 slot 4', 'covers the 16:00-22:00 peak', 'sensor.wa_target_charge_evening', 'number.office_inverter_time_slot_4_capacity', '12:30'],
+              ] %}
+              | Charge window | | Plan | Inverter | Set at |
+              |---|---|---|---|---|
+              {% for r in rows %}| {{ r[0] }} | {{ r[1] }} | **{{ states(r[2]) }}%** | {{ states(r[3]) }}% | {{ r[4] }} |
+              {% endfor %}
+
+              Tomorrow's solar: {{ states('sensor.energy_production_tomorrow') }} kWh.
+              {% if is_state('sensor.wa_inverter_slot_check', 'mismatch') %}
+
+              ⚠️ **Not applying:** {{ state_attr('sensor.wa_inverter_slot_check', 'problems') }}{% endif %}
+            grid_options:
+              columns: full
+          - type: logbook
+            title: Plan decisions
+            hours_to_show: 72
+            target:
+              entity_id: input_boolean.wa_energy_plan_apply
+            grid_options:
+              columns: full
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Tuning
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_number.wa_battery_kwh
+                name: Usable battery
+              - entity: input_number.wa_floor_pct
+                name: Reserve floor
+              - entity: input_number.wa_min_target_pct
+                name: Lowest target
+              - entity: input_number.wa_max_target_pct
+                name: Highest target
+              - entity: input_number.wa_free_target_pct
+                name: Target during free electricity
+              - entity: input_number.wa_margin
+                name: Safety margin
+              - entity: input_number.wa_night_load_kw
+                name: Load 00:00-04:00
+              - entity: input_number.wa_morning_load_kw
+                name: Load 07:00-13:00
+              - entity: input_number.wa_evening_load_kw
+                name: Load 16:00-22:00
+              - entity: input_number.wa_solar_morning_share
+                name: Solar share before 13:00
+              - type: section
+                label: Saving Sessions
+              - entity: input_number.wa_session_margin
+                name: Margin when a session is due
+              - entity: input_number.wa_session_extra_floor_pct
+                name: Extra reserve when a session is due
+              - entity: input_number.wa_session_low_soc_pct
+                name: Warn below
+            grid_options:
+              columns: full

@@ -109,8 +109,18 @@ starts as a dry run that only writes to the logbook; switch on "WA energy plan: 
 look right. On Cosy the cheap windows are fixed and already in the slots, so WA is not needed for those. WA's Saving Session
 sensors are used to raise the 13:00 target when you have joined a session between 16:00 and 22:00, to warn if the
 battery runs low during a joined session, and to flag a joined session outside 16:00-22:00 that the plan does not
-handle. Before applying, it checks the inverter's slot start times and grid-charge switches (sensor "WA inverter slot check"); if someone has changed them it only logs what differs. Nothing in the package switches the grid off or limits what the inverter can draw: any shortfall is taken
+handle. In a **Free Electricity hour you have joined** it sets that hour's slot to charge from the grid to 100%
+(so the house runs from the grid and the battery fills, for free) and puts the slot back when the hour ends; the 04:00
+target only covers the morning up to a joined free hour. Before applying, it checks the inverter's slot start times and grid-charge switches (sensor "WA inverter slot check"); if someone has changed them it only logs what differs. Nothing in the package switches the grid off or limits what the inverter can draw: any shortfall is taken
 from the grid by the inverter itself, so the cost of a shortfall is a smaller reward, not a loss of supply.
+
+### Home charging dashboard
+
+`docs/ha/wa_home_charging_dashboard.yaml` is a Home Assistant dashboard for all of this, with built-in cards only:
+battery, solar, house and grid now; the price now and next; free hours announced (joined or not) and Saving
+Sessions; Forecast.Solar today, still to come and tomorrow; the three charge targets next to what the inverter is
+set to; the apply switch and slot check; a logbook of every decision the plan made; and the tuning sliders. Add a
+dashboard from scratch, open its raw configuration editor, and paste the file in.
 
 ## Notes
 
