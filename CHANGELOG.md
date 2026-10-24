@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Fixed
+- Home charging dashboard: the inverter's slot targets show as whole percentages (80%, not 80.0%).
+
 ## [0.19.1] - 2026-10-24
 
 ### Added

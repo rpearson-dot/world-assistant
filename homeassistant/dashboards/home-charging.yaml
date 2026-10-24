@@ -163,7 +163,7 @@ views:
               {%- for r in rows %}
               {%- set capped = state_attr(r[2], 'over_health_max') in [true, 'True'] %}
               {%- if capped %}{% set over.list = over.list + [r[0] ~ ' wants ' ~ state_attr(r[2], 'wanted') ~ '%'] %}{% endif %}
-              | {{ r[0] }} | {{ r[1] }} | {{ state_attr(r[2], 'wanted') }}% | **{{ states(r[2]) }}%**{{ ' ⚠️' if capped }} | {{ states(r[3]) }}% | {{ r[4] }} |
+              | {{ r[0] }} | {{ r[1] }} | {{ state_attr(r[2], 'wanted') }}% | **{{ states(r[2]) }}%**{{ ' ⚠️' if capped }} | {{ states(r[3]) | int(0) }}% | {{ r[4] }} |
               {%- endfor %}
 
               Battery health max **{{ cap }}%**. Tomorrow's solar {{ states('sensor.energy_production_tomorrow') }} kWh.

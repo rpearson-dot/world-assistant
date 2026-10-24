@@ -506,7 +506,7 @@ def test_home_charging_plan_table_renders() -> None:
           "sensor.wa_target_charge_night#wanted": "25", "sensor.wa_target_charge_morning#wanted": "30",
           "sensor.wa_target_charge_evening#wanted": "95", "sensor.wa_target_charge_evening#over_health_max": True,
           "number.office_inverter_time_slot_6_capacity": "80", "number.office_inverter_time_slot_2_capacity": "80",
-          "number.office_inverter_time_slot_4_capacity": "70", "input_number.wa_max_target_pct": "80",
+          "number.office_inverter_time_slot_4_capacity": "70.0", "input_number.wa_max_target_pct": "80",
           "sensor.energy_production_tomorrow": "7.8", "sensor.wa_inverter_slot_check": "ok",
           "input_text.wa_free_restore": json.dumps({"slot": 4, "cap": 70, "on": "on", "end": "2026-10-25T14:00:00+00:00"}),
           "sensor.wa_energy_free_electricity_next_start#upcoming": [
