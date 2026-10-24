@@ -144,6 +144,13 @@ views:
             grid_options:
               columns: 12
           - type: tile
+            entity: input_boolean.wa_energy_plan_manage_slots
+            name: Set slot times from the tariff
+            features:
+              - type: toggle
+            grid_options:
+              columns: 12
+          - type: tile
             entity: switch.office_inverter_allow_remote_control
             name: Inverter remote control
           - type: tile
@@ -151,29 +158,35 @@ views:
             name: Slot check
           - type: markdown
             content: |
-              {%- set rows = [
-                ['22:00 slot 6', '00:00-04:00', 'sensor.wa_target_charge_night', 'number.office_inverter_time_slot_6_capacity', '21:00'],
-                ['04:00 slot 2', '07:00-13:00, less solar', 'sensor.wa_target_charge_morning', 'number.office_inverter_time_slot_2_capacity', '21:00'],
-                ['13:00 slot 4', 'the 16:00-22:00 peak', 'sensor.wa_target_charge_evening', 'number.office_inverter_time_slot_4_capacity', '12:30'],
-              ] %}
+              {%- set t = state_attr('sensor.wa_charge_targets', 'slots') or [] %}
               {%- set cap = states('input_number.wa_max_target_pct') | int(80) %}
+              {%- set floor = states('input_number.wa_floor_pct') | int(20) %}
               {%- set over = namespace(list=[]) %}
-              | Charge window | Covers | Wanted | Plan | Inverter | Set at |
-              |---|---|---|---|---|---|
-              {%- for r in rows %}
-              {%- set capped = state_attr(r[2], 'over_health_max') in [true, 'True'] %}
-              {%- if capped %}{% set over.list = over.list + [r[0] ~ ' wants ' ~ state_attr(r[2], 'wanted') ~ '%'] %}{% endif %}
-              | {{ r[0] }} | {{ r[1] }} | {{ state_attr(r[2], 'wanted') }}% | **{{ states(r[2]) }}%**{{ ' ⚠️' if capped }} | {{ states(r[3]) }}% | {{ r[4] }} |
+              **{{ state_attr('sensor.wa_energy_charge_schedule', 'tariff') or 'Tariff' }}**: cheap {{ states('sensor.wa_energy_charge_schedule') }}
+
+              | Slot | From | Grid charge | Covers | Wanted | Plan | Inverter |
+              |---|---|---|---|---|---|---|
+              {%- for s in t %}
+              {%- if s.over %}{% set over.list = over.list + ['slot ' ~ s.n ~ ' (' ~ s.start ~ ') wants ' ~ s.wanted ~ '%'] %}{% endif %}
+              | {{ s.n }} | {{ s.start }} | {{ 'on' if s.charge else 'off' }} | {{ (s.covers ~ (', and for the next window' if s.carried else '')) if s.charge else 'discharge to the floor' }} | {{ s.wanted }}% | **{{ s.target }}%**{{ ' ⚠️' if s.over }} | {{ states('number.office_inverter_time_slot_' ~ s.n ~ '_capacity') | int(0) }}%{{ '' if states('text.office_inverter_time_slot_' ~ s.n ~ '_start')[:5] == s.start else ' (starts ' ~ states('text.office_inverter_time_slot_' ~ s.n ~ '_start')[:5] ~ ')' }} |
               {%- endfor %}
 
-              Battery health max **{{ cap }}%**. Tomorrow's solar {{ states('sensor.energy_production_tomorrow') }} kWh.
+              Battery floor **{{ floor }}%**, health max **{{ cap }}%**. Charging from the grid at {{ states('sensor.wa_battery_charge_rate') }} kW ({{ (states('sensor.wa_battery_charge_rate') | float(0) / (states('input_number.wa_battery_kwh') | float(40)) * 100) | round(0) | int }}% an hour). Solar today {{ states('sensor.energy_production_today') }} kWh, tomorrow {{ states('sensor.energy_production_tomorrow') }} kWh.
+              {%- if not t %}
+
+              No schedule from World Assistant yet (sensor.wa_energy_charge_schedule).
+              {%- endif %}
               {%- if over.list %}
 
-              ⚠️ **Suggest raising the health max**: {{ over.list | join(', ') }}, to get through to the next cheap window without buying at the standard or peak rate.
+              ⚠️ **Suggest raising the health max**: {{ over.list | join(', ') }}, to get through to the next cheap window without buying at a dearer rate.
               {%- endif %}
+              {%- for w in state_attr('sensor.wa_energy_charge_schedule', 'warnings') or [] %}
+
+              ⚠️ {{ w }}
+              {%- endfor %}
               {%- if is_state('sensor.wa_inverter_slot_check', 'mismatch') %}
 
-              ⚠️ **Not applying:** {{ state_attr('sensor.wa_inverter_slot_check', 'problems') }}
+              ⚠️ **Not applying:** {{ state_attr('sensor.wa_inverter_slot_check', 'problems') }}{{ '. Switch on "Set slot times from the tariff" to let the plan change them.' if is_state('input_boolean.wa_energy_plan_manage_slots', 'off') else '' }}
               {%- endif %}
             grid_options:
               columns: full
@@ -195,7 +208,7 @@ views:
               - entity: input_number.wa_battery_kwh
                 name: Usable battery
               - entity: input_number.wa_floor_pct
-                name: Reserve floor
+                name: Battery floor
               - entity: input_number.wa_min_target_pct
                 name: Lowest target
               - entity: input_number.wa_max_target_pct
@@ -205,13 +218,15 @@ views:
               - entity: input_number.wa_margin
                 name: Safety margin
               - entity: input_number.wa_night_load_kw
-                name: Load 00:00-04:00
+                name: Load 00:00-07:00
               - entity: input_number.wa_morning_load_kw
-                name: Load 07:00-13:00
+                name: Load 07:00-16:00
               - entity: input_number.wa_evening_load_kw
-                name: Load 16:00-22:00
-              - entity: input_number.wa_solar_morning_share
-                name: Solar share before 13:00
+                name: Load 16:00-24:00
+              - entity: input_number.wa_charge_kw
+                name: Charge rate if the inverter's cannot be read
+              - entity: input_number.wa_solar_trust
+                name: Share of the solar forecast to count on
               - type: section
                 label: Saving Sessions
               - entity: input_number.wa_session_margin

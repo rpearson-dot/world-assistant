@@ -102,19 +102,28 @@ the battery.
 
 ## Running the battery from Home Assistant
 
-The energy plan (`wa_energy_plan.yaml`, on the Home Assistant page, /ha) is a Home Assistant package for a Deye/Sunsynk inverter that already has Cosy-shaped
-time slots (00:00 04:00 07:00 13:00 16:00 22:00, grid charge on for slots 2, 4 and 6). It changes only the target
-charge level of the three charging slots, from expected use and tomorrow's solar forecast (Forecast.Solar). It
-starts as a dry run that only writes to the logbook; switch on "WA energy plan: apply to inverter" when the numbers
-look right. On Cosy the cheap windows are fixed and already in the slots, so WA is not needed for those. WA's Saving Session
-sensors are used to raise the 13:00 target when you have joined a session between 16:00 and 22:00, to warn if the
-battery runs low during a joined session, and to flag a joined session outside 16:00-22:00 that the plan does not
-handle. In a **Free Electricity hour you have joined** it sets that hour's slot to charge from the grid to 100%
-(so the house runs from the grid and the battery fills, for free) and puts the slot back when the hour ends; the 04:00
-target only covers the morning up to a joined free hour. No slot is charged above "WA battery health max charge"
-(80% by default, for long battery life); when a window would need more to reach the next cheap window, the plan
-stops at the max and suggests raising it. Before applying, it checks the inverter's slot start times and grid-charge switches (sensor "WA inverter slot check"); if someone has changed them it only logs what differs. Nothing in the package switches the grid off or limits what the inverter can draw: any shortfall is taken
-from the grid by the inverter itself, so the cost of a shortfall is a smaller reward, not a loss of supply.
+The energy plan (`wa_energy_plan.yaml`, on the Home Assistant page, /ha) is a Home Assistant package for a
+Deye/Sunsynk-style inverter with six daily time slots. It works with any Octopus tariff:
+
+* World Assistant works out the six slots from your real rates (`GET /v1/energy/schedule`, and
+  `sensor.wa_energy_charge_schedule` in Home Assistant): a slot starts at each cheap window (grid charge on) and at its
+  end (off), up to three windows a day, the cheapest kept. Cosy comes out as 00:00 04:00 07:00 13:00 16:00 22:00 with
+  grid charge on 04:00, 13:00 and 22:00; Go as one window overnight; Agile as the cheapest windows of the coming day.
+  A rate not published yet is taken from the same time a day (or a week) earlier.
+* Each charging slot is charged to the battery floor plus what the house uses until the next cheap window (night
+  00:00-07:00, day 07:00-16:00 and evening 16:00-24:00 loads, with a margin), less the solar Forecast.Solar expects in
+  that time, never above the battery health max (80% by default; above it the plan stops and suggests raising it).
+  The other slots are set to the floor (20% by default), which is how low the inverter lets the battery discharge.
+* A window can only add the inverter's grid charge rate times its hours (read from the inverter; a setting if it
+  cannot be). When a window cannot put back what the next stretch needs, the window before it charges higher.
+* A joined Saving Session raises the target of the slot that covers it; one inside a charging window is warned
+  about. In a joined Free Electricity hour the slot it falls in charges from the grid (to the health max), and is put
+  back when the hour ends; a charging slot before a joined free hour only covers the time up to it.
+* With "WA energy plan: set slot times from the tariff" on, the plan also writes the slot start times and grid-charge
+  switches; off, it only applies when they already match ("WA inverter slot check").
+* It starts as a dry run that only writes to the logbook; switch on "WA energy plan: apply to inverter" when the
+  numbers look right. Nothing in the package switches the grid off: any shortfall is taken from the grid by the
+  inverter itself, so the cost of a shortfall is money, never a loss of supply.
 
 ### Home charging dashboard
 
