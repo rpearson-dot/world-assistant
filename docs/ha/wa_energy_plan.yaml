@@ -48,6 +48,7 @@ input_text:
 
 input_number:
   wa_free_target_pct:
+    # Free hours fill to this, but never above the battery health max (raise both to go higher)
     name: "WA target during free electricity"
     min: 50
     max: 100
@@ -76,12 +77,14 @@ input_number:
     unit_of_measurement: "%"
     initial: 25
   wa_max_target_pct:
-    name: "WA highest charge target"
+    # Long-term battery health: the plan never charges above this. When the house would need more before the next
+    # cheap window, the plan still stops here and suggests raising it (a notification, the dashboard, the logbook).
+    name: "WA battery health max charge"
     min: 50
     max: 100
     step: 5
     unit_of_measurement: "%"
-    initial: 95
+    initial: 80
   wa_margin:
     name: "WA safety margin on expected use"
     min: 1
@@ -171,8 +174,8 @@ template:
                 {% set ns.out = ns.out + ['slot ' ~ n ~ ' grid charge is off'] %}{% endif %}
             {% endfor %}
             {{ ns.out | join('; ') }}
-      - name: "WA target charge night"
-        unique_id: wa_target_charge_night
+      - name: "WA wanted charge night"
+        unique_id: wa_wanted_charge_night
         unit_of_measurement: "%"
         icon: mdi:battery-charging-40
         state: >-
@@ -181,9 +184,9 @@ template:
                         * states('input_number.wa_margin') | float(1.25) %}
           {% set v = states('input_number.wa_floor_pct') | float(15) + need / cap * 100 %}
           {{ [[(v / 5) | round(0) * 5, states('input_number.wa_min_target_pct') | float(25)] | max,
-              states('input_number.wa_max_target_pct') | float(95)] | min | int }}
-      - name: "WA target charge morning"
-        unique_id: wa_target_charge_morning
+              100] | min | int }}
+      - name: "WA wanted charge morning"
+        unique_id: wa_wanted_charge_morning
         unit_of_measurement: "%"
         icon: mdi:battery-charging-60
         state: >-
@@ -202,9 +205,9 @@ template:
                          * states('input_number.wa_margin') | float(1.25) - solar, 0] | max %}
           {% set v = states('input_number.wa_floor_pct') | float(15) + need / cap * 100 %}
           {{ [[(v / 5) | round(0) * 5, states('input_number.wa_min_target_pct') | float(25)] | max,
-              states('input_number.wa_max_target_pct') | float(95)] | min | int }}
-      - name: "WA target charge evening"
-        unique_id: wa_target_charge_evening
+              100] | min | int }}
+      - name: "WA wanted charge evening"
+        unique_id: wa_wanted_charge_evening
         unit_of_measurement: "%"
         icon: mdi:battery-charging-80
         state: >-
@@ -218,7 +221,43 @@ template:
           {% set need = states('input_number.wa_evening_load_kw') | float(2) * 6 * margin %}
           {% set v = states('input_number.wa_floor_pct') | float(15) + extra + need / cap * 100 %}
           {{ [[(v / 5) | round(0) * 5, states('input_number.wa_min_target_pct') | float(25)] | max,
-              states('input_number.wa_max_target_pct') | float(95)] | min | int }}
+              100] | min | int }}
+      - name: "WA target charge night"
+        unique_id: wa_target_charge_night
+        unit_of_measurement: "%"
+        icon: mdi:battery-charging-40
+        state: >-
+          {{ [states('sensor.wa_wanted_charge_night') | int(0), states('input_number.wa_max_target_pct') | int(80)] | min }}
+        attributes:
+          slot: 6
+          covers: "00:00-04:00"
+          wanted: "{{ states('sensor.wa_wanted_charge_night') | int(0) }}"
+          over_health_max: >-
+            {{ states('sensor.wa_wanted_charge_night') | int(0) > states('input_number.wa_max_target_pct') | int(80) }}
+      - name: "WA target charge morning"
+        unique_id: wa_target_charge_morning
+        unit_of_measurement: "%"
+        icon: mdi:battery-charging-60
+        state: >-
+          {{ [states('sensor.wa_wanted_charge_morning') | int(0), states('input_number.wa_max_target_pct') | int(80)] | min }}
+        attributes:
+          slot: 2
+          covers: "07:00-13:00"
+          wanted: "{{ states('sensor.wa_wanted_charge_morning') | int(0) }}"
+          over_health_max: >-
+            {{ states('sensor.wa_wanted_charge_morning') | int(0) > states('input_number.wa_max_target_pct') | int(80) }}
+      - name: "WA target charge evening"
+        unique_id: wa_target_charge_evening
+        unit_of_measurement: "%"
+        icon: mdi:battery-charging-80
+        state: >-
+          {{ [states('sensor.wa_wanted_charge_evening') | int(0), states('input_number.wa_max_target_pct') | int(80)] | min }}
+        attributes:
+          slot: 4
+          covers: "16:00-22:00"
+          wanted: "{{ states('sensor.wa_wanted_charge_evening') | int(0) }}"
+          over_health_max: >-
+            {{ states('sensor.wa_wanted_charge_evening') | int(0) > states('input_number.wa_max_target_pct') | int(80) }}
 
 automation:
   - id: wa_energy_plan_2100
@@ -376,7 +415,8 @@ automation:
       slot: >-
         {% set h = (as_datetime(start) | as_local).hour %}
         {{ 1 if h < 4 else 2 if h < 7 else 3 if h < 13 else 4 if h < 16 else 5 if h < 22 else 6 }}
-      target: "{{ states('input_number.wa_free_target_pct') | int(100) }}"
+      target: >-
+        {{ [states('input_number.wa_free_target_pct') | int(100), states('input_number.wa_max_target_pct') | int(80)] | min }}
       cap_now: "{{ states('number.office_inverter_time_slot_' ~ slot ~ '_capacity') | int(0) }}"
       on_now: "{{ states('switch.office_inverter_time_slot_' ~ slot ~ '_on') }}"
       saved: >-
@@ -477,3 +517,41 @@ automation:
           entity_id: input_boolean.wa_energy_plan_apply
           message: >-
             Free Electricity over: slot {{ saved.slot }} put back to {{ saved.cap }}% with grid charge {{ saved.on }}.
+
+  - id: wa_energy_health_max_suggestion
+    alias: "WA energy plan: suggest raising the battery health max when the house needs more"
+    mode: single
+    triggers:
+      - trigger: time
+        at: "21:01:00"
+      - trigger: time
+        at: "12:31:00"
+    variables:
+      capped: >-
+        {% set ns = namespace(out=[]) %}
+        {% for p in ['night', 'morning', 'evening'] %}
+          {% set e = 'sensor.wa_target_charge_' ~ p %}
+          {% if state_attr(e, 'over_health_max') in [true, 'True', 'true'] %}
+            {% set ns.out = ns.out + ['slot ' ~ state_attr(e, 'slot') ~ ' (for ' ~ state_attr(e, 'covers') ~ ') wants '
+                                      ~ state_attr(e, 'wanted') ~ '%'] %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.out | join('; ') }}
+    conditions:
+      - condition: template
+        value_template: "{{ capped | length > 0 }}"
+    actions:
+      - action: persistent_notification.create
+        data:
+          notification_id: wa_health_max
+          title: "Battery: more needed than the health max"
+          message: >-
+            {{ capped }}, above your battery health max of {{ states('input_number.wa_max_target_pct') | int }}%.
+            The plan charges to {{ states('input_number.wa_max_target_pct') | int }}%, so the rest will be bought at the
+            standard or peak rate before the next cheap window. To cover it, raise "WA battery health max charge" on
+            the Home charging dashboard (it applies at the next planning run, 21:00 or 12:30).
+      - action: logbook.log
+        data:
+          name: WA energy plan
+          entity_id: input_boolean.wa_energy_plan_apply
+          message: "Capped at the battery health max: {{ capped }}. Raise it to cover this."

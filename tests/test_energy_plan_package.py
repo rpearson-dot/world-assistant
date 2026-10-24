@@ -118,7 +118,7 @@ def test_a_joined_free_hour_picks_its_slot_and_keeps_what_to_put_back() -> None:
         "number.office_inverter_time_slot_4_capacity": "65", "switch.office_inverter_time_slot_4_on": "on",
         "input_number.wa_free_target_pct": "100", "sensor.wa_inverter_slot_check": "ok", "input_text.wa_free_restore": ""}  # fmt: skip
     v = _vars("wa_energy_free_start", states, sunday)
-    assert (v["slot"], v["target"], v["cap_now"], v["on_now"], v["joined"], v["apply"]) == (4, 100, 65, "on", True, True)
+    assert (v["slot"], v["target"], v["cap_now"], v["on_now"], v["joined"], v["apply"]) == (4, 80, 65, "on", True, True)
     assert v["saved"] == {}
     # an hour in the 07:00-13:00 window, whose grid charge is normally off
     states |= _free("2026-10-25T10:00:00+00:00") | {"number.office_inverter_time_slot_3_capacity": "10",
@@ -138,7 +138,7 @@ def test_a_joined_free_hour_picks_its_slot_and_keeps_what_to_put_back() -> None:
 
 
 def test_a_free_hour_you_did_not_join_does_nothing() -> None:
-    env, funcs = _ha_env({}, datetime(2026, 10, 25, 6, 59, tzinfo=UTC))
+    env, _ = _ha_env({}, datetime(2026, 10, 25, 6, 59, tzinfo=UTC))
     auto = next(a for a in PLAN["automation"] if a["id"] == "wa_energy_free_start")
     cond = auto["conditions"][0]["value_template"]
     assert env.from_string(cond).render(joined=False, end="x", on_now="on").strip() == "False"
@@ -147,7 +147,7 @@ def test_a_free_hour_you_did_not_join_does_nothing() -> None:
 
 
 def test_the_morning_target_only_covers_the_hours_before_a_joined_free_hour() -> None:
-    sensor = next(x for x in PLAN["template"][0]["sensor"] if x["unique_id"] == "wa_target_charge_morning")
+    sensor = next(x for x in PLAN["template"][0]["sensor"] if x["unique_id"] == "wa_wanted_charge_morning")
     base = {"input_number.wa_battery_kwh": "30", "input_number.wa_floor_pct": "15", "input_number.wa_morning_load_kw": "1.2",
             "input_number.wa_margin": "1.25", "input_number.wa_min_target_pct": "25", "input_number.wa_max_target_pct": "95",
             "input_number.wa_solar_morning_share": "0.5", "sensor.energy_production_tomorrow": "0"}  # fmt: skip
@@ -168,3 +168,33 @@ def json_loads(s: str) -> Any:
     import json
 
     return json.loads(s.strip())
+
+
+def test_targets_stop_at_the_battery_health_max_and_say_what_was_wanted() -> None:
+    sensors = {x["unique_id"]: x for x in PLAN["template"][0]["sensor"]}
+    evening = sensors["wa_target_charge_evening"]
+    for wanted, cap, applied, over in (("95", "80", 80, "True"), ("65", "80", 65, "False"), ("95", "100", 95, "False")):
+        env, funcs = _ha_env({"sensor.wa_wanted_charge_evening": wanted, "input_number.wa_max_target_pct": cap},
+                             datetime(2026, 10, 24, 11, 30, tzinfo=UTC))  # fmt: skip
+        assert int(env.from_string(evening["state"]).render(**funcs).strip()) == applied
+        assert env.from_string(evening["attributes"]["over_health_max"]).render(**funcs).strip() == over
+    # the wanted level is no longer capped by the health max (only at 100%)
+    wanted = sensors["wa_wanted_charge_evening"]
+    env, funcs = _ha_env({"input_number.wa_battery_kwh": "30", "input_number.wa_floor_pct": "15",
+                          "input_number.wa_evening_load_kw": "3.5", "input_number.wa_margin": "1.25",
+                          "input_number.wa_min_target_pct": "25"}, datetime(2026, 10, 24, 11, 30, tzinfo=UTC))  # fmt: skip
+    assert int(env.from_string(wanted["state"]).render(**funcs).strip()) == 100  # 15% + 26 kWh: more than the battery
+    # the suggestion names the slot, the window and the level wanted
+    auto = next(a for a in PLAN["automation"] if a["id"] == "wa_energy_health_max_suggestion")
+    env, funcs = _ha_env({"sensor.wa_target_charge_evening#over_health_max": True, "sensor.wa_target_charge_evening#slot": 4,
+                          "sensor.wa_target_charge_evening#covers": "16:00-22:00",
+                          "sensor.wa_target_charge_evening#wanted": "95"}, datetime(2026, 10, 24, 11, 31, tzinfo=UTC))  # fmt: skip
+    said = " ".join(env.from_string(auto["variables"]["capped"]).render(**funcs).split())
+    assert said == "slot 4 (for 16:00-22:00) wants 95%"
+
+
+def test_free_hours_never_charge_above_the_health_max() -> None:
+    states = dict(GOOD) | _free("2026-10-25T13:00:00+00:00") | {
+        "number.office_inverter_time_slot_4_capacity": "65", "switch.office_inverter_time_slot_4_on": "on",
+        "input_number.wa_free_target_pct": "100", "input_number.wa_max_target_pct": "80", "input_text.wa_free_restore": ""}  # fmt: skip
+    assert _vars("wa_energy_free_start", states, datetime(2026, 10, 25, 12, 59, tzinfo=UTC))["target"] == 80

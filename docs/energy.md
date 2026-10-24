@@ -111,7 +111,9 @@ sensors are used to raise the 13:00 target when you have joined a session betwee
 battery runs low during a joined session, and to flag a joined session outside 16:00-22:00 that the plan does not
 handle. In a **Free Electricity hour you have joined** it sets that hour's slot to charge from the grid to 100%
 (so the house runs from the grid and the battery fills, for free) and puts the slot back when the hour ends; the 04:00
-target only covers the morning up to a joined free hour. Before applying, it checks the inverter's slot start times and grid-charge switches (sensor "WA inverter slot check"); if someone has changed them it only logs what differs. Nothing in the package switches the grid off or limits what the inverter can draw: any shortfall is taken
+target only covers the morning up to a joined free hour. No slot is charged above "WA battery health max charge"
+(80% by default, for long battery life); when a window would need more to reach the next cheap window, the plan
+stops at the max and suggests raising it. Before applying, it checks the inverter's slot start times and grid-charge switches (sensor "WA inverter slot check"); if someone has changed them it only logs what differs. Nothing in the package switches the grid off or limits what the inverter can draw: any shortfall is taken
 from the grid by the inverter itself, so the cost of a shortfall is a smaller reward, not a loss of supply.
 
 ### Home charging dashboard
