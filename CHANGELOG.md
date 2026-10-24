@@ -4,6 +4,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- **Energy plan outcomes** in Home Assistant: a logbook line at the end of each charging window (the target, what the battery reached, short by how much and what the window could add at the inverter's charge rate, where it started, kWh into the battery and from the grid), at the start of the next window (the lowest the battery went against the floor, kWh bought at dearer rates, solar), and at midnight (the day's grid import, how much was outside the cheap windows, battery charge and solar). It uses the inverter's own counters, kept as running totals across midnight, and logs whether or not the plan is applying. Shown as "Outcomes" on the Home charging dashboard.
+
 ## [0.20.0] - 2026-10-24
 
 ### Added
