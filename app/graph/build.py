@@ -40,6 +40,12 @@ QUERIES: dict[str, str] = {
     "location_rows": "SELECT id, name, lat, lon FROM ha_location",
     "vehicle_rows": "SELECT id, name, kind FROM vehicle",
     "tracker_rows": "SELECT id, config, enabled FROM bus_tracker",
+    "rail_station_rows": "SELECT id, hub, name, modes, lines, zone, step_free, facilities, entrances, platforms, lat, lon FROM tfl_station",
+    "rail_part_rows": "SELECT id, station_id, kind, name, lat, lon FROM tfl_station_part WHERE kind = 'entrance'",
+    "rail_closure_rows": (
+        "SELECT a.id, a.station_id, a.kind, a.description, coalesce(s.name, a.name) AS name FROM tfl_station_alert a "
+        "LEFT JOIN tfl_station s ON s.id = a.station_id"
+    ),
     # Only the stops a tracker watches, with the position NaPTAN gives them.
     "bus_stop_rows": (
         "SELECT n.atco AS id, n.name, n.indicator, n.lat, n.lon FROM naptan_stop n "
@@ -76,6 +82,9 @@ SELECT 'BusStop', n.atco, p.id, ST_Distance(n.geog, p.geog) / 1000.0
 FROM naptan_stop n JOIN place p ON ST_DWithin(n.geog, p.geog, :near_m)
 WHERE n.atco IN (SELECT sid FROM bus_stop)
 UNION ALL
+SELECT 'RailStation', s.id, p.id, ST_Distance(s.geog, p.geog) / 1000.0
+FROM tfl_station s JOIN place p ON ST_DWithin(s.geog, p.geog, :near_m)
+UNION ALL
 SELECT 'LocalEvent', e.id, p.id, ST_Distance(e.geog, p.geog) / 1000.0
 FROM local_event e JOIN place p ON ST_DWithin(e.geog, p.geog, :near_m)
 WHERE e.day >= CURRENT_DATE
@@ -108,6 +117,9 @@ UNION ALL
 SELECT 'BusStop', n.atco, b.id
 FROM naptan_stop n JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, n.geog::geometry)
 WHERE n.atco IN (SELECT sid FROM bus_stop)
+UNION ALL
+SELECT 'RailStation', s.id, b.id
+FROM tfl_station s JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, s.geog::geometry)
 UNION ALL
 SELECT 'LocalEvent', e.id, b.id
 FROM local_event e JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, e.geog::geometry)

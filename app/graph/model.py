@@ -20,15 +20,18 @@ PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER, BUS_STOP
     "FloodWarning",
 )  # fmt: skip
 AREA, DISRUPTION, LOCAL_EVENT = "Area", "Disruption", "LocalEvent"
+# TfL stations (Station is a fuel station), their entrances, the lines serving them and what is closed there now
+RAIL_STATION, ENTRANCE, LINE, CLOSURE = "RailStation", "Entrance", "Line", "StationClosure"
 LABELS = (PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER, BUS_STOP, FLOOD,
-          AREA, DISRUPTION, LOCAL_EVENT)
+          AREA, DISRUPTION, LOCAL_EVENT, RAIL_STATION, ENTRANCE, LINE, CLOSURE)
 
 # Relationship types.
 FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT, COVERS, CROSSES = (
     "FROM", "TO", "USES", "AFFECTS", "ALONG", "NEAR", "DRIVES", "CALLS_AT", "COVERS", "CROSSES",
 )  # fmt: skip
 IN = "IN"
-TYPES = (FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT, COVERS, CROSSES, IN)
+SERVES, HAS, AT, INTERCHANGE = "SERVES", "HAS", "AT", "INTERCHANGE"
+TYPES = (FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT, COVERS, CROSSES, IN, SERVES, HAS, AT, INTERCHANGE)
 
 
 @dataclass(frozen=True)
@@ -202,6 +205,42 @@ def along_corridors(pairs: Iterable[tuple[str, str, float]]) -> list[Rel]:
             for station, corridor, km in pairs]  # fmt: skip
 
 
+def rail_stations(
+    rows: Iterable[dict[str, Any]], part_rows: Iterable[dict[str, Any]], closure_rows: Iterable[dict[str, Any]]
+) -> tuple[list[Node], list[Rel]]:
+    """TfL stations with the lines that serve them, their entrances, what is closed there now, and the other
+    stations in the same building (a hub: Wimbledon's District line, tram and rail stations)."""
+    nodes: list[Node] = []
+    rels: list[Rel] = []
+    lines: set[str] = set()
+    hubs: dict[str, list[str]] = {}
+    for r in rows:
+        facilities = (r.get("facilities") or {}).get("Facility", {})
+        nodes.append(Node(RAIL_STATION, r["id"], {
+            "name": r["name"], "zone": r.get("zone"), "modes": list(r.get("modes") or []),
+            "lines": list(r.get("lines") or []), "step_free": r.get("step_free"),
+            "lifts": facilities.get("Lifts"), "toilets": facilities.get("Toilets"),
+            "entrances": r.get("entrances"), "platforms": r.get("platforms"), "lat": r.get("lat"), "lon": r.get("lon")}))
+        for ln in r.get("lines") or []:
+            lines.add(ln)
+            rels.append(Rel(SERVES, (LINE, ln), (RAIL_STATION, r["id"])))
+        if r.get("hub"):
+            hubs.setdefault(r["hub"], []).append(r["id"])
+    nodes += [Node(LINE, ln, {"name": ln}) for ln in sorted(lines)]
+    for ids in hubs.values():
+        ids = sorted(ids)
+        rels += [Rel(INTERCHANGE, (RAIL_STATION, a), (RAIL_STATION, b)) for i, a in enumerate(ids) for b in ids[i + 1:]]
+    for p in part_rows:
+        if p.get("kind") == "entrance":
+            nodes.append(Node(ENTRANCE, p["id"], {"name": p["name"], "lat": p.get("lat"), "lon": p.get("lon")}))
+            rels.append(Rel(HAS, (RAIL_STATION, p["station_id"]), (ENTRANCE, p["id"])))
+    for c in closure_rows:
+        nodes.append(Node(CLOSURE, c["id"], {"name": (c.get("name") or "") + f" ({c['kind']})", "kind": c["kind"],
+                                             "description": c["description"]}))  # fmt: skip
+        rels.append(Rel(AT, (CLOSURE, c["id"]), (RAIL_STATION, c["station_id"])))
+    return nodes, rels
+
+
 def drives(vehicle_nodes: Sequence[Node], trip_nodes: Sequence[Node]) -> list[Rel]:
     """Every vehicle can make every trip. Stated once so a traversal can cost a trip per vehicle."""
     return [Rel(DRIVES, v.key(), t.key()) for v in vehicle_nodes for t in trip_nodes]
@@ -231,6 +270,9 @@ def build(
     area_parents: Sequence[tuple[str, str]] = (),
     near_pairs: Sequence[tuple[str, str, str, float]] = (),
     along_pairs: Sequence[tuple[str, str, float]] = (),
+    rail_station_rows: Sequence[dict[str, Any]] = (),
+    rail_part_rows: Sequence[dict[str, Any]] = (),
+    rail_closure_rows: Sequence[dict[str, Any]] = (),
 ) -> Graph:
     """The whole graph, from one read of Postgres. Pure, so the shape is testable on its own."""
     place_nodes = places(place_rows)
@@ -246,16 +288,18 @@ def build(
     disruption_nodes, disruption_rels = disruptions(disruption_rows, disruption_corridors)
     event_here = local_events(local_event_rows)
     area_nodes, area_rels = areas(area_rows, inside_pairs, area_parents)
+    rail_nodes, rail_rels = rail_stations(rail_station_rows, rail_part_rows, rail_closure_rows)
 
     nodes = [*place_nodes, *trip_nodes, *corridor_nodes, *event_nodes, *station_nodes,
              *location_nodes, *vehicle_nodes, *tracker_nodes, *stop_nodes, *flood_nodes,
-             *disruption_nodes, *event_here, *area_nodes]  # fmt: skip
+             *disruption_nodes, *event_here, *area_nodes, *rail_nodes]  # fmt: skip
     rels = [
         *trip_rels,
         *event_rels,
         *stop_rels,
         *disruption_rels,
         *area_rels,
+        *rail_rels,
         *flood_reach(flood_covers, flood_crosses),
         *near_places(near_pairs),
         *along_corridors(along_pairs),

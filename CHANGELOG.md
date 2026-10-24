@@ -4,6 +4,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- **TfL stations: layout, facilities and closures** (module `tflstations`, London; on by default, `WA_TFL_STATIONS_POLL_ENABLED`). Every Underground, Overground, DLR, Elizabeth line and tram station with its lines, fare zone, entrances, platforms (and which way they go), facilities (lifts, toilets, car park, wifi) and step-free access, loaded nightly from TfL's StopPoint API; and what is closed now (lifts out of service, escalators, entrances), every 10 minutes. Stations in one building (a TfL "hub", such as Wimbledon's District line, tram and rail) share their closures. Migration 0030.
+- **Lift alerts on the Trains tab**: each board shows lifts and step-free routes out of service at its station (and the others in the same building), with a summary at the top. Boards at National Rail-only stations are named as not covered by TfL's data, rather than shown as "all working".
+- **API**: `GET /v1/stations?q=` (search), `/v1/stations/near` (around a saved place), `/v1/stations/{id}` (in full), `/v1/stations/alerts` (closures; `lifts_only`, and which of the stations asked about TfL covers).
+- **Assistant (MCP) tool `station`**: a station's lines, zone, entrances, platforms, facilities and closures, or the stations near a place and what is closed there.
+- **Graph**: `RailStation`, `Line`, `Entrance` and `StationClosure` nodes, with `SERVES`, `HAS`, `AT` and `INTERCHANGE` links, `NEAR` your places and `IN` their areas, searchable by name; ready-made questions for stations near your places and closures at them.
+
 ## [0.18.1] - 2026-10-23
 
 ### Added

@@ -68,6 +68,12 @@ PRESETS: dict[str, tuple[str, str]] = {
                "MATCH path = (:LocalEvent)-[:NEAR|IN]->() RETURN path LIMIT 200"),
     "roadworks": ("Road disruptions near places and routes",
                   "MATCH path = (:Disruption)-[:NEAR|AFFECTS]->() RETURN path LIMIT 200"),
+    "stations-near": ("TfL stations near my places, and their lines",
+                      "MATCH path = (:Place)<-[:NEAR]-(:RailStation)<-[:SERVES]-(:Line) RETURN path LIMIT 200"),
+    "station-closures": ("Lifts and entrances closed at TfL stations now",
+                         "MATCH path = (:StationClosure)-[:AT]->(:RailStation) RETURN path LIMIT 200"),
+    "closures-near": ("Closures at stations near my places",
+                      "MATCH path = (:StationClosure)-[:AT]->(:RailStation)-[:NEAR]->(:Place) RETURN path LIMIT 150"),
     "trips": ("My trips, places and roads",
               "MATCH path = (:Place)<-[:FROM|TO]-(:Trip)-[:USES]->(:Corridor) RETURN path LIMIT 150"),
 }  # fmt: skip

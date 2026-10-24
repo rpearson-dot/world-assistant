@@ -130,6 +130,7 @@ class Settings(BaseSettings):
     events_sync_radius_km: float = 10.0
     codepoint_url: str = "https://api.os.uk/downloads/v1/products/CodePointOpen/downloads?area=GB&format=CSV&redirect"
     tflroads_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
+    tfl_stations_poll_enabled: bool = False  # TfL stations' layout, facilities and lift closures; compose turns it on
     energy_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
     octopus_account: str = ""  # e.g. A-1234ABCD; with the octopus_api_key secret this finds the tariff
     octopus_tariff: str = ""  # optional override, e.g. E-1R-COSY-22-12-08-A; needs no key

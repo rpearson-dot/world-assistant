@@ -308,8 +308,9 @@ URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
 GEO_MIGRATIONS = ["0003_nh_storage", "0006_places_trips", "0007_fuel", "0009_vehicle",
                   "0011_bus_tracking", "0016_ha_location", "0017_ha_origin", "0018_geography",
-                  "0020_naptan", "0021_flood", "0025_tfl_road", "0027_boundary_usrn", "0028_local_event"]  # fmt: skip
-GEO_TABLES = ["local_event", "usrn", "boundary", "tfl_road_disruption", "flood_warning", "flood_area", "naptan_stop", "bus_timetable", "bus_target_hit", "bus_target_day", "bus_anomaly", "bus_segment_obs",
+                  "0020_naptan", "0021_flood", "0025_tfl_road", "0027_boundary_usrn", "0028_local_event",
+                  "0030_tfl_station"]  # fmt: skip
+GEO_TABLES = ["tfl_station_alert", "tfl_station_part", "tfl_station", "local_event", "usrn", "boundary", "tfl_road_disruption", "flood_warning", "flood_area", "naptan_stop", "bus_timetable", "bus_target_hit", "bus_target_day", "bus_anomaly", "bus_segment_obs",
               "bus_stop", "bus_tracker", "vehicle", "fuel_price_change", "fuel_price", "fuel_station",
               "ha_location", "trip", "place", "nh_sign_message", "nh_sign", "nh_event_corridor",
               "nh_event", "nh_corridor"]  # fmt: skip
