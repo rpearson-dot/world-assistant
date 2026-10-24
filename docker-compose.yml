@@ -62,9 +62,16 @@ x-app: &app
     WA_HA_PUBLISH: ${WA_HA_PUBLISH:-true}
     WA_HA_INTERVAL_MIN: ${WA_HA_INTERVAL_MIN:-5}
     WA_TFLROADS_POLL_ENABLED: ${WA_TFLROADS_POLL_ENABLED:-true}
+    WA_TFL_STATIONS_POLL_ENABLED: ${WA_TFL_STATIONS_POLL_ENABLED:-true}
+    WA_UKPN_POLL_ENABLED: ${WA_UKPN_POLL_ENABLED:-true}
+    WA_UKPN_FAULT_INTERVAL_MIN: ${WA_UKPN_FAULT_INTERVAL_MIN:-60}
+    WA_UKPN_FAULT_ALERT_INTERVAL_MIN: ${WA_UKPN_FAULT_ALERT_INTERVAL_MIN:-15}
+    WA_BUS_DISRUPTIONS_POLL_ENABLED: ${WA_BUS_DISRUPTIONS_POLL_ENABLED:-false}
+    WA_BUS_DISRUPTIONS_KM: ${WA_BUS_DISRUPTIONS_KM:-25}
     WA_ENERGY_POLL_ENABLED: ${WA_ENERGY_POLL_ENABLED:-true}
     WA_OCTOPUS_ACCOUNT: ${WA_OCTOPUS_ACCOUNT:-}
     WA_OCTOPUS_TARIFF: ${WA_OCTOPUS_TARIFF:-}
+    WA_OCTOPUS_MPAN: ${WA_OCTOPUS_MPAN:-}
     WA_NAPTAN_POLL_ENABLED: ${WA_NAPTAN_POLL_ENABLED:-true}
     WA_FUEL_PRICE_INTERVAL_MIN: ${WA_FUEL_PRICE_INTERVAL_MIN:-30}
     WA_NH_LIVE_INTERVAL_MIN: ${WA_NH_LIVE_INTERVAL_MIN:-10}
@@ -96,6 +103,7 @@ x-app: &app
     - bods_api_key
     - tfwm_app_id
     - tfwm_app_key
+    - ukpn_api_key
     - octopus_api_key
     - ticketmaster_api_key
     - pollen_api_key
@@ -229,6 +237,8 @@ secrets:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/tfwm_app_id.txt
   tfwm_app_key:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/tfwm_app_key.txt
+  ukpn_api_key:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/ukpn_api_key.txt
   skiddle_api_key:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/skiddle_api_key.txt
   ticketmaster_api_key:

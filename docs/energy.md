@@ -63,9 +63,10 @@ Every 30 minutes WA also reads:
 * **Saving Sessions** from Octopus's GraphQL API (needs the key and account number): the announced events, and
   whether you have joined each. WA never joins for you; do that in the Octopus app.
 
-Octopus now announces Free Electricity sessions on a calendar rather than through a feed this project can read,
-so they are not included yet. (An earlier version read a community-run list; it had stopped being updated and
-has been removed.)
+* **Free Electricity sessions** from Octopus's official query (`customerFlexibilityCampaignEvents`, campaign
+  `free_electricity`), for your account and import meter (found from the account; set `WA_OCTOPUS_MPAN` if it has
+  several). Octopus does not say which sessions you signed up for, so they are shown as announced for your account.
+  Home Assistant: Free electricity now (`on`/`off`) and Next free electricity starts.
 
 The queries follow the BottlecapDave Home Assistant integration and are not an official Octopus contract, so a
 change at Octopus could break them. The rates keep working if the sessions fail. To see exactly what Octopus

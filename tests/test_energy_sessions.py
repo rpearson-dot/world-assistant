@@ -111,7 +111,8 @@ def test_sensors():
     keys = {x.key: x for x in session_sensors(s)}
     assert keys["saving_session_now"].state == "on"
     assert keys["saving_session_next_start"].state is not None
-    assert not any(k.startswith("free_") for k in keys)
+    # the sample's Power Up ("boost") event is Free Electricity
+    assert keys["free_electricity_now"].state == "off" and keys["free_electricity_next_start"].state is not None
     assert session_sensors({}) == []
     dev = energy_device({"available": False, "sessions": s}, [])
     assert {x.key for x in dev.sensors} >= {"status", "saving_session_now"}
@@ -167,15 +168,11 @@ async def test_save_replaces_only_its_kinds(schema) -> None:
         )  # A is gone, boost stays
         got = {(r["kind"], r["code"]) for r in await store.load_sessions(engine)}
         assert got == {("saving", "B"), ("boost", "U")}
-        # rows of the retired free-electricity kind are cleared by the next save
-        async with engine.begin() as conn:
-            await conn.execute(
-                text(
-                    "INSERT INTO energy_session (kind, code, start_at, end_at) "
-                    "VALUES ('free', 'old', now() + interval '1 hour', now() + interval '2 hours')"
-                )
-            )
+        # Free Electricity is its own kind again: a saving save leaves it, a free save replaces it
+        await store.save_sessions(engine, ["free"], [mk("free", "F1", 5)])
         await store.save_sessions(engine, ["saving"], [mk("saving", "B", 2)])
+        assert {r["kind"] for r in await store.load_sessions(engine)} == {"saving", "boost", "free"}
+        await store.save_sessions(engine, ["free"], [])
         assert {r["kind"] for r in await store.load_sessions(engine)} == {"saving", "boost"}
     finally:
         await engine.dispose()
@@ -188,7 +185,7 @@ def test_retired_sensors_are_not_published_and_are_cleared():
     published = {x.key for x in session_sensors(sessions.summarise(rows(), NOW))}
     assert not published & set(RETIRED)
     msgs = ha.clear("wa", "homeassistant", "energy", RETIRED)
-    assert ("homeassistant/sensor/wa_energy_free_electricity_now/config", "", True) in msgs
+    assert ("homeassistant/sensor/wa_energy_free_electricity_next_joined_start/config", "", True) in msgs
 
 
 def test_spoken_answer():
@@ -218,3 +215,75 @@ def test_spoken_answer():
         "cheap now at 13.0p" in text and "until 17:00" in text
     )  # 16:00 UTC is 17:00 in London (BST)
     assert "Peak is 39.0p from 17:00" in text and "cheapest 3 hours" in text
+
+
+FREE = {"customerFlexibilityCampaignEvents": {"edges": [
+    {"node": {"code": "FE_251026", "startAt": "2026-10-25T13:00:00+00:00", "endAt": "2026-10-25T14:00:00+00:00"}},
+    {"node": {"code": "bad", "startAt": "2026-10-25T14:00:00+00:00", "endAt": "2026-10-25T13:00:00+00:00"}},
+    {"node": {}},
+]}}
+
+
+def test_free_electricity_from_octopus_official_query() -> None:
+    from app.energy import kraken
+    from app.energy.ha import free_sensors
+
+    got = kraken.parse_free(FREE)
+    assert [(r["kind"], r["code"], r["start_at"].hour) for r in got] == [("free", "FE_251026", 13)]
+    assert kraken.parse_free({}) == []
+    now = datetime(2026, 10, 24, 9, tzinfo=UTC)
+    s = sessions.summarise(got, now)
+    assert s["free"]["next"]["start"] == "2026-10-25T13:00:00+00:00" and s["free"]["next"]["minutes"] == 60
+    sensors = {x.key: x.state for x in free_sensors(s["free"])}
+    assert sensors == {"free_electricity_now": "off", "free_electricity_next_start": "2026-10-25T13:00:00+00:00"}
+    during = sessions.summarise(got, datetime(2026, 10, 25, 13, 30, tzinfo=UTC))
+    assert {x.key: x.state for x in free_sensors(during["free"])}["free_electricity_now"] == "on"
+
+
+def test_the_import_meter_is_found_and_export_skipped() -> None:
+    from app.energy import octopus
+
+    body = {"properties": [{"electricity_meter_points": [{"mpan": "9900000000001", "is_export": True},
+                                                         {"mpan": "1900000000002", "is_export": False}]}]}  # fmt: skip
+    assert octopus.pick_mpan(body) == "1900000000002"
+    with pytest.raises(octopus.OctopusError):
+        octopus.pick_mpan({"properties": []})
+
+
+async def test_free_sessions_are_asked_for_with_the_account_and_meter() -> None:
+    import httpx
+
+    from app.energy import kraken
+
+    asked = []
+
+    def answer(req: httpx.Request) -> httpx.Response:
+        body = req.read().decode()
+        asked.append(body)
+        if "obtainKrakenToken" in body:
+            return httpx.Response(200, json={"data": {"obtainKrakenToken": {"token": "t"}}})
+        assert req.headers["Authorization"] == "t"
+        return httpx.Response(200, json={"data": FREE})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(answer)) as c:
+        got = await kraken.fetch_free(c, "key", "A-1234", "1900000000002")
+    assert [r["code"] for r in got] == ["FE_251026"]
+    assert 'campaignSlug: \\"free_electricity\\"' in asked[1] or "free_electricity" in asked[1]
+    assert "A-1234" in asked[1] and "1900000000002" in asked[1]
+
+
+def test_power_up_events_and_the_official_query_make_one_free_list() -> None:
+    from app.energy import kraken
+
+    start, end = datetime(2026, 10, 25, 13, tzinfo=UTC), datetime(2026, 10, 25, 14, tzinfo=UTC)
+    data = {"savingSessions": {"events": [
+        {"id": 77, "code": "EVENT_PU_251026", "startAt": start.isoformat(), "endAt": end.isoformat(),
+         "eventType": "TURN_UP", "rewardPerKwhInOctoPoints": 0, "devEvent": False, "targetRegion": []}],
+        "account": {"joinedEvents": [{"eventId": 77, "startAt": start.isoformat(), "endAt": end.isoformat(),
+                                      "eventType": "TURN_UP"}]}}}  # fmt: skip
+    power_up = kraken.parse_saving(data)
+    assert [(r["kind"], r["joined"]) for r in power_up] == [("boost", True)]
+    official = kraken.parse_free(FREE)  # the same hour, from the official query
+    s = sessions.summarise(power_up + official, datetime(2026, 10, 24, 9, tzinfo=UTC))
+    assert len(s["free"]["upcoming"]) == 1 and s["free"]["next"]["joined"] is True
+    assert s["saving"]["next"] is None  # a Power Up is not a Saving Session

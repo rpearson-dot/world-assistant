@@ -14,7 +14,14 @@ PAGE = """<!doctype html>
 /*BASE_CSS*/
   .tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
   .tools input[type=search] { flex: 1 1 180px; min-width: 0; } .tools select { flex: 1 1 200px; min-width: 0; }
-  .stage { display: grid; grid-template-columns: 1fr 280px; gap: 12px; }
+  .stage { display: grid; grid-template-columns: 250px minmax(0, 1fr) 280px; gap: 12px; align-items: start; }
+  .stage.nopane { grid-template-columns: minmax(0, 1fr) 280px; } .stage.nopane #pane { display: none; }
+  main { max-width: min(1800px, 100%); }  /* the graph uses the window's width, not the reading width */
+  #pane #vLabels, #pane #vTypes { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+  #pane { padding: 12px 14px; max-height: min(68vh, 680px); overflow-y: auto; position: relative; }
+  #pane h2 { display: flex; align-items: center; margin: 0 0 4px; }
+  #pane .view .grp:not(#vLabels):not(#vTypes) { flex-direction: column; align-items: stretch; gap: 4px; }
+  #pane .view select, #pane .view input[type=range] { width: 100%; }
   .canvaswrap { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
     height: min(68vh, 680px); touch-action: none; }
   canvas { display: block; width: 100%; height: 100%; cursor: grab; }
@@ -29,7 +36,10 @@ PAGE = """<!doctype html>
   .view input[type=color] { width: 22px; height: 22px; padding: 0; border: 0; background: none; }
   .view .k { font-size: 12px; color: var(--dim); min-width: 78px; }
   .found { display: grid; gap: 4px; margin-top: 6px; } .found button { text-align: left; }
-  @media (max-width: 760px) { .stage { grid-template-columns: 1fr; } .canvaswrap { height: 58vh; } }
+  @media (max-width: 1100px) { .stage, .stage.nopane { grid-template-columns: 230px minmax(0, 1fr); }
+    .stage.nopane { grid-template-columns: minmax(0, 1fr); } #detail { grid-column: 1 / -1; } }
+  @media (max-width: 760px) { .stage, .stage.nopane { grid-template-columns: 1fr; } .canvaswrap { height: 58vh; }
+    #pane { max-height: none; order: 3; } }
 </style></head><body><main>
 <!--NAV-->
 <h1>Graph</h1>
@@ -47,14 +57,11 @@ PAGE = """<!doctype html>
   <input id="q" type="search" placeholder="Find a place, trip, road, station..." autocomplete="off">
   <select id="preset"><option value="">Ready-made questions...</option></select>
   <button id="overview" type="button">Overview</button><button id="clear" type="button">Clear</button>
+  <button id="paneOpen" type="button">Customise</button>
 </div>
 <div id="found" class="found"></div>
-<div class="stage">
-  <div><div class="canvaswrap"><canvas id="cv"></canvas><div class="hint">Tap: details. Double-tap: expand. Drag, pinch or scroll to move and zoom.</div></div>
-    <div class="legend" id="legend"></div></div>
-  <div class="card" id="detail"><h2>Details</h2><p class="dim">Tap a node to see what it is.</p></div>
-</div>
-<details class="card" style="margin-top:12px"><summary>Customise the view</summary>
+<div class="stage" id="stage">
+  <aside class="card" id="pane"><h2>Customise the view <button id="paneClose" class="link push" type="button" title="Hide this panel">Hide</button></h2>
   <div class="view">
     <div><div class="k">Show these things</div><div class="grp" id="vLabels"></div></div>
     <div><div class="k">Show these links</div><div class="grp" id="vTypes"></div></div>
@@ -66,7 +73,11 @@ PAGE = """<!doctype html>
     <div class="grp"><span class="k">Node size</span><input type="range" id="vScale" min="0.5" max="2" step="0.1" value="1">
       <span class="k">Spread</span><input type="range" id="vSpread" min="0.5" max="2.5" step="0.1" value="1"></div>
     <div class="grp"><button id="vReset" type="button">Reset the view</button><span class="dim">Saved in this browser.</span></div>
-  </div></details>
+  </div></aside>
+  <div><div class="canvaswrap"><canvas id="cv"></canvas><div class="hint">Tap: details. Double-tap: expand. Drag, pinch or scroll to move and zoom.</div></div>
+    <div class="legend" id="legend"></div></div>
+  <div class="card" id="detail"><h2>Details</h2><p class="dim">Tap a node to see what it is.</p></div>
+</div>
 <details class="card" style="margin-top:12px"><summary>Ask with Cypher</summary>
   <p class="dim">Read-only: anything that would change the graph is refused. Return nodes, relationships or paths to see them drawn,
   or values to see a table. Labels: <span id="labels"></span>.</p>
@@ -87,7 +98,7 @@ async function api(path, opts) {
 }
 const COLORS = { Place: '#1a7f4b', Trip: '#1f6feb', Corridor: '#7c3aed', RoadEvent: '#d92d20', Station: '#dc6803', Location: '#0e9384',
   Vehicle: '#667085', BusTracker: '#4f46e5', BusStop: '#ca8a04', FloodWarning: '#0891b2',
-  Area: '#b54708', Disruption: '#c11574', LocalEvent: '#2e90fa' };
+  Area: '#b54708', Disruption: '#c11574', LocalEvent: '#2e90fa' , RailStation: '#0019a8', Entrance: '#6b7280', Line: '#e32017', StationClosure: '#b42318' , PowerCut: '#f04438', StreetWork: '#f79009', Substation: '#6941c6' };
 const DEFAULT_VIEW = { hiddenLabels: [], hiddenTypes: [], colors: {}, size: 'fixed', names: 'zoom', edgeNames: true, scale: 1, spread: 1 };
 let V = Object.assign({}, DEFAULT_VIEW);
 try { Object.assign(V, JSON.parse(localStorage.getItem('wa_graph_view') || '{}')); } catch (e) {}
@@ -102,6 +113,13 @@ let nodes = new Map(), edges = new Map(), sel = null, alpha = 0;
 let view = { x: 0, y: 0, k: 1 }, dpr = window.devicePixelRatio || 1;
 function size() { const r = cv.getBoundingClientRect(); cv.width = r.width * dpr; cv.height = r.height * dpr; draw(); }
 window.addEventListener('resize', size);
+function showPane(on) {  // the Customise panel beside the graph; hidden gives the graph the room
+  $('stage').classList.toggle('nopane', !on); $('paneOpen').style.display = on ? 'none' : '';
+  try { localStorage.setItem('wa_graph_pane', on ? '1' : '0'); } catch (e) {}
+  requestAnimationFrame(size);
+}
+$('paneClose').onclick = () => showPane(false); $('paneOpen').onclick = () => showPane(true);
+{ let on = true; try { on = localStorage.getItem('wa_graph_pane') !== '0'; } catch (e) {} showPane(on); }
 function merge(g, around) {
   const c = around || { x: 0, y: 0 };
   for (const n of g.nodes) {

@@ -247,12 +247,18 @@ PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>World Assistant trains</title>
 <style>
-/*BASE_CSS*/</style></head><body><main>
+/*BASE_CSS*/
+  .closure { margin: 6px 0 8px; padding: 8px 10px; border-radius: 10px; font-size: 14px; }
+  .closure.lift { background: var(--bad-bg, #fef3f2); color: var(--bad, #b42318); }
+  .closure.other { background: var(--chip, #f2f4f7); color: var(--dim, #475467); }
+</style></head><body><main>
 <!--NAV-->
 <h1>Trains</h1>
 <div class="bar"><input id="t" type="password" placeholder="API token" autocomplete="current-password">
 <button id="go" class="primary" type="button">Load</button></div>
-<p id="msg" class="err"></p><div id="boards"></div>
+<p id="msg" class="err"></p>
+<div class="card" id="lifts" hidden><h2>Lifts and step-free access</h2><div id="liftsum"></div></div>
+<div id="boards"></div>
 <div class="card"><h2>Show by platform</h2>
   <p class="dim">Display only, saved in this browser. For example 1=To London, 2=From London.</p>
   <div class="row"><input id="split" placeholder="1=To London, 2=From London" style="flex:1 1 260px">
@@ -284,8 +290,39 @@ async function api(method, path, body) {
 }
 const hhmm = iso => iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
 function cell(tr, text, cls) { const td = tr.insertCell(); td.textContent = text; if (cls) td.className = cls; }
+// Lifts out of service and other closures at a board's station (and others in the same building), from TfL.
+let liftState = { lifts: [], other: 0, checked: 0, loaded: true, updated: null, nr: [], off: false };
+function closureLine(card, a) {
+  const p = document.createElement('p'); const lift = a.kind === 'lift' || a.kind === 'step_free';
+  p.className = 'closure ' + (lift ? 'lift' : 'other');
+  p.textContent = (lift ? 'Lift / step-free: ' : 'Closed: ') + a.description + (a.until ? ' (until ' + new Date(a.until).toLocaleDateString('en-GB') + ')' : '');
+  card.insertBefore(p, card.children[1] || null);
+}
+async function closuresFor(b, card) {
+  try {
+    const r = await api('GET', '/v1/stations/alerts?station=' + encodeURIComponent(b.station));
+    liftState.updated = r.updated; liftState.loaded = r.stations_loaded > 0;
+    if (liftState.loaded && !(r.covered || []).length) { liftState.nr.push(b.name); drawLifts(); return; }  // not a TfL station
+    liftState.checked++;
+    for (const a of r.alerts.filter(a => a.kind !== 'lift' && a.kind !== 'step_free').slice(0, 3)) closureLine(card, a);
+    for (const a of r.alerts.filter(a => a.kind === 'lift' || a.kind === 'step_free')) { closureLine(card, a); liftState.lifts.push([b.name, a]); }
+    liftState.other += r.alerts.length;
+  } catch (e) { liftState.off = true; }  // the TfL stations module is off: say nothing
+  drawLifts();
+}
+function drawLifts() {
+  const box = $('lifts'), sum = $('liftsum'); sum.replaceChildren();
+  if (liftState.off && !liftState.checked) { box.hidden = true; return; }
+  const add = (text, cls) => { const p = document.createElement('p'); p.textContent = text; if (cls) p.className = cls; sum.appendChild(p); };
+  if (!liftState.loaded) add("TfL's station data has not been loaded yet; it loads overnight, or run python -m app.integrations.tflstations.sync.", 'dim');
+  else if (liftState.lifts.length) for (const [board, a] of liftState.lifts) add(board + ': ' + a.description, 'closure lift');
+  else if (liftState.checked) add('All lifts working at your TfL stations' + (liftState.updated ? ' (checked ' + hhmm(liftState.updated) + ')' : '') + '.', 'dim');
+  if (liftState.nr.length) add('Not covered (' + liftState.nr.join(', ') + "): TfL's lift data covers Underground, Overground, DLR, Elizabeth line and tram stations, not National Rail-only ones.", 'dim');
+  box.hidden = !(liftState.checked || liftState.nr.length);
+}
 async function load() {
   msg.textContent = '';
+  liftState = { lifts: [], other: 0, checked: 0, loaded: true, updated: null, nr: [], off: false };
   try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
   try {
     const boards = await api('GET', '/v1/tfl/boards'), root = $('boards'); root.replaceChildren();
@@ -294,6 +331,7 @@ async function load() {
       const h = document.createElement('h2'); h.textContent = b.name; card.appendChild(h);
       const del = document.createElement('button'); del.textContent = 'Remove'; del.className = 'link push'; del.onclick = async () => { await api('DELETE', '/v1/tfl/boards/' + b.id); load(); };
       h.appendChild(del);
+      if (b.source !== 'nationalrail') closuresFor(b, card); else liftState.nr.push(b.name);
       const tbl = document.createElement('table'); card.appendChild(tbl);
       try {
         const d = await api('GET', '/v1/tfl/boards/' + b.id + '/departures');

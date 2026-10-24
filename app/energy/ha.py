@@ -9,9 +9,7 @@ from app.ha import Device, Sensor
 # Sensors this device used to publish. Home Assistant keeps retained entities until told otherwise, so they are
 # removed every time discovery is sent (a worker restart forgets what it published before).
 RETIRED = [
-    "free_electricity_now",
-    "free_electricity_next_start",
-    "free_electricity_next_joined_start",
+    "free_electricity_next_joined_start",  # Octopus does not say which free sessions you signed up for
 ]
 
 
@@ -178,4 +176,18 @@ def session_sensors(sessions: dict[str, Any]) -> list[Sensor]:
             },
         ),
         *_next("saving_session", "saving session", saving, "mdi:calendar-star"),
+        *free_sensors(sessions.get("free") or {}),
     ]
+
+
+def free_sensors(free: dict[str, Any]) -> list[Sensor]:
+    """Octopus Free Electricity: on now, and when the next one starts (to run the dishwasher or fill the battery)."""
+    cur, nxt = free.get("current") or {}, free.get("next") or {}
+    return [
+        Sensor("free_electricity_now", "Free electricity now", "on" if free.get("now") else "off", icon="mdi:lightning-bolt",
+               attributes={"end": cur.get("end")}),
+        Sensor("free_electricity_next_start", "Next free electricity starts", nxt.get("start"), icon="mdi:calendar-clock",
+               device_class="timestamp",
+               attributes={"end": nxt.get("end"), "minutes": nxt.get("minutes"), "joined": nxt.get("joined"),
+                           "upcoming": free.get("upcoming") or []}),
+    ]  # fmt: skip

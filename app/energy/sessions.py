@@ -36,5 +36,22 @@ def for_kind(rows: list[dict[str, Any]], kind: str, now: datetime) -> dict[str, 
     }
 
 
+def free_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Free Electricity from both places Octopus puts it: Power Up events in the Saving Sessions feed ("boost",
+    which also say whether you joined) and the official Free Electricity query ("free"). One session in both is
+    shown once, joined if either says so."""
+    merged: dict[tuple[Any, Any], dict[str, Any]] = {}
+    for r in rows:
+        if r["kind"] not in ("boost", "free"):
+            continue
+        key = (r["start_at"], r["end_at"])
+        if key in merged:
+            merged[key] = {**merged[key], "joined": bool(merged[key].get("joined") or r.get("joined"))}
+        else:
+            merged[key] = {**r, "kind": "free"}
+    return list(merged.values())
+
+
 def summarise(rows: list[dict[str, Any]], now: datetime) -> dict[str, Any]:
-    return {"saving": for_kind(rows, "saving", now), "boost": for_kind(rows, "boost", now)}  # fmt: skip
+    return {"saving": for_kind(rows, "saving", now), "boost": for_kind(rows, "boost", now),
+            "free": for_kind(free_rows(rows), "free", now)}  # fmt: skip

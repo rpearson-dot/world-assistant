@@ -20,15 +20,21 @@ PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER, BUS_STOP
     "FloodWarning",
 )  # fmt: skip
 AREA, DISRUPTION, LOCAL_EVENT = "Area", "Disruption", "LocalEvent"
+# TfL stations (Station is a fuel station), their entrances, the lines serving them and what is closed there now
+RAIL_STATION, ENTRANCE, LINE, CLOSURE = "RailStation", "Entrance", "Line", "StationClosure"
+# UK Power Networks: power cuts, their street works, and the substations that feed your places
+POWER_CUT, STREET_WORK, SUBSTATION = "PowerCut", "StreetWork", "Substation"
 LABELS = (PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER, BUS_STOP, FLOOD,
-          AREA, DISRUPTION, LOCAL_EVENT)
+          AREA, DISRUPTION, LOCAL_EVENT, RAIL_STATION, ENTRANCE, LINE, CLOSURE, POWER_CUT, STREET_WORK, SUBSTATION)
 
 # Relationship types.
 FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT, COVERS, CROSSES = (
     "FROM", "TO", "USES", "AFFECTS", "ALONG", "NEAR", "DRIVES", "CALLS_AT", "COVERS", "CROSSES",
 )  # fmt: skip
 IN = "IN"
-TYPES = (FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT, COVERS, CROSSES, IN)
+SERVES, HAS, AT, INTERCHANGE = "SERVES", "HAS", "AT", "INTERCHANGE"
+FEEDS = "FEEDS"
+TYPES = (FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT, COVERS, CROSSES, IN, SERVES, HAS, AT, INTERCHANGE, FEEDS)
 
 
 @dataclass(frozen=True)
@@ -202,6 +208,74 @@ def along_corridors(pairs: Iterable[tuple[str, str, float]]) -> list[Rel]:
             for station, corridor, km in pairs]  # fmt: skip
 
 
+def rail_stations(
+    rows: Iterable[dict[str, Any]], part_rows: Iterable[dict[str, Any]], closure_rows: Iterable[dict[str, Any]]
+) -> tuple[list[Node], list[Rel]]:
+    """TfL stations with the lines that serve them, their entrances, what is closed there now, and the other
+    stations in the same building (a hub: Wimbledon's District line, tram and rail stations)."""
+    nodes: list[Node] = []
+    rels: list[Rel] = []
+    lines: set[str] = set()
+    hubs: dict[str, list[str]] = {}
+    for r in rows:
+        facilities = (r.get("facilities") or {}).get("Facility", {})
+        nodes.append(Node(RAIL_STATION, r["id"], {
+            "name": r["name"], "zone": r.get("zone"), "modes": list(r.get("modes") or []),
+            "lines": list(r.get("lines") or []), "step_free": r.get("step_free"),
+            "lifts": facilities.get("Lifts"), "toilets": facilities.get("Toilets"),
+            "entrances": r.get("entrances"), "platforms": r.get("platforms"), "lat": r.get("lat"), "lon": r.get("lon")}))
+        for ln in r.get("lines") or []:
+            lines.add(ln)
+            rels.append(Rel(SERVES, (LINE, ln), (RAIL_STATION, r["id"])))
+        if r.get("hub"):
+            hubs.setdefault(r["hub"], []).append(r["id"])
+    nodes += [Node(LINE, ln, {"name": ln}) for ln in sorted(lines)]
+    for ids in hubs.values():
+        ids = sorted(ids)
+        rels += [Rel(INTERCHANGE, (RAIL_STATION, a), (RAIL_STATION, b)) for i, a in enumerate(ids) for b in ids[i + 1:]]
+    for p in part_rows:
+        if p.get("kind") == "entrance":
+            nodes.append(Node(ENTRANCE, p["id"], {"name": p["name"], "lat": p.get("lat"), "lon": p.get("lon")}))
+            rels.append(Rel(HAS, (RAIL_STATION, p["station_id"]), (ENTRANCE, p["id"])))
+    for c in closure_rows:
+        nodes.append(Node(CLOSURE, c["id"], {"name": (c.get("name") or "") + f" ({c['kind']})", "kind": c["kind"],
+                                             "description": c["description"]}))  # fmt: skip
+        rels.append(Rel(AT, (CLOSURE, c["id"]), (RAIL_STATION, c["station_id"])))
+    return nodes, rels
+
+
+def power(
+    cut_rows: Iterable[dict[str, Any]], work_rows: Iterable[dict[str, Any]], work_corridors: Iterable[tuple[str, str]],
+    supply_rows: Iterable[dict[str, Any]],
+) -> tuple[list[Node], list[Rel]]:
+    """Power cuts and street works (UK Power Networks), the corridors works lie on, and for each place the chain of
+    substations feeding it: grid supply point FEEDS primary FEEDS local (secondary) substation FEEDS the place."""
+    nodes = [Node(POWER_CUT, r["id"], {"name": ("Planned power cut" if r.get("planned") else "Power cut") + (
+        f" ({r['customers']} homes)" if r.get("customers") else ""), "planned": r.get("planned"), "status": r.get("status"),
+        "customers": r.get("customers"), "restore_by": r.get("restore_at")}) for r in cut_rows]  # fmt: skip
+    nodes += [Node(STREET_WORK, r["id"], {"name": "Electricity works" + (f", {r['street']}" if r.get("street") else ""),
+                                          "stage": r.get("stage"), "traffic": r.get("traffic"), "starts": r.get("starts_at"),
+                                          "ends": r.get("ends_at")}) for r in work_rows]  # fmt: skip
+    rels = [Rel(AFFECTS, (STREET_WORK, w), (CORRIDOR, c)) for w, c in work_corridors]
+    chains: dict[str, dict[str, dict[str, Any]]] = {}
+    for r in supply_rows:
+        chains.setdefault(r["place_id"], {})[r["kind"]] = r
+    seen: set[str] = set()
+    for place, chain in chains.items():
+        below: tuple[str, str] = (PLACE, place)
+        for kind in ("secondary", "primary", "gsp"):  # from the place upwards
+            a = chain.get(kind)
+            if not a:
+                continue
+            sid = f"{kind}:{a['code']}"
+            if sid not in seen:
+                seen.add(sid)
+                nodes.append(Node(SUBSTATION, sid, {"name": a.get("name") or a["code"], "level": kind}))
+            rels.append(Rel(FEEDS, (SUBSTATION, sid), below))
+            below = (SUBSTATION, sid)
+    return nodes, rels
+
+
 def drives(vehicle_nodes: Sequence[Node], trip_nodes: Sequence[Node]) -> list[Rel]:
     """Every vehicle can make every trip. Stated once so a traversal can cost a trip per vehicle."""
     return [Rel(DRIVES, v.key(), t.key()) for v in vehicle_nodes for t in trip_nodes]
@@ -231,6 +305,13 @@ def build(
     area_parents: Sequence[tuple[str, str]] = (),
     near_pairs: Sequence[tuple[str, str, str, float]] = (),
     along_pairs: Sequence[tuple[str, str, float]] = (),
+    rail_station_rows: Sequence[dict[str, Any]] = (),
+    rail_part_rows: Sequence[dict[str, Any]] = (),
+    rail_closure_rows: Sequence[dict[str, Any]] = (),
+    power_cut_rows: Sequence[dict[str, Any]] = (),
+    street_work_rows: Sequence[dict[str, Any]] = (),
+    work_corridors: Sequence[tuple[str, str]] = (),
+    supply_rows: Sequence[dict[str, Any]] = (),
 ) -> Graph:
     """The whole graph, from one read of Postgres. Pure, so the shape is testable on its own."""
     place_nodes = places(place_rows)
@@ -246,16 +327,20 @@ def build(
     disruption_nodes, disruption_rels = disruptions(disruption_rows, disruption_corridors)
     event_here = local_events(local_event_rows)
     area_nodes, area_rels = areas(area_rows, inside_pairs, area_parents)
+    rail_nodes, rail_rels = rail_stations(rail_station_rows, rail_part_rows, rail_closure_rows)
+    power_nodes, power_rels = power(power_cut_rows, street_work_rows, work_corridors, supply_rows)
 
     nodes = [*place_nodes, *trip_nodes, *corridor_nodes, *event_nodes, *station_nodes,
              *location_nodes, *vehicle_nodes, *tracker_nodes, *stop_nodes, *flood_nodes,
-             *disruption_nodes, *event_here, *area_nodes]  # fmt: skip
+             *disruption_nodes, *event_here, *area_nodes, *rail_nodes, *power_nodes]  # fmt: skip
     rels = [
         *trip_rels,
         *event_rels,
         *stop_rels,
         *disruption_rels,
         *area_rels,
+        *rail_rels,
+        *power_rels,
         *flood_reach(flood_covers, flood_crosses),
         *near_places(near_pairs),
         *along_corridors(along_pairs),

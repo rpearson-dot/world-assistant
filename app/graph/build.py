@@ -40,6 +40,14 @@ QUERIES: dict[str, str] = {
     "location_rows": "SELECT id, name, lat, lon FROM ha_location",
     "vehicle_rows": "SELECT id, name, kind FROM vehicle",
     "tracker_rows": "SELECT id, config, enabled FROM bus_tracker",
+    "rail_station_rows": "SELECT id, hub, name, modes, lines, zone, step_free, facilities, entrances, platforms, lat, lon FROM tfl_station",
+    "rail_part_rows": "SELECT id, station_id, kind, name, lat, lon FROM tfl_station_part WHERE kind = 'entrance'",
+    "rail_closure_rows": (
+        "SELECT a.id, a.station_id, a.kind, a.description, coalesce(s.name, a.name) AS name FROM tfl_station_alert a "
+        "LEFT JOIN tfl_station s ON s.id = a.station_id"
+    ),
+    "power_cut_rows": "SELECT id, planned, status, customers, restore_at FROM ukpn_fault",
+    "supply_rows": "SELECT place_id, kind, code, name FROM ukpn_place_area WHERE kind IN ('gsp', 'primary', 'secondary')",
     # Only the stops a tracker watches, with the position NaPTAN gives them.
     "bus_stop_rows": (
         "SELECT n.atco AS id, n.name, n.indicator, n.lat, n.lon FROM naptan_stop n "
@@ -76,6 +84,16 @@ SELECT 'BusStop', n.atco, p.id, ST_Distance(n.geog, p.geog) / 1000.0
 FROM naptan_stop n JOIN place p ON ST_DWithin(n.geog, p.geog, :near_m)
 WHERE n.atco IN (SELECT sid FROM bus_stop)
 UNION ALL
+SELECT 'RailStation', s.id, p.id, ST_Distance(s.geog, p.geog) / 1000.0
+FROM tfl_station s JOIN place p ON ST_DWithin(s.geog, p.geog, :near_m)
+UNION ALL
+SELECT 'PowerCut', f.id, p.id, ST_Distance(f.geog, p.geog) / 1000.0
+FROM ukpn_fault f JOIN place p ON ST_DWithin(f.geog, p.geog, :near_m)
+UNION ALL
+SELECT 'StreetWork', w.id, p.id, ST_Distance(w.geog, p.geog) / 1000.0
+FROM ukpn_works w JOIN place p ON ST_DWithin(w.geog, p.geog, :near_m)
+WHERE w.ends_at IS NULL OR w.ends_at > now()
+UNION ALL
 SELECT 'LocalEvent', e.id, p.id, ST_Distance(e.geog, p.geog) / 1000.0
 FROM local_event e JOIN place p ON ST_DWithin(e.geog, p.geog, :near_m)
 WHERE e.day >= CURRENT_DATE
@@ -108,6 +126,9 @@ UNION ALL
 SELECT 'BusStop', n.atco, b.id
 FROM naptan_stop n JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, n.geog::geometry)
 WHERE n.atco IN (SELECT sid FROM bus_stop)
+UNION ALL
+SELECT 'RailStation', s.id, b.id
+FROM tfl_station s JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, s.geog::geometry)
 UNION ALL
 SELECT 'LocalEvent', e.id, b.id
 FROM local_event e JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, e.geog::geometry)
@@ -152,6 +173,25 @@ JOIN lines l ON ST_DWithin(a.geom, l.line, 0)
 WHERE w.severity_level <= 3
 """
 
+# UK Power Networks' street works near a place or along a watched corridor (thousands exist; only these go in).
+WORK_CORRIDORS = """
+WITH lines AS (
+  SELECT c.id, ST_MakeLine(ARRAY(
+           SELECT ST_SetSRID(ST_MakePoint((pt->>1)::float8, (pt->>0)::float8), 4326)
+           FROM jsonb_array_elements(c.centreline) AS pt
+         ))::geography AS line
+  FROM nh_corridor c
+  WHERE c.enabled AND jsonb_array_length(c.centreline) > 1
+)
+SELECT w.id, l.id FROM ukpn_works w JOIN lines l ON ST_DWithin(w.geog, l.line, :along_m)
+WHERE w.ends_at IS NULL OR w.ends_at > now()
+"""
+STREET_WORKS = """
+SELECT w.id, w.stage, w.street, w.traffic, w.starts_at, w.ends_at FROM ukpn_works w
+WHERE (w.ends_at IS NULL OR w.ends_at > now()) AND (w.id = ANY(:ids)
+  OR EXISTS (SELECT 1 FROM place p WHERE ST_DWithin(w.geog, p.geog, :near_m)))
+"""
+
 ALONG_PAIRS = """
 WITH lines AS (
   SELECT c.id, ST_MakeLine(ARRAY(
@@ -189,6 +229,10 @@ async def read(
         out["disruption_corridors"] = [tuple(r) for r in await conn.execute(
             text(DISRUPTION_CORRIDORS), {"along_m": along_km * 1000.0})]  # fmt: skip
         out["calls_at"] = [tuple(r) for r in await conn.execute(text(CALLS_AT))]
+        out["work_corridors"] = [tuple(r) for r in await conn.execute(
+            text(WORK_CORRIDORS), {"along_m": along_km * 1000.0})]  # fmt: skip
+        out["street_work_rows"] = [dict(r._mapping) for r in await conn.execute(
+            text(STREET_WORKS), {"ids": [w for w, _ in out["work_corridors"]], "near_m": near_km * 1000.0})]  # fmt: skip
         out["near_pairs"] = [tuple(r) for r in await conn.execute(
             text(NEAR_PAIRS), {"near_m": near_km * 1000.0})]  # fmt: skip
         out["along_pairs"] = [tuple(r) for r in await conn.execute(

@@ -189,7 +189,7 @@ def test_conditions_on_a_trip(schema: None, monkeypatch: pytest.MonkeyPatch) -> 
         assert r["trip"]["name"] == "Home to work" and r["trip"]["duration_min"] == 10
         now_ids = [i["id"] for i in r["now"]["items"]]
         assert set(now_ids) == {"c1", "on", "A"}  # the nearby, distant, ended and later ones are not "now"
-        assert r["now"]["status"] == "severe" and r["now"]["by_source"] == {"nh": 1, "tfl": 1, "flood": 1}
+        assert r["now"]["status"] == "severe" and r["now"]["by_source"] == {"nh": 1, "tfl": 1, "flood": 1, "ukpn": 0}
         assert now_ids[0] in ("c1", "on")  # the worst first
         assert [i["id"] for i in r["planned"]["items"]] == ["s1", "soon"]
         assert "3 problems reported" in r["summary"] and "2 planned items" in r["summary"]

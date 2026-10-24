@@ -4,6 +4,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-24
+
+### Added
+- **UK Power Networks** (module `ukpn`, London, the South East and the East of England; `ukpn_api_key` optional, `WA_UKPN_POLL_ENABLED`, on by default but reads nothing unless a saved place is on their network). From their open data portal (CC BY 4.0):
+  - **Power cuts**, planned and unplanned, read hourly, and every 15 minutes while a cut is at home (`WA_UKPN_FAULT_INTERVAL_MIN`, `WA_UKPN_FAULT_ALERT_INTERVAL_MIN`). **Every cut is kept for good** (`ukpn_fault_history`): first and last seen, when it ended, the most homes affected, the restoration time first and last promised, and which of your places it was at. `/v1/power/history`, a past-year line on the Energy card, a Home Assistant sensor and the assistant ("how many power cuts have we had this year?").
+  - Current power cuts: at a place (by its postcode, or within 1 km) and nearby, with customers affected and the estimated restoration time.
+  - **Their street and road works**, under way (every 2 hours) and proposed (daily). They join TfL and National Highways on **Trip conditions** (a road closure counts as serious, signals or a lane closure as moderate), and are kept with each record as published.
+  - **What supplies each place**: whether it is on their network or an independent operator's, its grid supply point, primary and local substation, and its **rota load disconnection block**.
+  - **Energy tab: a Power cuts card**: power at home (red when there is a cut, with the time power should be back), cuts within 5 km with homes affected and postcodes, your rota block, and the substations home is fed from.
+  - **Local carbon intensity** half-hourly at the grid supply point feeding home: now, and the cleanest block ahead, as a card on the **Energy tab**.
+  - API `/v1/power/cuts`, `/works`, `/supply`, `/carbon`; assistant tool `power`; Home Assistant **Power** device (power cut at home, cuts and works nearby, rota block, carbon intensity, cleanest hours); graph `PowerCut`, `StreetWork` and `Substation` nodes, with `FEEDS` from grid supply point to primary to local substation to your place, and works `AFFECTS` the corridors they lie on.
+  - Datasets are found by their published title, and fields by name, so the portal can rename things; `python -m app.integrations.ukpn.probe` shows exactly what it finds. Migration 0031.
+- **TfL stations: layout, facilities and closures** (module `tflstations`, London; on by default, `WA_TFL_STATIONS_POLL_ENABLED`). Every Underground, Overground, DLR, Elizabeth line and tram station with its lines, fare zone, entrances, platforms (and which way they go), facilities (lifts, toilets, car park, wifi) and step-free access, loaded nightly from TfL's StopPoint API; and what is closed now (lifts out of service, escalators, entrances), every 10 minutes. Stations in one building (a TfL "hub", such as Wimbledon's District line, tram and rail) share their closures. Migration 0030.
+- **Lift alerts on the Trains tab**: each board shows lifts and step-free routes out of service at its station (and the others in the same building), with a summary at the top. Boards at National Rail-only stations are named as not covered by TfL's data, rather than shown as "all working".
+- **API**: `GET /v1/stations?q=` (search), `/v1/stations/near` (around a saved place), `/v1/stations/{id}` (in full), `/v1/stations/alerts` (closures; `lifts_only`, and which of the stations asked about TfL covers).
+- **Assistant (MCP) tool `station`**: a station's lines, zone, entrances, platforms, facilities and closures, or the stations near a place and what is closed there.
+- **Graph**: `RailStation`, `Line`, `Entrance` and `StationClosure` nodes, with `SERVES`, `HAS`, `AT` and `INTERCHANGE` links, `NEAR` your places and `IN` their areas, searchable by name; ready-made questions for stations near your places and closures at them.
+- **Bus disruptions module (BODS, optional, off by default)**: every 10 minutes, the bus, tram and ferry disruptions local authorities publish to BODS (SIRI-SX) that are current and within 25 km of a saved place, at `GET /v1/bus-disruptions`. Only some authorities publish (Greater Manchester, West of England, South and West Yorkshire, Merseyside, Cornwall, Devon, Hampshire and a few more; not London or the Midlands), so it is suggested on the Modules page only there and needs `WA_BUS_DISRUPTIONS_POLL_ENABLED=true`. Open-ended ones older than 90 days are dropped as left over. Migration 0032. [docs/bus-disruptions.md](docs/bus-disruptions.md).
+
+- **Octopus Free Electricity sessions are back**, from Octopus's official query (per account and import meter, found from the account or `WA_OCTOPUS_MPAN`), read with the Saving Sessions every 30 minutes: on the Energy tab's Octopus sessions card, Home Assistant "Free electricity now" and "Next free electricity starts", and the assistant's electricity answer. Power Up events in the Saving Sessions feed (which say whether you joined, and were stored but never shown) are Free Electricity too; a session in both places is shown once, joined if either says so. The energy probe shows them, and lists only the past week's and upcoming Saving Sessions.
+### Changed
+- **Graph page: "Customise the view" is a panel beside the graph**, on the left, with the details on the right; **Hide** gives the graph the room (remembered, **Customise** brings it back). The Graph page now uses the window's full width. On a phone the panel sits below the graph.
+
 ## [0.18.1] - 2026-10-23
 
 ### Added

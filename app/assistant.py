@@ -272,6 +272,97 @@ async def bus(request: Request, args: dict[str, Any]) -> dict[str, Any]:
     return {"text": " ".join(parts), "data": data}
 
 
+def _closure_text(items: list[dict[str, Any]]) -> str:
+    if not items:
+        return "No lifts, escalators or entrances reported closed."
+    return "Closed now: " + " ".join(
+        f"{i['description'].rstrip('.')}." + (f" (until {i['until'][:10]})" if i.get("until") else "") for i in items[:4]
+    ) + (f" And {len(items) - 4} more." if len(items) > 4 else "")
+
+
+async def station_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.stations import alerts, near, one, search
+
+    name = str(args.get("name") or "").strip()
+    if name:
+        found = await _wrap(search(request, name, 3))
+        if not found["stations"]:
+            if not found["loaded"]:
+                return {"text": "TfL's station data has not been loaded yet.", "data": found}
+            return {"text": f"No TfL station matches {name!r}. TfL covers Underground, Overground, DLR, "
+                            "Elizabeth line and tram stations.", "data": found}  # fmt: skip
+        st = await _wrap(one(found["stations"][0]["id"], request))
+        fac = st["facilities"].get("Facility", {})
+        has = ", ".join(f"{k.lower()} {v}" if v not in ("yes", "Yes") else k.lower()
+                        for k, v in fac.items() if k in ("Lifts", "Toilets", "Escalators", "Car park") and v)  # fmt: skip
+        head = (f"{st['name']}" + (f", zone {st['zone']}" if st.get("zone") else "")
+                + (f": {', '.join(st['lines'][:6])}." if st["lines"] else ".")
+                + (f" {st['entrances']} entrances, {st['platforms']} platforms." if st["entrances"] else "")
+                + (f" Has {has}." if has else "") + (f" Step-free: {st['step_free']}." if st.get("step_free") else ""))  # fmt: skip
+        items = st["closures"] if not args.get("lifts_only") else [c for c in st["closures"] if c["kind"] in ("lift", "step_free")]
+        return {"text": f"{head} {_closure_text(items)}", "data": st}
+    if args.get("place") or not args.get("everywhere"):
+        r = await _wrap(near(request, args.get("place"), float(args.get("km") or 2), 8))
+        if not r["stations"]:
+            return {"text": "No TfL stations within that distance of the place.", "data": r}
+        lines = []
+        for st in r["stations"]:
+            items = [c for c in st["closures"] if not args.get("lifts_only") or c["kind"] in ("lift", "step_free")]
+            lines.append(f"{st['name']} ({st['km']} km): " + (_closure_text(items) if items else "nothing closed"))
+        return {"text": "Near " + r["place"] + ": " + "; ".join(lines) + ".", "data": r}
+    r = await _wrap(alerts(request, None, bool(args.get("lifts_only"))))
+    return {"text": f"{r['count']} closures across TfL stations now.", "data": r}
+async def power_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.power import carbon, cuts, history, supply, works
+
+    place = args.get("place")
+    what = str(args.get("about") or "cuts")
+    if what == "supply":
+        s = await _wrap(supply(request, place))
+        if not s["checked"]:
+            return {"text": "The network around this place has not been looked up yet (it is, each night).", "data": s}
+        if not s["on_network"]:
+            other = f" It is supplied by {s['independent_operator']}." if s["independent_operator"] else ""
+            return {"text": "This place is not on UK Power Networks' network." + other, "data": s}
+        chain = [f"{label} {s[k]['name']}" for k, label in (("grid_supply_point", "grid supply point"),
+                 ("primary", "primary substation"), ("secondary", "local substation")) if s.get(k)]  # fmt: skip
+        rota = f" Rota block {s['rota_block']['code']}." if s.get("rota_block") else ""
+        cut = " There is a power cut here now." if s["power_cut_now"] else " No power cut here now."
+        return {"text": "Fed from " + ", ".join(chain) + "." + rota + cut, "data": s}
+    if what == "history":
+        h = await _wrap(history(request, place, int(args.get("days") or 365), 200))
+        if not h["count"]:
+            return {"text": "No power cuts recorded there" + (f" since {h['recording_since'][:10]}." if h["recording_since"] else "."), "data": h}
+        longest = f" The longest lasted {h['longest_hours']:g} hours." if h["longest_hours"] else ""
+        late = f" Power came back later than first promised {h['late']} time(s)." if h["late"] else ""
+        return {"text": f"{h['unplanned']} unplanned and {h['planned']} planned power cut(s) recorded there in the last "
+                        f"{h['days']} days.{longest}{late}", "data": h}  # fmt: skip
+    if what == "carbon":
+        c = await _wrap(carbon(request, place, float(args.get("hours") or 3)))
+        if not c["available"]:
+            return {"text": "No carbon intensity readings for this place yet.", "data": c}
+        best = datetime.fromisoformat(c["best_start"]).astimezone(ZoneInfo(get_settings().local_tz)).strftime("%H:%M")
+        return {"text": f"Local carbon intensity is {c['now']:.0f} g CO2 per kWh now. The cleanest {c['hours']:g} hours "
+                        f"start at {best}, averaging {c['best_average']:.0f}.", "data": c}  # fmt: skip
+    if what == "works":
+        w = await _wrap(works(request, place, float(args.get("km") or 1), None))
+        if not w["count"]:
+            return {"text": "No UK Power Networks street works near there.", "data": w}
+        bits = [f"{x['street'] or 'a street'}" + (f" ({x['traffic']})" if x.get("traffic") else "") for x in w["works"][:4]]
+        return {"text": f"{w['open']} under way and {w['proposed']} planned nearby: " + "; ".join(bits) + ".", "data": w}
+    r = await _wrap(cuts(request, place, float(args.get("km") or 5)))
+    if not r["count"]:
+        return {"text": "No power cuts reported near there.", "data": r}
+    head = "There is a power cut at this place. " if r["at_place"] else ""
+    bits = []
+    for x in r["cuts"][:3]:
+        kind = "planned" if x["planned"] else "unplanned" if x["planned"] is False else ""
+        eta = f", power back by {datetime.fromisoformat(x['restore_by']).astimezone(ZoneInfo(get_settings().local_tz)):%H:%M}" if x["restore_by"] else ""
+        bits.append(f"{kind} cut".strip() + (f" {x['km']} km away" if x["km"] is not None else "")
+                    + (f" affecting {x['customers']} homes" if x["customers"] else "") + eta)  # fmt: skip
+    return {"text": f"{head}{r['count']} power cut(s) nearby: " + "; ".join(bits) + ".", "data": r}
+
+
 TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool("list_options", "List the saved places, vehicles, trips, train boards and bus trackers (their ids).",
          {"type": "object", "properties": {}}, list_options),
@@ -299,6 +390,18 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
          {"type": "object", "properties": _props(board=("string", "board id"),
                                                  count=("integer", "how many, default 3")),
           "required": ["board"]}, trains),
+    Tool("station", "A TfL station's lines, zone, entrances, platforms, facilities (lifts, toilets, step-free) and what is closed there now, "
+         "especially lifts out of service; or the stations near a saved place and their closures.",
+         {"type": "object", "properties": _props(
+             name=("string", "station name, e.g. Waterloo; omit to list stations near a place"),
+             place=("string", "id of a saved place; default: home"), km=("number", "how far from the place, default 2"),
+             lifts_only=("boolean", "only lift and step-free closures"))}, station_tool),
+    Tool("power", "Electricity from UK Power Networks: power cuts near a saved place (default), their street works, what "
+         "supplies the place (substations, rota block), or local carbon intensity and the cleanest hours ahead.",
+         {"type": "object", "properties": _props(
+             about=("string", "cuts (default), history, works, supply or carbon"), days=("integer", "history: how far back, default 365"),
+             place=("string", "id of a saved place; default: home"), km=("number", "how far to look"),
+             hours=("number", "carbon: length of the cleanest block, default 3"))}, power_tool),
     Tool("bus", "Bus tracker: has a bus made it to the target stop before the deadline, and next buses at your stops.",
          {"type": "object", "properties": _props(tracker=("string", "tracker id; optional if only one"),
                                                  stop=("string", "only this stop key; optional"))}, bus),
@@ -383,7 +486,7 @@ async def handle_rpc(request: Request, msg: Any) -> dict[str, Any] | None:
         return {"jsonrpc": "2.0", "id": rid, "result": {
             "protocolVersion": asked if asked in PROTOCOLS else PROTOCOLS[0],
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": "world-assistant", "version": "0.18.1"},
+            "serverInfo": {"name": "world-assistant", "version": "0.19.0"},
             "instructions": "Personal assistant for fuel prices, trips, trains and buses. "
                             "Call list_options first to see saved ids.",
         }}  # fmt: skip
