@@ -61,7 +61,7 @@ input_number:
     max: 60
     step: 0.5
     unit_of_measurement: kWh
-    initial: 30
+    initial: 40
   wa_floor_pct:
     name: "WA battery reserve floor"
     min: 5
@@ -179,7 +179,7 @@ template:
         unit_of_measurement: "%"
         icon: mdi:battery-charging-40
         state: >-
-          {% set cap = states('input_number.wa_battery_kwh') | float(30) %}
+          {% set cap = states('input_number.wa_battery_kwh') | float(40) %}
           {% set need = states('input_number.wa_night_load_kw') | float(0.6) * 4
                         * states('input_number.wa_margin') | float(1.25) %}
           {% set v = states('input_number.wa_floor_pct') | float(15) + need / cap * 100 %}
@@ -190,7 +190,7 @@ template:
         unit_of_measurement: "%"
         icon: mdi:battery-charging-60
         state: >-
-          {% set cap = states('input_number.wa_battery_kwh') | float(30) %}
+          {% set cap = states('input_number.wa_battery_kwh') | float(40) %}
           {% set solar = states('sensor.energy_production_tomorrow') | float(0)
                          * states('input_number.wa_solar_morning_share') | float(0.5) %}
           {# a joined free hour tomorrow morning: only the hours until it need covering #}
@@ -211,7 +211,7 @@ template:
         unit_of_measurement: "%"
         icon: mdi:battery-charging-80
         state: >-
-          {% set cap = states('input_number.wa_battery_kwh') | float(30) %}
+          {% set cap = states('input_number.wa_battery_kwh') | float(40) %}
           {% set start = as_datetime(states('sensor.wa_energy_saving_session_next_joined_start'), none) %}
           {% set ahead = ((start | as_local) - now()).total_seconds() / 3600 if start else -1 %}
           {% set session = start is not none and 0 <= ahead <= 12 and 16 <= (start | as_local).hour < 22 %}
