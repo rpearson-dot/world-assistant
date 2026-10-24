@@ -143,6 +143,7 @@ class Settings(BaseSettings):
     bus_disruptions_stale_days: int = 90  # an open-ended one that started longer ago than this is dropped
     energy_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
     octopus_account: str = ""  # e.g. A-1234ABCD; with the octopus_api_key secret this finds the tariff
+    octopus_mpan: str = ""  # optional: the import meter, if the account has several; found from the account otherwise
     octopus_tariff: str = ""  # optional override, e.g. E-1R-COSY-22-12-08-A; needs no key
     flood_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
     naptan_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off

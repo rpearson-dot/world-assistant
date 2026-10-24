@@ -116,7 +116,9 @@ function sessionTiles(s) {
     else if (!blk.now) box.append(tile('', label, 'none announced'));
   };
   one('Saving Session', sv_, true);
-  $('snote').textContent = 'Saving Sessions pay you Octopoints for using less electricity in the hour. Join them in the Octopus app.';
+  one('Free electricity', s.free || {}, false);
+  $('snote').textContent = 'Saving Sessions pay you Octopoints for using less electricity in the hour; Free Electricity sessions make '
+    + 'electricity free for the hour. Sign up to both in the Octopus app.';
 }
 
 // Local carbon intensity (UK Power Networks, the grid supply point feeding home). Hidden when there is none.

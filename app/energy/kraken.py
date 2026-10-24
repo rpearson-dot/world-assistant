@@ -28,6 +28,10 @@ SESSIONS_QUERY = """query { savingSessions {
 
 SAVING_TYPES = {"TURN_DOWN"}
 
+# Free Electricity sessions: Octopus's official query (since May 2025), per account and import meter (MPAN).
+FREE_QUERY = """query { customerFlexibilityCampaignEvents(accountNumber: "%s", supplyPointIdentifier: "%s",
+  campaignSlug: "free_electricity", first: 20) { edges { node { code startAt endAt } } } }"""
+
 
 def _time(value: Any) -> datetime | None:
     if not value:
@@ -128,3 +132,28 @@ async def fetch_saving(
                           headers={"Authorization": t})  # fmt: skip
     r.raise_for_status()
     return parse_saving(_graphql(r.json()))
+
+
+def parse_free(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Free Electricity sessions for the account's meter, as session rows of kind "free".
+
+    The query lists the sessions for this account; whether you signed up for a particular one is not in it, so
+    `joined` is left false and the pages say "Free electricity" without "joined"."""
+    block = data.get("customerFlexibilityCampaignEvents") or {}
+    rows = []
+    for edge in block.get("edges") or []:
+        node = (edge or {}).get("node") or {}
+        s, e = _time(node.get("startAt")), _time(node.get("endAt"))
+        code = str(node.get("code") or "")
+        if code and s and e and e > s:
+            rows.append({"kind": "free", "code": code, "start_at": s, "end_at": e, "octopoints_per_kwh": None,
+                         "joined": False, "regions": None, "event_type": "free_electricity"})  # fmt: skip
+    return rows
+
+
+async def fetch_free(client: httpx.AsyncClient, api_key: str, account: str, mpan: str) -> list[dict[str, Any]]:
+    t = await token(client, api_key)
+    q = FREE_QUERY % (account.replace('"', ""), mpan.replace('"', ""))
+    r = await client.post(f"{BACKEND_HOST}/v1/graphql/", json={"query": q}, headers={"Authorization": t})
+    r.raise_for_status()
+    return parse_free(_graphql(r.json()))

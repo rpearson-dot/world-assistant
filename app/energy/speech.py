@@ -44,4 +44,10 @@ def sentence(now_: dict[str, Any], tz: ZoneInfo, now: datetime) -> str:
         text += f" Your next joined Saving Session starts {_t(saving['next_joined']['start'], tz, now)}."
     elif saving.get("next"):
         text += f" The next Saving Session starts {_t(saving['next']['start'], tz, now)}; you have not joined it."
+    free = (now_.get("sessions") or {}).get("free") or {}
+    if free.get("now"):
+        text += f" Electricity is free now, until {_t(free['current']['end'], tz, now)}."
+    elif free.get("next"):
+        text += (f" Free electricity next from {_t(free['next']['start'], tz, now)} "
+                 f"to {_t(free['next']['end'], tz, now)}.")  # fmt: skip
     return text
