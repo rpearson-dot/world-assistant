@@ -111,7 +111,7 @@ x-app: &app
 
 services:
   wa-db:
-    image: postgis/postgis:16-3.4
+    image: postgis/postgis:17-3.5
     restart: unless-stopped
     labels:
       net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/database.png"
