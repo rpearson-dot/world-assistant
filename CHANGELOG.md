@@ -27,6 +27,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ### Added
 - **TfWM route probe**: `python -m app.integrations.tfwm.routes_probe 907 [lat lon]` finds which of TfWM's internal route ids is a bus line, since the portal has no route list. It tries TfWM's GTFS timetable, BODS's West Midlands GTFS (built by the same company) and matching the line's stops against the stops TfWM's live trips call at, and reports each. Nothing is stored.
 - **Energy plan (Home Assistant) checks the inverter's slots before changing anything.** A new sensor, "WA inverter slot check", compares the six slot start times (00:00 04:00 07:00 13:00 16:00 22:00) and the grid-charge switches of slots 2, 4 and 6 with what the plan is written for. If any differ, the plan writes what changed to the logbook and does not apply, even when switched on. An inverter integration that does not expose slot times is not blocked; the logbook says they were not checked. When the plan is switched on but the inverter's remote control (`switch.office_inverter_allow_remote_control`) is off or missing, the logbook now says that is why nothing was applied.
+### Changed
+- **Graph page: "Customise the view" is a panel beside the graph**, on the left, with the details on the right; **Hide** gives the graph the room (remembered, **Customise** brings it back). The Graph page now uses the window's full width. On a phone the panel sits below the graph.
 
 ## [0.18.0] - 2026-10-23
 
