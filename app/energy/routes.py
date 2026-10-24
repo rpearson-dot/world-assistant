@@ -40,6 +40,23 @@ async def rates(request: Request, hours: float = Query(48, ge=1, le=96)) -> dict
     return {"tariff": tariff, "slots": summary.slots(periods, datetime.now(UTC), hours)}
 
 
+@router.get("/schedule")
+async def schedule(request: Request) -> dict[str, Any]:
+    """The inverter's six daily slots for this tariff: start times, which charge from the grid, and what each charging
+    slot must cover until the next cheap window (for the Home Assistant energy plan)."""
+    from zoneinfo import ZoneInfo
+
+    from app.config import get_settings
+    from app.energy import schedule as S
+
+    tariff, periods = await store.load(request.app.state.engine)
+    now_ = datetime.now(UTC)
+    summed = sess.summarise(await store.load_sessions(request.app.state.engine), now_)
+    return {"tariff": tariff, "computed_at": now_.isoformat(),
+            **S.build(periods, now_, ZoneInfo(get_settings().local_tz), summed["saving"].get("upcoming") or [],
+                      summed["free"].get("upcoming") or [])}  # fmt: skip
+
+
 @router.get("/windows")
 async def windows(request: Request, hours: float = Query(3.0, ge=0.5, le=12)) -> dict[str, Any]:
     """Cheapest block of `hours` in the next 24 hours, and the banded windows."""

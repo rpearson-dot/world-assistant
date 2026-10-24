@@ -462,7 +462,13 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
         now = await _get(c, "/v1/energy/now")
         if now.get("tariff") is None:
             raise ValueError("energy is not set up")
-        return energy_device(now, (await _get(c, "/v1/energy/rates", hours=48))["slots"] if now.get("available") else [])
+        if not now.get("available"):
+            return energy_device(now, [])
+        try:
+            plan = await _get(c, "/v1/energy/schedule")
+        except (httpx.HTTPError, ValueError):  # the rest of the energy sensors still go out
+            plan = None
+        return energy_device(now, (await _get(c, "/v1/energy/rates", hours=48))["slots"], plan)
 
     async def trips() -> Device:
         return trips_device((await _get(c, "/v1/conditions"))["trips"])

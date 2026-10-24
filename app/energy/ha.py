@@ -13,8 +13,19 @@ RETIRED = [
 ]
 
 
-def energy_device(now: dict[str, Any], slots: list[dict[str, Any]]) -> Device:
-    extra = session_sensors(now.get("sessions") or {})
+def schedule_sensor(plan: dict[str, Any] | None) -> list[Sensor]:
+    """The inverter's six slots for this tariff (app.energy.schedule), for the energy plan package."""
+    if not plan:
+        return []
+    return [Sensor("charge_schedule", "Charge schedule", plan.get("summary") if plan.get("available") else "unavailable",
+                   icon="mdi:timetable",
+                   attributes={"tariff": plan.get("tariff"), "slots": plan.get("slots") or [],
+                               "windows": plan.get("windows") or [], "warnings": plan.get("warnings") or [],
+                               "reason": plan.get("reason"), "computed_at": plan.get("computed_at")})]  # fmt: skip
+
+
+def energy_device(now: dict[str, Any], slots: list[dict[str, Any]], plan: dict[str, Any] | None = None) -> Device:
+    extra = session_sensors(now.get("sessions") or {}) + schedule_sensor(plan)
     if not now.get("available"):
         return Device(
             "energy",

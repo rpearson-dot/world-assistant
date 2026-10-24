@@ -492,7 +492,7 @@ def test_leaf_is_quiet_when_a_sensor_is_missing() -> None:
 
 
 def test_home_charging_plan_table_renders() -> None:
-    """The plan card as Home Assistant shows it: one table row per charging window, and the health max suggestion."""
+    """The plan card as Home Assistant shows it: a row for each of the six slots, and the health max suggestion."""
     import json
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -502,23 +502,28 @@ def test_home_charging_plan_table_renders() -> None:
     env = _jinja().Environment()
     env.filters |= {"as_local": lambda d: d.astimezone(ZoneInfo("Europe/London")), "from_json": json.loads,
                     "int": lambda v, d=0: int(float(v)) if str(v).replace(".", "", 1).isdigit() else d}  # fmt: skip
-    st = {"sensor.wa_target_charge_night": "25", "sensor.wa_target_charge_morning": "30", "sensor.wa_target_charge_evening": "80",
-          "sensor.wa_target_charge_night#wanted": "25", "sensor.wa_target_charge_morning#wanted": "30",
-          "sensor.wa_target_charge_evening#wanted": "95", "sensor.wa_target_charge_evening#over_health_max": True,
-          "number.office_inverter_time_slot_6_capacity": "80", "number.office_inverter_time_slot_2_capacity": "80",
-          "number.office_inverter_time_slot_4_capacity": "70.0", "number.office_inverter_time_slot_1_capacity": "10.0",
-          "number.office_inverter_time_slot_3_capacity": "10", "input_number.wa_floor_pct": "20.0", "input_number.wa_max_target_pct": "80",
-          "sensor.energy_production_tomorrow": "7.8", "sensor.wa_inverter_slot_check": "ok",
+    starts = ["00:00", "04:00", "07:00", "13:00", "16:00", "22:00"]
+    targets = [{"n": n, "start": st, "charge": n % 2 == 0, "covers": "x-y", "wanted": 20 if n % 2 else 50, "target": 20 if n % 2 else 50,
+                "over": False} for n, st in enumerate(starts, 1)]  # fmt: skip
+    targets[3] |= {"wanted": 95, "target": 80, "over": True, "covers": "16:00-22:00"}
+    st = {"sensor.wa_charge_targets#slots": targets, "sensor.wa_energy_charge_schedule": "04:00-07:00, 13:00-16:00, 22:00-00:00",
+          "sensor.wa_energy_charge_schedule#tariff": "E-1R-COSY-22-12-08-C", "input_number.wa_max_target_pct": "80",
+          "input_number.wa_floor_pct": "20.0", "sensor.wa_inverter_slot_check": "ok", "sensor.wa_battery_charge_rate": "4.8",
+          "sensor.energy_production_tomorrow": "7.8", "sensor.energy_production_today": "3.3",
           "input_text.wa_free_restore": json.dumps({"slot": 4, "cap": 70, "on": "on", "end": "2026-10-25T14:00:00+00:00"}),
           "sensor.wa_energy_free_electricity_next_start#upcoming": [
               {"start": "2026-10-25T13:00:00+00:00", "end": "2026-10-25T14:00:00+00:00", "joined": True},
               {"start": "2026-10-25T14:00:00+00:00", "end": "2026-10-25T15:00:00+00:00", "joined": False}]}  # fmt: skip
+    st |= {f"number.office_inverter_time_slot_{n}_capacity": f"{v}.0" for n, v in enumerate([10, 80, 10, 70, 10, 80], 1)}
+    st |= {f"text.office_inverter_time_slot_{n}_start": t for n, t in enumerate(starts, 1)} | {"text.office_inverter_time_slot_6_start": "23:00"}
     funcs = {"states": lambda e: str(st.get(e, "unknown")), "is_state": lambda e, v: st.get(e) == v,
              "state_attr": lambda e, a: st.get(f"{e}#{a}"), "as_datetime": datetime.fromisoformat}  # fmt: skip
     free, plan = (env.from_string(c["content"]).render(**funcs) for c in cards)
     assert "- Sun 13:00-14:00: ✅ joined" in free and "- Sun 14:00-15:00: not joined" in free
     assert "Charging free now**: slot 4 until 14:00, then put back to 70%." in free
     lines = [x for x in plan.splitlines() if x.startswith("|")]
-    assert len(lines) == 6 and lines[4] == "| 13:00 slot 4 | the 16:00-22:00 peak | 95% | **80%** ⚠️ | 70% | 12:30 |"
-    assert lines[5] == "| Slots 1, 3, 5 | lowest discharge | 20% | **20%** | 10%, 10%, 0% | 21:00, 12:30 |"
-    assert "Suggest raising the health max**: 13:00 slot 4 wants 95%" in plan
+    assert len(lines) == 8 and lines[5] == "| 4 | 13:00 | on | 16:00-22:00 | 95% | **80%** ⚠️ | 70% |"
+    assert lines[2] == "| 1 | 00:00 | off | discharge to the floor | 20% | **20%** | 10% |"
+    assert lines[7] == "| 6 | 22:00 | on | x-y | 50% | **50%** | 80% (starts 23:00) |"
+    assert "Suggest raising the health max**: slot 4 (13:00) wants 95%" in plan and "**E-1R-COSY-22-12-08-C**" in plan
+    assert "Charging from the grid at 4.8 kW (12% an hour)" in plan

@@ -1,43 +1,47 @@
-# World Assistant energy plan for Home Assistant: sets how full the battery is charged in each cheap Cosy window.
+# World Assistant energy plan for Home Assistant: charges the battery in your tariff's cheap windows, as much as the
+# house needs until the next one, on a Deye/Sunsynk-style inverter with six daily time slots.
 #
-# Your inverter's six daily slots already match Cosy (00:00 04:00 07:00 13:00 16:00 22:00, grid charge on for
-# slots 2, 4 and 6). This file only changes the TARGET CHARGE LEVEL (Time Slot N Limit) of those three slots:
+# ANY TARIFF: World Assistant works out the six slots from your real Octopus rates (sensor.wa_energy_charge_schedule):
+# a slot starts at each cheap window (grid charge on) and at each window's end (off), up to three windows a day.
+# On Cosy that is 00:00 04:00 07:00 13:00 16:00 22:00 with grid charge on 04:00, 13:00 and 22:00; on Go one window
+# overnight; on Agile the cheapest windows of the coming day, so the slots move from day to day.
 #
-#   slot 6, 22:00-24:00  fills the battery for 00:00-04:00           set at 21:00
-#   slot 2, 04:00-07:00  fills it for 07:00-13:00 (less tomorrow's solar)   set at 21:00
-#   slot 4, 13:00-16:00  fills it for the 16:00-22:00 peak           set at 12:30
+# SLOT TIMES: with "WA energy plan: set slot times from the tariff" ON (and the plan applying), the inverter's slot
+# start times and grid-charge switches are written from that schedule. OFF (the default), they are left as they are
+# and the plan only applies when they already match ("WA inverter slot check"), as before.
 #
-# SAVING SESSIONS: if you have joined a session that starts between 16:00 and 22:00, the 13:00 target is raised (a
-# bigger margin and a higher floor) so the battery carries the house through it without importing. During a joined
-# session a notification is sent if the battery gets low. Nothing here switches the grid off or limits what the
-# inverter can draw: if the battery runs down or the house needs more than it can give, the inverter takes the rest
-# from the grid by itself. The cost is a lost reward, never a loss of supply. Sessions outside 16:00-22:00 are only
-# flagged. Needs World Assistant's Energy sensors (sensor.wa_energy_saving_session_*).
+# CHARGE RATE: a window can only add so much: the inverter's grid charge rate (its grid charge current, or the
+# battery's maximum if lower, times the battery voltage, no more than the inverter's rating; "WA battery charge rate
+# from the grid" if those cannot be read) times the window's hours. When a window cannot put back all the next
+# stretch needs, the window before it charges higher to make up the difference ("WA battery charge rate").
 #
-# FREE ELECTRICITY: one minute before a Free Electricity hour you have joined (Weekend Happy Hour, Power Up), the
-# slot it falls in is set to charge from the grid up to "WA target during free electricity" (100%), so the house
-# runs from the grid and the battery fills, for free. The slot's own target and grid-charge switch are saved
-# (input_text.wa_free_restore) and put back when the hour ends; back-to-back hours are handled. The 04:00 target only
-# covers the morning up to a joined free hour, so nothing is bought that would be free later. Hours you have not
-# joined are ignored. Needs World Assistant 0.19.1 or later (sensor.wa_energy_free_electricity_*).
+# TARGETS: each charging slot is charged to the battery floor plus what the house uses from the end of its window to
+# the start of the next one (your night 00-07, day 07-16 and evening 16-24 loads, with a safety margin), less the
+# Forecast.Solar production expected in that time, never above the battery health max. When more is wanted than the
+# health max, the plan stops there and suggests raising it. The other slots are set to the battery floor: their
+# target is how low the inverter lets the battery discharge. Checked every 15 minutes and whenever the schedule
+# changes; a target is only rewritten when it moves by 5% or more.
 #
-# BATTERY FLOOR: "WA battery floor" (20%) is the lowest the battery may go. Every target is the floor plus what the
-# house needs, and at 21:00 and 12:30 the non-charging slots (1, 3 and 5) are set to it, since their target is how
-# low the inverter lets the battery discharge. A slot borrowed by a Free Electricity hour is left alone.
+# SAVING SESSIONS: a joined session in the time a charging slot covers raises that slot's target (a bigger margin
+# and a higher floor). A joined session inside a charging window is warned about (it would import). During a joined
+# session a notification is sent if the battery gets low. Nothing here switches the grid off: the inverter takes any
+# shortfall from the grid itself, so the cost is a smaller reward, never a loss of supply.
 #
-# SLOT CHECK: "WA inverter slot check" compares the inverter's slot start times and grid-charge switches with the
-# above. If any differ, the plan logs what changed and does not apply, even when switched on.
+# FREE ELECTRICITY: one minute before a Free Electricity hour you have joined, the slot it falls in charges from the
+# grid to "WA target during free electricity" (never above the health max), so the house runs from the grid and the
+# battery fills for free; the slot is put back when the hour ends. A charging slot before a joined free hour only
+# covers the time up to it.
 #
-# DRY RUN FIRST: "WA energy plan: apply to inverter" starts OFF. While off, the plan is only worked out and written
-# to the logbook. Compare it with what you would choose, then switch it on.
+# DRY RUN FIRST: "WA energy plan: apply to inverter" starts OFF. While off, every change the plan would make is
+# written to the logbook instead. Compare it with what you would choose, then switch it on.
 #
-# Install: from World Assistant's Home Assistant page (/ha): download it, or copy it over Samba, to
-# /config/packages/wa_energy_plan.yaml, and make sure configuration.yaml has
+# Install: from World Assistant's Home Assistant page (/ha), where your inverter's entity name is filled in: download
+# it, or copy it over Samba, to /config/packages/wa_energy_plan.yaml; configuration.yaml needs
 #   homeassistant:
 #     packages: !include_dir_named packages
-# then Developer tools > YAML > Check configuration, and restart Home Assistant.
-# Needs the Forecast.Solar integration (sensor.energy_production_tomorrow). Without it solar counts as zero, which
-# only means buying a little more than necessary.
+# then Developer tools > YAML > Check configuration, and restart Home Assistant. Needs World Assistant 0.20 or later
+# (the charge schedule) and Forecast.Solar (sensor.energy_production_today / _tomorrow; without it solar counts as
+# zero, which only means buying a little more than necessary).
 #
 # Tune the defaults below to your house (edit the file; "initial" is applied at every restart).
 
@@ -45,10 +49,16 @@ input_boolean:
   wa_energy_plan_apply:
     name: "WA energy plan: apply to inverter"
     icon: mdi:battery-sync
+  wa_energy_plan_manage_slots:
+    name: "WA energy plan: set slot times from the tariff"
+    icon: mdi:timetable
 
 input_text:
   wa_free_restore:
     name: "WA free electricity: settings to put back"
+    max: 255
+  wa_plan_last:
+    name: "WA energy plan: last logged"
     max: 255
 
 input_number:
@@ -68,8 +78,8 @@ input_number:
     unit_of_measurement: kWh
     initial: 40
   wa_floor_pct:
-    # The lowest the battery may go. Every target is this plus what the house needs, and the plan sets the
-    # non-charging slots (1, 3 and 5) to it, which is how low the inverter lets the battery discharge there.
+    # The lowest the battery may go. Every target is this plus what the house needs, and the non-charging slots are
+    # set to it, which is how low the inverter lets the battery discharge there.
     name: "WA battery floor"
     min: 5
     max: 50
@@ -99,26 +109,41 @@ input_number:
     step: 0.05
     initial: 1.25
   wa_night_load_kw:
-    name: "WA average load 00:00-04:00"
+    name: "WA average load 00:00-07:00"
     min: 0
     max: 10
     step: 0.1
     unit_of_measurement: kW
     initial: 0.6
   wa_morning_load_kw:
-    name: "WA average load 07:00-13:00"
+    name: "WA average load 07:00-16:00"
     min: 0
     max: 10
     step: 0.1
     unit_of_measurement: kW
     initial: 1.2
   wa_evening_load_kw:
-    name: "WA average load 16:00-22:00"
+    name: "WA average load 16:00-24:00"
     min: 0
     max: 10
     step: 0.1
     unit_of_measurement: kW
     initial: 2.0
+  wa_charge_kw:
+    # Used only when the inverter's grid charge current, battery voltage or rating cannot be read
+    name: "WA battery charge rate from the grid"
+    min: 0.5
+    max: 15
+    step: 0.1
+    unit_of_measurement: kW
+    initial: 5.0
+  wa_solar_trust:
+    # How much of Forecast.Solar's forecast to count on (1 = all of it)
+    name: "WA share of the solar forecast to count on"
+    min: 0
+    max: 1
+    step: 0.05
+    initial: 0.8
   wa_session_margin:
     name: "WA safety margin when a joined session is due"
     min: 1
@@ -139,274 +164,297 @@ input_number:
     step: 1
     unit_of_measurement: "%"
     initial: 20
-  wa_solar_morning_share:
-    name: "WA share of a day's solar before 13:00"
-    min: 0
-    max: 1
-    step: 0.05
-    initial: 0.5
 
 template:
   - sensor:
-      # Are the inverter's slots still the ones this plan is written for? If a start time or a grid-charge switch
-      # has been changed on the inverter, the plan only logs (never applies) until they are put back.
+      # Do the inverter's slots match World Assistant's schedule? A slot borrowed by a Free Electricity hour is not
+      # checked for its grid-charge switch.
       - name: "WA inverter slot check"
         unique_id: wa_inverter_slot_check
         icon: mdi:timetable
         state: >-
-          {% set want = {'1': '00:00', '2': '04:00', '3': '07:00', '4': '13:00', '5': '16:00', '6': '22:00'} %}
+          {% set sched = state_attr('sensor.wa_energy_charge_schedule', 'slots') or [] %}
+          {% set r = states('input_text.wa_free_restore') %}
+          {% set borrowed = (r | from_json).slot if r.startswith('{') else 0 %}
           {% set ns = namespace(bad=0, unknown=0) %}
-          {% for n, t in want.items() %}
-            {% set v = states('text.office_inverter_time_slot_' ~ n ~ '_start') %}
-            {% if v in ['unknown', 'unavailable'] %}{% set ns.unknown = ns.unknown + 1 %}
-            {% elif v[:5] != t %}{% set ns.bad = ns.bad + 1 %}{% endif %}
+          {% for s in sched %}
+            {% set t = states('text.office_inverter_time_slot_' ~ s.n ~ '_start') %}
+            {% if t in ['unknown', 'unavailable'] %}{% set ns.unknown = ns.unknown + 1 %}
+            {% elif t[:5] != s.start %}{% set ns.bad = ns.bad + 1 %}{% endif %}
+            {% set sw = states('switch.office_inverter_time_slot_' ~ s.n ~ '_on') %}
+            {% if sw in ['unknown', 'unavailable'] %}{% set ns.unknown = ns.unknown + 1 %}
+            {% elif s.n != borrowed and (sw == 'on') != s.charge %}{% set ns.bad = ns.bad + 1 %}{% endif %}
           {% endfor %}
-          {% for n in ['2', '4', '6'] %}
-            {% set v = states('switch.office_inverter_time_slot_' ~ n ~ '_on') %}
-            {% if v in ['unknown', 'unavailable'] %}{% set ns.unknown = ns.unknown + 1 %}
-            {% elif v != 'on' %}{% set ns.bad = ns.bad + 1 %}{% endif %}
-          {% endfor %}
-          {{ 'mismatch' if ns.bad else ('unchecked' if ns.unknown else 'ok') }}
+          {{ 'no schedule' if sched | length != 6 else 'mismatch' if ns.bad else ('unchecked' if ns.unknown else 'ok') }}
         attributes:
           problems: >-
-            {% set want = {'1': '00:00', '2': '04:00', '3': '07:00', '4': '13:00', '5': '16:00', '6': '22:00'} %}
+            {% set sched = state_attr('sensor.wa_energy_charge_schedule', 'slots') or [] %}
+            {% set r = states('input_text.wa_free_restore') %}
+            {% set borrowed = (r | from_json).slot if r.startswith('{') else 0 %}
             {% set ns = namespace(out=[]) %}
-            {% for n, t in want.items() %}
-              {% set v = states('text.office_inverter_time_slot_' ~ n ~ '_start') %}
-              {% if v not in ['unknown', 'unavailable'] and v[:5] != t %}
-                {% set ns.out = ns.out + ['slot ' ~ n ~ ' starts ' ~ v[:5] ~ ', expected ' ~ t] %}{% endif %}
-            {% endfor %}
-            {% for n in ['2', '4', '6'] %}
-              {% if states('switch.office_inverter_time_slot_' ~ n ~ '_on') == 'off' %}
-                {% set ns.out = ns.out + ['slot ' ~ n ~ ' grid charge is off'] %}{% endif %}
+            {% for s in sched %}
+              {% set t = states('text.office_inverter_time_slot_' ~ s.n ~ '_start') %}
+              {% if t not in ['unknown', 'unavailable'] and t[:5] != s.start %}
+                {% set ns.out = ns.out + ['slot ' ~ s.n ~ ' starts ' ~ t[:5] ~ ', the tariff wants ' ~ s.start] %}{% endif %}
+              {% set sw = states('switch.office_inverter_time_slot_' ~ s.n ~ '_on') %}
+              {% if sw in ['on', 'off'] and s.n != borrowed and (sw == 'on') != s.charge %}
+                {% set ns.out = ns.out + ['slot ' ~ s.n ~ ' grid charge is ' ~ sw ~ ', the tariff wants ' ~ ('on' if s.charge else 'off')] %}{% endif %}
             {% endfor %}
             {{ ns.out | join('; ') }}
-      - name: "WA wanted charge night"
-        unique_id: wa_wanted_charge_night
-        unit_of_measurement: "%"
-        icon: mdi:battery-charging-40
+
+      # How fast the inverter can charge the battery from the grid: grid charge current (or the battery's maximum, if
+      # lower) x battery voltage, no more than the inverter's rating, less 5% losses.
+      - name: "WA battery charge rate"
+        unique_id: wa_battery_charge_rate
+        unit_of_measurement: kW
+        icon: mdi:battery-arrow-up
         state: >-
-          {% set cap = states('input_number.wa_battery_kwh') | float(40) %}
-          {% set need = states('input_number.wa_night_load_kw') | float(0.6) * 4
-                        * states('input_number.wa_margin') | float(1.25) %}
-          {% set v = states('input_number.wa_floor_pct') | float(20) + need / cap * 100 %}
-          {{ [[(v / 5) | round(0) * 5, states('input_number.wa_min_target_pct') | float(25)] | max,
-              100] | min | int }}
-      - name: "WA wanted charge morning"
-        unique_id: wa_wanted_charge_morning
-        unit_of_measurement: "%"
-        icon: mdi:battery-charging-60
-        state: >-
-          {% set cap = states('input_number.wa_battery_kwh') | float(40) %}
-          {% set solar = states('sensor.energy_production_tomorrow') | float(0)
-                         * states('input_number.wa_solar_morning_share') | float(0.5) %}
-          {# a joined free hour tomorrow morning: only the hours until it need covering #}
-          {% set fs = as_datetime(states('sensor.wa_energy_free_electricity_next_start'), none) %}
-          {% set free_h = (fs | as_local).hour if fs is not none
-                          and state_attr('sensor.wa_energy_free_electricity_next_start', 'joined') == true
-                          and (fs | as_local).date() == (now() + timedelta(days=1)).date()
-                          and 7 <= (fs | as_local).hour < 13 else 13 %}
-          {% set hours = free_h - 7 %}
-          {% set solar = solar * hours / 6 %}
-          {% set need = [states('input_number.wa_morning_load_kw') | float(1.2) * hours
-                         * states('input_number.wa_margin') | float(1.25) - solar, 0] | max %}
-          {% set v = states('input_number.wa_floor_pct') | float(20) + need / cap * 100 %}
-          {{ [[(v / 5) | round(0) * 5, states('input_number.wa_min_target_pct') | float(25)] | max,
-              100] | min | int }}
-      - name: "WA wanted charge evening"
-        unique_id: wa_wanted_charge_evening
-        unit_of_measurement: "%"
-        icon: mdi:battery-charging-80
-        state: >-
-          {% set cap = states('input_number.wa_battery_kwh') | float(40) %}
-          {% set start = as_datetime(states('sensor.wa_energy_saving_session_next_joined_start'), none) %}
-          {% set ahead = ((start | as_local) - now()).total_seconds() / 3600 if start else -1 %}
-          {% set session = start is not none and 0 <= ahead <= 12 and 16 <= (start | as_local).hour < 22 %}
-          {% set margin = states('input_number.wa_session_margin') | float(1.5) if session
-                          else states('input_number.wa_margin') | float(1.25) %}
-          {% set extra = states('input_number.wa_session_extra_floor_pct') | float(10) if session else 0 %}
-          {% set need = states('input_number.wa_evening_load_kw') | float(2) * 6 * margin %}
-          {% set v = states('input_number.wa_floor_pct') | float(20) + extra + need / cap * 100 %}
-          {{ [[(v / 5) | round(0) * 5, states('input_number.wa_min_target_pct') | float(25)] | max,
-              100] | min | int }}
-      - name: "WA target charge night"
-        unique_id: wa_target_charge_night
-        unit_of_measurement: "%"
-        icon: mdi:battery-charging-40
-        state: >-
-          {{ [states('sensor.wa_wanted_charge_night') | int(0), states('input_number.wa_max_target_pct') | int(80)] | min }}
+          {% set a = states('number.office_inverter_grid_charge_current') | float(0) %}
+          {% set b = states('number.office_inverter_battery_max_charge_current') | float(0) %}
+          {% set v = states('sensor.office_inverter_battery_voltage') | float(0) %}
+          {% set rated = states('sensor.office_inverter_rated_power') | float(0) / 1000 %}
+          {% set amps = [a, b] | select('>', 0) | min if a > 0 or b > 0 else 0 %}
+          {% set kw = amps * v / 1000 %}
+          {% set kw = [kw, rated] | min if rated > 0 and kw > 0 else kw %}
+          {{ (kw * 0.95) | round(1) if kw > 0 else states('input_number.wa_charge_kw') | float(5) }}
         attributes:
-          slot: 6
-          covers: "00:00-04:00"
-          wanted: "{{ states('sensor.wa_wanted_charge_night') | int(0) }}"
-          over_health_max: >-
-            {{ states('sensor.wa_wanted_charge_night') | int(0) > states('input_number.wa_max_target_pct') | int(80) }}
-      - name: "WA target charge morning"
-        unique_id: wa_target_charge_morning
-        unit_of_measurement: "%"
-        icon: mdi:battery-charging-60
-        state: >-
-          {{ [states('sensor.wa_wanted_charge_morning') | int(0), states('input_number.wa_max_target_pct') | int(80)] | min }}
+          from_inverter: "{{ states('number.office_inverter_grid_charge_current') | float(0) > 0 and states('sensor.office_inverter_battery_voltage') | float(0) > 0 }}"
+
+      # Each slot's target: what the house needs until the next cheap window, as a charge level. A window that cannot
+      # put back all the next stretch needs (charge rate x its hours) makes the window before it charge higher.
+      - name: "WA charge targets"
+        unique_id: wa_charge_targets
+        icon: mdi:battery-charging
+        state: "{{ states('sensor.wa_energy_charge_schedule') }}"
         attributes:
-          slot: 2
-          covers: "07:00-13:00"
-          wanted: "{{ states('sensor.wa_wanted_charge_morning') | int(0) }}"
-          over_health_max: >-
-            {{ states('sensor.wa_wanted_charge_morning') | int(0) > states('input_number.wa_max_target_pct') | int(80) }}
-      - name: "WA target charge evening"
-        unique_id: wa_target_charge_evening
-        unit_of_measurement: "%"
-        icon: mdi:battery-charging-80
-        state: >-
-          {{ [states('sensor.wa_wanted_charge_evening') | int(0), states('input_number.wa_max_target_pct') | int(80)] | min }}
-        attributes:
-          slot: 4
-          covers: "16:00-22:00"
-          wanted: "{{ states('sensor.wa_wanted_charge_evening') | int(0) }}"
-          over_health_max: >-
-            {{ states('sensor.wa_wanted_charge_evening') | int(0) > states('input_number.wa_max_target_pct') | int(80) }}
+          slots: >-
+            {% set sched = state_attr('sensor.wa_energy_charge_schedule', 'slots') or [] %}
+            {% set cap = states('input_number.wa_battery_kwh') | float(40) %}
+            {% set floor = states('input_number.wa_floor_pct') | float(20) %}
+            {% set lo = states('input_number.wa_min_target_pct') | float(25) %}
+            {% set hi = states('input_number.wa_max_target_pct') | int(80) %}
+            {% set rate = states('sensor.wa_battery_charge_rate') | float(5) %}
+            {% set today = states('sensor.energy_production_today') | float(0) %}
+            {% set tomorrow = states('sensor.energy_production_tomorrow') | float(0) %}
+            {% set trust = states('input_number.wa_solar_trust') | float(0.8) %}
+            {# each charging window once: what its stretch uses (net of solar) and what it can add, as % #}
+            {% set ns = namespace(win=[], seen=[], want=[], out=[], i=0) %}
+            {% for s in sched if s.charge and s.window not in ns.seen %}
+              {% set ns.seen = ns.seen + [s.window] %}
+              {% set m = states('input_number.wa_session_margin') | float(1.5) if s.session
+                         else states('input_number.wa_margin') | float(1.25) %}
+              {% set extra = states('input_number.wa_session_extra_floor_pct') | float(10) if s.session else 0 %}
+              {% set use = (s.load_hours.night * states('input_number.wa_night_load_kw') | float(0.6)
+                            + s.load_hours.day * states('input_number.wa_morning_load_kw') | float(1.2)
+                            + s.load_hours.evening * states('input_number.wa_evening_load_kw') | float(2)) * m %}
+              {% set sun = trust * (s.solar_share.today * today + s.solar_share.tomorrow * tomorrow) %}
+              {% set net = [use - sun, 0] | max / cap * 100 %}
+              {% set ns.win = ns.win + [{'w': s.window, 'net': net, 'extra': extra, 'add': rate * s.window_hours / cap * 100,
+                                         'use': use | round(1), 'sun': sun | round(1)}] %}
+              {% set ns.want = ns.want + [floor + extra + net] %}
+            {% endfor %}
+            {# walk back round the windows twice: each must start high enough for the next to reach its level #}
+            {% set k = ns.win | length %}
+            {% for step in range(2 * k) %}
+              {% set i = (k - 1 - step) % k %}
+              {% set nx = (i + 1) % k %}
+              {% set start_needed = [floor + ns.win[i].extra, ns.want[nx] - ns.win[nx].add] | max %}
+              {% set v = [[ns.want[i], start_needed + ns.win[i].net] | max, 100] | min %}
+              {% set ns.want = ns.want[:i] + [v] + ns.want[i + 1:] %}
+            {% endfor %}
+            {% for s in sched %}
+              {% if s.charge %}
+                {% for x in ns.win %}{% if x.w == s.window %}{% set ns.i = loop.index0 %}{% endif %}{% endfor %}
+                {% set i = ns.i %}
+                {% set w = ns.win[i] %}
+                {% set wanted = [[(ns.want[i] / 5) | round(0) * 5, lo] | max, 100] | min | int %}
+                {% set ns.out = ns.out + [{'n': s.n, 'start': s.start, 'end': s.end, 'charge': true,
+                                           'covers': s.cover_from ~ '-' ~ s.cover_to, 'use_kwh': w.use, 'solar_kwh': w.sun,
+                                           'adds_up_to': w.add | round(0) | int, 'session': s.session,
+                                           'carried': ns.want[i] > floor + w.extra + w.net + 0.5,
+                                           'wanted': wanted, 'target': [wanted, hi] | min, 'over': wanted > hi}] %}
+              {% else %}
+                {% set ns.out = ns.out + [{'n': s.n, 'start': s.start, 'end': s.end, 'charge': false,
+                                           'wanted': floor | int, 'target': floor | int, 'over': false}] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.out }}
 
 automation:
-  - id: wa_energy_plan_2100
-    alias: "WA energy plan 21:00 (tonight 22:00 and tomorrow 04:00)"
+  - id: wa_energy_plan
+    alias: "WA energy plan: set the inverter's slots and targets"
     mode: single
+    max_exceeded: silent
     triggers:
-      - trigger: time
-        at: "21:00:00"
+      - trigger: time_pattern
+        minutes: "/15"
+      - trigger: state
+        entity_id: sensor.wa_energy_charge_schedule
+        attribute: slots
+      - trigger: state
+        entity_id:
+          - input_boolean.wa_energy_plan_apply
+          - input_boolean.wa_energy_plan_manage_slots
+        to: "on"
     variables:
-      night: "{{ states('sensor.wa_target_charge_night') | int(0) }}"
-      morning: "{{ states('sensor.wa_target_charge_morning') | int(0) }}"
-      night_now: "{{ states('number.office_inverter_time_slot_6_capacity') | int(0) }}"
-      morning_now: "{{ states('number.office_inverter_time_slot_2_capacity') | int(0) }}"
-      slots: "{{ states('sensor.wa_inverter_slot_check') }}"
+      sched: "{{ state_attr('sensor.wa_energy_charge_schedule', 'slots') or [] }}"
       apply: >-
-        {{ is_state('input_boolean.wa_energy_plan_apply', 'on') and is_state('switch.office_inverter_allow_remote_control', 'on')
-           and not is_state('sensor.wa_inverter_slot_check', 'mismatch') }}
+        {{ is_state('input_boolean.wa_energy_plan_apply', 'on') and is_state('switch.office_inverter_allow_remote_control', 'on') }}
+      manage: "{{ is_state('input_boolean.wa_energy_plan_manage_slots', 'on') }}"
+      borrowed: >-
+        {% set r = states('input_text.wa_free_restore') %}
+        {{ (r | from_json).slot if r.startswith('{') else 0 }}
+      # slot times to write: those moving earlier in slot order, then those moving later in reverse, so the start
+      # times stay in order on the inverter throughout
+      earlier: >-
+        {% set ns = namespace(out=[]) %}
+        {% for s in sched %}{% set t = states('text.office_inverter_time_slot_' ~ s.n ~ '_start')[:5] %}
+          {% if t not in ['unkno', 'unava'] and s.start < t %}{% set ns.out = ns.out + [{'n': s.n, 'start': s.start}] %}{% endif %}
+        {% endfor %}{{ ns.out }}
+      later: >-
+        {% set ns = namespace(out=[]) %}
+        {% for s in sched | reverse %}{% set t = states('text.office_inverter_time_slot_' ~ s.n ~ '_start')[:5] %}
+          {% if t not in ['unkno', 'unava'] and s.start > t %}{% set ns.out = ns.out + [{'n': s.n, 'start': s.start}] %}{% endif %}
+        {% endfor %}{{ ns.out }}
+      switches: >-
+        {% set ns = namespace(out=[]) %}
+        {% for s in sched %}{% set sw = states('switch.office_inverter_time_slot_' ~ s.n ~ '_on') %}
+          {% if sw in ['on', 'off'] and s.n != borrowed and (sw == 'on') != s.charge %}
+            {% set ns.out = ns.out + [{'n': s.n, 'on': s.charge}] %}{% endif %}
+        {% endfor %}{{ ns.out }}
     conditions:
       - condition: template
-        value_template: "{{ night > 0 and morning > 0 }}"
+        value_template: "{{ sched | length == 6 }}"
     actions:
-      - action: logbook.log
-        data:
-          name: WA energy plan
-          entity_id: input_boolean.wa_energy_plan_apply
-          message: >-
-            Slot 6 (22:00) target {{ night }}% (now {{ night_now }}%); slot 2 (04:00) target {{ morning }}%
-            (now {{ morning_now }}%); tomorrow's solar {{ states('sensor.energy_production_tomorrow') }} kWh.
-            Floor {{ states('input_number.wa_floor_pct') | int(20) }}% (slots 1, 3, 5 now
-            {{ states('number.office_inverter_time_slot_1_capacity') | int(0) }}%,
-            {{ states('number.office_inverter_time_slot_3_capacity') | int(0) }}%,
-            {{ states('number.office_inverter_time_slot_5_capacity') | int(0) }}%).
-            {% if slots == 'mismatch' %}Not applied: the inverter's slots have changed ({{ state_attr('sensor.wa_inverter_slot_check', 'problems') }}).
-            {% elif apply %}Applying.
-            {% elif is_state('input_boolean.wa_energy_plan_apply', 'on') %}Not applied: the inverter's remote control is
-            {{ 'missing' if states('switch.office_inverter_allow_remote_control') in ['unknown', 'unavailable'] else 'off' }}
-            (switch.office_inverter_allow_remote_control); turn it on to let the plan change the slots.
-            {% else %}Dry run: nothing changed.{% endif %}
-            {% if slots == 'unchecked' %}(Slot times could not be read, so they were not checked.){% endif %}
       - if:
           - condition: template
-            value_template: "{{ apply and (night - night_now) | abs >= 5 }}"
+            value_template: "{{ apply and manage and (earlier or later or switches) }}"
         then:
-          - action: number.set_value
-            target:
-              entity_id: number.office_inverter_time_slot_6_capacity
+          - repeat:
+              for_each: "{{ earlier + later }}"
+              sequence:
+                - action: text.set_value
+                  target:
+                    entity_id: "text.office_inverter_time_slot_{{ repeat.item.n }}_start"
+                  data:
+                    value: "{{ repeat.item.start }}"
+                - delay: "00:00:05"
+          - repeat:
+              for_each: "{{ switches }}"
+              sequence:
+                - action: "switch.turn_{{ 'on' if repeat.item.on else 'off' }}"
+                  target:
+                    entity_id: "switch.office_inverter_time_slot_{{ repeat.item.n }}_on"
+                - delay: "00:00:05"
+          - action: logbook.log
             data:
-              value: "{{ night }}"
+              name: WA energy plan
+              entity_id: input_boolean.wa_energy_plan_apply
+              message: >-
+                Slots set from the tariff ({{ states('sensor.wa_energy_charge_schedule') }}):
+                {{ sched | map(attribute='start') | join(', ') }}, grid charge on
+                {{ sched | selectattr('charge') | map(attribute='n') | map('string') | join(', ') }}.
           - delay: "00:00:20"
+      # targets: written only when the inverter's slots match the schedule
+      - variables:
+          check: "{{ states('sensor.wa_inverter_slot_check') }}"
+          targets: "{{ state_attr('sensor.wa_charge_targets', 'slots') or [] }}"
+          changes: >-
+            {% set ns = namespace(out=[]) %}
+            {% for t in targets if t.n != borrowed %}
+              {% set now_pct = states('number.office_inverter_time_slot_' ~ t.n ~ '_capacity') | int(-1) %}
+              {% if now_pct >= 0 and ((t.charge and (t.target - now_pct) | abs >= 5) or (not t.charge and t.target != now_pct)) %}
+                {% set ns.out = ns.out + [{'n': t.n, 'start': t.start, 'charge': t.charge, 'to': t.target, 'from': now_pct}] %}
+              {% endif %}
+            {% endfor %}{{ ns.out }}
+          signature: >-
+            {{ check }} {{ apply }} {{ changes | map(attribute='n') | map('string') | join('') }}
+            {{- changes | map(attribute='to') | map('string') | join('.') }}
       - if:
           - condition: template
-            value_template: "{{ apply and (morning - morning_now) | abs >= 5 }}"
+            value_template: "{{ apply and check != 'mismatch' and changes | length > 0 }}"
         then:
-          - action: number.set_value
-            target:
-              entity_id: number.office_inverter_time_slot_2_capacity
-            data:
-              value: "{{ morning }}"
-      # the non-charging slots: their target is how far the battery may discharge
-      - repeat:
-          for_each: [1, 3, 5]
-          sequence:
-            - variables:
-                floor: "{{ states('input_number.wa_floor_pct') | int(20) }}"
-                floor_now: "{{ states('number.office_inverter_time_slot_' ~ repeat.item ~ '_capacity') | int(0) }}"
-                borrowed: >-
-                  {% set r = states('input_text.wa_free_restore') %}
-                  {{ r.startswith('{') and (r | from_json).slot | string == repeat.item | string }}
-            - if:
-                - condition: template
-                  value_template: "{{ apply and not borrowed and floor_now > 0 and floor_now != floor }}"
-              then:
+          - repeat:
+              for_each: "{{ changes }}"
+              sequence:
                 - action: number.set_value
                   target:
-                    entity_id: "number.office_inverter_time_slot_{{ repeat.item }}_capacity"
+                    entity_id: "number.office_inverter_time_slot_{{ repeat.item.n }}_capacity"
                   data:
-                    value: "{{ floor }}"
-                - delay: "00:00:10"
+                    value: "{{ repeat.item.to }}"
+                - delay: "00:00:05"
+      # the logbook: once for each new plan, not every 15 minutes
+      - if:
+          - condition: template
+            value_template: "{{ changes | length > 0 and states('input_text.wa_plan_last') != signature[:255] }}"
+        then:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.wa_plan_last
+            data:
+              value: "{{ signature[:255] }}"
+          - action: logbook.log
+            data:
+              name: WA energy plan
+              entity_id: input_boolean.wa_energy_plan_apply
+              message: >-
+                {% set parts = changes | map(attribute='start') | list %}
+                {%- for c in changes %}{{ 'Slot ' ~ c.n ~ ' (' ~ c.start ~ (', charging' if c.charge else '') ~ ') '
+                ~ c.from ~ '% to ' ~ c.to ~ '%' }}{{ '; ' if not loop.last else '. ' }}{% endfor %}
+                {%- if check == 'mismatch' %}Not applied: the inverter's slots differ from the tariff ({{ state_attr('sensor.wa_inverter_slot_check', 'problems') }}).
+                {%- if not manage %} Switch on "set slot times from the tariff" to let the plan change them.{% endif %}
+                {%- elif apply %}Applied.
+                {%- elif is_state('input_boolean.wa_energy_plan_apply', 'on') %}Not applied: the inverter's remote control is
+                {{ 'missing' if states('switch.office_inverter_allow_remote_control') in ['unknown', 'unavailable'] else 'off' }}
+                (switch.office_inverter_allow_remote_control); turn it on to let the plan change the slots.
+                {%- else %}Dry run: nothing changed.{% endif %}
+                {%- if check == 'unchecked' %} (Slot times could not be read, so they were not checked.){% endif %}
 
-  - id: wa_energy_plan_1230
-    alias: "WA energy plan 12:30 (today 13:00)"
+  - id: wa_energy_health_max_suggestion
+    alias: "WA energy plan: suggest raising the battery health max when the house needs more"
     mode: single
     triggers:
-      - trigger: time
-        at: "12:30:00"
+      - trigger: template
+        value_template: "{{ (state_attr('sensor.wa_charge_targets', 'slots') or []) | selectattr('over') | list | length > 0 }}"
     variables:
-      evening: "{{ states('sensor.wa_target_charge_evening') | int(0) }}"
-      evening_now: "{{ states('number.office_inverter_time_slot_4_capacity') | int(0) }}"
-      slots: "{{ states('sensor.wa_inverter_slot_check') }}"
-      apply: >-
-        {{ is_state('input_boolean.wa_energy_plan_apply', 'on') and is_state('switch.office_inverter_allow_remote_control', 'on')
-           and not is_state('sensor.wa_inverter_slot_check', 'mismatch') }}
-    conditions:
-      - condition: template
-        value_template: "{{ evening > 0 }}"
+      capped: >-
+        {% set ns = namespace(out=[]) %}
+        {% for t in (state_attr('sensor.wa_charge_targets', 'slots') or []) | selectattr('over') %}
+          {% set ns.out = ns.out + ['slot ' ~ t.n ~ ' (' ~ t.start ~ ', for ' ~ t.covers ~ ') wants ' ~ t.wanted ~ '%'] %}
+        {% endfor %}
+        {{ ns.out | join('; ') }}
     actions:
+      - action: persistent_notification.create
+        data:
+          notification_id: wa_health_max
+          title: "Battery: more needed than the health max"
+          message: >-
+            {{ capped }}, above your battery health max of {{ states('input_number.wa_max_target_pct') | int }}%.
+            The plan charges to {{ states('input_number.wa_max_target_pct') | int }}%, so the rest will be bought at a
+            dearer rate before the next cheap window. To cover it, raise "WA battery health max charge" on the Home
+            charging dashboard.
       - action: logbook.log
         data:
           name: WA energy plan
           entity_id: input_boolean.wa_energy_plan_apply
-          message: >-
-            Slot 4 (13:00) target {{ evening }}% (now {{ evening_now }}%).
-            Floor {{ states('input_number.wa_floor_pct') | int(20) }}% (slots 1, 3, 5 now
-            {{ states('number.office_inverter_time_slot_1_capacity') | int(0) }}%,
-            {{ states('number.office_inverter_time_slot_3_capacity') | int(0) }}%,
-            {{ states('number.office_inverter_time_slot_5_capacity') | int(0) }}%).
-            {% if slots == 'mismatch' %}Not applied: the inverter's slots have changed ({{ state_attr('sensor.wa_inverter_slot_check', 'problems') }}).
-            {% elif apply %}Applying.
-            {% elif is_state('input_boolean.wa_energy_plan_apply', 'on') %}Not applied: the inverter's remote control is
-            {{ 'missing' if states('switch.office_inverter_allow_remote_control') in ['unknown', 'unavailable'] else 'off' }}
-            (switch.office_inverter_allow_remote_control); turn it on to let the plan change the slots.
-            {% else %}Dry run: nothing changed.{% endif %}
-            {% if slots == 'unchecked' %}(Slot times could not be read, so they were not checked.){% endif %}
-      - if:
-          - condition: template
-            value_template: "{{ apply and (evening - evening_now) | abs >= 5 }}"
-        then:
-          - action: number.set_value
-            target:
-              entity_id: number.office_inverter_time_slot_4_capacity
-            data:
-              value: "{{ evening }}"
-      # the non-charging slots: their target is how far the battery may discharge
-      - repeat:
-          for_each: [1, 3, 5]
-          sequence:
-            - variables:
-                floor: "{{ states('input_number.wa_floor_pct') | int(20) }}"
-                floor_now: "{{ states('number.office_inverter_time_slot_' ~ repeat.item ~ '_capacity') | int(0) }}"
-                borrowed: >-
-                  {% set r = states('input_text.wa_free_restore') %}
-                  {{ r.startswith('{') and (r | from_json).slot | string == repeat.item | string }}
-            - if:
-                - condition: template
-                  value_template: "{{ apply and not borrowed and floor_now > 0 and floor_now != floor }}"
-              then:
-                - action: number.set_value
-                  target:
-                    entity_id: "number.office_inverter_time_slot_{{ repeat.item }}_capacity"
-                  data:
-                    value: "{{ floor }}"
-                - delay: "00:00:10"
+          message: "Capped at the battery health max: {{ capped }}. Raise it to cover this."
+
+  - id: wa_energy_schedule_warnings
+    alias: "WA energy plan: warn about a joined Saving Session in a charging window"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: sensor.wa_energy_charge_schedule
+        attribute: warnings
+    conditions:
+      - condition: template
+        value_template: "{{ (state_attr('sensor.wa_energy_charge_schedule', 'warnings') or []) | length > 0 }}"
+    actions:
+      - action: persistent_notification.create
+        data:
+          notification_id: wa_schedule_warning
+          title: "Energy plan"
+          message: "{{ state_attr('sensor.wa_energy_charge_schedule', 'warnings') | join(' ') }}"
 
   - id: wa_energy_session_low_battery
     alias: "WA energy plan: warn if the battery runs low in a joined Saving Session"
@@ -430,31 +478,6 @@ automation:
             at {{ state_attr('sensor.wa_energy_saving_session_now', 'end') }}. The inverter will take any shortfall
             from the grid, so the house stays supplied, but the reward shrinks.
 
-  - id: wa_energy_session_outside_evening
-    alias: "WA energy plan: flag a joined Saving Session the plan does not handle"
-    mode: single
-    triggers:
-      - trigger: time
-        at: "12:35:00"
-      - trigger: time
-        at: "21:05:00"
-    variables:
-      start: "{{ as_datetime(states('sensor.wa_energy_saving_session_next_joined_start'), none) }}"
-    conditions:
-      - condition: template
-        value_template: >-
-          {% set st = as_datetime(states('sensor.wa_energy_saving_session_next_joined_start'), none) %}
-          {{ st is not none and 0 <= ((st | as_local) - now()).total_seconds() / 3600 <= 24
-             and not (16 <= (st | as_local).hour < 22) }}
-    actions:
-      - action: persistent_notification.create
-        data:
-          title: "Saving Session outside 16:00-22:00"
-          message: >-
-            You have joined a session starting {{ states('sensor.wa_energy_saving_session_next_joined_start') }}.
-            The energy plan only prepares for sessions between 16:00 and 22:00, so the battery may not carry the
-            house through this one, and a charging slot may be importing during it.
-
   - id: wa_energy_free_start
     alias: "WA energy plan: a joined Free Electricity hour starts (charge from the grid)"
     mode: queued
@@ -467,9 +490,15 @@ automation:
       start: "{{ states('sensor.wa_energy_free_electricity_next_start') }}"
       end: "{{ state_attr('sensor.wa_energy_free_electricity_next_start', 'end') }}"
       joined: "{{ state_attr('sensor.wa_energy_free_electricity_next_start', 'joined') == true }}"
+      # the slot the hour falls in, from the inverter's own start times (before slot 1's start is the last slot)
       slot: >-
-        {% set h = (as_datetime(start) | as_local).hour %}
-        {{ 1 if h < 4 else 2 if h < 7 else 3 if h < 13 else 4 if h < 16 else 5 if h < 22 else 6 }}
+        {% set t = (as_datetime(start) | as_local).strftime('%H:%M') %}
+        {% set ns = namespace(slot=6) %}
+        {% for n in range(1, 7) %}
+          {% set s = states('text.office_inverter_time_slot_' ~ n ~ '_start')[:5] %}
+          {% if s not in ['unkno', 'unava'] and s <= t %}{% set ns.slot = n %}{% endif %}
+        {% endfor %}
+        {{ ns.slot }}
       target: >-
         {{ [states('input_number.wa_free_target_pct') | int(100), states('input_number.wa_max_target_pct') | int(80)] | min }}
       cap_now: "{{ states('number.office_inverter_time_slot_' ~ slot ~ '_capacity') | int(0) }}"
@@ -478,8 +507,7 @@ automation:
         {% set r = states('input_text.wa_free_restore') %}
         {{ r | from_json if r.startswith('{') else {} }}
       apply: >-
-        {{ is_state('input_boolean.wa_energy_plan_apply', 'on') and is_state('switch.office_inverter_allow_remote_control', 'on')
-           and not is_state('sensor.wa_inverter_slot_check', 'mismatch') }}
+        {{ is_state('input_boolean.wa_energy_plan_apply', 'on') and is_state('switch.office_inverter_allow_remote_control', 'on') }}
     conditions:
       - condition: template
         value_template: "{{ joined and end not in [none, ''] and on_now in ['on', 'off'] }}"
@@ -493,7 +521,6 @@ automation:
             ({{ state_attr('sensor.wa_energy_free_electricity_next_start', 'type') or 'joined' }}): slot {{ slot }} to
             {{ target }}% with grid charge on (now {{ cap_now }}%, grid charge {{ on_now }}).
             {% if apply %}Applying; put back at {{ (as_datetime(end) | as_local).strftime('%H:%M') }}.
-            {% elif is_state('sensor.wa_inverter_slot_check', 'mismatch') %}Not applied: the inverter's slots have changed.
             {% elif is_state('input_boolean.wa_energy_plan_apply', 'on') %}Not applied: the inverter's remote control is off.
             {% else %}Dry run: nothing changed.{% endif %}
       - if:
@@ -572,41 +599,3 @@ automation:
           entity_id: input_boolean.wa_energy_plan_apply
           message: >-
             Free Electricity over: slot {{ saved.slot }} put back to {{ saved.cap }}% with grid charge {{ saved.on }}.
-
-  - id: wa_energy_health_max_suggestion
-    alias: "WA energy plan: suggest raising the battery health max when the house needs more"
-    mode: single
-    triggers:
-      - trigger: time
-        at: "21:01:00"
-      - trigger: time
-        at: "12:31:00"
-    variables:
-      capped: >-
-        {% set ns = namespace(out=[]) %}
-        {% for p in ['night', 'morning', 'evening'] %}
-          {% set e = 'sensor.wa_target_charge_' ~ p %}
-          {% if state_attr(e, 'over_health_max') in [true, 'True', 'true'] %}
-            {% set ns.out = ns.out + ['slot ' ~ state_attr(e, 'slot') ~ ' (for ' ~ state_attr(e, 'covers') ~ ') wants '
-                                      ~ state_attr(e, 'wanted') ~ '%'] %}
-          {% endif %}
-        {% endfor %}
-        {{ ns.out | join('; ') }}
-    conditions:
-      - condition: template
-        value_template: "{{ capped | length > 0 }}"
-    actions:
-      - action: persistent_notification.create
-        data:
-          notification_id: wa_health_max
-          title: "Battery: more needed than the health max"
-          message: >-
-            {{ capped }}, above your battery health max of {{ states('input_number.wa_max_target_pct') | int }}%.
-            The plan charges to {{ states('input_number.wa_max_target_pct') | int }}%, so the rest will be bought at the
-            standard or peak rate before the next cheap window. To cover it, raise "WA battery health max charge" on
-            the Home charging dashboard (it applies at the next planning run, 21:00 or 12:30).
-      - action: logbook.log
-        data:
-          name: WA energy plan
-          entity_id: input_boolean.wa_energy_plan_apply
-          message: "Capped at the battery health max: {{ capped }}. Raise it to cover this."
