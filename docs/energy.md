@@ -63,10 +63,28 @@ Every 30 minutes WA also reads:
 * **Saving Sessions** from Octopus's GraphQL API (needs the key and account number): the announced events, and
   whether you have joined each. WA never joins for you; do that in the Octopus app.
 
-* **Free Electricity sessions** from Octopus's official query (`customerFlexibilityCampaignEvents`, campaign
-  `free_electricity`), for your account and import meter (found from the account; set `WA_OCTOPUS_MPAN` if it has
-  several). Octopus does not say which sessions you signed up for, so they are shown as announced for your account.
-  Home Assistant: Free electricity now (`on`/`off`) and Next free electricity starts.
+* **Free Electricity** (Power Ups, Weekend Happy Hours) from the same Saving Sessions feed, where Octopus lists them
+  by type (`WEEKEND_HAPPY_HOUR`, `TURN_UP`) and says which hours you joined. You sign up hour by hour, so your joined
+  hours come first. Home Assistant: `sensor.wa_energy_free_electricity_now` is `on` only during an hour you joined
+  (attribute `announced_now` says whether any is on); `sensor.wa_energy_free_electricity_next_start` is your next
+  joined hour, else the next announced one, with attributes `end`, `joined`, `type` and `upcoming`.
+
+  To act on it (an inverter, a car charger), trigger on the timestamp and check `joined`:
+
+  ```yaml
+  triggers:
+    - trigger: time
+      at: sensor.wa_energy_free_electricity_next_start
+      id: start
+    - trigger: state
+      entity_id: sensor.wa_energy_free_electricity_now
+      from: "on"
+      to: "off"
+      id: stop
+  conditions:
+    - condition: template
+      value_template: "{{ trigger.id == 'stop' or state_attr('sensor.wa_energy_free_electricity_next_start', 'joined') }}"
+  ```
 
 The queries follow the BottlecapDave Home Assistant integration and are not an official Octopus contract, so a
 change at Octopus could break them. The rates keep working if the sessions fail. To see exactly what Octopus

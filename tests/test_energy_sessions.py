@@ -217,73 +217,46 @@ def test_spoken_answer():
     assert "Peak is 39.0p from 17:00" in text and "cheapest 3 hours" in text
 
 
-FREE = {"customerFlexibilityCampaignEvents": {"edges": [
-    {"node": {"code": "FE_251026", "startAt": "2026-10-25T13:00:00+00:00", "endAt": "2026-10-25T14:00:00+00:00"}},
-    {"node": {"code": "bad", "startAt": "2026-10-25T14:00:00+00:00", "endAt": "2026-10-25T13:00:00+00:00"}},
-    {"node": {}},
-]}}
+
+def _happy(code: str, start: datetime, joined: bool) -> dict:
+    end = start + timedelta(hours=1)
+    return {"id": code, "code": code, "startAt": start.isoformat(), "endAt": end.isoformat(), "devEvent": False,
+            "eventType": "WEEKEND_HAPPY_HOUR", "rewardPerKwhInOctoPoints": 0, "targetRegion": []}  # fmt: skip
 
 
-def test_free_electricity_from_octopus_official_query() -> None:
+def test_weekend_happy_hours_your_joined_hour_comes_first() -> None:
+    """As Octopus sent them on 24 October 2026: Weekend Happy Hours from 07:00 to 15:00, the 13:00 one joined."""
     from app.energy import kraken
+    from app.energy import speech as sp
     from app.energy.ha import free_sensors
 
-    got = kraken.parse_free(FREE)
-    assert [(r["kind"], r["code"], r["start_at"].hour) for r in got] == [("free", "FE_251026", 13)]
-    assert kraken.parse_free({}) == []
-    now = datetime(2026, 10, 24, 9, tzinfo=UTC)
-    s = sessions.summarise(got, now)
-    assert s["free"]["next"]["start"] == "2026-10-25T13:00:00+00:00" and s["free"]["next"]["minutes"] == 60
-    sensors = {x.key: x.state for x in free_sensors(s["free"])}
-    assert sensors == {"free_electricity_now": "off", "free_electricity_next_start": "2026-10-25T13:00:00+00:00"}
-    during = sessions.summarise(got, datetime(2026, 10, 25, 13, 30, tzinfo=UTC))
-    assert {x.key: x.state for x in free_sensors(during["free"])}["free_electricity_now"] == "on"
+    day = datetime(2026, 10, 25, tzinfo=UTC)
+    events = [_happy(f"EVENT_{110 + h}_251026", day + timedelta(hours=h), h == 13) for h in range(7, 15)]
+    data = {"savingSessions": {"events": events, "account": {"joinedEvents": [
+        {"eventId": "EVENT_123_251026", "startAt": (day + timedelta(hours=13)).isoformat(),
+         "endAt": (day + timedelta(hours=14)).isoformat(), "eventType": "WEEKEND_HAPPY_HOUR"}]}}}  # fmt: skip
+    rows = kraken.parse_saving(data)
+    assert {r["kind"] for r in rows} == {"boost"} and sum(r["joined"] for r in rows) == 1
+    for r in rows:
+        r["event_type"] = "WEEKEND_HAPPY_HOUR"
+    s = sessions.summarise(rows, datetime(2026, 10, 24, 9, tzinfo=UTC))
+    assert s["free"]["next"]["start"].startswith("2026-10-25T07:00") and s["free"]["next"]["type"] == "Weekend Happy Hour"
+    assert s["free"]["next_joined"]["start"].startswith("2026-10-25T13:00")
+    assert s["saving"]["next"] is None
+    sensors = {x.key: x for x in free_sensors(s["free"])}
+    assert sensors["free_electricity_next_start"].state.startswith("2026-10-25T13:00")
+    assert sensors["free_electricity_next_start"].attributes["joined"] is True
+    at_noon = sessions.summarise(rows, day + timedelta(hours=12, minutes=30))  # a Happy Hour, but not yours
+    noon = {x.key: x for x in free_sensors(at_noon["free"])}
+    assert noon["free_electricity_now"].state == "off" and noon["free_electricity_now"].attributes["announced_now"]
+    at_one = sessions.summarise(rows, day + timedelta(hours=13, minutes=30))
+    assert {x.key: x.state for x in free_sensors(at_one["free"])}["free_electricity_now"] == "on"
+    said = sp.sentence({"available": True, "now": {"pence": 20.0, "band": "standard", "until": "2026-10-24T16:00:00+00:00"}, "next": None,
+                        "sessions": s}, ZoneInfoLondon(), datetime(2026, 10, 24, 9, tzinfo=UTC))
+    assert "13:00" in said and "Weekend Happy Hour" in said
 
 
-def test_the_import_meter_is_found_and_export_skipped() -> None:
-    from app.energy import octopus
+def ZoneInfoLondon():
+    from zoneinfo import ZoneInfo
 
-    body = {"properties": [{"electricity_meter_points": [{"mpan": "9900000000001", "is_export": True},
-                                                         {"mpan": "1900000000002", "is_export": False}]}]}  # fmt: skip
-    assert octopus.pick_mpan(body) == "1900000000002"
-    with pytest.raises(octopus.OctopusError):
-        octopus.pick_mpan({"properties": []})
-
-
-async def test_free_sessions_are_asked_for_with_the_account_and_meter() -> None:
-    import httpx
-
-    from app.energy import kraken
-
-    asked = []
-
-    def answer(req: httpx.Request) -> httpx.Response:
-        body = req.read().decode()
-        asked.append(body)
-        if "obtainKrakenToken" in body:
-            return httpx.Response(200, json={"data": {"obtainKrakenToken": {"token": "t"}}})
-        assert req.headers["Authorization"] == "t"
-        return httpx.Response(200, json={"data": FREE})
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(answer)) as c:
-        got = await kraken.fetch_free(c, "key", "A-1234", "1900000000002")
-    assert [r["code"] for r in got] == ["FE_251026"]
-    assert 'campaignSlug: \\"free_electricity\\"' in asked[1] or "free_electricity" in asked[1]
-    assert "A-1234" in asked[1] and "1900000000002" in asked[1]
-
-
-def test_power_up_events_and_the_official_query_make_one_free_list() -> None:
-    from app.energy import kraken
-
-    start, end = datetime(2026, 10, 25, 13, tzinfo=UTC), datetime(2026, 10, 25, 14, tzinfo=UTC)
-    data = {"savingSessions": {"events": [
-        {"id": 77, "code": "EVENT_PU_251026", "startAt": start.isoformat(), "endAt": end.isoformat(),
-         "eventType": "TURN_UP", "rewardPerKwhInOctoPoints": 0, "devEvent": False, "targetRegion": []}],
-        "account": {"joinedEvents": [{"eventId": 77, "startAt": start.isoformat(), "endAt": end.isoformat(),
-                                      "eventType": "TURN_UP"}]}}}  # fmt: skip
-    power_up = kraken.parse_saving(data)
-    assert [(r["kind"], r["joined"]) for r in power_up] == [("boost", True)]
-    official = kraken.parse_free(FREE)  # the same hour, from the official query
-    s = sessions.summarise(power_up + official, datetime(2026, 10, 24, 9, tzinfo=UTC))
-    assert len(s["free"]["upcoming"]) == 1 and s["free"]["next"]["joined"] is True
-    assert s["saving"]["next"] is None  # a Power Up is not a Saving Session
+    return ZoneInfo("Europe/London")

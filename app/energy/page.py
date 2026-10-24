@@ -116,7 +116,12 @@ function sessionTiles(s) {
     else if (!blk.now) box.append(tile('', label, 'none announced'));
   };
   one('Saving Session', sv_, true);
-  one('Free electricity', s.free || {}, (s.free && s.free.next && s.free.next.joined) || false);
+  const fr = s.free || {}, mine = fr.next_joined, any = fr.next;
+  if (fr.now_joined) box.append(tile('live', 'Free electricity now', 'On', 'until ' + hm(fr.current.end) + ' · you joined'));
+  if (mine) box.append(tile('', 'Your next free electricity', when(mine.start), mins(mine.minutes) + ' · ' + mine.type + ' · you joined'));
+  if (any && (!mine || any.start !== mine.start)) box.append(tile('', 'Next free electricity announced', when(any.start),
+    mins(any.minutes) + ' · ' + any.type + (any.joined ? ' · you joined' : ' · not joined')));
+  if (!mine && !any && !fr.now_joined) box.append(tile('', 'Free electricity', 'none announced'));
   $('snote').textContent = 'Saving Sessions pay you Octopoints for using less electricity in the hour; Free Electricity sessions make '
     + 'electricity free for the hour. Sign up to both in the Octopus app.';
 }

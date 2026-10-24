@@ -33,17 +33,23 @@ from app.jobs import tracked
 
 log = logging.getLogger("wa.ukpn")
 
-AREA_KINDS = ("boundary", "idno", "gsp", "primary", "secondary", "rota")
+# Rota Load Disconnection is published as a document, not map data, so it cannot be looked up for a place.
+AREA_KINDS = ("boundary", "idno", "gsp", "primary", "secondary")
 SUSPICIOUS_EMPTY_OVER = 20
 AT_PLACE_M = 1000  # a cut this close to a saved place, or naming its postcode, is at that place (as app/power.py)
 
-# Which saved places each current cut is at (by postcode, or by distance).
-AT_PLACES = """
-SELECT f.id, array_agg(p.id ORDER BY p.id) AS places,
-       bool_or(p.kind = 'home' OR p.id = 'home') AS home
-FROM ukpn_fault f JOIN place p
-  ON (p.postcode IS NOT NULL AND upper(trim(p.postcode)) = ANY(f.postcodes))
-  OR coalesce(ST_DWithin(f.geog, p.geog, :m), false)
+# Is cut f at place p? Its postcodes name the place's postcode, or (when it names only postcode sectors, as UK Power
+# Networks does) the place's sector; or it is within :m metres. Used here and in app/power.py.
+AT = """(
+  (p.postcode IS NOT NULL AND (
+     upper(trim(p.postcode)) = ANY(f.postcodes)
+     OR (regexp_replace(upper(trim(p.postcode)), '^([A-Z]{1,2}[0-9][A-Z0-9]?)\\s*([0-9])[A-Z]{2}$', '\\1 \\2') = ANY(f.postcodes)
+         AND NOT EXISTS (SELECT 1 FROM unnest(f.postcodes) x WHERE x ~ '[0-9][A-Z]{2}$'))))
+  OR coalesce(ST_DWithin(f.geog, p.geog, :m), false))"""
+# Which saved places each cut in the feed is at.
+AT_PLACES = f"""
+SELECT f.id, array_agg(p.id ORDER BY p.id) AS places, bool_or(p.kind = 'home' OR p.id = 'home') AS home
+FROM ukpn_feed f JOIN place p ON {AT}
 GROUP BY f.id
 """
 # Keep every cut: insert the new, update the ongoing, and close the ones no longer in the feed.
@@ -51,8 +57,9 @@ HISTORY_UPSERT = """
 INSERT INTO ukpn_fault_history (id, planned, description, postcodes, customers_max, started_at, first_restore_at,
   last_restore_at, status_last, first_seen, last_seen, ended_at, places, home, lat, lon)
 SELECT f.id, f.planned, f.description, f.postcodes, f.customers, f.started_at, f.restore_at, f.restore_at, f.status,
-       f.seen, f.seen, NULL, coalesce(a.places, '{}'), coalesce(a.home, false), f.lat, f.lon
-FROM ukpn_fault f LEFT JOIN at_places a ON a.id = f.id
+       f.seen, f.seen, CASE WHEN f.active THEN NULL ELSE coalesce(f.ended_at, f.seen) END,
+       coalesce(a.places, '{}'), coalesce(a.home, false), f.lat, f.lon
+FROM ukpn_feed f LEFT JOIN at_places a ON a.id = f.id
 ON CONFLICT (id) DO UPDATE SET
   planned = EXCLUDED.planned, description = coalesce(EXCLUDED.description, ukpn_fault_history.description),
   postcodes = (SELECT array_agg(DISTINCT x) FROM unnest(ukpn_fault_history.postcodes || EXCLUDED.postcodes) x),
@@ -61,7 +68,9 @@ ON CONFLICT (id) DO UPDATE SET
   first_restore_at = coalesce(ukpn_fault_history.first_restore_at, EXCLUDED.last_restore_at),
   last_restore_at = coalesce(EXCLUDED.last_restore_at, ukpn_fault_history.last_restore_at),
   status_last = coalesce(EXCLUDED.status_last, ukpn_fault_history.status_last),
-  last_seen = EXCLUDED.last_seen, ended_at = NULL,
+  last_seen = EXCLUDED.last_seen,
+  ended_at = CASE WHEN EXCLUDED.ended_at IS NULL THEN NULL
+                  ELSE coalesce(ukpn_fault_history.ended_at, EXCLUDED.ended_at) END,
   places = (SELECT coalesce(array_agg(DISTINCT x), '{}') FROM unnest(ukpn_fault_history.places || EXCLUDED.places) x),
   home = ukpn_fault_history.home OR EXCLUDED.home, lat = coalesce(EXCLUDED.lat, ukpn_fault_history.lat),
   lon = coalesce(EXCLUDED.lon, ukpn_fault_history.lon)
@@ -85,36 +94,48 @@ def _json(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 async def sync_faults(engine: AsyncEngine, c: UkpnClient, now: datetime | None = None) -> dict[str, int]:
     now = now or datetime.now(UTC)
     ds = await c.dataset("faults")
-    rows = list({r["id"]: r for r in (N.fault(x, now) for x in await c.export(ds))}.values())
+    feed = list({r["id"]: r for r in (N.fault(x, now) for x in await c.export(ds))}.values())
+    rows = [r for r in feed if r["active"]]  # the feed also lists cuts already over ("Complete")
     async with engine.begin() as conn:
         held = (await conn.execute(text("SELECT count(*) FROM ukpn_fault"))).scalar_one()
-        if not rows and held > SUSPICIOUS_EMPTY_OVER:
+        if not feed and held > SUSPICIOUS_EMPTY_OVER:
             raise UkpnError("the portal returned no power cuts; keeping the stored ones")
-        await conn.execute(text("DELETE FROM ukpn_fault"))
-        if rows:
+        # the whole feed, finished cuts included, so a short cut between two reads still reaches the history
+        await conn.execute(text("CREATE TEMP TABLE ukpn_feed (LIKE ukpn_fault INCLUDING GENERATED) ON COMMIT DROP"))
+        await conn.execute(text("ALTER TABLE ukpn_feed ADD COLUMN active boolean, ADD COLUMN ended_at timestamptz"))
+        if feed:
             await conn.execute(text(
-                "INSERT INTO ukpn_fault (id, planned, status, description, postcodes, customers, started_at, restore_at, "
-                "lat, lon, detail, seen) VALUES (:id, :planned, :status, :description, :postcodes, :customers, "
-                ":started_at, :restore_at, :lat, :lon, CAST(:detail AS jsonb), :seen)"), _json(rows))  # fmt: skip
+                "INSERT INTO ukpn_feed (id, planned, status, description, postcodes, customers, started_at, restore_at, "
+                "lat, lon, detail, seen, active, ended_at) VALUES (:id, :planned, :status, :description, :postcodes, "
+                ":customers, :started_at, :restore_at, :lat, :lon, CAST(:detail AS jsonb), :seen, :active, :ended_at)"),
+                _json(feed))  # fmt: skip
+        await conn.execute(text("DELETE FROM ukpn_fault"))
+        await conn.execute(text(
+            "INSERT INTO ukpn_fault (id, planned, status, description, postcodes, customers, started_at, restore_at, lat, "
+            "lon, detail, seen) SELECT id, planned, status, description, postcodes, customers, started_at, restore_at, "
+            "lat, lon, detail, seen FROM ukpn_feed WHERE active"))  # fmt: skip
         await conn.execute(text(f"WITH at_places AS ({AT_PLACES}) {HISTORY_UPSERT}"), {"m": AT_PLACE_M})
         ended = (await conn.execute(text(
             "UPDATE ukpn_fault_history SET ended_at = :now WHERE ended_at IS NULL "
-            "AND id NOT IN (SELECT id FROM ukpn_fault)"), {"now": now})).rowcount  # fmt: skip
+            "AND id NOT IN (SELECT id FROM ukpn_feed)"), {"now": now})).rowcount  # fmt: skip
+        ended += (await conn.execute(text(
+            "SELECT count(*) FROM ukpn_fault_history h JOIN ukpn_feed f ON f.id = h.id "
+            "WHERE NOT f.active AND h.last_seen = :now"), {"now": now})).scalar_one()  # fmt: skip
         home = await home_affected(conn)
         await conn.execute(text(  # when the feed was last read, even if it had no cuts in it (see faults_due)
             "INSERT INTO app_setting (key, value) VALUES ('ukpn_faults_read', CAST(:v AS jsonb)) "
             "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()"),
             {"v": json.dumps({"at": now.isoformat(), "home": home})})  # fmt: skip
-    return {"power_cuts": len(rows), "planned": sum(r["planned"] is True for r in rows),
-            "placed": sum(r["lat"] is not None for r in rows), "ended": ended, "at_home": home}  # fmt: skip
+    return {"power_cuts": len(rows), "finished_in_feed": len(feed) - len(rows),
+            "planned": sum(r["planned"] is True for r in rows), "placed": sum(r["lat"] is not None for r in rows),
+            "ended": ended, "at_home": home}  # fmt: skip
 
 
 async def home_affected(conn: Any) -> bool:
     """Is a current cut (planned or not) at home: naming its postcode, or within 1 km?"""
     return bool((await conn.execute(text(
-        "SELECT EXISTS (SELECT 1 FROM ukpn_fault f JOIN place p ON (p.kind = 'home' OR p.id = 'home') AND "
-        "((p.postcode IS NOT NULL AND upper(trim(p.postcode)) = ANY(f.postcodes)) "
-        "OR coalesce(ST_DWithin(f.geog, p.geog, :m), false)))"), {"m": AT_PLACE_M})).scalar())  # fmt: skip
+        f"SELECT EXISTS (SELECT 1 FROM ukpn_fault f JOIN place p ON (p.kind = 'home' OR p.id = 'home') AND {AT})"),
+        {"m": AT_PLACE_M})).scalar())  # fmt: skip
 
 
 async def faults_due(engine: AsyncEngine, now: datetime | None = None) -> tuple[bool, str]:
@@ -187,10 +208,12 @@ async def sync_places(engine: AsyncEngine, c: UkpnClient, now: datetime | None =
 
 
 async def sync_carbon(engine: AsyncEngine, c: UkpnClient, now: datetime | None = None) -> dict[str, int]:
-    """Half-hourly carbon intensity at your places' grid supply points, yesterday onwards."""
+    """Half-hourly carbon intensity at your places' grid supply points, yesterday onwards. A reading belongs to a
+    place's grid supply point when its functional location or its name matches ('BEDDINGTON' and 'BEDDINGTON (SPN)')."""
     now = now or datetime.now(UTC)
     async with engine.connect() as conn:
-        gsps = sorted({r[0] for r in await conn.execute(text("SELECT name FROM ukpn_place_area WHERE kind = 'gsp'")) if r[0]})
+        gsps = sorted({(r[0], r[1]) for r in await conn.execute(text(
+            "SELECT name, code FROM ukpn_place_area WHERE kind = 'gsp'")) if r[0]})  # fmt: skip
     if not gsps:
         return {"readings": 0, "grid_supply_points": 0}
     ds = await c.dataset("carbon")
@@ -199,9 +222,12 @@ async def sync_carbon(engine: AsyncEngine, c: UkpnClient, now: datetime | None =
     rows: dict[tuple[str, datetime], float] = {}
     for rec in await c.export(ds, where=where):
         got = N.carbon(rec)
-        if got and any(N.same_gsp(got[0], g) for g in gsps):
-            gsp = next(g for g in gsps if N.same_gsp(got[0], g))
-            rows[(gsp, got[1])] = got[2]
+        if not got:
+            continue
+        name, at, value, floc = got
+        mine = next((g for g, code in gsps if (floc and floc == code) or N.same_gsp(name, g)), None)
+        if mine:
+            rows[(mine, at)] = value
     if rows:
         async with engine.begin() as conn:
             await conn.execute(text(

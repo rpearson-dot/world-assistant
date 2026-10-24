@@ -41,13 +41,13 @@ async def _place(request: Request, place: str | None) -> Any:
 
 async def cuts_near(conn: Any, p: Any, km: float) -> list[dict[str, Any]]:
     """Power cuts within km of a place, or naming its postcode (a cut with no position is matched by postcode)."""
-    pc = (p.postcode or "").upper().strip()
+    from app.integrations.ukpn.sync import AT
+
+    here = AT.replace(":m", ":here_m")
     rows = await conn.execute(text(
-        "SELECT f.*, ST_Distance(f.geog, pl.geog) / 1000.0 AS km, "
-        "(:pc <> '' AND :pc = ANY(f.postcodes)) OR coalesce(ST_DWithin(f.geog, pl.geog, :here_m), false) AS here "
-        "FROM ukpn_fault f JOIN place pl ON pl.id = :p "
-        "WHERE (:pc <> '' AND :pc = ANY(f.postcodes)) OR ST_DWithin(f.geog, pl.geog, :m) "
-        "ORDER BY here DESC, km NULLS FIRST"), {"p": p.id, "pc": pc, "m": km * 1000, "here_m": NEAR_KM * 1000})  # fmt: skip
+        f"SELECT f.*, ST_Distance(f.geog, p.geog) / 1000.0 AS km, {here} AS here "
+        f"FROM ukpn_fault f JOIN place p ON p.id = :p WHERE {here} OR ST_DWithin(f.geog, p.geog, :m) "
+        "ORDER BY here DESC, km NULLS FIRST"), {"p": p.id, "m": km * 1000, "here_m": NEAR_KM * 1000})  # fmt: skip
     return [cut_row(r) for r in rows]
 
 
@@ -71,7 +71,7 @@ async def works(request: Request, place: str | None = None, km: float = Query(1.
     async with request.app.state.engine.connect() as conn:
         rows = await conn.execute(text(
             "SELECT w.*, ST_Distance(w.geog, pl.geog) / 1000.0 AS km FROM ukpn_works w JOIN place pl ON pl.id = :p "
-            f"WHERE ST_DWithin(w.geog, pl.geog, :m) AND (w.ends_at IS NULL OR w.ends_at >= now()) {where}"
+            f"WHERE ST_DWithin(w.geog, pl.geog, :m) AND (w.stage = 'open' OR w.ends_at IS NULL OR w.ends_at >= now()) {where}"
             "ORDER BY w.stage, km LIMIT 300"), {"p": p.id, "m": km * 1000, "stage": stage})  # fmt: skip
         items = [works_row(r) for r in rows]
     return {"place": p.id, "count": len(items), "open": sum(i["stage"] == "open" for i in items),

@@ -4,6 +4,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-10-24
+
+### Fixed
+- **UK Power Networks, read as the portal really sends it** (from the first live probe):
+  - Power cuts: the restoration time came out as 1970 (the `restored` customer count was read as a date); it now comes from `etr`, and when power actually came back from `date_of_restoration`. Planned/unplanned is read from `planned` (TRUE/FALSE), the id from `fault_id`, homes affected from `confirmed_off` + `restored`.
+  - The feed also lists cuts that are already over (status Complete). Only cuts still in progress count as current; finished ones go straight to the history with their real end time.
+  - Cuts name postcode **sectors** ("KT3 4"), not full postcodes, so none matched a place. A place now matches on its sector (when the cut lists no full postcodes), its full postcode, or distance.
+  - Street works: the street and town come from `location` ("STREET, TOWN"), not from a road category number, with the real description, category, traffic management and dates. Works under way stay listed even after their planned end.
+  - Grid supply point, primary and local substation names and codes come from the right fields; carbon intensity is matched to your grid supply point by its code or name ("BEDDINGTON (SPN)" and "BEDDINGTON").
+  - The rota block is no longer looked up: UK Power Networks publishes the rota as a document, with no map areas.
+- **Free Electricity: your joined hour comes first.** Weekend Happy Hours are announced hour by hour and you join the ones you want. Home Assistant's "Free electricity now" is on only during an hour you joined, "Next free electricity starts" is your next joined hour (with `joined`, `type` and `end`), and the Energy tab and assistant name the type ("Weekend Happy Hour").
+- Removed the "official" Octopus Free Electricity query and `WA_OCTOPUS_MPAN`: that query does not exist on Octopus's API (it errored); the sessions feed already has everything.
+- TfL stations: the fare zone is read again.
+
 ## [0.19.0] - 2026-10-24
 
 ### Added

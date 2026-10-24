@@ -58,21 +58,6 @@ async def main() -> int:
                          f"{len(parsed)} in all)", [x for x in parsed if x["end_at"] >= recent], secrets)  # fmt: skip
             except (httpx.HTTPError, OctopusError, ValueError) as exc:
                 show("saving sessions failed", f"{type(exc).__name__}: {exc}", secrets)
-            try:
-                from app.energy import octopus
-
-                mpan = s.octopus_mpan.strip() or await octopus.discover_mpan(c, account, key)
-                secrets.append(mpan)
-                show("import meter (MPAN)", "found", secrets)
-                t = await kraken.token(c, key)
-                secrets.append(t)
-                r = await c.post(f"{kraken.BACKEND_HOST}/v1/graphql/", json={"query": kraken.FREE_QUERY % (account, mpan)},
-                                 headers={"Authorization": t})  # fmt: skip
-                show(f"free electricity raw (HTTP {r.status_code})", r.text, secrets)
-                if r.status_code == 200:
-                    show("free electricity as parsed", kraken.parse_free(r.json().get("data") or {}), secrets)
-            except (httpx.HTTPError, OctopusError, ValueError, KeyError) as exc:
-                show("free electricity failed", f"{type(exc).__name__}: {exc}", secrets)
         else:
             show(
                 "saving sessions",

@@ -28,46 +28,67 @@ NOW = datetime(2026, 10, 24, 9, 0, tzinfo=UTC)
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 HOME = (51.4024, -0.2550)  # New Malden
 
-NEO = {  # an ENA National Energy Outage record, as the portal flattens it
-    "incidentreference": "INCD-123456-Z", "powercuttype": "Unplanned", "statusid": 2, "status": "In Progress",
-    "creationdatetime": "2026-10-24T07:41:00+00:00", "estimatedrestorationdate": "2026-10-24T11:30:00+00:00",
-    "nocustomeraffected": "143", "postcodesaffected": "KT3 3AA;KT3 3AB; KT3 4ZZ", "incidentdescription": "Fault on cable",
-    "geopoint": {"lon": HOME[1] + 0.002, "lat": HOME[0] + 0.001},
+NEO = {  # National Energy Outage, as the portal sent it on 24 October 2026 (one still in progress)
+    "fault_id": "INCD-123456-Z", "postcode": '[\\KT3 4\\", \\KT3 3\\"]"', "licence_area": "South East England",
+    "voltage": "LV", "status": "Awaiting", "restored": 20, "etr": "2026-10-24T11:30:00+00:00", "confirmed_off": 123.0,
+    "planned": "FALSE", "as_at_date": "2026-10-24T08:06:18+00:00", "outage_start_date": "2026-10-24T07:41:00+00:00",
+    "date_of_restoration": None, "geo_point_2d": {"lon": HOME[1] + 0.002, "lat": HOME[0] + 0.001},
 }  # fmt: skip
-LIVE = {  # the older Live Faults layout
-    "incident_reference": "INCD-999", "power_cut_type": "Planned", "postcode_affected": "CM23 2AB",
-    "planned_start": "24/10/2026 09:00", "estimated_restoration": "24/10/2026 15:00", "customers_affected": 12,
-    "latitude": 51.87, "longitude": 0.16,
+DONE = {  # one already over but still listed (status Complete, date_of_restoration set)
+    "fault_id": "INCD-106731-V", "postcode": '[\\KT20 5\\"]"', "status": "Complete", "restored": 8, "confirmed_off": 0.0,
+    "planned": "FALSE", "etr": "2026-10-23T03:00:00+00:00", "outage_start_date": "2026-10-22T23:52:00+00:00",
+    "date_of_restoration": "2026-10-23T02:20:00+00:00", "geo_point_2d": {"lon": -0.2235, "lat": 51.2954},
 }  # fmt: skip
-WORK = {
-    "permit_reference_number": "UK019-ABC-1", "street_name": "Kingston Road", "town": "New Malden", "usrn": "21401234",
-    "works_category": "Standard", "traffic_management_type": "Two-way signals", "activity_type": "Remedial works",
-    "proposed_start_date": "2026-10-20", "proposed_end_date": "2026-10-30",
+LIVE = {  # a planned cut far away (Bishop's Stortford)
+    "fault_id": "INCD-999", "postcode": '[\\CM23 2\\"]"', "status": "Planned", "planned": "TRUE", "confirmed_off": 12,
+    "outage_start_date": "2026-10-24T09:00:00+00:00", "etr": "2026-10-24T15:00:00+00:00",
+    "geo_point_2d": {"lon": 0.16, "lat": 51.87},
+}  # fmt: skip
+WORK = {  # Open Street and Roadworks, as sent
+    "permit_ref": "UK019-ABC-1", "location": "KINGSTON ROAD, NEW MALDEN", "works_description": "Remedial works",
+    "work_stream": "Network Operations Faults", "actualstartdate": "2026-10-20", "odp_end_date": "2026-10-22",
+    "highway_authority1": "ROYAL BOROUGH OF KINGSTON", "geo_point_2d": {"lon": HOME[1] - 0.001, "lat": HOME[0]},
+}  # fmt: skip
+PROPOSED = {  # Proposed Street and Roadworks, as sent (road_category1 is a number, not the street)
+    "permit_ref": "UK019-NEXT", "town": "KINGSTON ROAD,  NEW MALDEN", "work_category": "STANDARD",
+    "works_description1": "Disconnection Or Alteration Of Supply", "road_category1": "2",
+    "traffic_management_type1": "Road closure", "proposedstartdate3": "2026-11-05", "proposedenddate1": "2026-11-07",
     "geo_point_2d": {"lon": HOME[1] - 0.001, "lat": HOME[0]},
 }  # fmt: skip
 
 
-def test_power_cuts_from_either_layout() -> None:
+def test_power_cuts_as_the_portal_sends_them() -> None:
     f = N.fault(NEO, NOW)
-    assert (f["id"], f["planned"], f["status"], f["customers"]) == ("INCD-123456-Z", False, "In Progress", 143)
-    assert f["postcodes"] == ["KT3 3AA", "KT3 3AB", "KT3 4ZZ"] and f["description"] == "Fault on cable"
-    assert f["restore_at"] == datetime(2026, 10, 24, 11, 30, tzinfo=UTC) and f["lat"] == pytest.approx(HOME[0] + 0.001)
+    assert (f["id"], f["planned"], f["status"], f["active"], f["customers"], f["off_now"]) == (
+        "INCD-123456-Z", False, "Awaiting", True, 143, 123)
+    assert f["postcodes"] == ["KT3 4", "KT3 3"] and f["restore_at"] == datetime(2026, 10, 24, 11, 30, tzinfo=UTC)
+    assert f["started_at"] == datetime(2026, 10, 24, 7, 41, tzinfo=UTC) and f["lat"] == pytest.approx(HOME[0] + 0.001)
+    d = N.fault(DONE, NOW)
+    assert (d["active"], d["ended_at"], d["restore_at"].hour) == (False, datetime(2026, 10, 23, 2, 20, tzinfo=UTC), 3)
     g = N.fault(LIVE, NOW)
-    assert (g["id"], g["planned"], g["postcodes"], g["customers"]) == ("INCD-999", True, ["CM23 2AB"], 12)
-    assert g["started_at"] == datetime(2026, 10, 24, 9, 0, tzinfo=UTC) and (g["lat"], g["lon"]) == (51.87, 0.16)
+    assert (g["planned"], g["postcodes"], g["customers"]) == (True, ["CM23 2"], 12)
+    assert N.postcodes("KT3 3AA;KT3 3AB") == ["KT3 3AA", "KT3 3", "KT3 3AB"] and N.sector("kt3 4zz") == "KT3 4"
 
 
-def test_works_areas_and_carbon() -> None:
+def test_works_areas_and_carbon_as_the_portal_sends_them() -> None:
     w = N.works(WORK, "open", NOW)
-    assert (w["id"], w["street"], w["town"], w["usrn"], w["traffic"]) == (
-        "open:UK019-ABC-1", "Kingston Road", "New Malden", "21401234", "Two-way signals")
-    assert w["starts_at"].date().isoformat() == "2026-10-20" and w["lon"] == pytest.approx(HOME[1] - 0.001)
-    assert N.area({"gsp_name": "Wimbledon 132kV", "gsp_id": "WIMB"}, "gsp") == {"kind": "gsp", "code": "WIMB",
-                                                                                "name": "Wimbledon 132kV"}  # fmt: skip
-    assert N.area({"rota_block": "K", "region": "SPN"}, "rota")["code"] == "K"
-    assert N.carbon({"gsp": "WIMBLEDON GSP", "datetime": "2026-10-24T09:00:00Z", "carbon_intensity": 182.5}) == (
-        "WIMBLEDON GSP", NOW, 182.5)
-    assert N.same_gsp("Wimbledon 132kV", "WIMBLEDON GSP") and not N.same_gsp("Wimbledon", "Wimbledon Park North")
+    assert (w["id"], w["street"], w["town"], w["category"], w["description"]) == (
+        "open:UK019-ABC-1", "Kingston Road", "New Malden", "Network Operations Faults", "Remedial works")
+    assert w["ends_at"].date().isoformat() == "2026-10-22" and w["lon"] == pytest.approx(HOME[1] - 0.001)
+    p = N.works(PROPOSED, "proposed", NOW)
+    assert (p["street"], p["town"], p["traffic"], p["category"]) == ("Kingston Road", "New Malden", "Road closure", "STANDARD")
+    assert p["starts_at"].date().isoformat() == "2026-11-05"
+    assert N.area({"dno": "SPN", "grid_supply_point": "BEDDINGTON (SPN)", "grid_supply_point_floc": "SPN-S000000009903"},
+                  "gsp") == {"kind": "gsp", "code": "SPN-S000000009903", "name": "BEDDINGTON (SPN)"}  # fmt: skip
+    assert N.area({"primary": "NORTH CHEAM 33/11KV", "grid_site": "Sutton Grid", "grid_site_floc": "SPN-S1",
+                   "primary_floc": "SPN-S000000008443"}, "primary")["code"] == "SPN-S000000008443"  # fmt: skip
+    sec = N.area({"sitefunctionallocation": "SPN-S000000123458", "substationdesign": "GMT", "substationalias": "1123458",
+                  "customer_count": 221}, "secondary")  # fmt: skip
+    assert sec == {"kind": "secondary", "code": "SPN-S000000123458", "name": "substation 1123458"}
+    assert N.carbon({"half_hour_period": "2026-10-24T09:00:00+00:00", "gsp_name": "BEDDINGTON", "gsp_fl": "SPN-x",
+                     "blended_carbon_intensity": 182.5, "neso_intensity_forecast": 169}) == (
+        "BEDDINGTON", NOW, 182.5, "SPN-x")  # fmt: skip
+    assert N.same_gsp("BEDDINGTON (SPN)", "BEDDINGTON") and not N.same_gsp("Wimbledon", "Wimbledon Park North")
     rows = [(NOW + timedelta(minutes=30 * i), v) for i, v in enumerate([200, 190, 120, 110, 100, 180, 210])]
     best = N.cleanest(rows, NOW, hours=1.5)
     assert best is not None and best["now"] == 200 and best["best_start"] == (NOW + timedelta(hours=1)).isoformat()
@@ -80,34 +101,35 @@ def _ds(dataset_id: str, title: str, fields: list[tuple[str, str]]) -> dict[str,
 
 
 CATALOG = [
-    _ds("ukpn-national-energy-outage", "National Energy Outage API", [("incidentreference", "text"), ("geopoint", "geo_point_2d")]),
+    _ds("ukpn-national-energy-outage", "National Energy Outage API", [("fault_id", "text"), ("geo_point_2d", "geo_point_2d")]),
     _ds("ukpn-open-streetworks", "Open Street and Roadworks associated with UK Power Networks' activities",
-        [("permit_reference_number", "text"), ("geo_point_2d", "geo_point_2d")]),
+        [("permit_ref", "text"), ("geo_point_2d", "geo_point_2d")]),
     _ds("ukpn-proposed-streetworks", "Proposed Street and Roadworks associated with UK Power Networks' activities",
-        [("permit_reference_number", "text"), ("geo_point_2d", "geo_point_2d")]),
-    _ds("ukpn-carbon-intensity", "Carbon Intensity", [("gsp", "text"), ("datetime", "datetime"), ("carbon_intensity", "double")]),
+        [("permit_ref", "text"), ("geo_point_2d", "geo_point_2d")]),
+    _ds("ukpn-carbon-intensity", "Carbon Intensity", [("half_hour_period", "datetime"), ("gsp_name", "text"), ("blended_carbon_intensity", "double")]),
     _ds("ukpn-boundary", "UK Power Networks Boundary", [("name", "text"), ("geo_shape", "geo_shape")]),
     _ds("ukpn-idno-areas", "Independent Distribution Network Operator areas", [("name", "text"), ("geo_shape", "geo_shape")]),
     _ds("ukpn-gsp-areas", "UK Power Networks Licence Area Grid Supply Points Areas",
-        [("gsp_name", "text"), ("gsp_id", "text"), ("geo_shape", "geo_shape")]),
+        [("grid_supply_point", "text"), ("grid_supply_point_floc", "text"), ("geo_shape", "geo_shape")]),
     _ds("ukpn-primary-areas", "UK Power Networks Primary Substation Distribution Areas",
-        [("primary_name", "text"), ("site_functional_location", "text"), ("geo_shape", "geo_shape")]),
+        [("primary", "text"), ("primary_floc", "text"), ("geo_shape", "geo_shape")]),
     _ds("ukpn-secondary-areas", "UK Power Networks Secondary Substation Distribution Areas",
-        [("secondary_name", "text"), ("site_functional_location", "text"), ("geo_shape", "geo_shape")]),
+        [("substationalias", "text"), ("sitefunctionallocation", "text"), ("geo_shape", "geo_shape")]),
 ]  # fmt: skip
 EXPORTS: dict[str, list[dict[str, Any]]] = {
-    "ukpn-national-energy-outage": [NEO, LIVE],
+    "ukpn-national-energy-outage": [NEO, LIVE, DONE],
     "ukpn-open-streetworks": [WORK],
-    "ukpn-proposed-streetworks": [{**WORK, "permit_reference_number": "UK019-NEXT", "proposed_start_date": "2026-11-05",
-                                   "proposed_end_date": "2026-11-07", "traffic_management_type": "Road closure"}],
-    "ukpn-carbon-intensity": [{"gsp": "WIMBLEDON GSP", "datetime": (NOW + timedelta(minutes=30 * i)).isoformat(),
-                               "carbon_intensity": v} for i, v in enumerate([200, 150, 90, 95, 180])]
-                             + [{"gsp": "ELSEWHERE", "datetime": NOW.isoformat(), "carbon_intensity": 50}],
+    "ukpn-proposed-streetworks": [PROPOSED],
+    "ukpn-carbon-intensity": [{"gsp_name": "BEDDINGTON", "gsp_fl": "SPN-carbon", "blended_carbon_intensity": v,
+                               "half_hour_period": (NOW + timedelta(minutes=30 * i)).isoformat()}
+                              for i, v in enumerate([200, 150, 90, 95, 180])]
+                             + [{"gsp_name": "ELSTREE", "half_hour_period": NOW.isoformat(), "blended_carbon_intensity": 50}],
     "ukpn-boundary": [{"name": "SPN", "geo_shape": {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": []}}}],
     "ukpn-idno-areas": [],
-    "ukpn-gsp-areas": [{"gsp_name": "Wimbledon 132kV", "gsp_id": "WIMB"}],
-    "ukpn-primary-areas": [{"primary_name": "New Malden", "site_functional_location": "SPN-P-123"}],
-    "ukpn-secondary-areas": [{"secondary_name": "Burlington Road", "site_functional_location": "SPN-S-4567"}],
+    "ukpn-gsp-areas": [{"dno": "SPN", "grid_supply_point": "BEDDINGTON (SPN)", "grid_supply_point_floc": "SPN-S000000009903"}],
+    "ukpn-primary-areas": [{"primary": "NORTH CHEAM 33/11KV", "grid_site": "Sutton Grid", "primary_floc": "SPN-S000000008443"}],
+    "ukpn-secondary-areas": [{"sitefunctionallocation": "SPN-S000000123458", "substationdesign": "GMT",
+                              "substationalias": "1123458", "customer_count": 221}],
 }  # fmt: skip
 
 
@@ -136,7 +158,7 @@ async def test_datasets_are_found_by_title_and_points_looked_up_in_shapes() -> N
         ds = await c.dataset("gsp")
         assert (ds.id, ds.shape, ds.point) == ("ukpn-gsp-areas", "geo_shape", None)
         got = await c.at_point(ds, *HOME)
-        assert got[0]["gsp_name"] == "Wimbledon 132kV"
+        assert got[0]["grid_supply_point"] == "BEDDINGTON (SPN)"
         from urllib.parse import unquote_plus
 
         asked = unquote_plus(seen[-1])
@@ -197,21 +219,23 @@ async def test_synced_and_asked_everywhere(schema: None, monkeypatch: pytest.Mon
     now = datetime.now(UTC)
     for rows in EXPORTS.values():  # put the half-hours, starts and ends around the real clock
         for r in rows:
-            if "carbon_intensity" in r:
-                r["datetime"] = (now.replace(minute=0 if now.minute < 30 else 30, second=0, microsecond=0)
-                                 + (datetime.fromisoformat(r["datetime"]) - NOW)).isoformat()  # fmt: skip
+            if "blended_carbon_intensity" in r:
+                r["half_hour_period"] = (now.replace(minute=0 if now.minute < 30 else 30, second=0, microsecond=0)
+                                         + (datetime.fromisoformat(r["half_hour_period"]) - NOW)).isoformat()  # fmt: skip
     assert not await sync.covered(engine)  # nothing is read before the places are looked up
     async with uc.UkpnClient("k", transport=portal([])) as c:
         placed = await sync.sync_places(engine, c, now)
-        assert placed["areas"] == 4 and "rota: " in placed["skipped"][0]  # no rota dataset in this fake portal
+        assert placed["areas"] == 4 and not placed.get("skipped")  # rota is a document, not looked up
         assert await sync.covered(engine)
-        assert await sync.sync_faults(engine, c, now) == {"power_cuts": 2, "planned": 1, "placed": 2, "ended": 0, "at_home": True}
+        got = await sync.sync_faults(engine, c, now)
+        assert got == {"power_cuts": 2, "finished_in_feed": 1, "planned": 1, "placed": 2, "ended": 1, "at_home": True}  # fmt: skip
+        # (ended: the Complete one goes straight into the history as over)
         assert (await sync.sync_works(engine, c, "open", now))["open_works"] == 1
         assert (await sync.sync_works(engine, c, "proposed", now))["proposed_works"] == 1
         assert await sync.sync_carbon(engine, c, now) == {"readings": 5, "grid_supply_points": 1}
         EXPORTS["ukpn-national-energy-outage"] = []
         assert (await sync.sync_faults(engine, c, now))["power_cuts"] == 0  # 2 stored: an empty list is fine
-        EXPORTS["ukpn-national-energy-outage"] = [NEO, LIVE]
+        EXPORTS["ukpn-national-energy-outage"] = [NEO, LIVE, DONE]
         await sync.sync_faults(engine, c, now)
 
     app.state.engine = engine
@@ -220,7 +244,7 @@ async def test_synced_and_asked_everywhere(schema: None, monkeypatch: pytest.Mon
     supply = c.get("/v1/power/supply", headers=h).json()
     assert supply["on_network"] is True and supply["power_cut_now"] is True
     assert (supply["grid_supply_point"]["name"], supply["primary"]["code"], supply["secondary"]["name"]) == (
-        "Wimbledon 132kV", "SPN-P-123", "Burlington Road")
+        "BEDDINGTON (SPN)", "SPN-S000000008443", "substation 1123458")
     cuts = c.get("/v1/power/cuts?km=5", headers=h).json()
     assert cuts["count"] == 1 and cuts["cuts"][0]["at_place"] and cuts["across_network"] == 2  # Bishop's Stortford is far
     works = c.get("/v1/power/works", headers=h).json()
@@ -242,7 +266,7 @@ async def test_synced_and_asked_everywhere(schema: None, monkeypatch: pytest.Mon
     said = (await assistant.run_tool(Req(), "power", {}))["text"]  # type: ignore[arg-type]
     assert said.startswith("There is a power cut at this place.") and "143 homes" in said
     fed = (await assistant.run_tool(Req(), "power", {"about": "supply"}))["text"]  # type: ignore[arg-type]
-    assert "grid supply point Wimbledon 132kV" in fed and "local substation Burlington Road" in fed
+    assert "grid supply point BEDDINGTON (SPN)" in fed and "local substation substation 1123458" in fed
     assert "g CO2 per kWh" in (await assistant.run_tool(Req(), "power", {"about": "carbon"}))["text"]  # type: ignore[arg-type]
 
     dev = power_device(supply, cuts, works, carbon)
@@ -254,8 +278,8 @@ async def test_synced_and_asked_everywhere(schema: None, monkeypatch: pytest.Mon
                                                                    "WHERE kind IN ('gsp', 'primary', 'secondary')"))]  # fmt: skip
     _, rels = model.power([], [], [], rows)
     chain = {(r.start, r.end) for r in rels}
-    assert (("Substation", "gsp:WIMB"), ("Substation", "primary:SPN-P-123")) in chain
-    assert (("Substation", "secondary:SPN-S-4567"), ("Place", "home")) in chain
+    assert (("Substation", "gsp:SPN-S000000009903"), ("Substation", "primary:SPN-S000000008443")) in chain
+    assert (("Substation", "secondary:SPN-S000000123458"), ("Place", "home")) in chain
     await engine.dispose()
     get_settings.cache_clear()
     uc.forget()
@@ -311,26 +335,28 @@ async def test_hourly_until_a_cut_is_at_home_and_every_cut_is_kept(schema: None,
             due, why = await sync.faults_due(engine, t0 + timedelta(minutes=60))
             assert due and why == "every 60 minutes"
 
-            feed[:] = [LIVE, {**NEO, "estimatedrestorationdate": (t0 + timedelta(hours=1)).isoformat(),
-                              "creationdatetime": (t0 - timedelta(minutes=30)).isoformat()}]  # now one at home  # fmt: skip
+            feed[:] = [LIVE, {**NEO, "etr": (t0 + timedelta(hours=1)).isoformat(),
+                              "outage_start_date": (t0 - timedelta(minutes=30)).isoformat()}]  # now one at home  # fmt: skip
             t1 = t0 + timedelta(minutes=60)
             assert (await sync.sync_faults(engine, c, t1))["at_home"] is True
             due, why = await sync.faults_due(engine, t1 + timedelta(minutes=15))
             assert due and why == "every 15 minutes (a cut is at home)"
 
-            feed[:] = [{**NEO, "nocustomeraffected": "210", "estimatedrestorationdate": (t1 + timedelta(hours=2)).isoformat()}]
+            feed[:] = [{**NEO, "confirmed_off": 190, "etr": (t1 + timedelta(hours=2)).isoformat()}]
             t2 = t1 + timedelta(minutes=15)
             got = await sync.sync_faults(engine, c, t2)
             assert got["ended"] == 1  # the Bishop's Stortford cut left the feed: closed in the history
-            feed[:] = []  # power back at home
-            t3 = t2 + timedelta(hours=3)
+            t3 = t2 + timedelta(hours=3)  # power back at home: still listed, as Complete
+            feed[:] = [{**NEO, "status": "Complete", "confirmed_off": 0, "restored": 210, "etr": (t1 + timedelta(hours=2)).isoformat(),
+                        "date_of_restoration": (t3 - timedelta(minutes=5)).isoformat()}]  # fmt: skip
             got = await sync.sync_faults(engine, c, t3)
             assert (got["ended"], got["at_home"]) == (1, False)
             assert not (await sync.faults_due(engine, t3 + timedelta(minutes=15)))[0]  # back to hourly
         async with engine.connect() as conn:
             kept = {r.id: r for r in await conn.execute(text("SELECT * FROM ukpn_fault_history"))}
         home = kept["INCD-123456-Z"]
-        assert home.home and home.places == ["home"] and home.customers_max == 210 and home.ended_at == t3
+        assert home.home and home.places == ["home"] and home.customers_max == 210
+        assert home.ended_at == t3 - timedelta(minutes=5)  # when UK Power Networks says power came back
         assert home.first_restore_at == t0 + timedelta(hours=1) and home.last_restore_at == t1 + timedelta(hours=2)
         assert kept["INCD-999"].ended_at == t2 and not kept["INCD-999"].home
 

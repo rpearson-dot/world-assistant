@@ -93,7 +93,7 @@ def stations(payload: Any, now: datetime) -> tuple[list[dict[str, Any]], list[di
         row = found.get(sid)
         if row is None:
             row = found[sid] = {"id": sid, "hub": sp.get("hubNaptanCode") or hub, "name": _clean(sp.get("commonName") or sid),
-                                "modes": [], "lines": [], "zone": f.get("Zone", {}).get("Zone"),
+                                "modes": [], "lines": [], "zone": f.get("Geo", {}).get("Zone") or f.get("Zone", {}).get("Zone"),
                                 "step_free": _step_free(f), "facilities": f, "lat": lat, "lon": lon, "seen": now}  # fmt: skip
         for m in sp.get("modes") or []:
             if m not in row["modes"]:

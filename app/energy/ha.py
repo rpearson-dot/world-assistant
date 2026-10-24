@@ -181,13 +181,16 @@ def session_sensors(sessions: dict[str, Any]) -> list[Sensor]:
 
 
 def free_sensors(free: dict[str, Any]) -> list[Sensor]:
-    """Octopus Free Electricity: on now, and when the next one starts (to run the dishwasher or fill the battery)."""
-    cur, nxt = free.get("current") or {}, free.get("next") or {}
+    """Octopus Free Electricity (Power Ups, Weekend Happy Hours). You sign up hour by hour, so "now" is on only in an
+    hour you joined, and "next" is your next joined hour (else the next announced one, with joined false)."""
+    cur = free.get("current") or {}
+    nxt = free.get("next_joined") or free.get("next") or {}
     return [
-        Sensor("free_electricity_now", "Free electricity now", "on" if free.get("now") else "off", icon="mdi:lightning-bolt",
-               attributes={"end": cur.get("end")}),
+        Sensor("free_electricity_now", "Free electricity now", "on" if free.get("now_joined") else "off",
+               icon="mdi:lightning-bolt",
+               attributes={"end": cur.get("end"), "type": cur.get("type"), "announced_now": bool(free.get("now"))}),
         Sensor("free_electricity_next_start", "Next free electricity starts", nxt.get("start"), icon="mdi:calendar-clock",
                device_class="timestamp",
                attributes={"end": nxt.get("end"), "minutes": nxt.get("minutes"), "joined": nxt.get("joined"),
-                           "upcoming": free.get("upcoming") or []}),
+                           "type": nxt.get("type"), "upcoming": free.get("upcoming") or []}),
     ]  # fmt: skip

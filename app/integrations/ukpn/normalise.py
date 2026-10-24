@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 POSTCODE = re.compile(r"\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b")
+SECTOR = re.compile(r"\b([A-Z]{1,2}\d[A-Z\d]?)\s+(\d)(?![A-Z]{2}\b)")
 
 
 def _norm(key: str) -> str:
@@ -77,9 +78,21 @@ def point(rec: dict[str, Any]) -> tuple[float | None, float | None]:
 
 
 def postcodes(v: Any) -> list[str]:
-    text = " ".join(v) if isinstance(v, list) else str(v or "")
-    found = [f"{a} {b}" for a, b in POSTCODE.findall(text.upper())]
-    return list(dict.fromkeys(found))
+    """Full postcodes and postcode sectors ('KT3 4ZZ' and 'KT3 4'), from whatever form they were published in
+    (UK Power Networks gives sectors, as '[\\KT20 5\\"]"'). Every full postcode brings its sector too, so a place
+    can be matched on either."""
+    text = (" ".join(map(str, v)) if isinstance(v, list) else str(v or "")).upper()
+    text = re.sub(r"[\\\"\[\];,]", " ", text)
+    out = []
+    for a, b in POSTCODE.findall(text):
+        out += [f"{a} {b}", f"{a} {b[0]}"]
+    out += [f"{a} {b}" for a, b in SECTOR.findall(text)]
+    return list(dict.fromkeys(out))
+
+
+def sector(postcode: str | None) -> str | None:
+    m = POSTCODE.search((postcode or "").upper())
+    return f"{m.group(1)} {m.group(2)[0]}" if m else None
 
 
 def _id(rec: dict[str, Any], *wants: str | tuple[str, ...]) -> str:
@@ -89,69 +102,136 @@ def _id(rec: dict[str, Any], *wants: str | tuple[str, ...]) -> str:
     return hashlib.sha1(repr(sorted((k, str(v)) for k, v in rec.items())).encode()).hexdigest()[:20]
 
 
+DONE = {"complete", "completed", "restored", "closed", "resolved", "cancelled"}
+
+
+def exact(rec: dict[str, Any], *names: str) -> Any:
+    """The first non-empty value of a field named exactly one of `names` (ignoring case and punctuation)."""
+    by = {_norm(k): v for k, v in rec.items()}
+    for n in names:
+        v = by.get(_norm(n))
+        if v not in (None, "", [], {}):
+            return v
+    return None
+
+
+def _num(v: Any) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def fault(rec: dict[str, Any], now: datetime) -> dict[str, Any]:
-    kind = str(pick(rec, ("type",), avoid=("status", "postcode")) or "").lower()
-    planned = True if "planned" in kind and "unplanned" not in kind else False if "unplanned" in kind or kind else None
+    """A power cut. UK Power Networks' National Energy Outage dataset (as read in October 2026): fault_id,
+    planned TRUE/FALSE, status (Complete once over), postcode sectors ("KT20 5"), confirmed_off and restored
+    (customers), outage_start_date, etr (estimated restoration), date_of_restoration (actual)."""
     lat, lon = point(rec)
+    planned_raw = exact(rec, "planned", "isplanned")
+    if planned_raw is not None:
+        planned: bool | None = str(planned_raw).strip().lower() in ("true", "yes", "1", "planned")
+    else:
+        kind = str(pick(rec, ("type",), avoid=("status", "postcode", "geometry")) or "").lower()
+        planned = True if "planned" in kind and "unplanned" not in kind else False if kind else None
+    status = _s(exact(rec, "status", "statusname") or pick(rec, "status", avoid=("statusid",)))
+    off, back = _num(exact(rec, "confirmedoff", "customersoff")), _num(exact(rec, "restored", "customersrestored"))
+    customers = int(off + back) if off or back else _int(pick(rec, ("customer", "affected"), ("customers",)))
+    ended = when(exact(rec, "dateofrestoration", "restorationdate", "actualrestoration"))
     return {
-        "id": _id(rec, ("incident", "reference"), ("incident", "ref"), "reference", ("incident", "id")),
+        "id": str(exact(rec, "faultid", "incidentreference", "incidentref") or _id(rec, ("incident", "reference"))),
         "planned": planned,
-        "status": _s(pick(rec, "status", avoid=("statusid",)) or pick(rec, "status")),
-        "description": _s(pick(rec, "description", "message", "summary", "comment")),
-        "postcodes": postcodes(pick(rec, "postcode")),
-        "customers": _int(pick(rec, ("customer", "affected"), ("customers",), ("customer",))),
-        "started_at": when(pick(rec, "creation", ("start", "time"), "start", "logged", "received")),
-        "restore_at": when(pick(rec, "restor", "estimated")),
+        "status": status,
+        "description": _s(exact(rec, "description", "incidentdescription", "message", "summary")),
+        "postcodes": postcodes(exact(rec, "postcode", "postcodes", "postcodesaffected", "postcodeaffected")
+                               or pick(rec, "postcode")),
+        "customers": customers,
+        "off_now": int(off) if off else None,
+        "started_at": when(exact(rec, "outagestartdate", "creationdatetime", "plannedstart", "starttime")
+                           or pick(rec, ("start", "date"), "creation", "logged")),
+        "restore_at": when(exact(rec, "etr", "estimatedrestorationdate", "estimatedrestoration")
+                           or pick(rec, ("estimated", "restor"))),
+        "ended_at": ended,
+        "active": not (status and status.lower() in DONE) and not (ended and ended <= now),
         "lat": lat, "lon": lon, "detail": rec, "seen": now,
     }  # fmt: skip
 
 
+def _split(place: Any) -> tuple[str | None, str | None]:
+    """'RUBENS CLOSE, BORDEN' -> ('Rubens Close', 'Borden')."""
+    text = _s(place)
+    if not text:
+        return None, None
+    street, _, town = (x.strip() for x in text.partition(","))
+    tidy = lambda x: " ".join(w.capitalize() if w.isupper() else w for w in x.split()) or None
+    return tidy(street), tidy(town)
+
+
 def works(rec: dict[str, Any], stage: str, now: datetime) -> dict[str, Any]:
+    """Street works. Open (as read): permit_ref, location 'STREET, TOWN', works_description, work_stream,
+    actualstartdate, odp_end_date. Proposed: permit_ref, town 'STREET, AREA', works_description1, work_category,
+    traffic_management_type1, proposedstartdate3, proposedenddate1."""
     lat, lon = point(rec)
+    street = _s(exact(rec, "streetname", "street"))
+    town = _s(exact(rec, "localityname", "locality"))
+    if not street:
+        street, rest = _split(exact(rec, "location", "town", "address"))
+        town = town or rest
     return {
-        "id": f"{stage}:" + _id(rec, ("permit", "ref"), ("works", "ref"), ("work", "ref"), "reference", "permit"),
+        "id": f"{stage}:" + str(exact(rec, "permitref", "permitreferencenumber", "permitreference")
+                                or _id(rec, ("permit", "ref"), ("works", "ref"))),
         "stage": stage,
-        "street": _s(pick(rec, ("street", "name"), "street", "road")),
-        "town": _s(pick(rec, "town", "locality", "area", avoid=("areaname2",))),
-        "usrn": _s(pick(rec, "usrn")),
-        "category": _s(pick(rec, ("works", "category"), "category", ("activity", "type"))),
-        "traffic": _s(pick(rec, ("traffic", "management"), "traffic")),
-        "description": _s(pick(rec, "description", "summary", ("works", "type"))),
-        "starts_at": when(pick(rec, ("actual", "start"), ("proposed", "start"), "start")),
-        "ends_at": when(pick(rec, ("actual", "end"), ("proposed", "end"), ("estimated", "end"), "end", "finish")),
+        "street": street,
+        "town": town,
+        "usrn": _s(exact(rec, "usrn")),
+        "category": _s(exact(rec, "workstream", "workstream1", "workcategory", "workscategory")),
+        "traffic": _s(exact(rec, "trafficmanagementtype", "trafficmanagementtype1") or pick(rec, ("traffic", "management"))),
+        "description": _s(exact(rec, "worksdescription", "worksdescription1", "description", "activitytype")),
+        "starts_at": when(exact(rec, "actualstartdate", "proposedstartdate3", "proposedstartdate", "startdate")
+                          or pick(rec, ("start", "date"))),
+        "ends_at": when(exact(rec, "actualenddate", "odpenddate", "proposedenddate1", "proposedenddate", "enddate")
+                        or pick(rec, ("end", "date"))),
         "lat": lat, "lon": lon, "detail": rec, "seen": now,
     }  # fmt: skip
 
 
 def area(rec: dict[str, Any], kind: str) -> dict[str, Any]:
-    """One area a place sits in: a name and a code that identify it."""
-    name = pick(rec, ("name",), ("site", "name"), ("substation",), ("sitename",), "description",
-                avoid=("filename",))  # fmt: skip
-    if kind == "rota":
-        code = pick(rec, "block", "rota", "letter", "code", "id")
+    """One area a place sits in, with a name and a code (the site's functional location where there is one)."""
+    if kind == "gsp":
+        name = exact(rec, "gridsupplypoint", "gspname", "name")
+        code = exact(rec, "gridsupplypointfloc", "gspfl", "gspfloc") or name
+    elif kind == "primary":
+        name = exact(rec, "primary", "sitename", "primaryname", "name")
+        code = exact(rec, "primaryfloc", "sitefunctionallocation") or name
+    elif kind == "secondary":
+        code = exact(rec, "sitefunctionallocation", "sitefunctionallocationclean", "floc")
+        alias = exact(rec, "substationalias", "sitename", "name")
+        name = f"substation {alias}" if alias else None
     else:
-        code = pick(rec, ("site", "functional", "location"), ("functional", "location"), ("site", "id"), "code",
-                    ("number",), "id", "reference")  # fmt: skip
+        name = exact(rec, "name", "operator", "idno", "company") or pick(rec, ("name",))
+        code = exact(rec, "code", "id") or name
     code = code if code not in (None, "") else (name or kind)
     return {"kind": kind, "code": str(code), "name": _s(name) or str(code)}
 
 
-def carbon(rec: dict[str, Any]) -> tuple[str, datetime, float] | None:
-    """(grid supply point, time, gCO2/kWh) from one carbon intensity record."""
-    gsp = pick(rec, ("gsp", "name"), ("gsp",), ("grid", "supply"))
-    at = when(pick(rec, "datetime", "timestamp", ("time",), ("date",), "period", "settlement"))
-    value = pick(rec, ("carbon", "intensity"), "intensity", ("gco2",), ("co2",), "carbon")
+def carbon(rec: dict[str, Any]) -> tuple[str, datetime, float, str | None] | None:
+    """(grid supply point, time, gCO2/kWh, its functional location) from one carbon intensity record (as read:
+    gsp_name, gsp_fl, half_hour_period, blended_carbon_intensity)."""
+    gsp = exact(rec, "gspname", "gsp", "gridsupplypoint") or pick(rec, ("gsp", "name"))
+    at = when(exact(rec, "halfhourperiod", "datetime", "timestamp", "period") or pick(rec, "datetime", ("time",)))
+    value = exact(rec, "blendedcarbonintensity", "carbonintensity", "intensity") or pick(rec, ("carbon", "intensity"))
     try:
         v = float(value)
     except (TypeError, ValueError):
         return None
-    return (str(gsp), at, v) if gsp and at else None
+    floc = exact(rec, "gspfl", "gspfloc", "gridsupplypointfloc")
+    return (str(gsp), at, v, str(floc) if floc else None) if gsp and at else None
 
 
 def same_gsp(a: str, b: str) -> bool:
     """Grid supply point names as two datasets write them ('Wimbledon 132kV' and 'WIMBLEDON GSP')."""
     def core(x: str) -> str:
-        x = re.sub(r"\b(gsp|grid supply point|\d+\s*kv|substation|s/s)\b", " ", x.lower())
+        x = re.sub(r"\([^)]*\)", " ", x.lower())  # 'BEDDINGTON (SPN)'
+        x = re.sub(r"\b(gsp|grid supply point|\d+\s*kv|\d+/\d+\s*kv|substation|s/s)\b", " ", x)
         return re.sub(r"[^a-z0-9]", "", x)
 
     return bool(core(a)) and core(a) == core(b)
