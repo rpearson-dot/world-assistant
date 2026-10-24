@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-24
+
 ### Added
 - **UK Power Networks** (module `ukpn`, London, the South East and the East of England; `ukpn_api_key` optional, `WA_UKPN_POLL_ENABLED`, on by default but reads nothing unless a saved place is on their network). From their open data portal (CC BY 4.0):
   - **Power cuts**, planned and unplanned, read hourly, and every 15 minutes while a cut is at home (`WA_UKPN_FAULT_INTERVAL_MIN`, `WA_UKPN_FAULT_ALERT_INTERVAL_MIN`). **Every cut is kept for good** (`ukpn_fault_history`): first and last seen, when it ended, the most homes affected, the restoration time first and last promised, and which of your places it was at. `/v1/power/history`, a past-year line on the Energy card, a Home Assistant sensor and the assistant ("how many power cuts have we had this year?").
