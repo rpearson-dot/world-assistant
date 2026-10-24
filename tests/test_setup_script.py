@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-KEYS = 13  # key prompts, in order: nh, nh secondary, fuel id, fuel secret, tfl, nr, bods, tfwm id, tfwm key, skiddle, tm, pollen, octopus
+KEYS = 14  # key prompts, in order: nh, nh secondary, fuel id, fuel secret, tfl, nr, bods, tfwm id, tfwm key, ukpn, skiddle, tm, pollen, octopus
 
 
 @pytest.fixture

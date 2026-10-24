@@ -208,6 +208,7 @@ key nr_access_token "National Rail: live departures from any station" "https://r
 key bods_api_key "Bus Open Data Service: live bus positions anywhere in Britain" "https://data.bus-data.dft.gov.uk/"
 key tfwm_app_id "Transport for West Midlands: the region's own bus and tram times (application ID)" "https://api-portal.tfwm.org.uk/"
 key tfwm_app_key "Transport for West Midlands (application key)" "the same page"
+key ukpn_api_key "UK Power Networks: power cuts, street works and local carbon intensity (London, South East, East)" "https://ukpowernetworks.opendatasoft.com/"
 key skiddle_api_key "Skiddle: what is on near you" "https://www.skiddle.com/api/"
 key ticketmaster_api_key "Ticketmaster: concerts, sport and shows near you" "https://developer.ticketmaster.com/"
 key pollen_api_key "Polleninformation: pollen forecasts (personal use, 40 requests a day)" "https://www.polleninformation.at/en/data-interface"

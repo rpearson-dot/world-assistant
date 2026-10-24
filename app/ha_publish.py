@@ -321,6 +321,36 @@ def roads_device(status: dict[str, Any], events: list[dict[str, Any]] | None = N
     return Device("roads", "Roads", sensors)
 
 
+def power_device(supply: dict[str, Any], cuts: dict[str, Any], works: dict[str, Any], carbon: dict[str, Any]) -> Device:
+    """Power at home (UK Power Networks): a cut there now, cuts nearby, street works nearby, and how clean the local
+    electricity is now and when it is cleanest."""
+    here = supply.get("cuts") or []
+    first = here[0] if here else {}
+    sensors = [
+        Sensor("power_cut_home", "Power cut at home", "on" if supply.get("power_cut_now") else "off",
+               icon="mdi:transmission-tower-off" if supply.get("power_cut_now") else "mdi:transmission-tower",
+               attributes={"planned": first.get("planned"), "restore_by": first.get("restore_by"),
+                           "customers": first.get("customers"), "status": first.get("status"),
+                           "description": first.get("description")}),
+        Sensor("power_cuts_near", "Power cuts near home", cuts.get("count", 0), icon="mdi:flash-alert",
+               state_class="measurement", attributes={"cuts": (cuts.get("cuts") or [])[:20]}),
+        Sensor("street_works_near", "Electricity street works near home", works.get("count", 0), icon="mdi:sign-caution",
+               state_class="measurement", attributes={"open": works.get("open", 0), "proposed": works.get("proposed", 0),
+                                                      "works": (works.get("works") or [])[:20]}),
+    ]  # fmt: skip
+    if supply.get("rota_block"):
+        sensors.append(Sensor("rota_block", "Rota load disconnection block", supply["rota_block"].get("code"),
+                              icon="mdi:calendar-clock"))  # fmt: skip
+    if carbon.get("available"):
+        sensors.append(Sensor("carbon_intensity", "Local carbon intensity", carbon.get("now"), unit="gCO2/kWh",
+                              icon="mdi:molecule-co2", state_class="measurement",
+                              attributes={"grid_supply_point": carbon.get("grid_supply_point")}))  # fmt: skip
+        sensors.append(Sensor("cleanest_start", f"Cleanest {carbon.get('hours', 3):g} hours start", carbon.get("best_start"),
+                              device_class="timestamp", icon="mdi:leaf",
+                              attributes={"average": carbon.get("best_average")}))  # fmt: skip
+    return Device("power", "Power", sensors)
+
+
 def trips_device(trips: list[dict[str, Any]]) -> Device:
     """One status sensor and one planned-works sensor for each trip with a route."""
 
@@ -430,7 +460,14 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
     async def trips() -> Device:
         return trips_device((await _get(c, "/v1/conditions"))["trips"])
 
-    for name, build in (("trips", trips), ("energy", energy), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
+    async def power() -> Device:
+        supply = await _get(c, "/v1/power/supply")
+        if not supply.get("on_network"):
+            raise ValueError("home is not on UK Power Networks' network (or not looked up yet)")
+        return power_device(supply, await _get(c, "/v1/power/cuts"), await _get(c, "/v1/power/works"),
+                            await _get(c, "/v1/power/carbon"))  # fmt: skip
+
+    for name, build in (("trips", trips), ("energy", energy), ("power", power), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
         await attempt(name, build)
     return devices
 

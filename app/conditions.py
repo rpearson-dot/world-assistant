@@ -31,7 +31,7 @@ STATUSES = ("clear", "minor", "disrupted", "severe")
 BUFFER_M = 75.0  # how close a TfL disruption must be to count as on the route
 DEFAULT_TRIP_S = 3600  # when the route has no duration yet
 FLOODS_VALID_FOR = timedelta(hours=12)  # flood warnings describe the next hours, not next week
-SOURCES = ("nh", "tfl", "flood")
+SOURCES = ("nh", "tfl", "flood", "ukpn")
 
 # --- the rules (pure) -----------------------------------------------------------------------------
 
@@ -45,6 +45,12 @@ def tfl_level(severity: str | None, closure: bool) -> int:
     """1 minor .. 3 severe. TfL's own severity, bumped one step when the road is closed."""
     base = max(rank(severity) - 1, 0)  # Minimal 0, Moderate 1, Serious 2, Severe 3
     return max(1, min(3, base + (1 if closure else 0)))
+
+
+def ukpn_level(traffic: str | None) -> int:
+    """Electricity street works: a road closure is serious, lights or a lane minor."""
+    t = (traffic or "").lower()
+    return 3 if "closure" in t and "lane" not in t else 2 if any(w in t for w in ("lights", "signal", "lane", "convoy", "stop", "give and take")) else 1
 
 
 def flood_level(level: int) -> int:
@@ -92,6 +98,16 @@ def flood_item(r: Any) -> dict[str, Any]:
             "headline": f"{r.severity} for {r.label}", "where": ", ".join(x for x in (r.river_or_sea, r.county) if x),
             "kind": "flood", "closure": False, "unplanned": True, "starts": _iso(r.raised_at), "ends": None,
             "detail": r.message, "status": "active"}  # fmt: skip
+
+
+def ukpn_item(r: Any) -> dict[str, Any]:
+    where = ", ".join(x for x in (r.street, r.town) if x)
+    return {"source": "ukpn", "id": r.id, "level": ukpn_level(r.traffic),
+            "headline": "Electricity works" + (" (proposed)" if r.stage == "proposed" else "")
+                        + (f" ({r.traffic})" if r.traffic else ""),
+            "where": where or None, "kind": "works", "closure": "closure" in (r.traffic or "").lower(),
+            "unplanned": False, "starts": _iso(r.starts_at), "ends": _iso(r.ends_at),
+            "detail": r.description or r.category, "status": r.stage, "metres": round(r.metres)}  # fmt: skip
 
 
 def order(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -161,6 +177,14 @@ SELECT w.id, w.severity_level, w.severity, w.message, w.raised_at, a.label, a.co
 FROM flood_warning w JOIN flood_area a ON a.notation = w.area, route r
 WHERE w.severity_level <= 3 AND a.geom IS NOT NULL AND ST_DWithin(a.geom, r.line, 0)
 """
+UKPN_SQL = f"""
+WITH {ROUTE}
+SELECT w.id, w.stage, w.street, w.town, w.traffic, w.category, w.description, w.starts_at, w.ends_at,
+       ST_Distance(w.geog, r.line) AS metres
+FROM ukpn_works w, route r
+WHERE w.geog IS NOT NULL AND ST_DWithin(w.geog, r.line, :buffer)
+  AND (w.ends_at IS NULL OR w.ends_at >= :frm) AND (w.starts_at IS NULL OR w.starts_at <= :horizon)
+"""
 TRIP_SQL = "SELECT id, name, corridor_id, distance_km, duration_s, roads, enabled FROM trip WHERE id = :id"
 
 
@@ -174,6 +198,8 @@ async def gather(
         items += [tfl_item(r) for r in (await conn.execute(text(TFL_SQL), {**p, "buffer": buffer_m})).all() if counts(r)]
         if floods:
             items += [flood_item(r) for r in (await conn.execute(text(FLOOD_SQL), {"corridor": corridor})).all()]
+        if (await conn.execute(text("SELECT to_regclass('ukpn_works')"))).scalar():  # UK Power Networks' street works
+            items += [ukpn_item(r) for r in (await conn.execute(text(UKPN_SQL), {**p, "buffer": buffer_m})).all()]
     return items
 
 

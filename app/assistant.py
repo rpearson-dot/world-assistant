@@ -312,6 +312,47 @@ async def station_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]
         return {"text": "Near " + r["place"] + ": " + "; ".join(lines) + ".", "data": r}
     r = await _wrap(alerts(request, None, bool(args.get("lifts_only"))))
     return {"text": f"{r['count']} closures across TfL stations now.", "data": r}
+async def power_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.power import carbon, cuts, supply, works
+
+    place = args.get("place")
+    what = str(args.get("about") or "cuts")
+    if what == "supply":
+        s = await _wrap(supply(request, place))
+        if not s["checked"]:
+            return {"text": "The network around this place has not been looked up yet (it is, each night).", "data": s}
+        if not s["on_network"]:
+            other = f" It is supplied by {s['independent_operator']}." if s["independent_operator"] else ""
+            return {"text": "This place is not on UK Power Networks' network." + other, "data": s}
+        chain = [f"{label} {s[k]['name']}" for k, label in (("grid_supply_point", "grid supply point"),
+                 ("primary", "primary substation"), ("secondary", "local substation")) if s.get(k)]  # fmt: skip
+        rota = f" Rota block {s['rota_block']['code']}." if s.get("rota_block") else ""
+        cut = " There is a power cut here now." if s["power_cut_now"] else " No power cut here now."
+        return {"text": "Fed from " + ", ".join(chain) + "." + rota + cut, "data": s}
+    if what == "carbon":
+        c = await _wrap(carbon(request, place, float(args.get("hours") or 3)))
+        if not c["available"]:
+            return {"text": "No carbon intensity readings for this place yet.", "data": c}
+        best = datetime.fromisoformat(c["best_start"]).astimezone(ZoneInfo(get_settings().local_tz)).strftime("%H:%M")
+        return {"text": f"Local carbon intensity is {c['now']:.0f} g CO2 per kWh now. The cleanest {c['hours']:g} hours "
+                        f"start at {best}, averaging {c['best_average']:.0f}.", "data": c}  # fmt: skip
+    if what == "works":
+        w = await _wrap(works(request, place, float(args.get("km") or 1), None))
+        if not w["count"]:
+            return {"text": "No UK Power Networks street works near there.", "data": w}
+        bits = [f"{x['street'] or 'a street'}" + (f" ({x['traffic']})" if x.get("traffic") else "") for x in w["works"][:4]]
+        return {"text": f"{w['open']} under way and {w['proposed']} planned nearby: " + "; ".join(bits) + ".", "data": w}
+    r = await _wrap(cuts(request, place, float(args.get("km") or 5)))
+    if not r["count"]:
+        return {"text": "No power cuts reported near there.", "data": r}
+    head = "There is a power cut at this place. " if r["at_place"] else ""
+    bits = []
+    for x in r["cuts"][:3]:
+        kind = "planned" if x["planned"] else "unplanned" if x["planned"] is False else ""
+        eta = f", power back by {datetime.fromisoformat(x['restore_by']).astimezone(ZoneInfo(get_settings().local_tz)):%H:%M}" if x["restore_by"] else ""
+        bits.append(f"{kind} cut".strip() + (f" {x['km']} km away" if x["km"] is not None else "")
+                    + (f" affecting {x['customers']} homes" if x["customers"] else "") + eta)  # fmt: skip
+    return {"text": f"{head}{r['count']} power cut(s) nearby: " + "; ".join(bits) + ".", "data": r}
 
 
 TOOLS: dict[str, Tool] = {t.name: t for t in [
@@ -347,6 +388,12 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
              name=("string", "station name, e.g. Waterloo; omit to list stations near a place"),
              place=("string", "id of a saved place; default: home"), km=("number", "how far from the place, default 2"),
              lifts_only=("boolean", "only lift and step-free closures"))}, station_tool),
+    Tool("power", "Electricity from UK Power Networks: power cuts near a saved place (default), their street works, what "
+         "supplies the place (substations, rota block), or local carbon intensity and the cleanest hours ahead.",
+         {"type": "object", "properties": _props(
+             about=("string", "cuts (default), works, supply or carbon"),
+             place=("string", "id of a saved place; default: home"), km=("number", "how far to look"),
+             hours=("number", "carbon: length of the cleanest block, default 3"))}, power_tool),
     Tool("bus", "Bus tracker: has a bus made it to the target stop before the deadline, and next buses at your stops.",
          {"type": "object", "properties": _props(tracker=("string", "tracker id; optional if only one"),
                                                  stop=("string", "only this stop key; optional"))}, bus),

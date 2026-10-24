@@ -14,6 +14,8 @@ PAGE = """<!doctype html>
 <style>
 /*BASE_CSS*/
   .band { font-size: 13px; font-weight: 700; padding: 2px 10px; border-radius: 999px; }
+  .closure { margin: 6px 0; padding: 8px 10px; border-radius: 10px; font-size: 14px; }
+  .closure.lift { background: var(--bad-bg); color: var(--bad); }
   .band.cheap { background: var(--good-bg); color: var(--good); } .band.standard { background: var(--chip); color: var(--dim); }
   .band.peak { background: var(--bad-bg); color: var(--bad); }
   .price { font-size: 40px; font-weight: 700; line-height: 1.1; } .price small { font-size: 16px; color: var(--dim); font-weight: 500; }
@@ -26,6 +28,7 @@ PAGE = """<!doctype html>
   .tile { flex: 1 1 200px; background: var(--chip); border-radius: 12px; padding: 10px 12px; }
   .tile .k { font-size: 13px; color: var(--dim); } .tile .v { font-size: 22px; font-weight: 700; } .tile .m { font-size: 13px; color: var(--dim); }
   .live { background: var(--good-bg); } .live .v { color: var(--good); }
+  .alert { background: var(--bad-bg); } .alert .v { color: var(--bad); }
 </style></head><body><main>
 <!--NAV-->
 <h1>Energy</h1>
@@ -43,6 +46,10 @@ PAGE = """<!doctype html>
   <div class="card"><h2>Coming up <span class="push"><label class="dim">cheapest block of
     <select id="hours"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>6</option></select> hours</label></span></h2>
     <div class="next" id="tiles"></div></div>
+  <div class="card" id="powercard" hidden><h2>Power cuts</h2><div class="next" id="power"></div>
+    <div id="cutlist"></div><p class="dim" id="pnote"></p></div>
+  <div class="card" id="carboncard" hidden><h2>How clean is your electricity</h2><div class="next" id="carbon"></div>
+    <p class="dim" id="cnote"></p></div>
   <div class="card"><h2>Octopus sessions</h2><div class="next" id="sessions"></div>
     <p class="dim" id="snote"></p></div>
   <details class="card"><summary>All upcoming rates</summary><div class="scroll"><table><thead><tr><th>From</th><th>To</th><th>p/kWh</th><th>Band</th></tr></thead><tbody id="rows"></tbody></table></div></details>
@@ -112,7 +119,49 @@ function sessionTiles(s) {
   $('snote').textContent = 'Saving Sessions pay you Octopoints for using less electricity in the hour. Join them in the Octopus app.';
 }
 
+// Local carbon intensity (UK Power Networks, the grid supply point feeding home). Hidden when there is none.
+async function carbon() {
+  try {
+    const c = await get('/v1/power/carbon?hours=' + $('hours').value);
+    if (!c.available) { $('carboncard').hidden = true; return; }
+    const box = $('carbon'); box.replaceChildren();
+    box.append(tile('', 'Now', Math.round(c.now) + ' g', 'CO2 per kWh'),
+      tile('', 'Cleanest ' + c.hours + ' hours', hm(c.best_start), when(c.best_start) + ' · ' + Math.round(c.best_average) + ' g average'));
+    $('cnote').textContent = 'At ' + c.grid_supply_point + ', the grid supply point feeding home. From UK Power Networks (CC BY 4.0).';
+    $('carboncard').hidden = false;
+  } catch (e) { $('carboncard').hidden = true; }  // the module is off, or home is not on their network
+}
+
+// Power cuts at home and nearby, and what supplies home (UK Power Networks). Hidden when home is not on their network.
+async function power() {
+  try {
+    const [s, c] = await Promise.all([get('/v1/power/supply'), get('/v1/power/cuts?km=5')]);
+    if (!s.checked || !s.on_network) { $('powercard').hidden = true; return; }
+    const box = $('power'); box.replaceChildren();
+    const here = (s.cuts || [])[0];
+    box.append(here
+      ? tile('alert', 'At home', here.planned ? 'Planned cut' : 'Power cut', here.restore_by ? 'back by ' + when(here.restore_by) : 'no restoration time yet')
+      : tile('', 'At home', 'Power on', 'no cut reported'));
+    box.append(tile('', 'Within 5 km', String(c.count), c.count === 1 ? 'power cut' : 'power cuts'));
+    if (s.rota_block) box.append(tile('', 'Rota block', s.rota_block.code, 'used only in a national supply emergency'));
+    const list = $('cutlist'); list.replaceChildren();
+    for (const x of (c.cuts || []).slice(0, 8)) {
+      const p = el('p', x.at_place ? 'closure lift' : 'dim');
+      p.textContent = (x.planned ? 'Planned' : x.planned === false ? 'Unplanned' : 'Power cut') + (x.km != null ? ', ' + x.km + ' km' : '')
+        + (x.customers ? ', ' + x.customers + ' homes' : '') + (x.postcodes.length ? ' (' + x.postcodes.slice(0, 4).join(', ') + (x.postcodes.length > 4 ? '...' : '') + ')' : '')
+        + (x.restore_by ? ', back by ' + hm(x.restore_by) : '') + (x.description ? ': ' + x.description : '');
+      list.append(p);
+    }
+    const chain = [['grid_supply_point', 'grid supply point'], ['primary', 'primary substation'], ['secondary', 'local substation']]
+      .filter(([k]) => s[k]).map(([k, label]) => label + ' ' + s[k].name);
+    $('pnote').textContent = (chain.length ? 'Home is fed from ' + chain.join(', then ') + '. ' : '') + 'From UK Power Networks (CC BY 4.0), every 15 minutes.';
+    $('powercard').hidden = false;
+  } catch (e) { $('powercard').hidden = true; }  // the module is off, or no data yet
+}
+
 async function load() {
+  power();
+  carbon();
   msg.textContent = ''; try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
   try {
     const [now, rates] = await Promise.all([get('/v1/energy/now?hours=' + $('hours').value), get('/v1/energy/rates?hours=48')]);

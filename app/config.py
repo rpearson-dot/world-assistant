@@ -131,6 +131,9 @@ class Settings(BaseSettings):
     codepoint_url: str = "https://api.os.uk/downloads/v1/products/CodePointOpen/downloads?area=GB&format=CSV&redirect"
     tflroads_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
     tfl_stations_poll_enabled: bool = False  # TfL stations' layout, facilities and lift closures; compose turns it on
+    # UK Power Networks (London, South East, East): power cuts, street works, carbon intensity. Reads nothing unless
+    # a saved place is on their network. The compose file turns it on.
+    ukpn_poll_enabled: bool = False
     energy_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
     octopus_account: str = ""  # e.g. A-1234ABCD; with the octopus_api_key secret this finds the tariff
     octopus_tariff: str = ""  # optional override, e.g. E-1R-COSY-22-12-08-A; needs no key
@@ -190,6 +193,11 @@ class Settings(BaseSettings):
     @property
     def tfwm_app_key(self) -> str:
         return read_secret("tfwm_app_key")
+
+    @property
+    def ukpn_api_key(self) -> str:
+        """Optional: the UK Power Networks portal answers some datasets without one."""
+        return read_secret("ukpn_api_key")
 
     @property
     def skiddle_api_key(self) -> str:

@@ -87,7 +87,7 @@ async function api(path, opts) {
 }
 const COLORS = { Place: '#1a7f4b', Trip: '#1f6feb', Corridor: '#7c3aed', RoadEvent: '#d92d20', Station: '#dc6803', Location: '#0e9384',
   Vehicle: '#667085', BusTracker: '#4f46e5', BusStop: '#ca8a04', FloodWarning: '#0891b2',
-  Area: '#b54708', Disruption: '#c11574', LocalEvent: '#2e90fa' , RailStation: '#0019a8', Entrance: '#6b7280', Line: '#e32017', StationClosure: '#b42318' };
+  Area: '#b54708', Disruption: '#c11574', LocalEvent: '#2e90fa' , RailStation: '#0019a8', Entrance: '#6b7280', Line: '#e32017', StationClosure: '#b42318' , PowerCut: '#f04438', StreetWork: '#f79009', Substation: '#6941c6' };
 const DEFAULT_VIEW = { hiddenLabels: [], hiddenTypes: [], colors: {}, size: 'fixed', names: 'zoom', edgeNames: true, scale: 1, spread: 1 };
 let V = Object.assign({}, DEFAULT_VIEW);
 try { Object.assign(V, JSON.parse(localStorage.getItem('wa_graph_view') || '{}')); } catch (e) {}

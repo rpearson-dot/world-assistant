@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [Unreleased]
 
 ### Added
+- **UK Power Networks** (module `ukpn`, London, the South East and the East of England; `ukpn_api_key` optional, `WA_UKPN_POLL_ENABLED`, on by default but reads nothing unless a saved place is on their network). From their open data portal (CC BY 4.0):
+  - **Power cuts**, planned and unplanned, every 15 minutes: at a place (by its postcode, or within 1 km) and nearby, with customers affected and the estimated restoration time.
+  - **Their street and road works**, under way (every 2 hours) and proposed (daily). They join TfL and National Highways on **Trip conditions** (a road closure counts as serious, signals or a lane closure as moderate), and are kept with each record as published.
+  - **What supplies each place**: whether it is on their network or an independent operator's, its grid supply point, primary and local substation, and its **rota load disconnection block**.
+  - **Energy tab: a Power cuts card**: power at home (red when there is a cut, with the time power should be back), cuts within 5 km with homes affected and postcodes, your rota block, and the substations home is fed from.
+  - **Local carbon intensity** half-hourly at the grid supply point feeding home: now, and the cleanest block ahead, as a card on the **Energy tab**.
+  - API `/v1/power/cuts`, `/works`, `/supply`, `/carbon`; assistant tool `power`; Home Assistant **Power** device (power cut at home, cuts and works nearby, rota block, carbon intensity, cleanest hours); graph `PowerCut`, `StreetWork` and `Substation` nodes, with `FEEDS` from grid supply point to primary to local substation to your place, and works `AFFECTS` the corridors they lie on.
+  - Datasets are found by their published title, and fields by name, so the portal can rename things; `python -m app.integrations.ukpn.probe` shows exactly what it finds. Migration 0031.
+
+### Added
 - **TfL stations: layout, facilities and closures** (module `tflstations`, London; on by default, `WA_TFL_STATIONS_POLL_ENABLED`). Every Underground, Overground, DLR, Elizabeth line and tram station with its lines, fare zone, entrances, platforms (and which way they go), facilities (lifts, toilets, car park, wifi) and step-free access, loaded nightly from TfL's StopPoint API; and what is closed now (lifts out of service, escalators, entrances), every 10 minutes. Stations in one building (a TfL "hub", such as Wimbledon's District line, tram and rail) share their closures. Migration 0030.
 - **Lift alerts on the Trains tab**: each board shows lifts and step-free routes out of service at its station (and the others in the same building), with a summary at the top. Boards at National Rail-only stations are named as not covered by TfL's data, rather than shown as "all working".
 - **API**: `GET /v1/stations?q=` (search), `/v1/stations/near` (around a saved place), `/v1/stations/{id}` (in full), `/v1/stations/alerts` (closures; `lifts_only`, and which of the stations asked about TfL covers).
