@@ -39,6 +39,13 @@ ABOUT: dict[str, tuple[str, str]] = {
     "packages/world_assistant_manage.yaml": ("Manage places and routes", ("Add places and routes from Home Assistant. "
                                              "Needs the events package too.")),
     "packages/world_assistant_bus.yaml": ("Bus tracker times", "Change the bus tracker's times from the dashboard."),
+    "packages/wa_energy_plan.yaml": ("Energy plan (battery charging)", (
+        "Sets the battery's charge targets from expected use, Forecast.Solar and your battery health max, and charges "
+        "from the grid in Free Electricity hours you joined. Written for a Deye/Sunsynk inverter named office_inverter "
+        "with Cosy-shaped slots: change the entity names to match yours. Starts as a dry run.")),
+    "dashboards/home-charging.yaml": ("Home charging", (
+        "Battery, solar, prices, free hours and Saving Sessions, the charge plan and its tuning. "
+        "Needs the energy plan package.")),
     "dashboards/fuel.yaml": ("Fuel", "Prices near each person, cheapest first."),
     "dashboards/trains-buses.yaml": ("Trains and buses", "Departure boards and the bus tracker."),
     "dashboards/roads.yaml": ("Roads", "Closures and speed limits near each person, and your routes."),
@@ -51,7 +58,7 @@ ABOUT: dict[str, tuple[str, str]] = {
 # For dashboards kept as files (copied over SMB): Home Assistant's YAML-mode dashboards, so they update by themselves.
 DASH_ICONS = {"fuel": "mdi:gas-station", "trains-buses": "mdi:bus-clock", "roads": "mdi:road-variant",
               "events": "mdi:calendar-star", "pollen": "mdi:flower-pollen", "manage": "mdi:map-marker-plus",
-              "leaf": "mdi:car-electric"}  # fmt: skip
+              "leaf": "mdi:car-electric", "home-charging": "mdi:home-battery"}  # fmt: skip
 
 
 def lovelace_yaml(dashboards: list[dict[str, Any]], folder: str = "world_assistant/dashboards") -> str:

@@ -10,7 +10,7 @@ import pytest
 yaml = pytest.importorskip("yaml")
 jinja2 = pytest.importorskip("jinja2")
 
-PLAN = yaml.safe_load((Path(__file__).parent.parent / "docs/ha/wa_energy_plan.yaml").read_text())
+PLAN = yaml.safe_load((Path(__file__).parent.parent / "homeassistant/packages/wa_energy_plan.yaml").read_text())
 GOOD = {f"text.office_inverter_time_slot_{n}_start": t
         for n, t in zip("123456", ["00:00", "04:00", "07:00", "13:00", "16:00", "22:00"], strict=True)}  # fmt: skip
 GOOD |= {f"switch.office_inverter_time_slot_{n}_on": "on" for n in "246"}

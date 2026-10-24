@@ -1,9 +1,10 @@
 # World Assistant "Home charging" dashboard for Home Assistant. Built-in cards only (no HACS).
 #
-# Install: Settings > Dashboards > Add dashboard > New dashboard from scratch, name it "Home charging", open it,
-# then the pencil (edit) > three dots > Raw configuration editor, paste this whole file, and Save.
+# Install: from World Assistant's Home Assistant page (/ha). Either copy it over Samba (a YAML-mode dashboard that
+# updates on every copy), or Settings > Dashboards > Add dashboard > New dashboard from scratch, name it
+# "Home charging", open it, then the pencil > three dots > Raw configuration editor, paste this whole file, Save.
 #
-# Needs: the energy plan package (docs/ha/wa_energy_plan.yaml), World Assistant 0.19.1 or later publishing to Home
+# Needs: the energy plan package (packages/wa_energy_plan.yaml), World Assistant 0.19.1 or later publishing to Home
 # Assistant over MQTT (the wa_energy_* and wa_power_* sensors), and Forecast.Solar. If Forecast.Solar's sensors
 # are named differently on your system (sensor.energy_production_tomorrow_2 for a second array, say), change them
 # here and in the package.
@@ -83,20 +84,22 @@ views:
             entity: sensor.wa_energy_saving_session_next_joined_start
             name: Next joined Saving Session
           - type: markdown
-            content: >-
-              {% set f = 'sensor.wa_energy_free_electricity_next_start' %}
-              {% set up = state_attr(f, 'upcoming') or [] %}
-              {% if up %}**Free hours announced**{% for u in up[:8] %}
+            content: |
+              {%- set up = state_attr('sensor.wa_energy_free_electricity_next_start', 'upcoming') or [] %}
+              {%- if up %}
+              **Free hours announced**
+              {% for u in up[:8] %}
+              - {{ (as_datetime(u.start) | as_local).strftime('%a %H:%M') }}-{{ (as_datetime(u.end) | as_local).strftime('%H:%M') }}: {{ '✅ joined' if u.joined else 'not joined (join in the Octopus app)' }}
+              {%- endfor %}
+              {%- else %}
+              No free electricity announced.
+              {%- endif %}
+              {%- set r = states('input_text.wa_free_restore') %}
+              {%- if r.startswith('{') %}
+              {%- set saved = r | from_json %}
 
-              - {{ (as_datetime(u.start) | as_local).strftime('%a %H:%M') }}-{{ (as_datetime(u.end) | as_local).strftime('%H:%M') }}
-              {{ '✅ joined' if u.joined else '— not joined (join in the Octopus app)' }}{% endfor %}
-              {% else %}No free electricity announced.{% endif %}
-              {% set r = states('input_text.wa_free_restore') %}
-              {% if r.startswith('{') %}
-
-              ⚡ **Charging free now**: slot {{ (r | from_json).slot }} until
-              {{ (as_datetime((r | from_json).end) | as_local).strftime('%H:%M') }}, then put back to
-              {{ (r | from_json).cap }}%.{% endif %}
+              ⚡ **Charging free now**: slot {{ saved.slot }} until {{ (as_datetime(saved.end) | as_local).strftime('%H:%M') }}, then put back to {{ saved.cap }}%.
+              {%- endif %}
 
       - type: grid
         cards:
@@ -147,27 +150,31 @@ views:
             entity: sensor.wa_inverter_slot_check
             name: Slot check
           - type: markdown
-            content: >-
-              {% set rows = [
-                ['22:00 slot 6', 'covers 00:00-04:00', 'sensor.wa_target_charge_night', 'number.office_inverter_time_slot_6_capacity', '21:00'],
-                ['04:00 slot 2', 'covers 07:00-13:00, less solar', 'sensor.wa_target_charge_morning', 'number.office_inverter_time_slot_2_capacity', '21:00'],
-                ['13:00 slot 4', 'covers the 16:00-22:00 peak', 'sensor.wa_target_charge_evening', 'number.office_inverter_time_slot_4_capacity', '12:30'],
+            content: |
+              {%- set rows = [
+                ['22:00 slot 6', '00:00-04:00', 'sensor.wa_target_charge_night', 'number.office_inverter_time_slot_6_capacity', '21:00'],
+                ['04:00 slot 2', '07:00-13:00, less solar', 'sensor.wa_target_charge_morning', 'number.office_inverter_time_slot_2_capacity', '21:00'],
+                ['13:00 slot 4', 'the 16:00-22:00 peak', 'sensor.wa_target_charge_evening', 'number.office_inverter_time_slot_4_capacity', '12:30'],
               ] %}
-              {% set cap = states('input_number.wa_max_target_pct') | int(80) %}
-              | Charge window | | Wanted | Plan | Inverter | Set at |
+              {%- set cap = states('input_number.wa_max_target_pct') | int(80) %}
+              {%- set over = namespace(list=[]) %}
+              | Charge window | Covers | Wanted | Plan | Inverter | Set at |
               |---|---|---|---|---|---|
-              {% for r in rows %}| {{ r[0] }} | {{ r[1] }} | {{ state_attr(r[2], 'wanted') }}% | **{{ states(r[2]) }}%**{{ ' ⚠️' if state_attr(r[2], 'over_health_max') in [true, 'True'] else '' }} | {{ states(r[3]) }}% | {{ r[4] }} |
-              {% endfor %}
+              {%- for r in rows %}
+              {%- set capped = state_attr(r[2], 'over_health_max') in [true, 'True'] %}
+              {%- if capped %}{% set over.list = over.list + [r[0] ~ ' wants ' ~ state_attr(r[2], 'wanted') ~ '%'] %}{% endif %}
+              | {{ r[0] }} | {{ r[1] }} | {{ state_attr(r[2], 'wanted') }}% | **{{ states(r[2]) }}%**{{ ' ⚠️' if capped }} | {{ states(r[3]) }}% | {{ r[4] }} |
+              {%- endfor %}
 
-              Battery health max: **{{ cap }}%**.
-              {% set over = namespace(list=[]) %}{% for r in rows if state_attr(r[2], 'over_health_max') in [true, 'True'] %}{% set over.list = over.list + [r[0] ~ ' wants ' ~ state_attr(r[2], 'wanted') ~ '%'] %}{% endfor %}
-              {% if over.list %}⚠️ **Suggest raising it**: {{ over.list | join(', ') }} to get through to the next cheap window
-              without buying at the standard or peak rate.{% endif %}
+              Battery health max **{{ cap }}%**. Tomorrow's solar {{ states('sensor.energy_production_tomorrow') }} kWh.
+              {%- if over.list %}
 
-              Tomorrow's solar: {{ states('sensor.energy_production_tomorrow') }} kWh.
-              {% if is_state('sensor.wa_inverter_slot_check', 'mismatch') %}
+              ⚠️ **Suggest raising the health max**: {{ over.list | join(', ') }}, to get through to the next cheap window without buying at the standard or peak rate.
+              {%- endif %}
+              {%- if is_state('sensor.wa_inverter_slot_check', 'mismatch') %}
 
-              ⚠️ **Not applying:** {{ state_attr('sensor.wa_inverter_slot_check', 'problems') }}{% endif %}
+              ⚠️ **Not applying:** {{ state_attr('sensor.wa_inverter_slot_check', 'problems') }}
+              {%- endif %}
             grid_options:
               columns: full
           - type: logbook

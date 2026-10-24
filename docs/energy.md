@@ -102,7 +102,7 @@ the battery.
 
 ## Running the battery from Home Assistant
 
-`docs/ha/wa_energy_plan.yaml` is a Home Assistant package for a Deye/Sunsynk inverter that already has Cosy-shaped
+The energy plan (`wa_energy_plan.yaml`, on the Home Assistant page, /ha) is a Home Assistant package for a Deye/Sunsynk inverter that already has Cosy-shaped
 time slots (00:00 04:00 07:00 13:00 16:00 22:00, grid charge on for slots 2, 4 and 6). It changes only the target
 charge level of the three charging slots, from expected use and tomorrow's solar forecast (Forecast.Solar). It
 starts as a dry run that only writes to the logbook; switch on "WA energy plan: apply to inverter" when the numbers
@@ -118,11 +118,11 @@ from the grid by the inverter itself, so the cost of a shortfall is a smaller re
 
 ### Home charging dashboard
 
-`docs/ha/wa_home_charging_dashboard.yaml` is a Home Assistant dashboard for all of this, with built-in cards only:
+The Home charging dashboard (`home-charging.yaml`, on /ha) is a Home Assistant dashboard for all of this, with built-in cards only:
 battery, solar, house and grid now; the price now and next; free hours announced (joined or not) and Saving
 Sessions; Forecast.Solar today, still to come and tomorrow; the three charge targets next to what the inverter is
 set to; the apply switch and slot check; a logbook of every decision the plan made; and the tuning sliders. Add a
-dashboard from scratch, open its raw configuration editor, and paste the file in.
+dashboard from scratch, open its raw configuration editor, and paste the file in, or copy it over Samba from /ha.
 
 ## Notes
 

@@ -27,7 +27,8 @@
 # DRY RUN FIRST: "WA energy plan: apply to inverter" starts OFF. While off, the plan is only worked out and written
 # to the logbook. Compare it with what you would choose, then switch it on.
 #
-# Install: put this file at /config/packages/wa_energy_plan.yaml and make sure configuration.yaml has
+# Install: from World Assistant's Home Assistant page (/ha): download it, or copy it over Samba, to
+# /config/packages/wa_energy_plan.yaml, and make sure configuration.yaml has
 #   homeassistant:
 #     packages: !include_dir_named packages
 # then Developer tools > YAML > Check configuration, and restart Home Assistant.
