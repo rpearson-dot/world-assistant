@@ -164,7 +164,46 @@ def key_entities(names: dict[str, str]) -> dict[str, str]:
             **{k: names[k] for k in SOLAR_KEYS}}  # fmt: skip
 
 
-def live_checks(check: Any, live: dict[str, Any] | None, names: dict[str, str], registry: set[str]) -> None:
+SECRET_USE = re.compile(r"!secret\s+(wa_[a-z0-9_]+)")
+SECRET_LINE = re.compile(r"^(wa_[a-z0-9_]+)\s*:\s*(.*?)\s*$", re.MULTILINE)
+
+
+def secrets_checks(check: Any, text_: str | None, installed: dict[str, str | None], token: str,
+                   paths: dict[str, str]) -> None:  # fmt: skip
+    """The wa_* lines in Home Assistant's secrets.yaml, for the installed packages. No value is kept or shown: only
+    whether each is there, whether a URL ends in the right path, and whether the token is World Assistant's."""
+    used = sorted({m for b in installed.values() if b for m in SECRET_USE.findall(b)})
+    if not used:
+        return
+    if text_ is None:
+        check("problem", "secrets.yaml", "not found, but your packages need " + ", ".join(used))
+        return
+    have = {k: v.strip().strip("'\"") for k, v in SECRET_LINE.findall(text_)}
+    missing = [n for n in used if n not in have]
+    if missing:
+        check("problem", "secrets.yaml", "missing " + ", ".join(missing) + ": Home Assistant will not load the packages "
+              "that use them (step 3 adds them)")  # fmt: skip
+    wrong = [n for n in used if n in have and n in paths and not have[n].rstrip("/").endswith(paths[n].rstrip("/"))]
+    if wrong:
+        check("problem", "secrets.yaml", ", ".join(wrong) + " do not end in World Assistant's path for them (step 3)")
+    stale_token = "wa_authorization" in used and "wa_authorization" in have and token
+    if stale_token and have["wa_authorization"] != f"Bearer {token}":
+        check("problem", "secrets.yaml", "wa_authorization is not World Assistant's current API token, so every "
+              "request from the packages is refused: put the token in again (step 3, \"Put the token in\")")  # fmt: skip
+    hosts = sorted({m.group(1) for n in used if (m := re.match(r"^https?://([^/]+)", have.get(n, "")))})
+    if not missing and not wrong and (not token or have.get("wa_authorization") == f"Bearer {token}"):
+        check("ok", "secrets.yaml", f"{len(used)} lines in place" + (f", pointing at {', '.join(hosts)}" if hosts else ""))
+    elif hosts:
+        check("info", "secrets.yaml", "the packages ask World Assistant at " + ", ".join(hosts))
+
+
+def _slug(unique_id: str) -> str:
+    """The entity id Home Assistant makes of a unique id: lower case, anything but letters, digits and _ as _."""
+    return re.sub(r"[^a-z0-9_]", "_", str(unique_id).lower())
+
+
+def live_checks(check: Any, live: dict[str, Any] | None, names: dict[str, str], registry: set[str],
+                platforms: dict[str, Any] | None = None) -> None:  # fmt: skip
     """With Home Assistant's live states: does each named entity report, and are World Assistant's sensors fresh?"""
     if not live:
         return
@@ -184,18 +223,30 @@ def live_checks(check: Any, live: dict[str, Any] | None, names: dict[str, str], 
     if fine:
         check("ok", "Entities reporting", ", ".join(fine))
     wa = [s for e, s in states.items() if str(e).startswith(("sensor.wa_", "binary_sensor.wa_"))]
+    platforms = platforms or {}
     stale = sorted(str(s.get("entity_id")) for s in wa if s.get("state") == "unavailable")
-    if stale:
-        check("problem", "World Assistant sensors unavailable", f"{len(stale)} of {len(wa)} (not published lately, or "
-                                                                f"the part is off): " + ", ".join(stale[:15]))  # fmt: skip
-    elif wa:
+    tiles = [e for e in stale if "_tile_" in e]
+    asked = [e for e in stale if e not in tiles and platforms.get(e) not in (None, "mqtt")]
+    published = [e for e in stale if e not in tiles and e not in asked]
+    if asked:
+        check("problem", "Package sensors failing", ", ".join(asked) + ": these ask World Assistant directly (a "
+              "package's REST sensor). Check the wa_* lines in secrets.yaml (step 3) and that Home Assistant can reach "
+              "World Assistant's address; Home Assistant's log (Settings > System > Logs, search \"rest\") says why")  # fmt: skip
+    if published:
+        check("problem", "World Assistant sensors unavailable", f"{len(published)} (not published lately, or that part "
+                                                                "is off): " + ", ".join(published[:15]))  # fmt: skip
+    if tiles:
+        check("info", "Area tiles", f"{len(tiles)} map-area tiles (fuel, roads, pollen) have no current data: normal "
+                                    "for areas with nothing to report")  # fmt: skip
+    if wa and not asked and not published:
         newest = max((str(s.get("last_updated") or "") for s in wa), default="")
         check("ok", "World Assistant sensors live", f"{len(wa)}, last updated {newest[:16].replace('T', ' ')}")
 
 
 def inventory(raw: dict[str, str | None], current: dict[str, str], installed: dict[str, str | None],
               rendered: dict[str, str], wa_mqtt: dict[str, Any], wa_home: tuple[float, float] | None,
-              places: list[dict[str, Any]] | None = None, live: dict[str, Any] | None = None) -> dict[str, Any]:  # fmt: skip
+              places: list[dict[str, Any]] | None = None, live: dict[str, Any] | None = None,
+              api_token: str = "", secret_paths: dict[str, str] | None = None) -> dict[str, Any]:  # fmt: skip
     """Everything found and every problem, from Home Assistant's files (raw: name -> text, None when missing).
     installed / rendered: World Assistant's files as found in the config folder / as they would be written now.
     places: World Assistant's places (id, name, kind, lat, lon). live: Home Assistant's states through its API
@@ -225,24 +276,34 @@ def inventory(raw: dict[str, str | None], current: dict[str, str], installed: di
 
     # World Assistant's sensors, under the names the packages use
     mqtt_wa = [e for e in entities if e.get("platform") == "mqtt" and str(e.get("unique_id", "")).startswith("wa_")]
-    renamed = sorted(f"{e['entity_id']} (expected {e['entity_id'].split('.')[0]}.{e['unique_id']})" for e in mqtt_wa
-                     if e["entity_id"].split(".", 1)[1] != e["unique_id"])  # fmt: skip
+    # the text of every World Assistant file in use: installed packages and dashboards, and dashboards pasted in the editor
+    used = "\n".join(b for b in installed.values() if b) + "\n".join(
+        json.dumps(d["config"]) for d in editor_dashboards(dashboards, raw) if d["config"])  # fmt: skip
+    renamed_all = sorted((e["entity_id"], f"{e['entity_id'].split('.')[0]}.{_slug(e['unique_id'])}") for e in mqtt_wa
+                         if e["entity_id"].split(".", 1)[1] != _slug(e["unique_id"]))  # fmt: skip
+    renamed = [f"{have} (expected {want})" for have, want in renamed_all if re.search(re.escape(want) + r"(?![a-z0-9_])", used)]
     ids = {e["entity_id"] for e in entities}
     needed: set[str] = set()
     for path, body in installed.items():
-        if body is not None and path.startswith("packages/"):
-            needed |= {x for x in WA_ENTITY.findall(body) if x.split(".", 1)[1].split("_")[1] in WA_DEVICES}
+        if body is not None:
+            needed |= {x for x in WA_ENTITY.findall(body)
+                       if not x.endswith("_") and x.split(".", 1)[1].split("_")[1] in WA_DEVICES}  # a prefix is not a sensor
     missing = sorted(needed - ids)
     if not mqtt_wa:
         check("problem", "World Assistant sensors", "none are in Home Assistant: is MQTT connected (step 1)?")
     else:
         check("ok", "World Assistant sensors", f"{len(mqtt_wa)} in Home Assistant")
     if renamed:
-        check("problem", "Renamed sensors", "Home Assistant gave these other names, so packages naming them will not "
-                                            "find them; rename them back in Settings > Entities: " + "; ".join(renamed[:20]))  # fmt: skip
+        check("problem", "Renamed sensors", "your files name these, but Home Assistant has them under other names, so "
+                                            "they will not be found; rename them in Settings > Entities: " + "; ".join(renamed[:20]))  # fmt: skip
+    if len(renamed_all) > len(renamed):
+        check("info", "Older sensor names", f"{len(renamed_all) - len(renamed)} World Assistant sensors keep names from an "
+                                            "earlier version; none of your files use them, so nothing needs doing")  # fmt: skip
     if missing:
         check("problem", "Sensors the packages need", "not in Home Assistant (World Assistant too old, that part not "
                                                       "set up, or not published yet): " + ", ".join(missing[:30]))  # fmt: skip
+
+    secrets_checks(check, raw.get("secrets.yaml"), installed, api_token, secret_paths or {})
 
     # MQTT: the same broker?
     mq = next((e for e in entries if e.get("domain") == "mqtt"), None)
@@ -305,7 +366,7 @@ def inventory(raw: dict[str, str | None], current: dict[str, str], installed: di
     if places_only:
         check("info", "Places", "World Assistant places that are not Home Assistant zones: "
               + ", ".join(p["name"] for p in places_only) + " (copy them as zones below)")  # fmt: skip
-    live_checks(check, live, current, ids)
+    live_checks(check, live, current, ids, {e["entity_id"]: e.get("platform") for e in entities})
 
     integrations = sorted({(e.get("domain"), e.get("title")) for e in entries if not e.get("disabled_by")},
                           key=lambda x: (str(x[0]), str(x[1])))  # fmt: skip
@@ -411,7 +472,8 @@ async def _wa_home(engine: Any) -> tuple[float, float] | None:
 @router.post("/discover")
 async def discover(request: Request) -> dict[str, Any]:
     """Read Home Assistant's setup over the saved Samba share, check it, and keep the result (GET /v1/ha/inventory)."""
-    from app.ha_setup import HA_DIR, files, render, saved_names
+    from app.config import get_settings
+    from app.ha_setup import HA_DIR, SECRET_PATHS, files, render, saved_names
     from app.ha_smb import DASHBOARDS_DIR, PACKAGES_DIR, SmbError, _conf, _put
     from app.mqtt_config import load
 
@@ -422,7 +484,7 @@ async def discover(request: Request) -> dict[str, Any]:
     where = {p: (f"{PACKAGES_DIR}/{f['name']}" if f["kind"] == "package" else f"{DASHBOARDS_DIR}/{f['name']}")
              for p, f in ours.items()}  # fmt: skip
     try:
-        raw = await asyncio.to_thread(read_share, share, user, pw, list(where.values()))
+        raw = await asyncio.to_thread(read_share, share, user, pw, [*where.values(), "secrets.yaml"])
     except SmbError as exc:
         raise HTTPException(502, str(exc)) from exc
     conf, _ = await load(engine)
@@ -431,7 +493,8 @@ async def discover(request: Request) -> dict[str, Any]:
     live = await live_states(*api) if api else None
     result = inventory(raw, current, installed,
                        {p: render((HA_DIR / p).read_text(), current) for p in ours},
-                       {"host": conf.host, "port": conf.port}, await _wa_home(engine), await _places(engine), live)  # fmt: skip
+                       {"host": conf.host, "port": conf.port}, await _wa_home(engine), await _places(engine), live,
+                       get_settings().api_token, SECRET_PATHS)  # fmt: skip
     await _put(engine, INVENTORY_KEY, result)
     return result
 

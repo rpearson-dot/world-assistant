@@ -4,6 +4,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-10-25
+
+### Fixed
+- **Find my setup reports only real problems** (from the first real run):
+  - a sensor whose World Assistant id has hyphens (a bus tracker named "lotties-bus-journeys") is not "renamed": Home Assistant writes hyphens as _;
+  - World Assistant sensors that kept older names are a problem only when one of your files (installed or pasted in the editor) names them; otherwise one line says how many and that nothing needs doing;
+  - a name prefix a dashboard uses to find a set of sensors (`sensor.wa_pollen_tile_`) is not a missing sensor;
+  - map-area tiles with no current data (fuel, roads, pollen) are listed as normal, not as unavailable sensors;
+  - a package sensor that asks World Assistant directly (`sensor.wa_events_home_upcoming`, a REST sensor) is reported as failing, with where to look.
+
+### Added
+- **Find my setup checks secrets.yaml** for the installed packages: every `wa_*` line they use is there, each URL ends in World Assistant's path for it, and `wa_authorization` is World Assistant's current API token. Values are compared, never kept or shown.
+
 ## [0.21.0] - 2026-10-25
 
 ### Added

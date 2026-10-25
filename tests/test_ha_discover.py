@@ -196,3 +196,47 @@ def test_dashboards_pasted_in_the_editor_are_compared() -> None:
 
 def _data_items(raw: dict[str, Any]) -> list[dict[str, Any]]:
     return json.loads(raw["lovelace_dashboards"])["data"]["items"]
+
+
+def test_only_real_problems_are_problems() -> None:
+    """From a real run: hyphenated ids, older names nothing uses, a name prefix, area tiles, a failing REST sensor."""
+    ents = ENTITIES + [
+        _e("sensor.wa_bus_lotties_bus_journeys_chance", "mqtt", "wa_bus_lotties-bus-journeys_chance"),  # hyphens
+        _e("sensor.bus_tracker_213_last_bus_to_target", "mqtt", "wa_bus_213_last_bus"),  # an older name...
+        _e("sensor.fuel_prices_petrol_e10_tile_110_7", "mqtt", "wa_fuel_tile_e10_110_m7"),  # ...nothing uses
+        _e("sensor.wa_events_home_upcoming", "rest", "wa_events_home_upcoming"),
+        _e("sensor.wa_fuel_tile_e10_99_m11", "mqtt", "wa_fuel_tile_e10_99_m11"),
+    ]  # fmt: skip
+    raw = dict(RAW, **{"core.entity_registry": _store("core.entity_registry", {"entities": ents})})
+    installed = {"packages/wa_energy_plan.yaml": "sensor.wa_energy_charge_schedule sensor.wa_energy_rate",
+                 "dashboards/pollen.yaml": "states.sensor | selectattr('entity_id', 'search', 'sensor.wa_pollen_tile_')",
+                 "dashboards/trains-buses.yaml": "entity: sensor.wa_energy_rate"}  # fmt: skip
+    live = {"states": [{"entity_id": "sensor.wa_events_home_upcoming", "state": "unavailable"},
+                       {"entity_id": "sensor.wa_fuel_tile_e10_99_m11", "state": "unavailable"},
+                       {"entity_id": "sensor.wa_energy_rate", "state": "14.27", "last_updated": "2026-10-25T09:00:00"}]}  # fmt: skip
+    inv = inventory(raw, dict(N.DEFAULTS), installed, {}, {}, None, [], live)
+    by = {c["what"]: c for c in inv["checks"]}
+    assert by["Renamed sensors"]["detail"].endswith("sensor.wa_energy_charge_schedule_2 (expected sensor.wa_energy_charge_schedule)")
+    assert "lotties" not in by["Renamed sensors"]["detail"] and "bus_tracker" not in by["Renamed sensors"]["detail"]
+    assert by["Older sensor names"]["level"] == "info" and by["Older sensor names"]["detail"].startswith("2 World")
+    assert "Sensors the packages need" not in by or "wa_pollen_tile_" not in by["Sensors the packages need"]["detail"]
+    assert by["Package sensors failing"]["detail"].startswith("sensor.wa_events_home_upcoming: these ask World Assistant")
+    assert by["Area tiles"]["level"] == "info" and "World Assistant sensors unavailable" not in by
+
+
+def test_secrets_are_checked_without_keeping_them() -> None:
+    from app.ha_setup import SECRET_PATHS
+
+    pkg = {"packages/world_assistant_events.yaml": "resource: !secret wa_events_url\nauth: !secret wa_authorization"}
+    good = 'wa_events_url: "http://10.0.2.49:8010/v1/events/near"\nwa_authorization: "Bearer tok123"\nother: x\n'
+    inv = inventory(dict(RAW, **{"secrets.yaml": good}), dict(N.DEFAULTS), pkg, {}, {}, None, [], None, "tok123", SECRET_PATHS)
+    assert {c["what"]: c for c in inv["checks"]}["secrets.yaml"]["detail"] == "2 lines in place, pointing at 10.0.2.49:8010"
+    old = good.replace("tok123", "OLDTOKEN")
+    inv = inventory(dict(RAW, **{"secrets.yaml": old}), dict(N.DEFAULTS), pkg, {}, {}, None, [], None, "tok123", SECRET_PATHS)
+    details = [c["detail"] for c in inv["checks"] if c["what"] == "secrets.yaml"]
+    assert any("not World Assistant's current API token" in d for d in details)
+    assert "OLDTOKEN" not in json.dumps(inv) and "tok123" not in json.dumps(inv)
+    inv = inventory(dict(RAW, **{"secrets.yaml": "wa_events_url: http://x/v1/wrong\n"}), dict(N.DEFAULTS), pkg, {}, {}, None,
+                    [], None, "tok123", SECRET_PATHS)  # fmt: skip
+    details = " ".join(c["detail"] for c in inv["checks"] if c["what"] == "secrets.yaml")
+    assert "missing wa_authorization" in details and "wa_events_url do not end in World Assistant's path" in details
