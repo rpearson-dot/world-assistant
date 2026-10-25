@@ -25,7 +25,6 @@ TITLES: dict[str, tuple[str, ...]] = {
     "faults": ("National Energy Outage API", "Live Faults"),
     "works_open": ("Open Street and Roadworks associated with UK Power Networks' activities",),
     "works_proposed": ("Proposed Street and Roadworks associated with UK Power Networks' activities",),
-    "carbon": ("Carbon Intensity",),
     "boundary": ("UK Power Networks Boundary", "UK Power Networks Licence Boundaries"),
     "idno": ("Independent Distribution Network Operator areas",),
     "gsp": ("UK Power Networks Licence Area Grid Supply Points Areas",),

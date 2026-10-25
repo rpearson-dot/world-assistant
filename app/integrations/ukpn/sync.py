@@ -6,9 +6,8 @@
     proposed works      daily              all of them
     your places         daily              which licence area, independent operator, grid supply point, primary and
                                            secondary substation and rota block each saved place is in
-    carbon intensity    every 30 minutes   at the grid supply points your places are fed from
 
-    python -m app.integrations.ukpn.sync [faults|works|proposed|places|carbon|all]
+    python -m app.integrations.ukpn.sync [faults|works|proposed|places|all]
 
 Nothing is read unless a saved place is inside UK Power Networks' area (worked out by `places`), so the module
 costs nothing elsewhere. A list that comes back empty over a stored one is treated as a failed read.
@@ -207,36 +206,6 @@ async def sync_places(engine: AsyncEngine, c: UkpnClient, now: datetime | None =
     return out
 
 
-async def sync_carbon(engine: AsyncEngine, c: UkpnClient, now: datetime | None = None) -> dict[str, int]:
-    """Half-hourly carbon intensity at your places' grid supply points, yesterday onwards. A reading belongs to a
-    place's grid supply point when its functional location or its name matches ('BEDDINGTON' and 'BEDDINGTON (SPN)')."""
-    now = now or datetime.now(UTC)
-    async with engine.connect() as conn:
-        gsps = sorted({(r[0], r[1]) for r in await conn.execute(text(
-            "SELECT name, code FROM ukpn_place_area WHERE kind = 'gsp'")) if r[0]})  # fmt: skip
-    if not gsps:
-        return {"readings": 0, "grid_supply_points": 0}
-    ds = await c.dataset("carbon")
-    dates = ds.of_type("datetime", "date")
-    where = f"{dates[0]} >= date'{(now - timedelta(days=1)).date().isoformat()}'" if dates else None
-    rows: dict[tuple[str, datetime], float] = {}
-    for rec in await c.export(ds, where=where):
-        got = N.carbon(rec)
-        if not got:
-            continue
-        name, at, value, floc = got
-        mine = next((g for g, code in gsps if (floc and floc == code) or N.same_gsp(name, g)), None)
-        if mine:
-            rows[(mine, at)] = value
-    if rows:
-        async with engine.begin() as conn:
-            await conn.execute(text(
-                "INSERT INTO ukpn_carbon (gsp, at, intensity) VALUES (:g, :t, :v) ON CONFLICT (gsp, at) DO UPDATE SET "
-                "intensity = EXCLUDED.intensity"), [{"g": g, "t": t, "v": v} for (g, t), v in rows.items()])  # fmt: skip
-            await conn.execute(text("DELETE FROM ukpn_carbon WHERE at < :old"), {"old": now - timedelta(days=7)})
-    return {"readings": len(rows), "grid_supply_points": len(gsps)}
-
-
 def _client() -> UkpnClient:
     return UkpnClient(get_settings().ukpn_api_key)
 
@@ -269,13 +238,12 @@ ukpn_faults = _job("ukpn_faults", _faults_when_due)
 ukpn_works_open = _job("ukpn_works", lambda e, c: sync_works(e, c, "open"))
 ukpn_works_proposed = _job("ukpn_proposed", lambda e, c: sync_works(e, c, "proposed"))
 ukpn_places = _job("ukpn_places", sync_places, needs_cover=False)
-ukpn_carbon = _job("ukpn_carbon", sync_carbon)
 
 
 async def _cli(what: str) -> int:
     engine = create_async_engine(get_settings().database_url, pool_pre_ping=True)
     steps = {"places": sync_places, "faults": sync_faults, "works": lambda e, c: sync_works(e, c, "open"),
-             "proposed": lambda e, c: sync_works(e, c, "proposed"), "carbon": sync_carbon}  # fmt: skip
+             "proposed": lambda e, c: sync_works(e, c, "proposed")}  # fmt: skip
     try:
         async with _client() as c:
             for name, step in steps.items():

@@ -131,7 +131,7 @@ class Settings(BaseSettings):
     codepoint_url: str = "https://api.os.uk/downloads/v1/products/CodePointOpen/downloads?area=GB&format=CSV&redirect"
     tflroads_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
     tfl_stations_poll_enabled: bool = False  # TfL stations' layout, facilities and lift closures; compose turns it on
-    # UK Power Networks (London, South East, East): power cuts, street works, carbon intensity. Reads nothing unless
+    # UK Power Networks (London, South East, East): power cuts, street works. Reads nothing unless
     # a saved place is on their network. The compose file turns it on.
     ukpn_poll_enabled: bool = False
     ukpn_fault_interval_min: int = 60  # how often power cuts are read normally

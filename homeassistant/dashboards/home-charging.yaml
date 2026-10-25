@@ -55,13 +55,10 @@ views:
           - type: tile
             entity: sensor.wa_energy_next_rate
             name: Then
-          # these two appear once UK Power Networks is set up (ukpn_api_key)
+          # appears once UK Power Networks is set up (ukpn_api_key)
           - type: tile
             entity: sensor.wa_power_power_cut_home
             name: Power cut at home
-          - type: tile
-            entity: sensor.wa_power_carbon_intensity
-            name: Grid carbon now
 
       - type: grid
         cards:

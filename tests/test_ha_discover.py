@@ -147,13 +147,13 @@ def test_live_checks_with_a_token() -> None:
               {"entity_id": "sensor.charger_status_connector", "state": "unavailable"},
               {"entity_id": "sensor.energy_production_today", "state": "3.3"},
               {"entity_id": "sensor.wa_energy_rate", "state": "14.27", "last_updated": "2026-10-25T08:30:00+00:00"},
-              {"entity_id": "sensor.wa_power_carbon_intensity", "state": "unavailable"}]  # fmt: skip
+              {"entity_id": "sensor.wa_power_power_cut_home", "state": "unavailable"}]  # fmt: skip
     inv = inventory(RAW, dict(N.DEFAULTS), {}, {}, {}, None, [], {"states": states})
     by = {c["what"]: c for c in inv["checks"]}
     assert by["Home Assistant API"]["level"] == "ok" and inv["live"] is True
     assert by["Entities not reporting"]["detail"] == "sensor.charger_status_connector (unavailable)"
     assert "sensor.office_inverter_battery_soc (53)" in by["Entities reporting"]["detail"]
-    assert "sensor.wa_power_carbon_intensity" in by["World Assistant sensors unavailable"]["detail"]
+    assert "sensor.wa_power_power_cut_home" in by["World Assistant sensors unavailable"]["detail"]
     bad = inventory(RAW, dict(N.DEFAULTS), {}, {}, {}, None, [], {"error": "Home Assistant refused the token (401)"})
     assert {c["what"]: c["level"] for c in bad["checks"]}["Home Assistant API"] == "problem"
 

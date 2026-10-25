@@ -321,10 +321,13 @@ def roads_device(status: dict[str, Any], events: list[dict[str, Any]] | None = N
     return Device("roads", "Roads", sensors)
 
 
-def power_device(supply: dict[str, Any], cuts: dict[str, Any], works: dict[str, Any], carbon: dict[str, Any],
+# Power sensors no longer published (0.21.1: carbon intensity dropped; the rota block is not looked up since 0.19.1)
+POWER_RETIRED = ["carbon_intensity", "cleanest_start", "rota_block"]
+
+
+def power_device(supply: dict[str, Any], cuts: dict[str, Any], works: dict[str, Any],
                  history: dict[str, Any] | None = None) -> Device:
-    """Power at home (UK Power Networks): a cut there now, cuts nearby, street works nearby, and how clean the local
-    electricity is now and when it is cleanest."""
+    """Power at home (UK Power Networks): a cut there now, cuts nearby, street works nearby, and past cuts."""
     here = supply.get("cuts") or []
     first = here[0] if here else {}
     sensors = [
@@ -345,16 +348,6 @@ def power_device(supply: dict[str, Any], cuts: dict[str, Any], works: dict[str, 
                               attributes={"planned": history.get("planned", 0), "longest_hours": history.get("longest_hours"),
                                           "total_hours": history.get("total_hours_unplanned"), "late": history.get("late", 0),
                                           "recording_since": history.get("recording_since")}))  # fmt: skip
-    if supply.get("rota_block"):
-        sensors.append(Sensor("rota_block", "Rota load disconnection block", supply["rota_block"].get("code"),
-                              icon="mdi:calendar-clock"))  # fmt: skip
-    if carbon.get("available"):
-        sensors.append(Sensor("carbon_intensity", "Local carbon intensity", carbon.get("now"), unit="gCO2/kWh",
-                              icon="mdi:molecule-co2", state_class="measurement",
-                              attributes={"grid_supply_point": carbon.get("grid_supply_point")}))  # fmt: skip
-        sensors.append(Sensor("cleanest_start", f"Cleanest {carbon.get('hours', 3):g} hours start", carbon.get("best_start"),
-                              device_class="timestamp", icon="mdi:leaf",
-                              attributes={"average": carbon.get("best_average")}))  # fmt: skip
     return Device("power", "Power", sensors)
 
 
@@ -478,7 +471,7 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
         if not supply.get("on_network"):
             raise ValueError("home is not on UK Power Networks' network (or not looked up yet)")
         return power_device(supply, await _get(c, "/v1/power/cuts"), await _get(c, "/v1/power/works"),
-                            await _get(c, "/v1/power/carbon"), await _get(c, "/v1/power/history", days=365))  # fmt: skip
+                            await _get(c, "/v1/power/history", days=365))  # fmt: skip
 
     for name, build in (("trips", trips), ("energy", energy), ("power", power), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
         await attempt(name, build)
@@ -534,6 +527,8 @@ async def ha_sync(ctx: dict[str, Any]) -> int:
                 gone += ha.clear(s.mqtt_topic_prefix, s.mqtt_discovery_prefix, dev, [k for k in old if k not in keys[dev]])
     if first and "energy" in keys:
         gone += ha.clear(s.mqtt_topic_prefix, s.mqtt_discovery_prefix, "energy", ENERGY_RETIRED)
+    if first and "power" in keys:
+        gone += ha.clear(s.mqtt_topic_prefix, s.mqtt_discovery_prefix, "power", POWER_RETIRED)
     expire = max(1, s.ha_interval_min) * 60 * 3
     sent: dict[str, str] = ctx.setdefault("ha_images", {})
     before = dict(sent)

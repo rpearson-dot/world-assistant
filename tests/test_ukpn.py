@@ -70,7 +70,7 @@ def test_power_cuts_as_the_portal_sends_them() -> None:
     assert N.postcodes("KT3 3AA;KT3 3AB") == ["KT3 3AA", "KT3 3", "KT3 3AB"] and N.sector("kt3 4zz") == "KT3 4"
 
 
-def test_works_areas_and_carbon_as_the_portal_sends_them() -> None:
+def test_works_and_areas_as_the_portal_sends_them() -> None:
     w = N.works(WORK, "open", NOW)
     assert (w["id"], w["street"], w["town"], w["category"], w["description"]) == (
         "open:UK019-ABC-1", "Kingston Road", "New Malden", "Network Operations Faults", "Remedial works")
@@ -85,14 +85,6 @@ def test_works_areas_and_carbon_as_the_portal_sends_them() -> None:
     sec = N.area({"sitefunctionallocation": "SPN-S000000123458", "substationdesign": "GMT", "substationalias": "1123458",
                   "customer_count": 221}, "secondary")  # fmt: skip
     assert sec == {"kind": "secondary", "code": "SPN-S000000123458", "name": "substation 1123458"}
-    assert N.carbon({"half_hour_period": "2026-10-24T09:00:00+00:00", "gsp_name": "BEDDINGTON", "gsp_fl": "SPN-x",
-                     "blended_carbon_intensity": 182.5, "neso_intensity_forecast": 169}) == (
-        "BEDDINGTON", NOW, 182.5, "SPN-x")  # fmt: skip
-    assert N.same_gsp("BEDDINGTON (SPN)", "BEDDINGTON") and not N.same_gsp("Wimbledon", "Wimbledon Park North")
-    rows = [(NOW + timedelta(minutes=30 * i), v) for i, v in enumerate([200, 190, 120, 110, 100, 180, 210])]
-    best = N.cleanest(rows, NOW, hours=1.5)
-    assert best is not None and best["now"] == 200 and best["best_start"] == (NOW + timedelta(hours=1)).isoformat()
-    assert best["best_average"] == pytest.approx(110.0)
 
 
 def _ds(dataset_id: str, title: str, fields: list[tuple[str, str]]) -> dict[str, Any]:
@@ -106,7 +98,6 @@ CATALOG = [
         [("permit_ref", "text"), ("geo_point_2d", "geo_point_2d")]),
     _ds("ukpn-proposed-streetworks", "Proposed Street and Roadworks associated with UK Power Networks' activities",
         [("permit_ref", "text"), ("geo_point_2d", "geo_point_2d")]),
-    _ds("ukpn-carbon-intensity", "Carbon Intensity", [("half_hour_period", "datetime"), ("gsp_name", "text"), ("blended_carbon_intensity", "double")]),
     _ds("ukpn-boundary", "UK Power Networks Boundary", [("name", "text"), ("geo_shape", "geo_shape")]),
     _ds("ukpn-idno-areas", "Independent Distribution Network Operator areas", [("name", "text"), ("geo_shape", "geo_shape")]),
     _ds("ukpn-gsp-areas", "UK Power Networks Licence Area Grid Supply Points Areas",
@@ -120,10 +111,6 @@ EXPORTS: dict[str, list[dict[str, Any]]] = {
     "ukpn-national-energy-outage": [NEO, LIVE, DONE],
     "ukpn-open-streetworks": [WORK],
     "ukpn-proposed-streetworks": [PROPOSED],
-    "ukpn-carbon-intensity": [{"gsp_name": "BEDDINGTON", "gsp_fl": "SPN-carbon", "blended_carbon_intensity": v,
-                               "half_hour_period": (NOW + timedelta(minutes=30 * i)).isoformat()}
-                              for i, v in enumerate([200, 150, 90, 95, 180])]
-                             + [{"gsp_name": "ELSTREE", "half_hour_period": NOW.isoformat(), "blended_carbon_intensity": 50}],
     "ukpn-boundary": [{"name": "SPN", "geo_shape": {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": []}}}],
     "ukpn-idno-areas": [],
     "ukpn-gsp-areas": [{"dno": "SPN", "grid_supply_point": "BEDDINGTON (SPN)", "grid_supply_point_floc": "SPN-S000000009903"}],
@@ -217,11 +204,6 @@ async def test_synced_and_asked_everywhere(schema: None, monkeypatch: pytest.Mon
     get_settings.cache_clear()
     engine = create_async_engine(URL, poolclass=NullPool)  # type: ignore[arg-type]
     now = datetime.now(UTC)
-    for rows in EXPORTS.values():  # put the half-hours, starts and ends around the real clock
-        for r in rows:
-            if "blended_carbon_intensity" in r:
-                r["half_hour_period"] = (now.replace(minute=0 if now.minute < 30 else 30, second=0, microsecond=0)
-                                         + (datetime.fromisoformat(r["half_hour_period"]) - NOW)).isoformat()  # fmt: skip
     assert not await sync.covered(engine)  # nothing is read before the places are looked up
     async with uc.UkpnClient("k", transport=portal([])) as c:
         placed = await sync.sync_places(engine, c, now)
@@ -232,7 +214,6 @@ async def test_synced_and_asked_everywhere(schema: None, monkeypatch: pytest.Mon
         # (ended: the Complete one goes straight into the history as over)
         assert (await sync.sync_works(engine, c, "open", now))["open_works"] == 1
         assert (await sync.sync_works(engine, c, "proposed", now))["proposed_works"] == 1
-        assert await sync.sync_carbon(engine, c, now) == {"readings": 5, "grid_supply_points": 1}
         EXPORTS["ukpn-national-energy-outage"] = []
         assert (await sync.sync_faults(engine, c, now))["power_cuts"] == 0  # 2 stored: an empty list is fine
         EXPORTS["ukpn-national-energy-outage"] = [NEO, LIVE, DONE]
@@ -249,8 +230,7 @@ async def test_synced_and_asked_everywhere(schema: None, monkeypatch: pytest.Mon
     assert cuts["count"] == 1 and cuts["cuts"][0]["at_place"] and cuts["across_network"] == 2  # Bishop's Stortford is far
     works = c.get("/v1/power/works", headers=h).json()
     assert (works["open"], works["proposed"]) == (1, 1)
-    carbon = c.get("/v1/power/carbon?hours=1", headers=h).json()
-    assert carbon["available"] and carbon["now"] == 200 and carbon["best_average"] == pytest.approx(92.5)
+    assert c.get("/v1/power/carbon", headers=h).status_code == 404  # dropped in 0.21.1
 
     class Req:
         class app:
@@ -267,11 +247,10 @@ async def test_synced_and_asked_everywhere(schema: None, monkeypatch: pytest.Mon
     assert said.startswith("There is a power cut at this place.") and "143 homes" in said
     fed = (await assistant.run_tool(Req(), "power", {"about": "supply"}))["text"]  # type: ignore[arg-type]
     assert "grid supply point BEDDINGTON (SPN)" in fed and "local substation substation 1123458" in fed
-    assert "g CO2 per kWh" in (await assistant.run_tool(Req(), "power", {"about": "carbon"}))["text"]  # type: ignore[arg-type]
 
-    dev = power_device(supply, cuts, works, carbon)
+    dev = power_device(supply, cuts, works)
     states = {s.key: s.state for s in dev.sensors}
-    assert states["power_cut_home"] == "on" and states["power_cuts_near"] == 1 and states["carbon_intensity"] == 200
+    assert states["power_cut_home"] == "on" and states["power_cuts_near"] == 1 and "carbon_intensity" not in states
 
     async with engine.connect() as conn:
         rows = [dict(r._mapping) for r in await conn.execute(text("SELECT place_id, kind, code, name FROM ukpn_place_area "

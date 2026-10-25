@@ -1,4 +1,4 @@
-"""UK Power Networks records made into power cuts, works, areas and carbon readings. Pure.
+"""UK Power Networks records made into power cuts, works and areas. Pure.
 
 The portal's field names are not documented where this was written, and differ between datasets (`postcodesaffected`
 in one, `postcode_affected` in another), so fields are found by what their names contain, the first match wins, and
@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -213,44 +212,7 @@ def area(rec: dict[str, Any], kind: str) -> dict[str, Any]:
     return {"kind": kind, "code": str(code), "name": _s(name) or str(code)}
 
 
-def carbon(rec: dict[str, Any]) -> tuple[str, datetime, float, str | None] | None:
-    """(grid supply point, time, gCO2/kWh, its functional location) from one carbon intensity record (as read:
-    gsp_name, gsp_fl, half_hour_period, blended_carbon_intensity)."""
-    gsp = exact(rec, "gspname", "gsp", "gridsupplypoint") or pick(rec, ("gsp", "name"))
-    at = when(exact(rec, "halfhourperiod", "datetime", "timestamp", "period") or pick(rec, "datetime", ("time",)))
-    value = exact(rec, "blendedcarbonintensity", "carbonintensity", "intensity") or pick(rec, ("carbon", "intensity"))
-    try:
-        v = float(value)
-    except (TypeError, ValueError):
-        return None
-    floc = exact(rec, "gspfl", "gspfloc", "gridsupplypointfloc")
-    return (str(gsp), at, v, str(floc) if floc else None) if gsp and at else None
-
-
-def same_gsp(a: str, b: str) -> bool:
-    """Grid supply point names as two datasets write them ('Wimbledon 132kV' and 'WIMBLEDON GSP')."""
-    def core(x: str) -> str:
-        x = re.sub(r"\([^)]*\)", " ", x.lower())  # 'BEDDINGTON (SPN)'
-        x = re.sub(r"\b(gsp|grid supply point|\d+\s*kv|\d+/\d+\s*kv|substation|s/s)\b", " ", x)
-        return re.sub(r"[^a-z0-9]", "", x)
-
-    return bool(core(a)) and core(a) == core(b)
-
-
 def _s(v: Any) -> str | None:
     if v in (None, ""):
         return None
     return " ".join(str(x) for x in v) if isinstance(v, list) else str(v)
-
-
-def cleanest(readings: Iterable[tuple[datetime, float]], now: datetime, hours: float = 3.0) -> dict[str, Any] | None:
-    """The cleanest block of `hours` from now on, and the reading now (half-hourly values)."""
-    rows = sorted((t, v) for t, v in readings if t is not None)
-    future = [(t, v) for t, v in rows if t >= now.replace(minute=0 if now.minute < 30 else 30, second=0, microsecond=0)]
-    if not future:
-        return None
-    n = max(1, round(hours * 2))
-    best = min(range(max(1, len(future) - n + 1)), key=lambda i: sum(v for _, v in future[i:i + n]) / len(future[i:i + n]))
-    block = future[best:best + n]
-    return {"now": future[0][1], "now_at": future[0][0].isoformat(), "best_start": block[0][0].isoformat(),
-            "best_average": round(sum(v for _, v in block) / len(block), 1), "hours": hours}  # fmt: skip

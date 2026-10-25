@@ -9,7 +9,6 @@ Assistant reads their open data portal (licence CC BY 4.0) for:
 | Their street works, under way | every 2 hours | Trip conditions, assistant, graph |
 | Their proposed street works | daily | Trip conditions (planned), assistant |
 | What supplies each place: grid supply point, primary and local substation, independent operator | daily | `/v1/power/supply`, assistant, graph |
-| Carbon intensity at the grid supply point feeding home | every 30 minutes | Energy tab, Home Assistant |
 
 Nothing is read unless one of your saved places is on their network (the daily place check works that out).
 
@@ -29,7 +28,7 @@ published title and fields by their names, so a renamed field shows up there fir
 ## API
 
 `GET /v1/power/cuts?place=home&km=5`, `/v1/power/works?place=home&km=1&stage=open|proposed`,
-`/v1/power/supply?place=home`, `/v1/power/carbon?place=home&hours=3`.
+`/v1/power/supply?place=home`.
 
 Rota load disconnection blocks (used only in a national electricity supply emergency) are not looked up: UK Power
 Networks publishes the rota as a document, not as map areas. Your block is printed on your electricity bill.

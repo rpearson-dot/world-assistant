@@ -313,7 +313,7 @@ async def station_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]
     r = await _wrap(alerts(request, None, bool(args.get("lifts_only"))))
     return {"text": f"{r['count']} closures across TfL stations now.", "data": r}
 async def power_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.power import carbon, cuts, history, supply, works
+    from app.power import cuts, history, supply, works
 
     place = args.get("place")
     what = str(args.get("about") or "cuts")
@@ -337,13 +337,6 @@ async def power_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
         late = f" Power came back later than first promised {h['late']} time(s)." if h["late"] else ""
         return {"text": f"{h['unplanned']} unplanned and {h['planned']} planned power cut(s) recorded there in the last "
                         f"{h['days']} days.{longest}{late}", "data": h}  # fmt: skip
-    if what == "carbon":
-        c = await _wrap(carbon(request, place, float(args.get("hours") or 3)))
-        if not c["available"]:
-            return {"text": "No carbon intensity readings for this place yet.", "data": c}
-        best = datetime.fromisoformat(c["best_start"]).astimezone(ZoneInfo(get_settings().local_tz)).strftime("%H:%M")
-        return {"text": f"Local carbon intensity is {c['now']:.0f} g CO2 per kWh now. The cleanest {c['hours']:g} hours "
-                        f"start at {best}, averaging {c['best_average']:.0f}.", "data": c}  # fmt: skip
     if what == "works":
         w = await _wrap(works(request, place, float(args.get("km") or 1), None))
         if not w["count"]:
@@ -397,11 +390,10 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
              place=("string", "id of a saved place; default: home"), km=("number", "how far from the place, default 2"),
              lifts_only=("boolean", "only lift and step-free closures"))}, station_tool),
     Tool("power", "Electricity from UK Power Networks: power cuts near a saved place (default), their street works, what "
-         "supplies the place (substations, rota block), or local carbon intensity and the cleanest hours ahead.",
+         "supplies the place (substations), or past cuts there.",
          {"type": "object", "properties": _props(
-             about=("string", "cuts (default), history, works, supply or carbon"), days=("integer", "history: how far back, default 365"),
-             place=("string", "id of a saved place; default: home"), km=("number", "how far to look"),
-             hours=("number", "carbon: length of the cleanest block, default 3"))}, power_tool),
+             about=("string", "cuts (default), history, works or supply"), days=("integer", "history: how far back, default 365"),
+             place=("string", "id of a saved place; default: home"), km=("number", "how far to look"))}, power_tool),
     Tool("bus", "Bus tracker: has a bus made it to the target stop before the deadline, and next buses at your stops.",
          {"type": "object", "properties": _props(tracker=("string", "tracker id; optional if only one"),
                                                  stop=("string", "only this stop key; optional"))}, bus),
