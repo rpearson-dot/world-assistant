@@ -429,7 +429,7 @@ def test_manage_dashboard_lists_what_is_set_up() -> None:
 
 LEAF_OK = {
     "sensor.hv66bzd_instrument_soc_nissan_leaf": ("81.0757", {}),
-    "sensor.wa_car_range_mi": ("111.7", {}),
+    "sensor.wa_car_range_miles": ("111.7", {}),
     "sensor.nissan_leaf_hv66bzd_charge_substate": ("onrequest", {}),
     "binary_sensor.nissan_leaf_hv66bzd_charging_status": ("off", {}),
     "binary_sensor.nissan_leaf_hv66bzd_charge_port": ("off", {}),
@@ -469,7 +469,7 @@ def test_leaf_flags_what_needs_doing() -> None:
     out = _leaf(**{
         "binary_sensor.nissan_leaf_hv66bzd_charge_port": ("on", {}),  # plugged in, not charging
         "sensor.hv66bzd_instrument_soc_nissan_leaf": ("7", {}),
-        "sensor.wa_car_range_mi": ("7.7", {}),
+        "sensor.wa_car_range_miles": ("7.7", {}),
         "sensor.hv66bzd_12v_battery_voltage": ("11.6", {}),
         "lock.hv66bzd_vehicle_lock": ("unlocked", {}),
         "binary_sensor.hv66bzd_trunk": ("on", {}),
@@ -529,3 +529,30 @@ def test_home_charging_plan_table_renders() -> None:
     assert lines[7] == "| 6 | 22:00 | on | x-y | 50% | **50%** | 80% (starts 23:00) |"
     assert "Suggest raising the health max**: slot 4 (13:00) wants 95%" in plan and "**E-1R-COSY-22-12-08-C**" in plan
     assert "Charging from the grid at 4.8 kW (12% an hour)" in plan
+
+
+def test_files_name_package_sensors_by_the_id_home_assistant_gives_them() -> None:
+    """Home Assistant makes a template entity's id from its name, not its unique_id ("WA car charging plan" is
+    sensor.wa_car_charging_plan, whatever its unique_id). A file naming sensor.<unique_id> finds nothing."""
+    import re
+
+    class Loader(yaml.SafeLoader):
+        pass
+
+    Loader.add_multi_constructor("!", lambda loader, suffix, node: None)
+    wrong: dict[str, str] = {}
+    files = sorted((ROOT / "homeassistant").rglob("*.yaml"))
+    for f in files:
+        if "packages" not in f.parts:
+            continue
+        for block in (yaml.load(f.read_text(encoding="utf-8"), Loader=Loader) or {}).get("template") or []:
+            for domain, items in block.items():
+                for x in items if isinstance(items, list) else []:
+                    slug = re.sub(r"[^a-z0-9]+", "_", str(x.get("name", "")).lower()).strip("_")
+                    if x.get("unique_id") and slug != x["unique_id"]:
+                        wrong[f"{domain}.{x['unique_id']}"] = f"{domain}.{slug}"
+    assert "sensor.wa_ev_plan" in wrong  # the case that broke the car plan's triggers
+    for f in files:
+        text = f.read_text(encoding="utf-8")
+        for bad, good in wrong.items():
+            assert not re.search(re.escape(bad) + r"(?![a-z0-9_])", text), f"{f.name} names {bad}; Home Assistant calls it {good}"

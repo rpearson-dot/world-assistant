@@ -458,26 +458,26 @@ def test_the_charger_is_started_and_stopped_and_logged() -> None:
         return v
 
     base = CAR | {"switch.charger_charge_control": "off", "input_boolean.wa_ev_apply": "on",
-                  "sensor.wa_ev_plan#why": "the rate is cheap now (14.27 p/kWh)",
-                  "sensor.wa_ev_plan#next_start": "2026-10-25T13:00:00+00:00"}  # fmt: skip
-    v = go(base | {"sensor.wa_ev_plan": "charge"})
+                  "sensor.wa_car_charging_plan#why": "the rate is cheap now (14.27 p/kWh)",
+                  "sensor.wa_car_charging_plan#next_start": "2026-10-25T13:00:00+00:00"}  # fmt: skip
+    v = go(base | {"sensor.wa_car_charging_plan": "charge"})
     assert (v["start"], v["stop"], v["switch"]) == (True, False, "switch.charger_charge_control")
     assert words(a["actions"][1]["data"]["message"], base, **v) == (
         "Started charging the car: the rate is cheap now (14.27 p/kWh). Car 55.0%, charger SuspendedEVSE.")
-    waiting = base | {"sensor.wa_ev_plan": "wait", "sensor.wa_charger_status": "Charging", "switch.charger_charge_control": "on",
-                      "sensor.wa_ev_plan#why": "the rate is not cheap now"}  # fmt: skip
+    waiting = base | {"sensor.wa_car_charging_plan": "wait", "sensor.wa_charger_status": "Charging", "switch.charger_charge_control": "on",
+                      "sensor.wa_car_charging_plan#why": "the rate is not cheap now"}  # fmt: skip
     v = go(waiting)
     assert (v["start"], v["stop"]) == (False, True)
     assert words(a["actions"][1]["data"]["message"], waiting, **v).startswith(
         "Stopped charging the car: the rate is not cheap now; next cheap or free time Sun 13:00.")
-    v = go(base | {"sensor.wa_ev_plan": "full", "sensor.wa_charger_status": "Charging", "input_boolean.wa_ev_apply": "off"})
+    v = go(base | {"sensor.wa_car_charging_plan": "full", "sensor.wa_charger_status": "Charging", "input_boolean.wa_ev_apply": "off"})
     assert v["stop"] and not v["apply"]
     assert words(a["actions"][1]["data"]["message"], base, **v).startswith(
         "Stopped charging the car (dry run: nothing changed): it is at 55.0%, the target is 80%.")
-    mine = base | {"input_text.wa_ev_entity_switch": "switch.wallbox", "switch.wallbox": "on", "sensor.wa_ev_plan": "charge",
+    mine = base | {"input_text.wa_ev_entity_switch": "switch.wallbox", "switch.wallbox": "on", "sensor.wa_car_charging_plan": "charge",
                    "sensor.wa_charger_status": "Charging"}  # fmt: skip
     assert go(mine)["switch"] == "switch.wallbox" and not go(mine)["start"]
-    assert go(base | {"sensor.wa_ev_plan": "unplugged", "sensor.wa_charger_status": "Available"})["stop"] is False
+    assert go(base | {"sensor.wa_car_charging_plan": "unplugged", "sensor.wa_charger_status": "Available"})["stop"] is False
 
 
 def test_the_outcome_log_counts_the_car() -> None:

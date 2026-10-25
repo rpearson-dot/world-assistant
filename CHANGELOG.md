@@ -4,6 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-10-25
+
+### Fixed
+- **The car charging plan acts, and its tiles show.** Home Assistant names a template sensor's entity from its name, so "WA car charging plan" is `sensor.wa_car_charging_plan`, not `sensor.wa_ev_plan`, which the package's own automation, the Home charging dashboard's Plan tile and its plan text were watching. Nothing triggered on a change of plan, and the tile said "Entity not found". The same went for the Leaf dashboard's new range tiles (`sensor.wa_car_range_miles`, `sensor.wa_car_full_charge_range`). Everything now uses the ids Home Assistant gives, and a test checks every file for this.
+
 ## [0.22.0] - 2026-10-25
 
 ### Fixed
