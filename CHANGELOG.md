@@ -16,6 +16,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   - a package sensor that asks World Assistant directly (`sensor.wa_events_home_upcoming`, a REST sensor) is reported as failing, with where to look.
 
 ### Added
+- **Dashboards that update by themselves.** "Copy to Home Assistant" (Samba) can now put World Assistant's dashboards in Home Assistant's sidebar as YAML dashboards (ticked by default): it adds them to `configuration.yaml`, backed up first, under a marked block it rewrites on later copies. A `lovelace:` section of yours is never edited; the lines to add are shown instead. After one restart every copy updates the dashboards, with nothing to paste. Find my setup says whether this is set up, and which pasted dashboards can then be deleted.
 - **Find my setup checks secrets.yaml** for the installed packages: every `wa_*` line they use is there, each URL ends in World Assistant's path for it, and `wa_authorization` is World Assistant's current API token. Values are compared, never kept or shown.
 
 ## [0.21.0] - 2026-10-25

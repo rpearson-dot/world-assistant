@@ -358,6 +358,19 @@ def inventory(raw: dict[str, str | None], current: dict[str, str], installed: di
     if stale:
         check("change", "Files to copy again", ", ".join(stale))
     ui_dash = [d.get("title") or d.get("url_path") for d in dashboards if d.get("mode") != "yaml"]
+    conf_yaml = raw.get("configuration.yaml")
+    ours = [p.removeprefix("dashboards/").rsplit(".", 1)[0] for p in rendered if p.startswith("dashboards/")]
+    if conf_yaml is not None and ours:
+        yaml_mode = [k for k in ours if re.search(rf"^\s+wa-{re.escape(k)}:\s*$", conf_yaml, re.MULTILINE)]
+        if len(yaml_mode) == len(ours):
+            check("ok", "Dashboards", "set up from World Assistant's files: they update on every copy")
+            pasted = [f["path"] for f in files if f.get("pasted")]
+            if pasted:
+                check("info", "Pasted dashboards", "you can delete the ones you pasted by hand (Settings > Dashboards), "
+                      "the sidebar has World Assistant's own: " + ", ".join(pasted))  # fmt: skip
+        else:
+            check("info", "Dashboards", "not set up from World Assistant's files yet: copy with \"Put the dashboards in "
+                  "Home Assistant's sidebar\" ticked (below), then restart, and they update on every copy")  # fmt: skip
 
     zone_rows, places_only = match_zones(zones, places or [], home)
     if zone_rows and any(z["place"] is None for z in zone_rows):
@@ -484,7 +497,7 @@ async def discover(request: Request) -> dict[str, Any]:
     where = {p: (f"{PACKAGES_DIR}/{f['name']}" if f["kind"] == "package" else f"{DASHBOARDS_DIR}/{f['name']}")
              for p, f in ours.items()}  # fmt: skip
     try:
-        raw = await asyncio.to_thread(read_share, share, user, pw, [*where.values(), "secrets.yaml"])
+        raw = await asyncio.to_thread(read_share, share, user, pw, [*where.values(), "secrets.yaml", "configuration.yaml"])
     except SmbError as exc:
         raise HTTPException(502, str(exc)) from exc
     conf, _ = await load(engine)

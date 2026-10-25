@@ -293,6 +293,8 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
   <div class="checks" style="margin-top:10px">
     <label><input id="smbpk" type="checkbox" checked> The packages ticked below</label>
     <label><input id="smbdb" type="checkbox" checked> The dashboards</label>
+    <label><input id="smblove" type="checkbox" checked> Put the dashboards in Home Assistant's sidebar, updating on every
+      copy (adds them to configuration.yaml, backed up first; restart once)</label>
     <label><input id="smbsec" type="checkbox"> Add missing lines to secrets.yaml (includes the API token)</label></div>
   <div class="row"><button id="smbcopy" class="primary" type="button">Copy to Home Assistant</button><span id="smbcopymsg" class="dim"></span></div>
   <ul id="smbresult" class="dim"></ul>
@@ -605,11 +607,14 @@ $('smbcopy').onclick = async () => {
   const packages = $('smbpk').checked ? [...document.querySelectorAll('#pk input[type=checkbox]')].filter(b => b.checked).map(b => b.dataset.path) : [];
   try {
     const r = await smbCall('/copy', 'POST', { packages, dashboards: $('smbdb').checked, secrets: $('smbsec').checked,
+      lovelace: $('smblove').checked,
       base_url: $('base').value.trim().replace(/\\/+$/, '') });
     $('smbresult').replaceChildren(...r.files.map(f => { const li = document.createElement('li'); li.textContent = f.path + ': ' + f.result; return li; }));
     if (r.secrets_differ && r.secrets_differ.length) { const li = document.createElement('li'); li.className = 'err';
       li.textContent = 'Already in secrets.yaml with a different value (left alone, check them): ' + r.secrets_differ.join(', '); $('smbresult').append(li); }
     $('smbcopymsg').textContent = r.ok ? 'Done. Check the configuration and restart Home Assistant.' : 'Stopped: ' + r.error;
+    if (r.lovelace === 'added' || r.lovelace === 'updated') $('smbcopymsg').textContent += ' The dashboards then appear in the sidebar; delete any you pasted by hand (Settings > Dashboards).';
+    if (r.lovelace === 'manual') { $('smbcard').open = true; $('smbcopymsg').textContent += ' Add the lovelace lines below to your own lovelace: section.'; }
     if (r.ok) { $('since').value = data.version; try { localStorage.setItem('wa_ha_since', data.version); } catch (e) {} load(); }
   } catch (e) { $('smbcopymsg').textContent = e.message; }
 };

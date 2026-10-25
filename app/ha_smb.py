@@ -179,8 +179,35 @@ def check_share(share: Share, user: str, password: str) -> dict[str, Any]:
         _close(cache)
 
 
-def copy_files(share: Share, user: str, password: str, files: dict[str, str], secrets: dict[str, str] | None) -> dict[str, Any]:
-    """Write files ({path in the share: text}); add missing secrets lines. Returns what happened to each."""
+LOVELACE_MARK = "# World Assistant's dashboards"
+LOVELACE_TOP = re.compile(r"^lovelace:[ \t]*(#.*)?$", re.MULTILINE)
+
+
+def merge_lovelace(current: str, block: str, keys: list[str]) -> tuple[str | None, str]:
+    """configuration.yaml with World Assistant's YAML dashboards in it: (new text, or None to leave it; what happened).
+    Our own block (after LOVELACE_MARK) is replaced as a whole; a lovelace: section of yours is never edited."""
+    mark = f"{LOVELACE_MARK} (added by World Assistant; they update on every copy, and copying again rewrites this)"
+    if LOVELACE_MARK in current:
+        start = current.index(LOVELACE_MARK)
+        lines = current[start:].split("\n")
+        end = 1  # the mark, then our lovelace: and its indented lines
+        while end < len(lines) and (lines[end].startswith((" ", "\t", "lovelace:")) or not lines[end].strip()):
+            end += 1
+        rest = "\n".join(lines[end:])
+        new = current[:start] + mark + "\n" + block + ("\n" + rest if rest.strip() else "")
+        return (None, "already set up") if new == current else (new, "updated")
+    if all(re.search(rf"^\s+{re.escape(k)}:\s*$", current, re.MULTILINE) for k in keys):
+        return None, "already set up"
+    if LOVELACE_TOP.search(current):
+        return None, "manual"
+    sep = "" if not current or current.endswith("\n") else "\n"
+    return current + sep + "\n" + mark + "\n" + block, "added"
+
+
+def copy_files(share: Share, user: str, password: str, files: dict[str, str], secrets: dict[str, str] | None,
+               lovelace: tuple[str, list[str]] | None = None) -> dict[str, Any]:  # fmt: skip
+    """Write files ({path in the share: text}); add missing secrets lines; put World Assistant's YAML dashboards in
+    configuration.yaml (lovelace: (its block, the dashboard keys)). Returns what happened to each."""
     import smbclient
 
     cache: dict[str, Any] = {}
@@ -208,7 +235,21 @@ def copy_files(share: Share, user: str, password: str, files: dict[str, str], se
                     _write(share.unc("secrets.yaml.world-assistant.bak"), current, cache, share.port)
                 _write(path, new, cache, share.port)
             done.append({"path": "secrets.yaml", "result": f"added {', '.join(added)}" if added else "unchanged"})
-        return {"ok": True, "error": "", "files": done, "secrets_added": added, "secrets_differ": differ}
+        dash = ""
+        if lovelace:
+            path = share.unc("configuration.yaml")
+            current = _read(path, cache, share.port)
+            if current is None:
+                dash = "no configuration.yaml here"
+            else:
+                new, dash = merge_lovelace(current, *lovelace)
+                if new is not None:
+                    _write(share.unc("configuration.yaml.world-assistant.bak"), current, cache, share.port)
+                    _write(path, new, cache, share.port)
+            done.append({"path": "configuration.yaml", "result": {"added": "dashboards added (backed up first)",
+                         "updated": "dashboards updated (backed up first)", "already set up": "unchanged",
+                         "manual": "you have a lovelace: section: add the lines shown below to it"}.get(dash, dash)})  # fmt: skip
+        return {"ok": True, "error": "", "files": done, "secrets_added": added, "secrets_differ": differ, "lovelace": dash}
     except SmbError as exc:
         return {"ok": False, "error": str(exc), "files": done}
     except Exception as exc:  # noqa: BLE001 - a write refused half way: say what was done and what failed
@@ -259,6 +300,7 @@ class CopyIn(BaseModel):
     packages: list[str] = Field(default_factory=list, max_length=20)
     dashboards: bool = True
     secrets: bool = False
+    lovelace: bool = False  # put the dashboards in configuration.yaml (YAML mode: they update on every copy)
     base_url: str = Field("", max_length=200)
 
 
@@ -338,7 +380,13 @@ async def copy(body: CopyIn, request: Request) -> dict[str, Any]:
             raise HTTPException(422, "the address Home Assistant uses for this server must look like http://192.168.1.10:8010")
         names = {s for p in chosen for s in known[p]["secrets"]}
         secrets = secret_lines(names, base, get_settings().api_token, SECRET_PATHS)
-    result = await asyncio.to_thread(copy_files, share, user, pw, out, secrets)
+    love = None
+    if body.lovelace and body.dashboards:
+        from app.ha_setup import lovelace_yaml
+
+        dashes = [f for f in known.values() if f["kind"] == "dashboard"]
+        love = (lovelace_yaml(dashes), [f"wa-{f['name'].rsplit('.', 1)[0]}" for f in dashes])
+    result = await asyncio.to_thread(copy_files, share, user, pw, out, secrets, love)
     if result["ok"]:
         await _put(request.app.state.engine, LAST, {"version": VERSION, "at": datetime.now(UTC).isoformat(),
                                                     "files": [f["path"] for f in result["files"]]})  # fmt: skip

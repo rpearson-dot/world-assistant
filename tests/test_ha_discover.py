@@ -250,3 +250,13 @@ def test_pasted_dashboards_are_checked_for_missing_sensors() -> None:
     })  # fmt: skip
     inv = inventory(raw, dict(N.DEFAULTS), {}, {}, {}, None)
     assert {c["what"]: c["detail"] for c in inv["checks"]}["Sensors your files need"].endswith("sensor.wa_power_power_cut_home")
+
+
+def test_find_my_setup_says_whether_the_dashboards_update_by_themselves() -> None:
+    rendered = {"dashboards/home-charging.yaml": "title: Home charging\nviews: []\n"}
+    raw = dict(RAW, **{"configuration.yaml": "default_config:\n"})
+    by = {c["what"]: c for c in inventory(raw, dict(N.DEFAULTS), {}, rendered, {}, None)["checks"]}
+    assert by["Dashboards"]["level"] == "info" and "sidebar" in by["Dashboards"]["detail"]
+    raw["configuration.yaml"] += "lovelace:\n  dashboards:\n    wa-home-charging:\n      mode: yaml\n"
+    by = {c["what"]: c for c in inventory(raw, dict(N.DEFAULTS), {}, rendered, {}, None)["checks"]}
+    assert by["Dashboards"]["level"] == "ok"
