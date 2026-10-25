@@ -45,6 +45,10 @@ ABOUT: dict[str, tuple[str, str]] = {
         "Sets the battery's charge targets from expected use, Forecast.Solar and your battery health max, and charges "
         "from the grid in Free Electricity hours you joined. For a Deye/Sunsynk inverter with Cosy-shaped slots: set "
         "your inverter's entity name above first. Starts as a dry run.")),
+    "packages/wa_ev_plan.yaml": ("Car charging plan", (
+        "Charges the car only in cheap windows and Free Electricity hours you joined, and stops at your target, through "
+        "an OCPP charger and OVMS. Written for a charger named \"charger\" and an OVMS Nissan Leaf: change the entity "
+        "names to yours. Needs the energy plan package. Starts as a dry run.")),
     "dashboards/home-charging.yaml": ("Home charging", (
         "Battery, solar, prices, free hours and Saving Sessions, the charge plan and its tuning. "
         "Needs the energy plan package.")),

@@ -518,7 +518,8 @@ def test_home_charging_plan_table_renders() -> None:
     st |= {f"text.office_inverter_time_slot_{n}_start": t for n, t in enumerate(starts, 1)} | {"text.office_inverter_time_slot_6_start": "23:00"}
     funcs = {"states": lambda e: str(st.get(e, "unknown")), "is_state": lambda e, v: st.get(e) == v,
              "state_attr": lambda e, a: st.get(f"{e}#{a}"), "as_datetime": datetime.fromisoformat}  # fmt: skip
-    free, plan = (env.from_string(c["content"]).render(**funcs) for c in cards)
+    free = env.from_string(next(c for c in cards if "upcoming" in c["content"])["content"]).render(**funcs)
+    plan = env.from_string(next(c for c in cards if "wa_charge_targets" in c["content"])["content"]).render(**funcs)
     assert "- Sun 13:00-14:00: ✅ joined" in free and "- Sun 14:00-15:00: not joined" in free
     assert "Charging free now**: slot 4 until 14:00, then put back to 70%." in free
     lines = [x for x in plan.splitlines() if x.startswith("|")]

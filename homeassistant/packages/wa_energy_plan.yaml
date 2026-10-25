@@ -675,6 +675,8 @@ automation:
       imp: "{{ states('sensor.wa_grid_import_total') | float(0) }}"
       chg: "{{ states('sensor.wa_battery_charge_total') | float(0) }}"
       pv: "{{ states('sensor.wa_solar_total') | float(0) }}"
+      # the car charger's meter, if there is one (the car charging plan, wa_ev_plan.yaml)
+      ev: "{{ states('sensor.charger_energy_active_import_register') | float(-1) }}"
       mark: >-
         {% set r = states('input_text.wa_outcome_mark') %}{{ r | from_json if r.startswith('{') else {} }}
       floor: "{{ states('input_number.wa_floor_pct') | int(20) }}"
@@ -715,7 +717,8 @@ automation:
                     Charging {{ w.start }}-{{ w.end }}: {{ ('target ' ~ target ~ '%, ') if target > 0 else '' }}reached
                     {{ soc | int }}%{{ (' (' ~ (target - soc) | int ~ '% short' ~ ('; at ' ~ rate ~ ' kW the window adds at most about '
                     ~ could ~ '%' if rate > 0 else '') ~ ')') if short else '' }}. Started at {{ mark.soc | int }}%, added
-                    {{ added }} kWh to the battery, {{ bought }} kWh from the grid.
+                    {{ added }} kWh to the battery, {{ bought }} kWh from the grid.{{ (' The car took ' ~ (ev - mark.ev) | round(1)
+                    ~ ' kWh.') if ev >= 0 and mark.ev is defined and mark.ev >= 0 and ev - mark.ev >= 0.05 else '' }}
               # grid import inside cheap windows, for the day's summary
               - action: input_text.set_value
                 target:
@@ -729,7 +732,7 @@ automation:
               entity_id: input_text.wa_outcome_mark
             data:
               value: >-
-                {{ {'kind': 'cover', 'from': hm, 'soc': soc, 'imp': imp | round(2), 'chg': chg | round(2), 'pv': pv | round(2)} | to_json }}
+                {{ {'kind': 'cover', 'from': hm, 'soc': soc, 'imp': imp | round(2), 'chg': chg | round(2), 'pv': pv | round(2), 'ev': ev | round(2)} | to_json }}
           - action: input_number.set_value
             target:
               entity_id: input_number.wa_outcome_min_soc
@@ -755,13 +758,14 @@ automation:
                   message: >-
                     Between windows {{ mark2.from }}-{{ hm }}: lowest {{ low }}%{{ (' (below the ' ~ floor ~ '% floor)') if low < floor
                     else (' (floor ' ~ floor ~ '%)') }}, now {{ soc | int }}%. Bought {{ (imp - mark2.imp) | round(1) }} kWh at dearer
-                    rates; solar {{ (pv - mark2.pv) | round(1) }} kWh.
+                    rates; solar {{ (pv - mark2.pv) | round(1) }} kWh.{{ (' The car took ' ~ (ev - mark2.ev) | round(1)
+                    ~ ' kWh outside the windows.') if ev >= 0 and mark2.ev is defined and mark2.ev >= 0 and ev - mark2.ev >= 0.05 else '' }}
           - action: input_text.set_value
             target:
               entity_id: input_text.wa_outcome_mark
             data:
               value: >-
-                {{ {'kind': 'charge', 'from': hm, 'soc': soc, 'imp': imp | round(2), 'chg': chg | round(2), 'pv': pv | round(2)} | to_json }}
+                {{ {'kind': 'charge', 'from': hm, 'soc': soc, 'imp': imp | round(2), 'chg': chg | round(2), 'pv': pv | round(2), 'ev': ev | round(2)} | to_json }}
       # midnight: the day's summary
       - if:
           - condition: template
@@ -784,9 +788,10 @@ automation:
                   message: >-
                     Yesterday: bought {{ bought }} kWh from the grid, {{ cheap }} kWh in cheap windows and
                     {{ [bought - cheap, 0] | max | round(1) }} kWh outside them; the battery took {{ (chg - day.chg) | round(1) }} kWh;
-                    solar {{ (pv - day.pv) | round(1) }} kWh.
+                    solar {{ (pv - day.pv) | round(1) }} kWh.{{ (' The car took ' ~ (ev - day.ev) | round(1) ~ ' kWh.')
+                    if ev >= 0 and day.ev is defined and day.ev >= 0 else '' }}
           - action: input_text.set_value
             target:
               entity_id: input_text.wa_outcome_day
             data:
-              value: "{{ {'imp': imp | round(2), 'chg': chg | round(2), 'pv': pv | round(2), 'cheap': 0} | to_json }}"
+              value: "{{ {'imp': imp | round(2), 'chg': chg | round(2), 'pv': pv | round(2), 'ev': ev | round(2), 'cheap': 0} | to_json }}"

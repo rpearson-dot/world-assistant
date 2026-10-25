@@ -5,6 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [Unreleased]
 
 ### Added
+- **Car charging plan** for Home Assistant (`wa_ev_plan.yaml` on /ha), for an OCPP charger in Home Assistant's OCPP integration and, optionally, the car's charge level from OVMS: the car charges only in the tariff's cheap windows (when the house battery is charging from the grid too, so it is never drained by the car), in Free Electricity hours you joined, or below a minimum (20%), and stops at its target (80%). It starts and stops the charger every 5 minutes or as things change, asks the charger for meter readings while it charges, logs every start and stop, and starts as a dry run. The Home charging dashboard has a Car section, and the outcome log says how much went into the car in each window and each day.
 - **Energy plan outcomes** in Home Assistant: a logbook line at the end of each charging window (the target, what the battery reached, short by how much and what the window could add at the inverter's charge rate, where it started, kWh into the battery and from the grid), at the start of the next window (the lowest the battery went against the floor, kWh bought at dearer rates, solar), and at midnight (the day's grid import, how much was outside the cheap windows, battery charge and solar). It uses the inverter's own counters, kept as running totals across midnight, and logs whether or not the plan is applying. Shown as "Outcomes" on the Home charging dashboard.
 
 ## [0.20.0] - 2026-10-24

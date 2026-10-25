@@ -104,6 +104,75 @@ views:
       - type: grid
         cards:
           - type: heading
+            heading: Car
+          - type: gauge
+            entity: sensor.hv66bzd_instrument_soc_nissan_leaf
+            name: Leaf
+            min: 0
+            max: 100
+            needle: true
+            severity:
+              red: 0
+              yellow: 20
+              green: 40
+          - type: tile
+            entity: sensor.wa_ev_plan
+            name: Plan
+          - type: tile
+            entity: sensor.charger_status_connector
+            name: Charger
+          - type: tile
+            entity: sensor.charger_power_active_import
+            name: Charging power
+          - type: tile
+            entity: sensor.charger_energy_session
+            name: This session
+          - type: tile
+            entity: sensor.nissan_leaf_hv66bzd_estimated_range
+            name: Range
+          - type: tile
+            entity: input_boolean.wa_ev_apply
+            name: Control the charger (off = dry run)
+            features:
+              - type: toggle
+            grid_options:
+              columns: 12
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_number.wa_ev_target_soc
+                name: Charge to
+              - entity: input_number.wa_ev_min_soc
+                name: Always charge below
+              - entity: switch.charger_charge_control
+                name: Charging now (manual override)
+            grid_options:
+              columns: full
+          - type: markdown
+            content: |
+              {%- set plan = states('sensor.wa_ev_plan') %}
+              {%- set why = state_attr('sensor.wa_ev_plan', 'why') | trim %}
+              {%- if plan == 'charge' %}Charging: {{ why }}.
+              {%- elif plan == 'full' %}At its target of {{ states('input_number.wa_ev_target_soc') | int }}%: not charging.
+              {%- elif plan == 'wait' %}Waiting for the next cheap window at {{ state_attr('sensor.wa_ev_plan', 'next_window') }}.
+              {%- else %}Not plugged in.{% endif %}
+              {%- if states('sensor.hv66bzd_12v_battery_voltage') | float(13) < 12.0 %}
+
+              ⚠️ The car's 12 V battery is at {{ states('sensor.hv66bzd_12v_battery_voltage') }} V.
+              {%- endif %}
+            grid_options:
+              columns: full
+          - type: logbook
+            title: Car charging
+            hours_to_show: 72
+            target:
+              entity_id: input_boolean.wa_ev_apply
+            grid_options:
+              columns: full
+
+      - type: grid
+        cards:
+          - type: heading
             heading: Solar
           - type: tile
             entity: sensor.power_production_now

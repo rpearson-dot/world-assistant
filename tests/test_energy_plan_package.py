@@ -373,9 +373,78 @@ def test_midnight_sums_up_the_day() -> None:
     assert words(branch[1]["then"][1]["data"]["message"], st, **v) == (
         "Yesterday: bought 20.0 kWh from the grid, 18.2 kWh in cheap windows and 1.8 kWh outside them; the battery took "
         "18.0 kWh; solar 6.5 kWh.")
-    assert render(branch[2]["data"]["value"], st, at, **v) == {"imp": 120.0, "chg": 30.0, "pv": 9.0, "cheap": 0}
+    assert render(branch[2]["data"]["value"], st, at, **v) == {"imp": 120.0, "chg": 30.0, "pv": 9.0, "ev": -1, "cheap": 0}
 
 
 def test_nothing_is_logged_between_boundaries() -> None:
     v, _ = _outcome(_base(**{"sensor.office_inverter_battery_soc": "50"}), datetime(2026, 10, 24, 14, 30, 5, tzinfo=LONDON))
     assert render(auto("wa_energy_outcome")["conditions"][0]["value_template"], {}, **v) is False
+
+
+# --- the car charging plan -----------------------------------------------------------------------------------------
+
+EV = yaml.safe_load((Path(__file__).parent.parent / "homeassistant/packages/wa_ev_plan.yaml").read_text())
+
+
+def _ev(states: dict[str, Any], at: datetime) -> str:
+    plan = EV["template"][0]["sensor"][0]
+    return render(plan["state"], states, at)
+
+
+def test_the_car_charges_only_in_cheap_or_free_time_and_stops_at_its_target() -> None:
+    st = {"sensor.wa_energy_charge_schedule#windows": WINDOWS, "sensor.charger_status_connector": "SuspendedEVSE",
+          "sensor.hv66bzd_instrument_soc_nissan_leaf": "55", "input_number.wa_ev_target_soc": "80.0",
+          "input_number.wa_ev_min_soc": "20.0", "sensor.wa_energy_free_electricity_now": "off"}  # fmt: skip
+    day = lambda h, m=0: datetime(2026, 10, 25, h, m, tzinfo=LONDON)
+    assert _ev(st, day(22, 30)) == "charge" and _ev(st, day(23, 55)) == "charge"  # 22:00-00:00 crosses midnight
+    assert _ev(st, day(0, 5)) == "wait"  # never 00:00-04:00: the house battery would feed the car
+    assert _ev(st, day(4, 0)) == "charge" and _ev(st, day(13, 30)) == "charge" and _ev(st, day(16, 0)) == "wait"
+    assert _ev(st | {"sensor.wa_energy_free_electricity_now": "on"}, day(10)) == "charge"
+    assert _ev(st | {"sensor.hv66bzd_instrument_soc_nissan_leaf": "15"}, day(10)) == "charge"  # below the minimum
+    assert _ev(st | {"sensor.hv66bzd_instrument_soc_nissan_leaf": "80"}, day(22, 30)) == "full"
+    assert _ev(st | {"sensor.hv66bzd_instrument_soc_nissan_leaf": "unavailable"}, day(22, 30)) == "charge"  # no level
+    assert _ev(st | {"sensor.charger_status_connector": "Available"}, day(22, 30)) == "unplugged"
+    why = EV["template"][0]["sensor"][0]["attributes"]
+    assert " ".join(str(render(why["why"], st, day(13, 30))).split()) == "the cheap window 13:00-16:00"
+    assert render(why["next_window"], st, day(16, 0)) == "22:00" and render(why["next_window"], st, day(23, 0)) == "04:00"
+
+
+def test_the_charger_is_started_and_stopped_and_logged() -> None:
+    a = next(x for x in EV["automation"] if x["id"] == "wa_ev_plan")
+
+    def go(states: dict[str, Any]) -> dict[str, Any]:
+        v: dict[str, Any] = {}
+        for k, tpl in a["variables"].items():
+            v[k] = render(tpl, states, NOW, **v)
+        return v
+
+    base = {"switch.charger_charge_control": "off", "input_boolean.wa_ev_apply": "on",
+            "sensor.hv66bzd_instrument_soc_nissan_leaf": "55", "input_number.wa_ev_target_soc": "80.0",
+            "sensor.wa_ev_plan#why": "the cheap window 22:00-00:00", "sensor.wa_ev_plan#next_window": "04:00"}  # fmt: skip
+    v = go(base | {"sensor.wa_ev_plan": "charge", "sensor.charger_status_connector": "SuspendedEVSE"})
+    assert (v["start"], v["stop"]) == (True, False)
+    assert words(a["actions"][1]["data"]["message"], base | {"sensor.wa_ev_plan": "charge"}, **v) == (
+        "Started charging the car: the cheap window 22:00-00:00. Car 55%, charger SuspendedEVSE.")
+    v = go(base | {"sensor.wa_ev_plan": "wait", "sensor.charger_status_connector": "Charging",
+                   "switch.charger_charge_control": "on", "sensor.wa_ev_plan#why": "not a cheap window"})  # fmt: skip
+    assert (v["start"], v["stop"]) == (False, True)
+    v = go(base | {"sensor.wa_ev_plan": "full", "sensor.charger_status_connector": "Charging", "input_boolean.wa_ev_apply": "off"})
+    assert v["stop"] and not v["apply"]
+    msg = words(a["actions"][1]["data"]["message"], base, **v)
+    assert msg.startswith("Stopped charging the car (dry run: nothing changed): it is at 55%, the target is 80%.")
+    v = go(base | {"sensor.wa_ev_plan": "charge", "sensor.charger_status_connector": "Charging", "switch.charger_charge_control": "on"})
+    assert not v["start"] and not v["stop"]  # already charging: nothing to do
+    assert go(base | {"sensor.wa_ev_plan": "unplugged", "sensor.charger_status_connector": "Available"})["stop"] is False
+
+
+def test_the_outcome_log_counts_the_car() -> None:
+    mark = json.dumps({"kind": "charge", "from": "22:00", "soc": 30, "imp": 100.0, "chg": 10.0, "pv": 5.0, "ev": 12900.0})
+    st = _base(**{"input_text.wa_outcome_mark": mark, "sensor.office_inverter_battery_soc": "30",
+                  "sensor.wa_grid_import_total": "112.0", "sensor.wa_battery_charge_total": "14.8",
+                  "sensor.wa_solar_total": "5.0", "sensor.charger_energy_active_import_register": "12909.2"})  # fmt: skip
+    at = datetime(2026, 10, 25, 0, 0, 5, tzinfo=LONDON)
+    v, actions = _outcome(st, at)
+    branch = actions[0]["then"][0]["then"]
+    for k, tpl in branch[0]["variables"].items():
+        v[k] = render(tpl, st, at, **v)
+    assert words(branch[1]["data"]["message"], st, **v).endswith("12.0 kWh from the grid. The car took 9.2 kWh.")
