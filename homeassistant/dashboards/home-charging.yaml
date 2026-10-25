@@ -113,7 +113,7 @@ views:
               yellow: 20
               green: 40
           - type: tile
-            entity: sensor.wa_ev_plan
+            entity: sensor.wa_car_charging_plan
             name: Plan
           - type: tile
             entity: sensor.wa_charger_status
@@ -159,9 +159,9 @@ views:
               columns: full
           - type: markdown
             content: |
-              {%- set plan = states('sensor.wa_ev_plan') %}
-              {%- set why = state_attr('sensor.wa_ev_plan', 'why') | trim %}
-              {%- set t = as_datetime(state_attr('sensor.wa_ev_plan', 'next_start'), none) %}
+              {%- set plan = states('sensor.wa_car_charging_plan') %}
+              {%- set why = state_attr('sensor.wa_car_charging_plan', 'why') | trim %}
+              {%- set t = as_datetime(state_attr('sensor.wa_car_charging_plan', 'next_start'), none) %}
               {%- if plan == 'charge' %}Charging: {{ why }}.
               {%- elif plan == 'full' %}At its target of {{ states('input_number.wa_ev_target_soc') | int }}%: not charging.
               {%- elif plan == 'wait' %}Waiting: {{ why }}. Next cheap or free time {{ (t | as_local).strftime('%a %H:%M') if t is not none else 'not known yet' }}.

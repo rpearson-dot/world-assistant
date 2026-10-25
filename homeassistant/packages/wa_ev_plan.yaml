@@ -74,6 +74,8 @@ input_text:
     max: 255
 
 template:
+  # Home Assistant makes each entity id from the name, not the unique_id: sensor.wa_car_charging_plan,
+  # sensor.wa_car_range_miles and sensor.wa_car_full_charge_range are the ids to use.
   - sensor:
       # The configured entities, read through fixed names so triggers, the dashboard and the outcome log never change.
       - name: "WA charger status"
@@ -202,13 +204,13 @@ automation:
         minutes: "/5"
       - trigger: state
         entity_id:
-          - sensor.wa_ev_plan
+          - sensor.wa_car_charging_plan
           - sensor.wa_charger_status
           - input_boolean.wa_ev_apply
     variables:
       switch: >-
         {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else 'switch.charger_charge_control' }}
-      plan: "{{ states('sensor.wa_ev_plan') }}"
+      plan: "{{ states('sensor.wa_car_charging_plan') }}"
       status: "{{ states('sensor.wa_charger_status') }}"
       charging: "{{ status == 'Charging' }}"
       switch_on: "{{ is_state(switch, 'on') }}"
@@ -217,7 +219,7 @@ automation:
       stop: "{{ plan in ['wait', 'full'] and (charging or switch_on) }}"
       soc: "{{ states('sensor.wa_car_charge_level') }}"
       next: >-
-        {% set t = as_datetime(state_attr('sensor.wa_ev_plan', 'next_start'), none) %}
+        {% set t = as_datetime(state_attr('sensor.wa_car_charging_plan', 'next_start'), none) %}
         {{ (t | as_local).strftime('%a %H:%M') if t is not none else 'not known yet' }}
     conditions:
       - condition: template
@@ -236,8 +238,8 @@ automation:
           entity_id: input_boolean.wa_ev_apply
           message: >-
             {{ 'Started' if start else 'Stopped' }} charging the car{{ ' (dry run: nothing changed)' if not apply else '' }}:
-            {% if start %}{{ state_attr('sensor.wa_ev_plan', 'why') | trim }}{% elif plan == 'full' %}it is at {{ soc }}%, the
-            target is {{ states('input_number.wa_ev_target_soc') | int }}%{% else %}{{ state_attr('sensor.wa_ev_plan', 'why') | trim }};
+            {% if start %}{{ state_attr('sensor.wa_car_charging_plan', 'why') | trim }}{% elif plan == 'full' %}it is at {{ soc }}%, the
+            target is {{ states('input_number.wa_ev_target_soc') | int }}%{% else %}{{ state_attr('sensor.wa_car_charging_plan', 'why') | trim }};
             next cheap or free time {{ next }}{% endif %}. Car {{ soc }}%, charger {{ status }}.
 
   - id: wa_ev_meter_values
