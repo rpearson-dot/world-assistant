@@ -27,6 +27,7 @@ SESSIONS_QUERY = """query { savingSessions {
     joinedEvents { eventId startAt endAt rewardGivenInOctoPoints eventType } } } }"""
 
 SAVING_TYPES = {"TURN_DOWN"}
+SESSIONS_TIMEOUT = 90.0  # the account part of this query is slow at busy times; 30 s timed out (0.21.1)
 
 
 
@@ -125,8 +126,21 @@ async def fetch_saving(
     client: httpx.AsyncClient, api_key: str, account: str
 ) -> list[dict[str, Any]]:
     t = await token(client, api_key)
-    r = await client.post(f"{BACKEND_HOST}/v1/graphql/", json={"query": SESSIONS_QUERY % account.replace('"', "")},
-                          headers={"Authorization": t})  # fmt: skip
-    r.raise_for_status()
-    return parse_saving(_graphql(r.json()))
+    return parse_saving(_graphql((await post_sessions(client, t, account)).json()))
+
+
+async def post_sessions(client: httpx.AsyncClient, t: str, account: str) -> httpx.Response:
+    """The Saving Sessions query, with a long timeout and one retry when it times out."""
+    body = {"query": SESSIONS_QUERY % account.replace('"', "")}
+    for attempt in (1, 2):
+        try:
+            r = await client.post(f"{BACKEND_HOST}/v1/graphql/", json=body, headers={"Authorization": t},
+                                  timeout=SESSIONS_TIMEOUT)  # fmt: skip
+        except httpx.TimeoutException:
+            if attempt == 2:
+                raise
+            continue
+        r.raise_for_status()
+        return r
+    raise AssertionError("unreachable")
 

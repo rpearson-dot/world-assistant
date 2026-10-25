@@ -14,6 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   - map-area tiles with no current data (fuel, roads, pollen) are listed as normal, not as unavailable sensors;
   - dashboards pasted into the editor are checked for missing World Assistant sensors too ("Sensors your files need"), so a tile showing "Entity not found" is named;
   - a package sensor that asks World Assistant directly (`sensor.wa_events_home_upcoming`, a REST sensor) is reported as failing, with where to look.
+- **Free Electricity and Saving Sessions kept up to date when Octopus is slow**: the sessions query (the part that says which ones you joined) timed out after 30 seconds at busy times, leaving the stored list as it was. It now waits up to 90 seconds and tries once more.
 
 ### Added
 - **Dashboards that update by themselves.** "Copy to Home Assistant" (Samba) can now put World Assistant's dashboards in Home Assistant's sidebar as YAML dashboards (ticked by default): it adds them to `configuration.yaml`, backed up first, under a marked block it rewrites on later copies. A `lovelace:` section of yours is never edited; the lines to add are shown instead. After one restart every copy updates the dashboards, with nothing to paste. Find my setup says whether this is set up, and which pasted dashboards can then be deleted.
