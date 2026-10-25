@@ -518,11 +518,13 @@ def test_home_charging_plan_table_renders() -> None:
     st |= {f"text.office_inverter_time_slot_{n}_start": t for n, t in enumerate(starts, 1)} | {"text.office_inverter_time_slot_6_start": "23:00"}
     funcs = {"states": lambda e: str(st.get(e, "unknown")), "is_state": lambda e, v: st.get(e) == v,
              "state_attr": lambda e, a: st.get(f"{e}#{a}"), "as_datetime": datetime.fromisoformat}  # fmt: skip
-    free, plan = (env.from_string(c["content"]).render(**funcs) for c in cards)
+    free = env.from_string(next(c for c in cards if "upcoming" in c["content"])["content"]).render(**funcs)
+    plan = env.from_string(next(c for c in cards if "wa_charge_targets" in c["content"])["content"]).render(**funcs)
     assert "- Sun 13:00-14:00: ✅ joined" in free and "- Sun 14:00-15:00: not joined" in free
     assert "Charging free now**: slot 4 until 14:00, then put back to 70%." in free
     lines = [x for x in plan.splitlines() if x.startswith("|")]
     assert len(lines) == 8 and lines[5] == "| 4 | 13:00 | on | 16:00-22:00 | 95% | **80%** ⚠️ | 70% |"
+    assert lines[0].startswith("| Slot | From | Grid charge | Covers | Needed |")
     assert lines[2] == "| 1 | 00:00 | off | discharge to the floor | 20% | **20%** | 10% |"
     assert lines[7] == "| 6 | 22:00 | on | x-y | 50% | **50%** | 80% (starts 23:00) |"
     assert "Suggest raising the health max**: slot 4 (13:00) wants 95%" in plan and "**E-1R-COSY-22-12-08-C**" in plan

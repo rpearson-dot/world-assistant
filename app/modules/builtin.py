@@ -46,7 +46,8 @@ CORE = Module(
     category="service", core=True, listed=False,
     routers=(
         "app.status:router", "app.setup_checklist:router", "app.keys:router", "app.mqtt_config:router",
-        "app.ha_smb:router", "app.ha_setup:router", "app.ha_setup:page_router", "app.autodeploy:router",
+        "app.ha_smb:router", "app.ha_setup:router", "app.ha_setup:page_router", "app.ha_discover:router",
+        "app.autodeploy:router",
         "app.backups:router", "app.ha_locations:router", "app.ha_routes:router", "app.icons:router",
         "app.places:router", "app.map_layers:router", "app.map_page:page_router", "app.assistant:router",
         "app.places:page_router", "app.settings_page:page_router", "app.webapp:router",

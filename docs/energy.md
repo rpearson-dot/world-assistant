@@ -114,6 +114,9 @@ Deye/Sunsynk-style inverter with six daily time slots. It works with any Octopus
   00:00-07:00, day 07:00-16:00 and evening 16:00-24:00 loads, with a margin), less the solar Forecast.Solar expects in
   that time, never above the battery health max (80% by default; above it the plan stops and suggests raising it).
   The other slots are set to the floor (20% by default), which is how low the inverter lets the battery discharge.
+* Charge mode: "Fill (leave room for solar)", the default, charges each window as far as the health max less the
+  solar expected after it beyond the house's own use then; "Just enough" charges only what the house needs (the
+  previous bullet), which is also the minimum in fill mode.
 * A window can only add the inverter's grid charge rate times its hours (read from the inverter; a setting if it
   cannot be). When a window cannot put back what the next stretch needs, the window before it charges higher.
 * A joined Saving Session raises the target of the slot that covers it; one inside a charging window is warned
@@ -121,9 +124,22 @@ Deye/Sunsynk-style inverter with six daily time slots. It works with any Octopus
   back when the hour ends; a charging slot before a joined free hour only covers the time up to it.
 * With "WA energy plan: set slot times from the tariff" on, the plan also writes the slot start times and grid-charge
   switches; off, it only applies when they already match ("WA inverter slot check").
+* Outcomes go to the logbook too ("Outcomes" on the dashboard): at the end of each charging window, the target and
+  what the battery reached; at the start of the next, the lowest it went and what was bought at dearer rates; and a
+  daily summary at midnight. They show what happened, applied or not, so they are the record to tune against.
 * It starts as a dry run that only writes to the logbook; switch on "WA energy plan: apply to inverter" when the
   numbers look right. Nothing in the package switches the grid off: any shortfall is taken from the grid by the
   inverter itself, so the cost of a shortfall is money, never a loss of supply.
+
+### Car charging plan
+
+`wa_ev_plan.yaml` (on /ha) charges the car through an OCPP charger in Home Assistant's OCPP integration (tested on a
+Sync EV EVCP-7KW-S-1PH pointed at `ws://<Home Assistant>:9000/`), with the car's charge level from OVMS or any other
+integration. The car charges only while the rate is cheap (World Assistant's live rate band, which follows the tariff
+as it is, or one of the energy plan's charging windows), in a Free Electricity hour you joined, or, with "always charge
+when low" on, below the level you set; it stops at "WA car: charge to" (80%). Set your charger's and car's entities in
+"Car settings" on the Home charging dashboard (empty fields use the defaults named there). Turn the charger's own
+schedule off (in its app, before moving it to Home Assistant). It starts as a dry run ("WA car: control the charger").
 
 ### Home charging dashboard
 

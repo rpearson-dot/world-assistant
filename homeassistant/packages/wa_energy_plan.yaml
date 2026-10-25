@@ -15,8 +15,16 @@
 # from the grid" if those cannot be read) times the window's hours. When a window cannot put back all the next
 # stretch needs, the window before it charges higher to make up the difference ("WA battery charge rate").
 #
-# TARGETS: each charging slot is charged to the battery floor plus what the house uses from the end of its window to
-# the start of the next one (your night 00-07, day 07-16 and evening 16-24 loads, with a safety margin), less the
+# CHARGE MODE ("WA energy plan: charge mode"):
+#   Fill (leave room for solar), the default: each charging window fills the battery as far as the battery health
+#     max, less room for the solar expected after it beyond what the house uses then (so sunshine is stored, not
+#     exported). Cheap energy left over at the next window just means less to buy there.
+#   Just enough: each window buys only what the house needs until the next one (below).
+# Either way, a window never charges less than the house needs (below), which is also what triggers the
+# suggestion to raise the health max.
+#
+# TARGETS: what the house needs from each charging slot is the battery floor plus what it uses from the end of its
+# window to the start of the next one (your night 00-07, day 07-16 and evening 16-24 loads, with a safety margin), less the
 # Forecast.Solar production expected in that time, never above the battery health max. When more is wanted than the
 # health max, the plan stops there and suggests raising it. The other slots are set to the battery floor: their
 # target is how low the inverter lets the battery discharge. Checked every 15 minutes and whenever the schedule
@@ -31,6 +39,14 @@
 # grid to "WA target during free electricity" (never above the health max), so the house runs from the grid and the
 # battery fills for free; the slot is put back when the hour ends. A charging slot before a joined free hour only
 # covers the time up to it.
+#
+# OUTCOMES: whether the plan worked, written to the logbook under "WA energy plan: outcomes" (shown on the Home
+# charging dashboard), from the inverter's own battery level, grid import, battery charge and solar counters:
+#   at the end of each charging window: the target, what the battery reached, where it started and what was added;
+#   at the start of the next one: the lowest the battery went (against the floor), what was bought at dearer rates
+#   in between, and the solar;
+#   at midnight: the day's grid import, how much of it was outside the cheap windows, battery charge and solar.
+# It logs what happens whether or not the plan is applying, so a dry run shows what the inverter does by itself.
 #
 # DRY RUN FIRST: "WA energy plan: apply to inverter" starts OFF. While off, every change the plan would make is
 # written to the logbook instead. Compare it with what you would choose, then switch it on.
@@ -54,6 +70,14 @@ input_boolean:
     icon: mdi:timetable
 
 input_text:
+  wa_outcome_mark:
+    # where the current stretch began: {kind: charge|cover, from, soc, imp, chg, pv}
+    name: "WA energy plan: outcomes"
+    max: 255
+  wa_outcome_day:
+    # the day's counters at midnight, and grid import inside cheap windows so far
+    name: "WA energy plan: today's counters"
+    max: 255
   wa_free_restore:
     name: "WA free electricity: settings to put back"
     max: 255
@@ -61,7 +85,23 @@ input_text:
     name: "WA energy plan: last logged"
     max: 255
 
+input_select:
+  wa_charge_mode:
+    # no "initial": your choice is kept across restarts; the first option is the default
+    name: "WA energy plan: charge mode"
+    icon: mdi:battery-charging-high
+    options:
+      - "Fill (leave room for solar)"
+      - "Just enough"
+
 input_number:
+  wa_outcome_min_soc:
+    # the lowest the battery has been since the last window ended (no "initial": kept across restarts)
+    name: "WA lowest battery since the last window"
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
   wa_free_target_pct:
     # Free hours fill to this, but never above the battery health max (raise both to go higher)
     name: "WA target during free electricity"
@@ -165,6 +205,22 @@ input_number:
     unit_of_measurement: "%"
     initial: 20
 
+# Running totals from the inverter's daily counters, which reset at midnight: these never do, so a stretch that
+# crosses midnight still adds up.
+utility_meter:
+  wa_grid_import_total:
+    name: "WA grid import total"
+    source: sensor.office_inverter_grid_import_today
+    periodically_resetting: true
+  wa_battery_charge_total:
+    name: "WA battery charge total"
+    source: sensor.office_inverter_battery_charge_today
+    periodically_resetting: true
+  wa_solar_total:
+    name: "WA solar total"
+    source: sensor.office_inverter_pv_generation_today
+    periodically_resetting: true
+
 template:
   - sensor:
       # Do the inverter's slots match World Assistant's schedule? A slot borrowed by a Free Electricity hour is not
@@ -249,8 +305,10 @@ template:
                             + s.load_hours.evening * states('input_number.wa_evening_load_kw') | float(2)) * m %}
               {% set sun = trust * (s.solar_share.today * today + s.solar_share.tomorrow * tomorrow) %}
               {% set net = [use - sun, 0] | max / cap * 100 %}
+              {# room to leave for solar: what it brings beyond the house's own use in that stretch (no margin) #}
+              {% set room = [sun - use / m, 0] | max / cap * 100 %}
               {% set ns.win = ns.win + [{'w': s.window, 'net': net, 'extra': extra, 'add': rate * s.window_hours / cap * 100,
-                                         'use': use | round(1), 'sun': sun | round(1)}] %}
+                                         'use': use | round(1), 'sun': sun | round(1), 'room': room}] %}
               {% set ns.want = ns.want + [floor + extra + net] %}
             {% endfor %}
             {# walk back round the windows twice: each must start high enough for the next to reach its level #}
@@ -267,12 +325,16 @@ template:
                 {% for x in ns.win %}{% if x.w == s.window %}{% set ns.i = loop.index0 %}{% endif %}{% endfor %}
                 {% set i = ns.i %}
                 {% set w = ns.win[i] %}
-                {% set wanted = [[(ns.want[i] / 5) | round(0) * 5, lo] | max, 100] | min | int %}
+                {% set needed = [[(ns.want[i] / 5) | round(0) * 5, lo] | max, 100] | min | int %}
+                {% set fill = not is_state('input_select.wa_charge_mode', 'Just enough') %}
+                {% set full = [((hi - w.room) / 5) | round(0, 'floor') * 5, lo] | max | int %}
+                {% set wanted = [needed, full] | max if fill else needed %}
                 {% set ns.out = ns.out + [{'n': s.n, 'start': s.start, 'end': s.end, 'charge': true,
                                            'covers': s.cover_from ~ '-' ~ s.cover_to, 'use_kwh': w.use, 'solar_kwh': w.sun,
                                            'adds_up_to': w.add | round(0) | int, 'session': s.session,
                                            'carried': ns.want[i] > floor + w.extra + w.net + 0.5,
-                                           'wanted': wanted, 'target': [wanted, hi] | min, 'over': wanted > hi}] %}
+                                           'needed': needed, 'solar_room': (w.room | round(0) | int) if fill else 0,
+                                           'wanted': wanted, 'target': [wanted, hi] | min, 'over': needed > hi}] %}
               {% else %}
                 {% set ns.out = ns.out + [{'n': s.n, 'start': s.start, 'end': s.end, 'charge': false,
                                            'wanted': floor | int, 'target': floor | int, 'over': false}] %}
@@ -599,3 +661,160 @@ automation:
           entity_id: input_boolean.wa_energy_plan_apply
           message: >-
             Free Electricity over: slot {{ saved.slot }} put back to {{ saved.cap }}% with grid charge {{ saved.on }}.
+
+  - id: wa_energy_outcome_lowest
+    alias: "WA energy plan: keep the lowest battery level since the last window"
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: sensor.office_inverter_battery_soc
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ states('sensor.office_inverter_battery_soc') | float(-1) >= 0
+             and states('sensor.office_inverter_battery_soc') | float(0) < states('input_number.wa_outcome_min_soc') | float(101) }}
+    actions:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.wa_outcome_min_soc
+        data:
+          value: "{{ states('sensor.office_inverter_battery_soc') | float(0) | round(0) }}"
+
+  - id: wa_energy_outcome
+    alias: "WA energy plan: log what happened in each window"
+    mode: queued
+    triggers:
+      - trigger: time_pattern
+        minutes: "/30"
+        seconds: 5
+    variables:
+      hm: "{{ now().strftime('%H:%M') }}"
+      wins: "{{ state_attr('sensor.wa_energy_charge_schedule', 'windows') or [] }}"
+      ended: >-
+        {% set ns = namespace(i=0) %}{% for w in wins %}{% if w.end == hm %}{% set ns.i = loop.index %}{% endif %}{% endfor %}{{ ns.i }}
+      started: >-
+        {% set ns = namespace(i=0) %}{% for w in wins %}{% if w.start == hm %}{% set ns.i = loop.index %}{% endif %}{% endfor %}{{ ns.i }}
+      soc: "{{ states('sensor.office_inverter_battery_soc') | float(-1) | round(0) }}"
+      imp: "{{ states('sensor.wa_grid_import_total') | float(0) }}"
+      chg: "{{ states('sensor.wa_battery_charge_total') | float(0) }}"
+      pv: "{{ states('sensor.wa_solar_total') | float(0) }}"
+      # the car charger's meter, if there is one (the car charging plan, wa_ev_plan.yaml)
+      ev: "{{ states('sensor.wa_charger_energy_total') | float(-1) }}"
+      mark: >-
+        {% set r = states('input_text.wa_outcome_mark') %}{{ r | from_json if r.startswith('{') else {} }}
+      floor: "{{ states('input_number.wa_floor_pct') | int(20) }}"
+      rate: "{{ states('sensor.wa_battery_charge_rate') | float(0) }}"
+      cap: "{{ states('input_number.wa_battery_kwh') | float(40) }}"
+      # the window's target: the highest of its charging slots' targets
+      target: >-
+        {% set sched = state_attr('sensor.wa_energy_charge_schedule', 'slots') or [] %}
+        {% set tg = state_attr('sensor.wa_charge_targets', 'slots') or [] %}
+        {% set ns = namespace(t=0) %}
+        {% for s in sched %}{% if s.charge and s.window == ended | int %}
+          {% for t in tg %}{% if t.n == s.n %}{% set ns.t = [ns.t, t.target] | max %}{% endif %}{% endfor %}
+        {% endif %}{% endfor %}{{ ns.t }}
+    conditions:
+      - condition: template
+        value_template: "{{ soc >= 0 and (ended | int > 0 or started | int > 0 or hm == '00:00') }}"
+    actions:
+      # a charging window has ended: did it reach its target?
+      - if:
+          - condition: template
+            value_template: "{{ ended | int > 0 }}"
+        then:
+          - if:
+              - condition: template
+                value_template: "{{ mark.kind is defined and mark.kind == 'charge' }}"
+            then:
+              - variables:
+                  w: "{{ wins[ended | int - 1] }}"
+                  added: "{{ (chg - mark.chg) | round(1) }}"
+                  bought: "{{ (imp - mark.imp) | round(1) }}"
+                  short: "{{ target > 0 and soc < target - 2 }}"
+                  could: "{{ (rate * w.hours / cap * 100) | round(0) | int }}"
+              - action: logbook.log
+                data:
+                  name: WA energy plan
+                  entity_id: input_text.wa_outcome_mark
+                  message: >-
+                    Charging {{ w.start }}-{{ w.end }}: {{ ('target ' ~ target ~ '%, ') if target > 0 else '' }}reached
+                    {{ soc | int }}%{{ (' (' ~ (target - soc) | int ~ '% short' ~ ('; at ' ~ rate ~ ' kW the window adds at most about '
+                    ~ could ~ '%' if rate > 0 else '') ~ ')') if short else '' }}. Started at {{ mark.soc | int }}%, added
+                    {{ added }} kWh to the battery, {{ bought }} kWh from the grid.{{ (' The car took ' ~ (ev - mark.ev) | round(1)
+                    ~ ' kWh.') if ev >= 0 and mark.ev is defined and mark.ev >= 0 and ev - mark.ev >= 0.05 else '' }}
+              # grid import inside cheap windows, for the day's summary
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.wa_outcome_day
+                data:
+                  value: >-
+                    {% set r = states('input_text.wa_outcome_day') %}{% set d = r | from_json if r.startswith('{') else {} %}
+                    {{ dict(d, cheap=((d.cheap | default(0)) + imp - mark.imp) | round(2)) | to_json if d else '' }}
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.wa_outcome_mark
+            data:
+              value: >-
+                {{ {'kind': 'cover', 'from': hm, 'soc': soc, 'imp': imp | round(2), 'chg': chg | round(2), 'pv': pv | round(2), 'ev': ev | round(2)} | to_json }}
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.wa_outcome_min_soc
+            data:
+              value: "{{ soc }}"
+      # a charging window starts: how did the stretch since the last one go?
+      - if:
+          - condition: template
+            value_template: "{{ started | int > 0 }}"
+        then:
+          - variables:
+              mark2: >-
+                {% set r = states('input_text.wa_outcome_mark') %}{{ r | from_json if r.startswith('{') else {} }}
+              low: "{{ states('input_number.wa_outcome_min_soc') | float(soc) | int }}"
+          - if:
+              - condition: template
+                value_template: "{{ mark2.kind is defined and mark2.kind == 'cover' and mark2.from != hm }}"
+            then:
+              - action: logbook.log
+                data:
+                  name: WA energy plan
+                  entity_id: input_text.wa_outcome_mark
+                  message: >-
+                    Between windows {{ mark2.from }}-{{ hm }}: lowest {{ low }}%{{ (' (below the ' ~ floor ~ '% floor)') if low < floor
+                    else (' (floor ' ~ floor ~ '%)') }}, now {{ soc | int }}%. Bought {{ (imp - mark2.imp) | round(1) }} kWh at dearer
+                    rates; solar {{ (pv - mark2.pv) | round(1) }} kWh.{{ (' The car took ' ~ (ev - mark2.ev) | round(1)
+                    ~ ' kWh outside the windows.') if ev >= 0 and mark2.ev is defined and mark2.ev >= 0 and ev - mark2.ev >= 0.05 else '' }}
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.wa_outcome_mark
+            data:
+              value: >-
+                {{ {'kind': 'charge', 'from': hm, 'soc': soc, 'imp': imp | round(2), 'chg': chg | round(2), 'pv': pv | round(2), 'ev': ev | round(2)} | to_json }}
+      # midnight: the day's summary
+      - if:
+          - condition: template
+            value_template: "{{ hm == '00:00' }}"
+        then:
+          - variables:
+              day: >-
+                {% set r = states('input_text.wa_outcome_day') %}{{ r | from_json if r.startswith('{') else {} }}
+          - if:
+              - condition: template
+                value_template: "{{ day.imp is defined }}"
+            then:
+              - variables:
+                  bought: "{{ (imp - day.imp) | round(1) }}"
+                  cheap: "{{ (day.cheap | default(0)) | round(1) }}"
+              - action: logbook.log
+                data:
+                  name: WA energy plan
+                  entity_id: input_text.wa_outcome_mark
+                  message: >-
+                    Yesterday: bought {{ bought }} kWh from the grid, {{ cheap }} kWh in cheap windows and
+                    {{ [bought - cheap, 0] | max | round(1) }} kWh outside them; the battery took {{ (chg - day.chg) | round(1) }} kWh;
+                    solar {{ (pv - day.pv) | round(1) }} kWh.{{ (' The car took ' ~ (ev - day.ev) | round(1) ~ ' kWh.')
+                    if ev >= 0 and day.ev is defined and day.ev >= 0 else '' }}
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.wa_outcome_day
+            data:
+              value: "{{ {'imp': imp | round(2), 'chg': chg | round(2), 'pv': pv | round(2), 'ev': ev | round(2), 'cheap': 0} | to_json }}"

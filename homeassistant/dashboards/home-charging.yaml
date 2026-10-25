@@ -104,6 +104,109 @@ views:
       - type: grid
         cards:
           - type: heading
+            heading: Car
+          - type: gauge
+            entity: sensor.wa_car_charge_level
+            name: Car
+            min: 0
+            max: 100
+            needle: true
+            severity:
+              red: 0
+              yellow: 20
+              green: 40
+          - type: tile
+            entity: sensor.wa_ev_plan
+            name: Plan
+          - type: tile
+            entity: sensor.wa_charger_status
+            name: Charger
+          - type: tile
+            entity: sensor.wa_charger_power
+            name: Charging power
+          - type: tile
+            entity: sensor.wa_charger_session_energy
+            name: This session
+          - type: tile
+            entity: sensor.wa_car_range
+            name: Range
+          - type: tile
+            entity: input_boolean.wa_ev_apply
+            name: Control the charger (off = dry run)
+            features:
+              - type: toggle
+            grid_options:
+              columns: 12
+          - type: tile
+            entity: script.wa_car_charge_start
+            name: Start now
+            tap_action:
+              action: perform-action
+              perform_action: script.wa_car_charge_start
+          - type: tile
+            entity: script.wa_car_charge_stop
+            name: Stop now
+            tap_action:
+              action: perform-action
+              perform_action: script.wa_car_charge_stop
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_number.wa_ev_target_soc
+                name: Charge to
+              - entity: input_boolean.wa_ev_low_enabled
+                name: Always charge when low
+              - entity: input_number.wa_ev_min_soc
+                name: Low means below
+            grid_options:
+              columns: full
+          - type: markdown
+            content: |
+              {%- set plan = states('sensor.wa_ev_plan') %}
+              {%- set why = state_attr('sensor.wa_ev_plan', 'why') | trim %}
+              {%- set t = as_datetime(state_attr('sensor.wa_ev_plan', 'next_start'), none) %}
+              {%- if plan == 'charge' %}Charging: {{ why }}.
+              {%- elif plan == 'full' %}At its target of {{ states('input_number.wa_ev_target_soc') | int }}%: not charging.
+              {%- elif plan == 'wait' %}Waiting: {{ why }}. Next cheap or free time {{ (t | as_local).strftime('%a %H:%M') if t is not none else 'not known yet' }}.
+              {%- else %}Not plugged in.{% endif %}
+              {%- if not is_number(states('sensor.wa_car_charge_level')) %}
+
+              No charge level from the car: it charges whenever it is cheap or free, until it stops by itself.
+              {%- endif %}
+            grid_options:
+              columns: full
+          - type: logbook
+            title: Car charging
+            hours_to_show: 72
+            target:
+              entity_id: input_boolean.wa_ev_apply
+            grid_options:
+              columns: full
+          - type: entities
+            title: Car settings (your entities; empty = the default shown)
+            show_header_toggle: false
+            state_color: false
+            entities:
+              - entity: input_text.wa_ev_entity_status
+                name: Charger status
+              - entity: input_text.wa_ev_entity_switch
+                name: Charger start/stop switch
+              - entity: input_text.wa_ev_entity_power
+                name: Charger power
+              - entity: input_text.wa_ev_entity_session
+                name: Charger session energy
+              - entity: input_text.wa_ev_entity_meter
+                name: Charger energy meter
+              - entity: input_text.wa_ev_entity_soc
+                name: Car charge level
+              - entity: input_text.wa_ev_entity_range
+                name: Car range
+            grid_options:
+              columns: full
+
+      - type: grid
+        cards:
+          - type: heading
             heading: Solar
           - type: tile
             entity: sensor.power_production_now
@@ -151,6 +254,13 @@ views:
             grid_options:
               columns: 12
           - type: tile
+            entity: input_select.wa_charge_mode
+            name: Charge mode
+            features:
+              - type: select-options
+            grid_options:
+              columns: 12
+          - type: tile
             entity: switch.office_inverter_allow_remote_control
             name: Inverter remote control
           - type: tile
@@ -164,11 +274,11 @@ views:
               {%- set over = namespace(list=[]) %}
               **{{ state_attr('sensor.wa_energy_charge_schedule', 'tariff') or 'Tariff' }}**: cheap {{ states('sensor.wa_energy_charge_schedule') }}
 
-              | Slot | From | Grid charge | Covers | Wanted | Plan | Inverter |
+              | Slot | From | Grid charge | Covers | Needed | Plan | Inverter |
               |---|---|---|---|---|---|---|
               {%- for s in t %}
               {%- if s.over %}{% set over.list = over.list + ['slot ' ~ s.n ~ ' (' ~ s.start ~ ') wants ' ~ s.wanted ~ '%'] %}{% endif %}
-              | {{ s.n }} | {{ s.start }} | {{ 'on' if s.charge else 'off' }} | {{ (s.covers ~ (', and for the next window' if s.carried else '')) if s.charge else 'discharge to the floor' }} | {{ s.wanted }}% | **{{ s.target }}%**{{ ' ⚠️' if s.over }} | {{ states('number.office_inverter_time_slot_' ~ s.n ~ '_capacity') | int(0) }}%{{ '' if states('text.office_inverter_time_slot_' ~ s.n ~ '_start')[:5] == s.start else ' (starts ' ~ states('text.office_inverter_time_slot_' ~ s.n ~ '_start')[:5] ~ ')' }} |
+              | {{ s.n }} | {{ s.start }} | {{ 'on' if s.charge else 'off' }} | {{ (s.covers ~ (', and for the next window' if s.carried else '') ~ ((', room for ' ~ s.solar_room ~ '% of solar') if s.solar_room | default(0) > 0 else '')) if s.charge else 'discharge to the floor' }} | {{ s.needed | default(s.wanted) }}% | **{{ s.target }}%**{{ ' ⚠️' if s.over }} | {{ states('number.office_inverter_time_slot_' ~ s.n ~ '_capacity') | int(0) }}%{{ '' if states('text.office_inverter_time_slot_' ~ s.n ~ '_start')[:5] == s.start else ' (starts ' ~ states('text.office_inverter_time_slot_' ~ s.n ~ '_start')[:5] ~ ')' }} |
               {%- endfor %}
 
               Battery floor **{{ floor }}%**, health max **{{ cap }}%**. Charging from the grid at {{ states('sensor.wa_battery_charge_rate') }} kW ({{ (states('sensor.wa_battery_charge_rate') | float(0) / (states('input_number.wa_battery_kwh') | float(40)) * 100) | round(0) | int }}% an hour). Solar today {{ states('sensor.energy_production_today') }} kWh, tomorrow {{ states('sensor.energy_production_tomorrow') }} kWh.
@@ -195,6 +305,13 @@ views:
             hours_to_show: 72
             target:
               entity_id: input_boolean.wa_energy_plan_apply
+            grid_options:
+              columns: full
+          - type: logbook
+            title: Outcomes
+            hours_to_show: 168
+            target:
+              entity_id: input_text.wa_outcome_mark
             grid_options:
               columns: full
 

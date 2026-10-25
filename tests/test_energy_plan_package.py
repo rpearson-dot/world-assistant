@@ -39,7 +39,8 @@ SETTINGS = {"input_number.wa_battery_kwh": "40.0", "input_number.wa_floor_pct": 
             "input_number.wa_max_target_pct": "80.0", "input_number.wa_margin": "1.25", "input_number.wa_night_load_kw": "0.6",
             "input_number.wa_morning_load_kw": "1.2", "input_number.wa_evening_load_kw": "2.0", "input_number.wa_solar_trust": "0.8",
             "input_number.wa_session_margin": "1.5", "input_number.wa_session_extra_floor_pct": "10",
-            "sensor.energy_production_today": "3.3", "sensor.energy_production_tomorrow": "7.7"}  # fmt: skip
+            "sensor.energy_production_today": "3.3", "sensor.energy_production_tomorrow": "7.7",
+            "input_select.wa_charge_mode": "Just enough"}  # fmt: skip
 CAPS = ["10.0", "80.0", "10.0", "70.0", "10.0", "80.0"]
 INVERTER = ({f"text.office_inverter_time_slot_{s['n']}_start": s["start"] for s in SCHED}
             | {f"switch.office_inverter_time_slot_{s['n']}_on": "on" if s["charge"] else "off" for s in SCHED}
@@ -58,7 +59,8 @@ def _env(states: dict[str, Any], now: datetime = NOW) -> tuple[Any, dict[str, An
                     "int": lambda v, d=0: int(num(v, d)), "float": num, "as_datetime": as_dt}  # fmt: skip
     funcs = {"states": lambda e: str(states.get(e, "unknown")), "is_state": lambda e, v: states.get(e) == v,
              "state_attr": lambda e, a: states.get(f"{e}#{a}"), "as_datetime": as_dt, "now": lambda: now,
-             "timedelta": timedelta, "none": None, "range": range}  # fmt: skip
+             "timedelta": timedelta, "none": None, "range": range,
+             "is_number": lambda v: str(v).lstrip("-").replace(".", "", 1).isdigit()}  # fmt: skip
     return env, funcs
 
 
@@ -165,6 +167,20 @@ def test_targets_from_the_schedule_and_the_house() -> None:
     four = {x["n"]: x for x in targets(SETTINGS | INVERTER | {"sensor.wa_energy_charge_schedule#slots": joined})}[4]
     assert (four["wanted"], four["target"], four["session"]) == (75, 75, True)  # 20 + 10 extra + 17.7 kWh of 40 = 74
     assert targets(SETTINGS) == []  # no schedule yet
+
+
+def test_fill_mode_fills_to_the_health_max_but_leaves_room_for_solar() -> None:
+    fill = SETTINGS | INVERTER | {"input_select.wa_charge_mode": "Fill (leave room for solar)"}
+    t = {x["n"]: x for x in targets(fill)}
+    assert (t[2]["target"], t[4]["target"], t[6]["target"]) == (80, 80, 80)  # October: no solar to spare
+    assert (t[2]["needed"], t[4]["needed"], t[6]["needed"]) == (35, 55, 30) and not t[4]["over"]
+    # a bright day: 30 kWh tomorrow, half of it 07:00-13:00 (x 0.8 trust = 12 kWh) against 7.2 kWh used then
+    sunny = {x["n"]: x for x in targets(fill | {"sensor.energy_production_tomorrow": "30.0"})}
+    assert (sunny[2]["solar_room"], sunny[2]["target"]) == (12, 65)  # 4.8 kWh of 40 left free for the sun
+    assert {x["n"]: x for x in targets(fill | {"input_select.wa_charge_mode": "unknown"})}[2]["target"] == 80  # the default
+    # what the house needs still wins, and still asks for a higher health max
+    big = {x["n"]: x for x in targets(fill | {"input_number.wa_evening_load_kw": "4.5"})}
+    assert (big[4]["needed"], big[4]["target"], big[4]["over"]) == (100, 80, True)
 
 
 def test_slot_check_against_the_schedule() -> None:
@@ -300,3 +316,178 @@ def test_the_schedule_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     assert d["available"] and d["tariff"] == "E-1R-COSY" and len(d["slots"]) == 6
     assert [s["start"] for s in d["slots"] if s["charge"]] == ["04:00", "13:00", "22:00"]
     get_settings.cache_clear()
+
+
+# --- the outcome log -------------------------------------------------------------------------------------------------
+
+WINDOWS = build(rates(COSY), NOW, LONDON)["windows"]
+
+
+def _outcome(states: dict[str, Any], at: datetime) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    a = auto("wa_energy_outcome")
+    v: dict[str, Any] = {}
+    for k, tpl in a["variables"].items():
+        v[k] = render(tpl, states, at, **v)
+    return v, a["actions"]
+
+
+def _base(**extra: Any) -> dict[str, Any]:
+    st = SETTINGS | INVERTER | {"sensor.wa_energy_charge_schedule#windows": WINDOWS, "sensor.wa_battery_charge_rate": "4.8"}
+    st |= {"sensor.wa_charge_targets#slots": targets(st)}
+    return st | extra
+
+
+def test_a_charging_window_says_whether_it_reached_its_target() -> None:
+    mark = json.dumps({"kind": "charge", "from": "13:00", "soc": 31, "imp": 100.0, "chg": 10.0, "pv": 5.0})
+    st = _base(**{"input_text.wa_outcome_mark": mark, "sensor.office_inverter_battery_soc": "54",
+                  "sensor.wa_grid_import_total": "110.5", "sensor.wa_battery_charge_total": "19.4",
+                  "sensor.wa_solar_total": "6.0"})  # fmt: skip
+    at = datetime(2026, 10, 24, 16, 0, 5, tzinfo=LONDON)
+    v, actions = _outcome(st, at)
+    assert (v["ended"], v["started"], v["target"]) == (2, 0, 55)
+    branch = actions[0]["then"][0]["then"]
+    for k, tpl in branch[0]["variables"].items():
+        v[k] = render(tpl, st, at, **v)
+    msg = words(branch[1]["data"]["message"], st, **v)
+    assert msg == ("Charging 13:00-16:00: target 55%, reached 54%. Started at 31%, added 9.4 kWh to the battery, "
+                   "10.5 kWh from the grid.")  # fmt: skip
+    st["sensor.office_inverter_battery_soc"] = "45"
+    v, _ = _outcome(st, at)
+    for k, tpl in branch[0]["variables"].items():
+        v[k] = render(tpl, st, at, **v)
+    assert "reached 45% (10% short; at 4.8 kW the window adds at most about 36%)." in words(branch[1]["data"]["message"], st, **v)
+    day = render(branch[2]["data"]["value"], st | {"input_text.wa_outcome_day": json.dumps({"imp": 95.0, "chg": 8, "pv": 1, "cheap": 2.0})}, at, **v)
+    assert day["cheap"] == 12.5  # 2 earlier + 10.5 in this window
+
+
+def test_the_next_window_reports_the_stretch_before_it() -> None:
+    mark = json.dumps({"kind": "cover", "from": "16:00", "soc": 54, "imp": 110.5, "chg": 19.4, "pv": 6.0})
+    st = _base(**{"input_text.wa_outcome_mark": mark, "sensor.office_inverter_battery_soc": "23", "input_number.wa_outcome_min_soc": "22.0",
+                  "sensor.wa_grid_import_total": "110.8", "sensor.wa_battery_charge_total": "19.4", "sensor.wa_solar_total": "6.4"})  # fmt: skip
+    at = datetime(2026, 10, 24, 22, 0, 5, tzinfo=LONDON)
+    v, actions = _outcome(st, at)
+    assert (v["ended"], v["started"]) == (0, 3)
+    branch = actions[1]["then"]
+    for k, tpl in branch[0]["variables"].items():
+        v[k] = render(tpl, st, at, **v)
+    assert words(branch[1]["then"][0]["data"]["message"], st, **v) == (
+        "Between windows 16:00-22:00: lowest 22% (floor 20%), now 23%. Bought 0.3 kWh at dearer rates; solar 0.4 kWh.")
+    v["low"] = 18
+    assert "lowest 18% (below the 20% floor)" in words(branch[1]["then"][0]["data"]["message"], st, **v)
+
+
+def test_midnight_sums_up_the_day() -> None:
+    st = _base(**{"input_text.wa_outcome_mark": "", "sensor.office_inverter_battery_soc": "40", "sensor.wa_grid_import_total": "120.0",
+                  "sensor.wa_battery_charge_total": "30.0", "sensor.wa_solar_total": "9.0",
+                  "input_text.wa_outcome_day": json.dumps({"imp": 100.0, "chg": 12.0, "pv": 2.5, "cheap": 18.2})})  # fmt: skip
+    at = datetime(2026, 10, 25, 0, 0, 5, tzinfo=LONDON)
+    v, actions = _outcome(st, at)
+    assert v["ended"] == 3 and render(auto("wa_energy_outcome")["conditions"][0]["value_template"], st, at, **v) is True
+    branch = actions[2]["then"]
+    day = render(branch[0]["variables"]["day"], st, at)
+    v |= {"day": day, **{k: render(t, st, at, **v, day=day) for k, t in branch[1]["then"][0]["variables"].items()}}
+    assert words(branch[1]["then"][1]["data"]["message"], st, **v) == (
+        "Yesterday: bought 20.0 kWh from the grid, 18.2 kWh in cheap windows and 1.8 kWh outside them; the battery took "
+        "18.0 kWh; solar 6.5 kWh.")
+    assert render(branch[2]["data"]["value"], st, at, **v) == {"imp": 120.0, "chg": 30.0, "pv": 9.0, "ev": -1, "cheap": 0}
+
+
+def test_nothing_is_logged_between_boundaries() -> None:
+    v, _ = _outcome(_base(**{"sensor.office_inverter_battery_soc": "50"}), datetime(2026, 10, 24, 14, 30, 5, tzinfo=LONDON))
+    assert render(auto("wa_energy_outcome")["conditions"][0]["value_template"], {}, **v) is False
+
+
+# --- the car charging plan -----------------------------------------------------------------------------------------
+
+EV = yaml.safe_load((Path(__file__).parent.parent / "homeassistant/packages/wa_ev_plan.yaml").read_text())
+EV_SENSORS = {x["unique_id"]: x for x in EV["template"][0]["sensor"]}
+CAR = {"sensor.wa_charger_status": "SuspendedEVSE", "sensor.wa_car_charge_level": "55.0", "input_number.wa_ev_target_soc": "80.0",
+       "input_number.wa_ev_min_soc": "20.0", "input_boolean.wa_ev_low_enabled": "on", "sensor.wa_energy_cheap_now": "off",
+       "sensor.wa_energy_free_electricity_now": "off", "sensor.wa_energy_rate": "14.27",
+       "sensor.wa_energy_charge_schedule#windows": WINDOWS}  # fmt: skip
+
+
+def _plan(states: dict[str, Any], at: datetime) -> str:
+    return render(EV_SENSORS["wa_ev_plan"]["state"], states, at)
+
+
+def test_the_entities_are_settings_with_defaults() -> None:
+    soc = EV_SENSORS["wa_car_charge_level"]["state"]
+    assert render(soc, {"sensor.hv66bzd_instrument_soc_nissan_leaf": "85"}) == 85.0  # empty setting: the default
+    mine = {"input_text.wa_ev_entity_soc": "sensor.my_car_battery", "sensor.my_car_battery": "42"}
+    assert render(soc, mine | {"sensor.hv66bzd_instrument_soc_nissan_leaf": "85"}) == 42.0
+    assert render(soc, {"input_text.wa_ev_entity_soc": "sensor.my_car_battery", "sensor.my_car_battery": "unavailable"}) in (None, "None")
+    status = EV_SENSORS["wa_charger_status"]["state"]
+    assert render(status, {"input_text.wa_ev_entity_status": "sensor.wallbox_status", "sensor.wallbox_status": "Charging"}) == "Charging"
+    assert all(k.startswith("wa_ev_entity_") for k in EV["input_text"])
+    switch = EV["script"]["wa_car_charge_start"]["sequence"][0]["target"]["entity_id"]
+    assert render(switch, {}) == "switch.charger_charge_control"
+    assert render(switch, {"input_text.wa_ev_entity_switch": "switch.wallbox_charging"}) == "switch.wallbox_charging"
+
+
+def test_the_car_charges_when_the_rate_is_cheap_or_free_and_stops_at_its_target() -> None:
+    at = datetime(2026, 10, 25, 10, 0, tzinfo=LONDON)  # not one of Cosy's windows
+    assert _plan(CAR, at) == "wait"
+    assert _plan(CAR | {"sensor.wa_energy_cheap_now": "on"}, at) == "charge"  # follows the live rate (Agile too)
+    assert _plan(CAR, datetime(2026, 10, 25, 22, 30, tzinfo=LONDON)) == "charge"  # an energy plan charging window
+    assert _plan(CAR, datetime(2026, 10, 25, 0, 30, tzinfo=LONDON)) == "wait"  # Cosy 00:00-04:00 is not cheap
+    assert _plan(CAR | {"sensor.wa_energy_free_electricity_now": "on"}, at) == "charge"
+    low = CAR | {"sensor.wa_car_charge_level": "15.0"}
+    assert _plan(low, at) == "charge" and _plan(low | {"input_boolean.wa_ev_low_enabled": "off"}, at) == "wait"
+    assert _plan(low | {"input_number.wa_ev_min_soc": "10.0"}, at) == "wait"
+    assert _plan(CAR | {"sensor.wa_car_charge_level": "80.0", "sensor.wa_energy_cheap_now": "on"}, at) == "full"
+    assert _plan(CAR | {"sensor.wa_car_charge_level": "unknown", "sensor.wa_energy_cheap_now": "on"}, at) == "charge"
+    assert _plan(CAR | {"sensor.wa_charger_status": "Available", "sensor.wa_energy_cheap_now": "on"}, at) == "unplugged"
+    why = EV_SENSORS["wa_ev_plan"]["attributes"]
+    assert words(why["why"], CAR | {"sensor.wa_energy_cheap_now": "on"}) == "the rate is cheap now (14.27 p/kWh)"
+    nxt = CAR | {"sensor.wa_energy_next_cheap_start": "2026-10-25T13:00:00+00:00",
+                 "sensor.wa_energy_free_electricity_next_start": "2026-10-25T12:00:00+00:00",
+                 "sensor.wa_energy_free_electricity_next_start#joined": True}  # fmt: skip
+    assert render(why["next_start"], nxt) == "2026-10-25T12:00:00+00:00"  # the joined free hour comes first
+    nxt["sensor.wa_energy_free_electricity_next_start#joined"] = False
+    assert render(why["next_start"], nxt) == "2026-10-25T13:00:00+00:00"
+
+
+def test_the_charger_is_started_and_stopped_and_logged() -> None:
+    a = next(x for x in EV["automation"] if x["id"] == "wa_ev_plan")
+
+    def go(states: dict[str, Any]) -> dict[str, Any]:
+        v: dict[str, Any] = {}
+        for k, tpl in a["variables"].items():
+            v[k] = render(tpl, states, NOW, **v)
+        return v
+
+    base = CAR | {"switch.charger_charge_control": "off", "input_boolean.wa_ev_apply": "on",
+                  "sensor.wa_ev_plan#why": "the rate is cheap now (14.27 p/kWh)",
+                  "sensor.wa_ev_plan#next_start": "2026-10-25T13:00:00+00:00"}  # fmt: skip
+    v = go(base | {"sensor.wa_ev_plan": "charge"})
+    assert (v["start"], v["stop"], v["switch"]) == (True, False, "switch.charger_charge_control")
+    assert words(a["actions"][1]["data"]["message"], base, **v) == (
+        "Started charging the car: the rate is cheap now (14.27 p/kWh). Car 55.0%, charger SuspendedEVSE.")
+    waiting = base | {"sensor.wa_ev_plan": "wait", "sensor.wa_charger_status": "Charging", "switch.charger_charge_control": "on",
+                      "sensor.wa_ev_plan#why": "the rate is not cheap now"}  # fmt: skip
+    v = go(waiting)
+    assert (v["start"], v["stop"]) == (False, True)
+    assert words(a["actions"][1]["data"]["message"], waiting, **v).startswith(
+        "Stopped charging the car: the rate is not cheap now; next cheap or free time Sun 13:00.")
+    v = go(base | {"sensor.wa_ev_plan": "full", "sensor.wa_charger_status": "Charging", "input_boolean.wa_ev_apply": "off"})
+    assert v["stop"] and not v["apply"]
+    assert words(a["actions"][1]["data"]["message"], base, **v).startswith(
+        "Stopped charging the car (dry run: nothing changed): it is at 55.0%, the target is 80%.")
+    mine = base | {"input_text.wa_ev_entity_switch": "switch.wallbox", "switch.wallbox": "on", "sensor.wa_ev_plan": "charge",
+                   "sensor.wa_charger_status": "Charging"}  # fmt: skip
+    assert go(mine)["switch"] == "switch.wallbox" and not go(mine)["start"]
+    assert go(base | {"sensor.wa_ev_plan": "unplugged", "sensor.wa_charger_status": "Available"})["stop"] is False
+
+
+def test_the_outcome_log_counts_the_car() -> None:
+    mark = json.dumps({"kind": "charge", "from": "22:00", "soc": 30, "imp": 100.0, "chg": 10.0, "pv": 5.0, "ev": 12900.0})
+    st = _base(**{"input_text.wa_outcome_mark": mark, "sensor.office_inverter_battery_soc": "30",
+                  "sensor.wa_grid_import_total": "112.0", "sensor.wa_battery_charge_total": "14.8",
+                  "sensor.wa_solar_total": "5.0", "sensor.wa_charger_energy_total": "12909.2"})  # fmt: skip
+    at = datetime(2026, 10, 25, 0, 0, 5, tzinfo=LONDON)
+    v, actions = _outcome(st, at)
+    branch = actions[0]["then"][0]["then"]
+    for k, tpl in branch[0]["variables"].items():
+        v[k] = render(tpl, st, at, **v)
+    assert words(branch[1]["data"]["message"], st, **v).endswith("12.0 kWh from the grid. The car took 9.2 kWh.")

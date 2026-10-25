@@ -233,15 +233,20 @@ async def _put(engine: Any, key: str, value: dict[str, Any]) -> None:
             "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()"), {"k": key, "v": json.dumps(value)})  # fmt: skip
 
 
-def _save_password(value: str) -> None:
+def _save_secret(name: str, value: str) -> None:
     d = secretstore.keys_dir()
     if not d.is_dir() or not os.access(d, os.W_OK):
-        raise HTTPException(409, "the password cannot be saved: the keys folder is missing or not writable (run scripts/deploy.sh once)")
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=f".{SECRET}.")
+        raise HTTPException(409, "it cannot be saved: the keys folder is missing or not writable (run scripts/deploy.sh once)")
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=f".{name}.")
     with os.fdopen(fd, "w") as f:
         f.write(value)
     os.chmod(tmp, 0o600)
-    os.replace(tmp, d / f"{SECRET}.txt")
+    os.replace(tmp, d / f"{name}.txt")
+    secretstore.clear_cache()
+
+
+def _save_password(value: str) -> None:
+    _save_secret(SECRET, value)
 
 
 class SmbIn(BaseModel):
@@ -311,7 +316,7 @@ async def test_smb(body: SmbIn) -> dict[str, Any]:
 @router.post("/copy")
 async def copy(body: CopyIn, request: Request) -> dict[str, Any]:
     """Copy this version's files into Home Assistant's config folder."""
-    from app.ha_setup import HA_DIR, SECRET_PATHS, files, render, saved_inverter
+    from app.ha_setup import HA_DIR, SECRET_PATHS, files, render, saved_names
 
     share, user, pw = await _conf(request)
     known = {f["path"]: f for f in files()}
@@ -319,13 +324,13 @@ async def copy(body: CopyIn, request: Request) -> dict[str, Any]:
     if len(chosen) != len(body.packages):
         raise HTTPException(422, "only this version's packages can be copied")
     out: dict[str, str] = {}
-    inverter = await saved_inverter(request.app.state.engine)
+    names = await saved_names(request.app.state.engine)
     for p in chosen:
-        out[f"{PACKAGES_DIR}/{known[p]['name']}"] = render((HA_DIR / p).read_text(), inverter)
+        out[f"{PACKAGES_DIR}/{known[p]['name']}"] = render((HA_DIR / p).read_text(), names)
     if body.dashboards:
         for p, f in known.items():
             if f["kind"] == "dashboard":
-                out[f"{DASHBOARDS_DIR}/{f['name']}"] = render((HA_DIR / p).read_text(), inverter)
+                out[f"{DASHBOARDS_DIR}/{f['name']}"] = render((HA_DIR / p).read_text(), names)
     secrets = None
     if body.secrets:
         base = body.base_url.rstrip("/")
