@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 
+from app import ha_names as N
 from app.auth import require_token
 from app.config import get_settings
 from app.localnet import is_local
@@ -43,8 +44,8 @@ ABOUT: dict[str, tuple[str, str]] = {
     "packages/world_assistant_bus.yaml": ("Bus tracker times", "Change the bus tracker's times from the dashboard."),
     "packages/wa_energy_plan.yaml": ("Energy plan (battery charging)", (
         "Sets the battery's charge targets from expected use, Forecast.Solar and your battery health max, and charges "
-        "from the grid in Free Electricity hours you joined. For a Deye/Sunsynk inverter with Cosy-shaped slots: set "
-        "your inverter's entity name above first. Starts as a dry run.")),
+        "from the grid in Free Electricity hours you joined, for any tariff, on a Deye/Sunsynk-style inverter: check "
+        "the inverter and Forecast.Solar names above first. Starts as a dry run.")),
     "packages/wa_ev_plan.yaml": ("Car charging plan", (
         "Charges the car only while the rate is cheap or in Free Electricity hours you joined, and stops at your "
         "target, through an OCPP charger and the car's charge level (OVMS or any integration). Set your charger and car "
@@ -77,45 +78,70 @@ def lovelace_yaml(dashboards: list[dict[str, Any]], folder: str = "world_assista
     return "\n".join(lines) + "\n"
 
 
-# The inverter's entity name: the shipped files say office_inverter (sensor.office_inverter_battery_soc and so on);
-# each copy and download says the name saved on the /ha page instead.
-INVERTER_KEY = "ha_inverter"
-DEFAULT_INVERTER = "office_inverter"
-INVERTER_NAME = re.compile(r"^[a-z][a-z0-9_]{0,60}$")
+# The names the files are written with (app.ha_names): saved on the /ha page or found by "Find my setup".
+NAMES_KEY = "ha_names"
+LEGACY_INVERTER_KEY = "ha_inverter"  # 0.19.1-0.20: the inverter's name alone
+DEFAULT_INVERTER = N.DEFAULTS["inverter"]
 
 
 def inverter_name(raw: str) -> str:
     """'office_inverter', or pasted as an entity id ('sensor.office_inverter_battery_soc'): the name, or ValueError."""
-    name = raw.strip().lower()
-    if "." in name:
-        name = name.split(".", 1)[1]
-        for tail in ("_battery_soc", "_battery_state_of_charge"):
-            name = name.removesuffix(tail)
-    if not INVERTER_NAME.match(name):
-        raise ValueError("an entity name is lower case letters, digits and _, like office_inverter")
-    return name
+    return N.clean("inverter", raw)
 
 
-def render(body: str, inverter: str) -> str:
-    return body if inverter == DEFAULT_INVERTER else body.replace(DEFAULT_INVERTER, inverter)
+def render(body: str, names: dict[str, str] | str) -> str:
+    """A shipped file written with these names (a plain string: the inverter's name alone, as before 0.20.1)."""
+    return N.render(body, {"inverter": names} if isinstance(names, str) else names)
 
 
-async def saved_inverter(engine: Any) -> str:
+async def _setting(engine: Any, key: str) -> Any:
+    async with engine.connect() as conn:
+        return (await conn.execute(text("SELECT value FROM app_setting WHERE key = :k"), {"k": key})).scalar()
+
+
+async def saved_names(engine: Any) -> dict[str, str]:
+    """Every name, saved or default. The inverter's name saved by an earlier version still counts."""
     try:
-        async with engine.connect() as conn:
-            v = (await conn.execute(text("SELECT value FROM app_setting WHERE key = :k"), {"k": INVERTER_KEY})).scalar()
+        saved = await _setting(engine, NAMES_KEY)
+        legacy = await _setting(engine, LEGACY_INVERTER_KEY)
     except Exception:  # noqa: BLE001 - no database (or no table yet): the files as shipped
-        return DEFAULT_INVERTER
-    return v["name"] if isinstance(v, dict) and isinstance(v.get("name"), str) else DEFAULT_INVERTER
+        return dict(N.DEFAULTS)
+    names = dict(saved) if isinstance(saved, dict) else {}
+    if "inverter" not in names and isinstance(legacy, dict) and isinstance(legacy.get("name"), str):
+        names["inverter"] = legacy["name"]
+    return N.merged(names)
+
+
+async def save_names(engine: Any, names: dict[str, str]) -> dict[str, str]:
+    current = await saved_names(engine)
+    current.update(names)
+    async with engine.begin() as conn:
+        await conn.execute(text(
+            "INSERT INTO app_setting (key, value, updated_at) VALUES (:k, CAST(:v AS jsonb), now()) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()"),
+            {"k": NAMES_KEY, "v": json.dumps(current)})  # fmt: skip
+    return current
+
+
+async def request_names(request: Request) -> dict[str, str]:
+    engine = getattr(request.app.state, "engine", None)
+    return await saved_names(engine) if engine is not None else dict(N.DEFAULTS)
+
+
+async def saved_inverter(engine: Any) -> str:  # kept for callers from 0.20
+    return (await saved_names(engine))["inverter"]
 
 
 async def request_inverter(request: Request) -> str:
-    engine = getattr(request.app.state, "engine", None)
-    return await saved_inverter(engine) if engine is not None else DEFAULT_INVERTER
+    return (await request_names(request))["inverter"]
 
 
 class InverterIn(BaseModel):
     name: str
+
+
+class NamesIn(BaseModel):
+    names: dict[str, str]
 
 
 # The API path behind each secret the packages use.
@@ -147,7 +173,8 @@ def files() -> list[dict[str, Any]]:
         body = path.read_text()
         title, about = ABOUT.get(rel, (path.stem, ""))
         out.append({"path": rel, "kind": rel.split("/", 1)[0].rstrip("s"), "name": path.name, "title": title,
-                    "about": about, "changed_in": meta.get("changed_in", ""), "inverter": DEFAULT_INVERTER in body,
+                    "about": about, "changed_in": meta.get("changed_in", ""), "uses": N.uses(body),
+                    "inverter": "inverter" in N.uses(body),
                     "secrets": sorted(set(SECRET.findall(body)))})  # fmt: skip
     return out
 
@@ -166,7 +193,8 @@ async def setup(request: Request) -> dict[str, Any]:
     mqtt.update({"bundled": conf.bundled, "user": conf.user, "publish_port": s.mqtt_publish_port})
     listed = files()
     return {"version": VERSION, "local": is_local(request, request.method), "mqtt": mqtt, "files": listed,
-            "inverter": await request_inverter(request), "inverter_default": DEFAULT_INVERTER,
+            "names": (names := await request_names(request)), "inverter": names["inverter"], "inverter_default": DEFAULT_INVERTER,
+            "name_fields": [{"key": n.key, "label": n.label, "default": n.default, "hint": n.hint} for n in N.NAMES],
             "secret_paths": SECRET_PATHS, "lovelace_yaml": lovelace_yaml([f for f in listed if f["kind"] == "dashboard"])}  # fmt: skip
 
 
@@ -183,12 +211,21 @@ async def put_inverter(body: InverterIn, request: Request) -> dict[str, str]:
         name = inverter_name(body.name)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    async with request.app.state.engine.begin() as conn:
-        await conn.execute(text(
-            "INSERT INTO app_setting (key, value, updated_at) VALUES (:k, CAST(:v AS jsonb), now()) "
-            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()"),
-            {"k": INVERTER_KEY, "v": json.dumps({"name": name})})  # fmt: skip
+    await save_names(request.app.state.engine, {"inverter": name})
     return {"inverter": name}
+
+
+@router.put("/names")
+async def put_names(body: NamesIn, request: Request) -> dict[str, Any]:
+    """Names to write the files with (any subset; an empty value puts the default back). Used in every copy and
+    download of the files that name them."""
+    clean: dict[str, str] = {}
+    try:
+        for k, v in body.names.items():
+            clean[k] = N.BY_KEY[k].default if not v.strip() and k in N.BY_KEY else N.clean(k, v)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"names": await save_names(request.app.state.engine, clean)}
 
 
 @router.get("/files/{kind}/{name}", response_class=PlainTextResponse)
@@ -196,7 +233,7 @@ async def file(kind: str, name: str, request: Request) -> PlainTextResponse:
     rel = f"{kind}/{name}"
     if rel not in manifest() or not (HA_DIR / rel).is_file():  # only the files we ship: no path tricks
         raise HTTPException(404, "no such file")
-    body = render((HA_DIR / rel).read_text(), await request_inverter(request))
+    body = render((HA_DIR / rel).read_text(), await request_names(request))
     return PlainTextResponse(body, media_type="text/yaml; charset=utf-8",
                              headers={"Content-Disposition": f'attachment; filename="{name}"'})  # fmt: skip
 
@@ -216,12 +253,21 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="card"><div class="row">
   <label>Address Home Assistant uses for this server <input id="base" size="32"></label>
   <label>Files last copied from version <input id="since" size="8" placeholder="e.g. 0.12.0"></label></div>
-  <div class="row"><label>Inverter entity name (for the energy plan)
-    <input id="inv" size="24" autocomplete="off" placeholder="office_inverter"></label>
-    <button id="invsave" type="button">Save</button><span id="invmsg" class="dim"></span></div>
-  <p class="dim">The part between <code>sensor.</code> and <code>_battery_soc</code> in your inverter's battery sensor (you can
-  paste the whole entity id). The energy plan and Home charging files are written with it.</p>
   <p class="dim" id="ver"></p></div>
+<div class="card"><h2>Find my setup</h2>
+  <p class="dim">With the Samba share saved (below), World Assistant reads Home Assistant's own records: its version,
+  home, integrations, entities, zones and people, and which World Assistant files are installed. It finds the names
+  your files need, and checks that World Assistant's sensors, the MQTT broker and the installed files match. Nothing
+  in Home Assistant is changed, and no password or key is kept.</p>
+  <div class="row"><button id="disc" class="primary" type="button">Find my setup</button><span id="discmsg" class="dim"></span></div>
+  <ul id="checks" class="checks-list"></ul>
+  <details id="discmore"><summary>What was found</summary><div id="found" class="dim"></div></details></div>
+<div class="card"><h2>Names in your files</h2>
+  <p class="dim">Your files are written with these names: every download and copy uses them. "Find my setup" fills in
+  what it finds; check them and Save. An empty field puts the default back.</p>
+  <div class="scroll"><table id="names"></table></div>
+  <div class="row"><button id="nameuse" type="button" hidden>Use what was found</button>
+    <button id="namesave" type="button">Save names</button><span id="namemsg" class="dim"></span></div></div>
 <details class="card" id="smbcard"><summary>Copy straight into Home Assistant (Samba share)</summary>
   <p class="dim">With the <b>Samba share</b> add-on in Home Assistant, World Assistant can put the files in its config folder
   for you: the ticked packages into <code>packages/</code>, the dashboards into <code>world_assistant/dashboards/</code>
@@ -283,6 +329,12 @@ function newer(a, b) {  // is version a later than b?
 }
 function badge(f) {
   const since = $('since').value.trim(), b = document.createElement('span');
+  const at = installed[f.path];
+  if (at) {
+    b.className = at === 'current' ? 'badge' : 'badge warn';
+    b.textContent = at === 'current' ? 'Installed, current' : at === 'different' ? 'Installed, different: copy again' : 'Not installed';
+    return b;
+  }
   if (since && newer(f.changed_in, since)) { b.className = 'badge warn'; b.textContent = 'Changed in ' + f.changed_in + ': copy again'; }
   else { b.className = 'badge'; b.textContent = 'Last changed in ' + f.changed_in; }
   return b;
@@ -365,20 +417,93 @@ async function load() {
   secrets();
   data.files.forEach(f => fetchFile(f).catch(() => {}));
   $('lovelace').textContent = data.lovelace_yaml;
-  $('inv').value = data.inverter;
+  renderNames(null);
   smbCall('', 'GET').then(smbShow).catch(() => {});
+  fetch('/v1/ha/inventory', { headers: hdr() }).then(r => r.ok ? r.json() : {}).then(inv => { if (inv && inv.checks) showInventory(inv, false); }).catch(() => {});
 }
-$('invsave').onclick = async () => {
-  $('invmsg').textContent = 'Saving...';
+// --- names and "Find my setup" ----------------------------------------------------------------------------
+let found = null, installed = {};
+function renderNames(names) {
+  if (!data) return;
+  const rows = data.name_fields.map(n => {
+    const tr = document.createElement('tr'), c1 = tr.insertCell(), c2 = tr.insertCell(), c3 = tr.insertCell();
+    c1.innerHTML = '<b></b><br><span class="dim"></span>';
+    c1.querySelector('b').textContent = n.label; c1.querySelector('span').textContent = n.hint;
+    const box = document.createElement('input'); box.size = 30; box.dataset.key = n.key; box.placeholder = n.default;
+    box.value = (names && names[n.key]) || data.names[n.key] || '';
+    c2.appendChild(box);
+    const f = found && found[n.key];
+    if (f && f.candidates && f.candidates.length > 1) {
+      const sel = document.createElement('select');
+      f.candidates.forEach(v => { const o = document.createElement('option'); o.value = o.textContent = v; sel.appendChild(o); });
+      sel.value = box.value; sel.onchange = () => { box.value = sel.value; };
+      c2.appendChild(sel);
+    }
+    const b = document.createElement('span'); b.className = 'badge';
+    if (f && f.found && f.found !== data.names[n.key]) { b.className = 'badge warn'; b.textContent = 'Found ' + f.found + ': Save to use it'; }
+    else if (f && f.found) { b.textContent = 'Found in Home Assistant'; }
+    else if (f) { b.textContent = 'Not found in Home Assistant'; }
+    c3.appendChild(b);
+    return tr;
+  });
+  $('names').replaceChildren(...rows);
+  $('nameuse').hidden = !(found && Object.values(found).some(f => f.found && f.found !== data.names[Object.keys(found).find(k => found[k] === f)]));
+}
+$('nameuse').onclick = () => {
+  document.querySelectorAll('#names input').forEach(b => { const f = found && found[b.dataset.key]; if (f && f.found) b.value = f.found; });
+  $('namemsg').textContent = 'Filled in: check them, then Save names.';
+};
+$('namesave').onclick = async () => {
+  $('namemsg').textContent = 'Saving...';
+  const names = {};
+  document.querySelectorAll('#names input').forEach(b => { names[b.dataset.key] = b.value.trim(); });
   try {
-    const r = await fetch('/v1/ha/inverter', { method: 'PUT', headers: Object.assign(hdr(), { 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ name: $('inv').value }) });
+    const r = await fetch('/v1/ha/names', { method: 'PUT', headers: Object.assign(hdr(), { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ names }) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || r.status);
-    $('inv').value = d.inverter;
-    if (data) data.files.filter(f => f.inverter).forEach(f => { delete texts[f.path]; fetchFile(f).catch(() => {}); });
-    $('invmsg').textContent = 'Saved: the energy plan and Home charging files now use ' + d.inverter + '. Copy them again.';
-  } catch (e) { $('invmsg').textContent = e.message; }
+    data.names = d.names; data.inverter = d.names.inverter;
+    data.files.filter(f => f.uses && f.uses.length).forEach(f => { delete texts[f.path]; fetchFile(f).catch(() => {}); });
+    renderNames(null);
+    $('namemsg').textContent = 'Saved. Copy the files that use them again.';
+  } catch (e) { $('namemsg').textContent = e.message; }
+};
+const MARK = { ok: '✓ ', problem: '✗ ', check: '? ', change: '→ ', info: '· ' };
+function showInventory(inv, fresh) {
+  found = inv.names || null;
+  installed = {}; (inv.files || []).forEach(f => { installed[f.path] = f.state; });
+  $('checks').replaceChildren(...(inv.checks || []).map(c => {
+    const li = document.createElement('li'), b = document.createElement('b');
+    b.textContent = (MARK[c.level] || '') + c.what + ': '; li.appendChild(b); li.appendChild(document.createTextNode(c.detail));
+    if (c.level === 'problem') li.className = 'err';
+    return li;
+  }));
+  const bits = [];
+  if (inv.version) bits.push('Home Assistant ' + inv.version);
+  if (inv.home) bits.push('home ' + (inv.home.name || '') + ' (' + inv.home.time_zone + ')');
+  bits.push((inv.entities || 0) + ' entities, ' + (inv.devices || 0) + ' devices');
+  if (inv.persons && inv.persons.length) bits.push('people: ' + inv.persons.join(', '));
+  if (inv.zones && inv.zones.length) bits.push('zones: ' + inv.zones.map(z => z.name).join(', '));
+  if (inv.integrations) bits.push('integrations: ' + inv.integrations.map(i => i.domain).join(', '));
+  if (inv.ui_dashboards && inv.ui_dashboards.length) bits.push('dashboards made in the editor: ' + inv.ui_dashboards.join(', ')
+    + ' (pasted ones are not compared: paste again after a change)');
+  $('found').textContent = bits.join('; ') + '.';
+  $('discmsg').textContent = (fresh ? 'Read just now' : 'Last read ') + ' ' + new Date(inv.read_at).toLocaleString() + '.';
+  if (data) {
+    renderNames(null);
+    $('pk').replaceChildren(...data.files.filter(f => f.kind === 'package').map(f => row(f, true)));
+    $('db').replaceChildren(...data.files.filter(f => f.kind === 'dashboard').map(f => row(f, false)));
+    secrets();
+  }
+}
+$('disc').onclick = async () => {
+  $('discmsg').textContent = 'Reading Home Assistant...';
+  try {
+    const r = await fetch('/v1/ha/discover', { method: 'POST', headers: hdr() });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(r.status === 409 ? 'save the Samba share first (below)' : (d.detail || r.status));
+    showInventory(d, true);
+  } catch (e) { $('discmsg').textContent = e.message; }
 };
 // --- copying over SMB ---------------------------------------------------------------------------------
 function smbBody() { return { address: $('smbaddr').value.trim(), user: $('smbuser').value.trim(), password: $('smbpw').value || null }; }

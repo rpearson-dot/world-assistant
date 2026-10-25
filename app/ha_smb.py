@@ -311,7 +311,7 @@ async def test_smb(body: SmbIn) -> dict[str, Any]:
 @router.post("/copy")
 async def copy(body: CopyIn, request: Request) -> dict[str, Any]:
     """Copy this version's files into Home Assistant's config folder."""
-    from app.ha_setup import HA_DIR, SECRET_PATHS, files, render, saved_inverter
+    from app.ha_setup import HA_DIR, SECRET_PATHS, files, render, saved_names
 
     share, user, pw = await _conf(request)
     known = {f["path"]: f for f in files()}
@@ -319,13 +319,13 @@ async def copy(body: CopyIn, request: Request) -> dict[str, Any]:
     if len(chosen) != len(body.packages):
         raise HTTPException(422, "only this version's packages can be copied")
     out: dict[str, str] = {}
-    inverter = await saved_inverter(request.app.state.engine)
+    names = await saved_names(request.app.state.engine)
     for p in chosen:
-        out[f"{PACKAGES_DIR}/{known[p]['name']}"] = render((HA_DIR / p).read_text(), inverter)
+        out[f"{PACKAGES_DIR}/{known[p]['name']}"] = render((HA_DIR / p).read_text(), names)
     if body.dashboards:
         for p, f in known.items():
             if f["kind"] == "dashboard":
-                out[f"{DASHBOARDS_DIR}/{f['name']}"] = render((HA_DIR / p).read_text(), inverter)
+                out[f"{DASHBOARDS_DIR}/{f['name']}"] = render((HA_DIR / p).read_text(), names)
     secrets = None
     if body.secrets:
         base = body.base_url.rstrip("/")

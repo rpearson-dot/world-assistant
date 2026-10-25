@@ -126,3 +126,39 @@ def test_the_inverter_name_is_saved_and_used_in_every_download_and_copy(db: None
     assert "office_inverter" not in sent["packages/wa_energy_plan.yaml"]
     assert "garage_deye" in sent["world_assistant/dashboards/home-charging.yaml"]
     assert ha_setup.inverter_name("  OFFICE_INVERTER ") == "office_inverter"
+
+
+def test_find_my_setup_reads_checks_and_names(db: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import ha_discover, ha_smb
+    from tests.test_ha_discover import RAW
+
+    async def conf(request: object) -> tuple[object, str, str]:
+        return ha_smb.parse_share(r"\\ha\config"), "u", "p"
+
+    asked: list[list[str]] = []
+
+    def read(share: object, user: str, pw: str, paths: list[str]) -> dict[str, str | None]:
+        asked.append(paths)
+        return dict(RAW)
+
+    monkeypatch.setattr(ha_smb, "_conf", conf)
+    monkeypatch.setattr(ha_discover, "read_share", read)
+    c = TestClient(app)
+    h = {"Authorization": "Bearer tok"}
+    assert c.get("/v1/ha/inventory", headers=h).json() == {}
+    inv = c.post("/v1/ha/discover", headers=h).json()
+    assert "packages/wa_energy_plan.yaml" in asked[0] and "world_assistant/dashboards/home-charging.yaml" in asked[0]
+    assert inv["names"]["ocpp_charger"]["found"] == "wallbox" and inv["version"] == "2026.10.2"
+    assert c.get("/v1/ha/inventory", headers=h).json()["read_at"] == inv["read_at"]  # kept
+    # save what was found: every file is written with it
+    names = {k: v["found"] for k, v in inv["names"].items() if v["found"]}
+    saved = c.put("/v1/ha/names", headers=h, json={"names": names}).json()["names"]
+    assert saved["inverter"] == "garage_deye" and saved["solar_today"] == "sensor.energy_production_today_2"
+    ev = c.get("/v1/ha/files/packages/wa_ev_plan.yaml", headers=h).text
+    assert "switch.wallbox_charge_control" in ev and "hv66bzd" not in ev and "sensor.charger_" not in ev
+    plan = c.get("/v1/ha/files/packages/wa_energy_plan.yaml", headers=h).text
+    assert "office_inverter" not in plan and "sensor.energy_production_tomorrow_2" in plan
+    assert c.get("/v1/ha/setup", headers=h).json()["names"]["ovms_vehicle"] == "ab12cde"
+    assert c.put("/v1/ha/names", headers=h, json={"names": {"solar_today": "nonsense"}}).status_code == 422
+    back = c.put("/v1/ha/names", headers=h, json={"names": {"inverter": ""}}).json()["names"]
+    assert back["inverter"] == "office_inverter"  # empty: the default again
