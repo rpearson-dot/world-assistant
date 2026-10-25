@@ -350,6 +350,12 @@ people and dashboards, plus World Assistant's installed packages and dashboards.
 - compares Home Assistant's MQTT broker with World Assistant's, and its home with World Assistant's home place;
 - marks each World Assistant file as not installed, current or different.
 
+It also lists Home Assistant zones that are not World Assistant places (make them places in one click) and World
+Assistant places that are not zones (offered as `packages/wa_zones.yaml`, a package of zones, so Home Assistant's own
+zones are never edited); compares dashboards pasted into Home Assistant's editor with the shipped ones; and, with
+Home Assistant's address and a long-lived token saved under "Live checks", checks that each named entity reports a
+value and that World Assistant's sensors are live.
+
 Only safe fields are taken from integrations (the MQTT broker's host and port, the OVMS vehicle id): no password or
 key is read into World Assistant's records. These are Home Assistant's internal files, so anything not found is just
 reported as not found; the names can always be typed in.

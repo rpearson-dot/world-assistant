@@ -233,15 +233,20 @@ async def _put(engine: Any, key: str, value: dict[str, Any]) -> None:
             "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()"), {"k": key, "v": json.dumps(value)})  # fmt: skip
 
 
-def _save_password(value: str) -> None:
+def _save_secret(name: str, value: str) -> None:
     d = secretstore.keys_dir()
     if not d.is_dir() or not os.access(d, os.W_OK):
-        raise HTTPException(409, "the password cannot be saved: the keys folder is missing or not writable (run scripts/deploy.sh once)")
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=f".{SECRET}.")
+        raise HTTPException(409, "it cannot be saved: the keys folder is missing or not writable (run scripts/deploy.sh once)")
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=f".{name}.")
     with os.fdopen(fd, "w") as f:
         f.write(value)
     os.chmod(tmp, 0o600)
-    os.replace(tmp, d / f"{SECRET}.txt")
+    os.replace(tmp, d / f"{name}.txt")
+    secretstore.clear_cache()
+
+
+def _save_password(value: str) -> None:
+    _save_secret(SECRET, value)
 
 
 class SmbIn(BaseModel):

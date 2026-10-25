@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-25
+
 ### Added
 - **Find my setup** on the Home Assistant page (/ha): with the Samba share saved, World Assistant reads Home Assistant's own records (version, home and time zone, integrations, entity and device registries, zones, people, dashboards, and which World Assistant files are installed) and checks everything the two share:
   - **the names your files need**, found and offered: the inverter, the OCPP car charger, the OVMS car and the Forecast.Solar sensors (a second array's `_2` names too), with "Use what was found" and Save;
@@ -12,7 +14,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   - **each World Assistant file**: not installed, current, or different (copy again), shown on each file's row;
   - Home Assistant's version (the packages need 2024.10 or later) and whether its home is World Assistant's home.
 
-  Nothing in Home Assistant is changed, and no password or key from any integration is kept. Results are kept (`GET /v1/ha/inventory`).
+  - **zones and places, both ways**: Home Assistant zones that are not World Assistant places can be made places in one click (`POST /v1/ha/zones/import`); World Assistant places that are not zones are offered as a package of zones, `packages/wa_zones.yaml` (download or copy over Samba), so Home Assistant's own zones are never edited;
+  - **dashboards pasted into Home Assistant's editor** are compared with the shipped ones too (current, or different: paste again);
+  - **live checks**, with Home Assistant's address and a long-lived token (optional; the token is kept in the keys folder and never shown): each named entity is reporting, and World Assistant's sensors are live, not unavailable.
+
+  Nothing in Home Assistant is changed except a file you choose to copy, and no password or key from any integration is kept. Results are kept (`GET /v1/ha/inventory`).
 - **Names in your files** (/ha) replaces the single inverter name: inverter, car charger, OVMS car and the four Forecast.Solar sensors, used in every download and Samba copy (`PUT /v1/ha/names`). The inverter name saved earlier carries over.
 - **Energy plan: fill the battery in cheap windows** ("WA energy plan: charge mode", the default "Fill (leave room for solar)"). Each charging window now fills the battery as far as the battery health max, less room for the solar expected after it beyond what the house uses then, so cheap energy is stored and sunshine isn't exported. "Just enough" keeps the previous behaviour (only what the house needs until the next cheap window). What the house needs is still the minimum, and still what triggers the suggestion to raise the health max. The dashboard's plan table shows "Needed" beside the plan and any room left for solar.
 - **Car charging plan** for Home Assistant (`wa_ev_plan.yaml` on /ha), for an OCPP charger in Home Assistant's OCPP integration and, optionally, the car's charge level (OVMS or any integration). The car charges only while the rate is cheap (World Assistant's live rate band, so it follows Cosy, Go or Agile as they are, plus the energy plan's charging windows), in Free Electricity hours you joined, or, if "always charge when low" is on, below a level you set; it stops at its target (80%). The charger and car entities are settings on the dashboard (empty = a Sync EV charger named "charger" and an OVMS Leaf), read through the plan's own sensors so the dashboard and outcome log follow them. It starts and stops the charger every 5 minutes or as things change, asks for meter readings while it charges, logs every start and stop, and starts as a dry run. The Home charging dashboard has a Car section with Start now / Stop now, and the outcome log says how much went into the car in each window and each day.

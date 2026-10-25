@@ -253,8 +253,8 @@ def keys_dir() -> Path:
 
 
 # Saved from the pages too, but not listed with the keys: the MQTT broker's password (app/mqtt_config.py) and
-# the password for Home Assistant's config share (app/ha_smb.py).
-SETTINGS_SECRETS = WEB_KEYS | {"mqtt_password", "ha_smb_password"}
+# the password for Home Assistant's config share (app/ha_smb.py) and its long-lived token (app/ha_discover.py).
+SETTINGS_SECRETS = WEB_KEYS | {"mqtt_password", "ha_smb_password", "ha_token"}
 
 
 def web_value(name: str) -> str | None:

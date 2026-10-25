@@ -261,7 +261,17 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
   in Home Assistant is changed, and no password or key is kept.</p>
   <div class="row"><button id="disc" class="primary" type="button">Find my setup</button><span id="discmsg" class="dim"></span></div>
   <ul id="checks" class="checks-list"></ul>
-  <details id="discmore"><summary>What was found</summary><div id="found" class="dim"></div></details></div>
+  <details id="discmore"><summary>What was found</summary><div id="found" class="dim"></div></details>
+  <div id="zonebox" hidden><h3>Zones and places</h3>
+    <div id="zin"></div><div id="zout"></div><span id="zmsg" class="dim"></span></div>
+  <details id="apicard"><summary>Live checks (optional): Home Assistant's address and a long-lived token</summary>
+    <p class="dim">With a token (Home Assistant: your profile &gt; Security &gt; Long-lived access tokens), Find my setup
+    also checks that each named entity is reporting and that World Assistant's sensors are live. The token is kept in
+    World Assistant's keys folder and never shown again.</p>
+    <div class="row"><label>Address<input id="haurl" size="28" placeholder="e.g. 10.0.2.107:8123" autocomplete="off"></label>
+      <label>Token<input id="hatok" type="password" size="24" autocomplete="new-password"></label></div>
+    <div class="row" style="margin-top:8px"><button id="apisave" type="button">Save and test</button>
+      <button id="apiforget" type="button">Forget</button><span id="apimsg" class="dim"></span></div></details></div>
 <div class="card"><h2>Names in your files</h2>
   <p class="dim">Your files are written with these names: every download and copy uses them. "Find my setup" fills in
   what it finds; check them and Save. An empty field puts the default back.</p>
@@ -419,6 +429,7 @@ async function load() {
   $('lovelace').textContent = data.lovelace_yaml;
   renderNames(null);
   smbCall('', 'GET').then(smbShow).catch(() => {});
+  apiCall('GET').then(apiShow).catch(() => {});
   fetch('/v1/ha/inventory', { headers: hdr() }).then(r => r.ok ? r.json() : {}).then(inv => { if (inv && inv.checks) showInventory(inv, false); }).catch(() => {});
 }
 // --- names and "Find my setup" ----------------------------------------------------------------------------
@@ -489,6 +500,7 @@ function showInventory(inv, fresh) {
     + ' (pasted ones are not compared: paste again after a change)');
   $('found').textContent = bits.join('; ') + '.';
   $('discmsg').textContent = (fresh ? 'Read just now' : 'Last read ') + ' ' + new Date(inv.read_at).toLocaleString() + '.';
+  showZones(inv);
   if (data) {
     renderNames(null);
     $('pk').replaceChildren(...data.files.filter(f => f.kind === 'package').map(f => row(f, true)));
@@ -496,6 +508,62 @@ function showInventory(inv, fresh) {
     secrets();
   }
 }
+function showZones(inv) {
+  const zin = (inv.zones || []).filter(z => !z.place), zout = inv.places_not_zones || [];
+  $('zonebox').hidden = !(zin.length || zout.length);
+  const a = [];
+  if (zin.length) {
+    const p = document.createElement('p'); p.className = 'dim'; p.textContent = 'Home Assistant zones that are not World Assistant places:'; a.push(p);
+    zin.forEach(z => { const l = document.createElement('label'), b = document.createElement('input');
+      b.type = 'checkbox'; b.checked = true; b.dataset.zone = z.name; b.style.width = 'auto';
+      l.appendChild(b); l.appendChild(document.createTextNode(' ' + z.name)); a.push(l); });
+    const go = document.createElement('button'); go.type = 'button'; go.textContent = 'Make them World Assistant places';
+    go.onclick = async () => {
+      const names = [...document.querySelectorAll('#zin input[data-zone]')].filter(b => b.checked).map(b => b.dataset.zone);
+      try { const r = await fetch('/v1/ha/zones/import', { method: 'POST', headers: Object.assign(hdr(), { 'Content-Type': 'application/json' }), body: JSON.stringify({ names }) });
+        const d = await r.json(); if (!r.ok) throw new Error(d.detail || r.status);
+        $('zmsg').textContent = 'Made ' + (d.made.join(', ') || 'none') + (d.skipped.length ? '. Skipped: ' + d.skipped.join('; ') : '') + '. Run Find my setup again to refresh.';
+      } catch (e) { $('zmsg').textContent = e.message; }
+    };
+    a.push(go);
+  }
+  $('zin').replaceChildren(...a);
+  const o = [];
+  if (zout.length) {
+    const p = document.createElement('p'); p.className = 'dim';
+    p.textContent = 'World Assistant places that are not Home Assistant zones: ' + zout.map(x => x.name).join(', ')
+      + '. As a package (packages/wa_zones.yaml), Home Assistant adds them as zones after a restart; zones you made in Home Assistant are not touched.';
+    o.push(p);
+    const dl = document.createElement('button'); dl.type = 'button'; dl.textContent = 'Download wa_zones.yaml';
+    dl.onclick = async () => {
+      try { const r = await fetch('/v1/ha/zones/package', { headers: hdr() }); if (!r.ok) throw new Error(r.status);
+        const url = URL.createObjectURL(new Blob([await r.text()], { type: 'text/yaml' })), a = document.createElement('a');
+        a.href = url; a.download = 'wa_zones.yaml'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      } catch (e) { $('zmsg').textContent = e.message; }
+    };
+    const cp = document.createElement('button'); cp.type = 'button'; cp.textContent = 'Copy to Home Assistant';
+    cp.onclick = async () => {
+      try { const r = await fetch('/v1/ha/zones/copy', { method: 'POST', headers: hdr() }); const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || r.status);
+        $('zmsg').textContent = d.ok ? 'Copied: check configuration and restart Home Assistant.' : 'Could not copy: ' + d.error;
+      } catch (e) { $('zmsg').textContent = e.message; }
+    };
+    o.push(dl, cp);
+  }
+  $('zout').replaceChildren(...o);
+}
+async function apiCall(method, body) {
+  const r = await fetch('/v1/ha/api', { method, headers: Object.assign(hdr(), body ? { 'Content-Type': 'application/json' } : {}), body: body ? JSON.stringify(body) : undefined });
+  const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.detail || r.status); return d;
+}
+function apiShow(d) { $('haurl').value = d.url || ''; $('hatok').value = ''; $('hatok').placeholder = d.token_set ? 'saved: leave empty' : ''; if (d.url) $('apicard').open = true; }
+$('apisave').onclick = async () => {
+  $('apimsg').textContent = 'Testing...';
+  try { const d = await apiCall('PUT', { url: $('haurl').value.trim(), token: $('hatok').value || null }); apiShow(d);
+    $('apimsg').textContent = d.ok ? 'Working: ' + d.entities + ' entities. Run Find my setup for the live checks.' : 'Saved, but: ' + d.error;
+  } catch (e) { $('apimsg').textContent = e.message; }
+};
+$('apiforget').onclick = async () => { try { apiShow(await apiCall('DELETE')); $('apimsg').textContent = 'Forgotten.'; } catch (e) { $('apimsg').textContent = e.message; } };
 $('disc').onclick = async () => {
   $('discmsg').textContent = 'Reading Home Assistant...';
   try {
