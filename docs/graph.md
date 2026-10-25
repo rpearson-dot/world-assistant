@@ -52,13 +52,17 @@ With it switched off, every graph endpoint answers 503 and says so. Nothing else
 | `(FloodWarning)-[:CROSSES]->(Corridor)` | the warned area crosses the corridor |
 | `(Disruption)-[:AFFECTS]->(Corridor)` | a TfL disruption lying along that corridor |
 | `(Disruption\|LocalEvent)-[:NEAR {km}]->(Place)` | close to a place |
-| `(Place\|BusStop\|Disruption\|LocalEvent)-[:IN]->(Area)` | inside that area |
+| `(Place\|BusStop\|RailStation\|Disruption\|LocalEvent\|Station\|Location\|PowerCut\|StreetWork\|FloodWarning)-[:IN]->(Area)` | inside that area (a flood warning: its area reaches into it) |
 | `(Area)-[:IN]->(Area)` | a district in its county, a county in its region |
 
 Only areas something is in are written, plus the wider areas above them, so the graph does not carry every
 district in Britain. Boundaries need the OS Boundary-Line load ([boundaries](boundaries.md)); events need the
-events sync (`WA_EVENTS_SYNC_ENABLED`, a Skiddle or Ticketmaster key). Fuel stations are not put in areas:
-thousands of them would bury the areas.
+events sync (`WA_EVENTS_SYNC_ENABLED`, a Skiddle or Ticketmaster key; it reads around up to
+`WA_EVENTS_SYNC_PLACES`, 20, places, `WA_EVENTS_SYNC_PAGES`, 3, pages of 100 from each source at each). Only fuel
+stations near a place or along a corridor are put in areas: all of Britain's would bury them.
+
+The Overview shows up to 12 links for each place, trip, vehicle and tracker (its areas, routes and supply first,
+then what is nearest), so a busy place does not crowd the others out.
 
 `WA_GRAPH_NEAR_KM` (3 km) and `WA_GRAPH_ALONG_KM` (2 km) decide how close counts.
 

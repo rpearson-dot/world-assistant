@@ -1,7 +1,8 @@
 """What's on near your places, copied from Skiddle and Ticketmaster so it can be held, related and drawn.
 
 The events page and API ask the providers live. This keeps the next `WA_EVENTS_SYNC_DAYS` days (14) around each of
-your saved places (home first, at most `WA_EVENTS_SYNC_PLACES`, 5), every six hours, so the knowledge graph can
+your saved places (home first, at most `WA_EVENTS_SYNC_PLACES`, 20; up to `WA_EVENTS_SYNC_PAGES` pages of 100 from
+each source at each), every six hours, so the knowledge graph can
 relate an event to its place and district. It needs the same keys as the events feature and does nothing without
 one. Events that are over, or that a provider no longer lists, are dropped.
 
@@ -29,7 +30,8 @@ from app.ratelimit import SlidingWindowLimiter
 
 log = logging.getLogger("wa.events")
 
-LIMIT = 100  # per place and source
+LIMIT = 100  # per page, place and source
+SKIDDLE_GAP_S = 2.1
 UPSERT = text(
     """
     INSERT INTO local_event (id, source, name, day, starts, type, venue, town, postcode, lat, lon, price, url, seen)
@@ -76,27 +78,36 @@ async def sync(engine: AsyncEngine, redis: Any = None) -> dict[str, Any]:
     started = datetime.now(UTC)
     rows: dict[str, dict[str, Any]] = {}
     failures: list[str] = []
+    calls = {"skiddle": 0}
     for place, lat, lon in spots:
         for source in sources:
-            try:
-                if source == "skiddle":
-                    async with SkiddleClient(s.skiddle_api_key, s.skiddle_base_url or DEFAULT_BASE,
-                                             limiter=SlidingWindowLimiter(redis, "skiddle", 30) if redis else None) as c:
-                        found = await c.search(lat, lon, radius_km=s.events_sync_radius_km, min_date=today, max_date=last, limit=LIMIT)
-                else:
-                    async with TicketmasterClient(s.ticketmaster_api_key, s.ticketmaster_base_url or TM_BASE,
-                                                  limiter=SlidingWindowLimiter(redis, "ticketmaster", 240) if redis else None) as c:
-                        found = await c.search(
-                            lat, lon, radius_km=s.events_sync_radius_km, limit=LIMIT,
-                            start=datetime.combine(today, time.min, zone).astimezone(UTC),
-                            end=datetime.combine(last, time.max, zone).astimezone(UTC))  # fmt: skip
-            except (SkiddleError, TicketmasterError) as exc:
-                failures.append(f"{source} at {place}: {exc}")
-                continue
-            for e in found.get("events", []):
-                row = to_row(source, e, started)
-                if row:
-                    rows[row["id"]] = row
+            for page in range(max(1, s.events_sync_pages)):
+                try:
+                    if source == "skiddle":
+                        if page or calls["skiddle"]:
+                            await asyncio.sleep(SKIDDLE_GAP_S)  # stay under the 30 a minute the live page shares
+                        calls["skiddle"] += 1
+                        async with SkiddleClient(s.skiddle_api_key, s.skiddle_base_url or DEFAULT_BASE,
+                                                 limiter=SlidingWindowLimiter(redis, "skiddle", 30) if redis else None) as c:
+                            found = await c.search(lat, lon, radius_km=s.events_sync_radius_km, min_date=today, max_date=last,
+                                                   limit=LIMIT, offset=page * LIMIT)  # fmt: skip
+                    else:
+                        async with TicketmasterClient(s.ticketmaster_api_key, s.ticketmaster_base_url or TM_BASE,
+                                                      limiter=SlidingWindowLimiter(redis, "ticketmaster", 240) if redis else None) as c:
+                            found = await c.search(
+                                lat, lon, radius_km=s.events_sync_radius_km, limit=LIMIT, page=page,
+                                start=datetime.combine(today, time.min, zone).astimezone(UTC),
+                                end=datetime.combine(last, time.max, zone).astimezone(UTC))  # fmt: skip
+                except (SkiddleError, TicketmasterError) as exc:
+                    failures.append(f"{source} at {place}: {exc}")
+                    break
+                got = found.get("events", [])
+                for e in got:
+                    row = to_row(source, e, started)
+                    if row:
+                        rows[row["id"]] = row
+                if len(got) < LIMIT or (page + 1) * LIMIT >= int(found.get("total") or 0):
+                    break  # that was all of it
     async with engine.begin() as conn:
         if rows:
             await conn.execute(UPSERT, list(rows.values()))

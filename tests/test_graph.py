@@ -373,6 +373,8 @@ def geo_schema() -> Iterator[None]:
                      {"la": NEAR[0], "lo": NEAR[1]})
         conn.execute(sa.text("INSERT INTO flood_warning (id, area, severity_level, severity, seen) VALUES "
                              "('wide', 'wide', 2, 'Flood Warning', now()), ('gone', 'gone', 4, 'Gone', now())"))
+        conn.execute(sa.text("INSERT INTO ukpn_fault (id, lat, lon, seen) VALUES ('cut', :la, :lo, now())"),
+                     {"la": NEAR[0], "lo": NEAR[1]})
     yield
     with sync.begin() as conn:
         for t in GEO_TABLES:
@@ -427,6 +429,10 @@ async def test_postgis_finds_what_is_near_and_what_is_on_the_way(geo_schema: Non
         assert ("Place", "home", "district:K") in inside and ("Place", "home", "county:L") in inside
         assert ("Place", "brum", "district:K") not in inside
         assert ("district:K", "county:L") in rows["area_parents"]
+        # everything else with a position is in its areas too (fuel stations only when near you or on the way)
+        assert {("Station", "f1", "district:K"), ("Location", "phone", "district:K"), ("PowerCut", "cut", "district:K"),
+                ("FloodWarning", "wide", "county:L")} <= inside  # fmt: skip
+        assert not any(t == "f3" for _, t, _ in inside)
         assert ("d1", "a3") in rows["disruption_corridors"]
 
         along = {(s, c) for s, c, _ in rows["along_pairs"]}

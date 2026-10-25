@@ -4,9 +4,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
-## [0.21.2] - 2026-10-25
+## [0.22.0] - 2026-10-25
 
 ### Fixed
+- **The knowledge graph's Overview shows all your places.** It took the first 200 links it found, which were nearly all home's and Brighton's hundreds of nearby things. It now takes up to 12 for each place, trip, vehicle and bus tracker: its areas, routes and power supply first, then what is nearest.
+- **What's on is read around all your places, not the first five.** The events sync read only home and the next four places by name, and the first 100 events from each source at each, which in London is about a day's worth. It now reads up to 20 places (`WA_EVENTS_SYNC_PLACES`) and up to three pages of 100 from each source (`WA_EVENTS_SYNC_PAGES`), stopping when there is no more.
+- **More of the graph is tied to its towns.** Fuel stations near your places or along a corridor, Home Assistant zones, power cuts, UK Power Networks street works and live flood warnings are now linked `IN` their district, county and region, as places, stations, bus stops, events and TfL disruptions already were.
 - **The Leaf dashboard shows the same charge level as the car and the Home charging dashboard.** Its gauge and "Nothing to do" line read OVMS's `battery_level` (worked out from the battery's energy against a new battery's capacity), so it disagreed with the dashboard figure the charging plan uses. Both now read the car's own instrument figure (`sensor.<car>_instrument_soc_nissan_leaf`).
 - **The Leaf's range tiles agree with that charge level too.** The car charging package adds `sensor.wa_car_range_mi` (the car's range in miles) and `sensor.wa_car_full_range_mi` (today's range scaled up to 100% of the instrument figure), and the Leaf dashboard uses them instead of hand-made templates; so it now needs `wa_ev_plan.yaml` installed.
 
