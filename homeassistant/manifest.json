@@ -14,8 +14,8 @@
       "sha256": "0a77326b2010d90b67974366538e1d15dd8a5ddb4f2ffa04b792103a9749e628"
     },
     "dashboards/leaf.yaml": {
-      "changed_in": "0.8.0",
-      "sha256": "f4080d752be0e4e2618d914363f7f13dd3cb3e67bdbeccc712a992eaccd17f59"
+      "changed_in": "0.21.2",
+      "sha256": "f4ba1e220bccd0ee5128002aeecab309730d63f1f26db13aec16a70bd073189a"
     },
     "dashboards/manage.yaml": {
       "changed_in": "0.7.5",

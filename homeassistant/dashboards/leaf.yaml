@@ -16,7 +16,7 @@ views:
       - type: vertical-stack
         cards:
           - type: gauge
-            entity: sensor.nissan_leaf_hv66bzd_battery_level
+            entity: sensor.hv66bzd_instrument_soc_nissan_leaf
             name: Charge
             unit: '%'
             min: 0
@@ -43,7 +43,7 @@ views:
           {% set ns = namespace(items=[]) %}
           {% set charging = is_state('binary_sensor.nissan_leaf_hv66bzd_charging_status', 'on') %}
           {% set plugged = is_state('binary_sensor.nissan_leaf_hv66bzd_charge_port', 'on') %}
-          {% set soc = states('sensor.nissan_leaf_hv66bzd_battery_level') | float(-1) %}
+          {% set soc = states('sensor.hv66bzd_instrument_soc_nissan_leaf') | float(-1) %}
           {% set miles = states('sensor.leaf_estimated_range_mi') %}
           {% if plugged and not charging %}{% set ns.items = ns.items + ['🔌 Plugged in but not charging (' ~ states('sensor.nissan_leaf_hv66bzd_charge_substate') ~ ')'] %}{% endif %}
           {% if soc >= 0 and soc < 30 and not charging %}{% set ns.items = ns.items + ['🪫 Charge is ' ~ soc | round(0) | int ~ '%, about ' ~ miles ~ ' miles'] %}{% endif %}

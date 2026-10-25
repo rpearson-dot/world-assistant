@@ -4,6 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.21.2] - 2026-10-25
+
+### Fixed
+- **The Leaf dashboard shows the same charge level as the car and the Home charging dashboard.** Its gauge and "Nothing to do" line read OVMS's `battery_level` (worked out from the battery's energy against a new battery's capacity), so it disagreed with the dashboard figure the charging plan uses. Both now read the car's own instrument figure (`sensor.<car>_instrument_soc_nissan_leaf`).
+
 ## [0.21.1] - 2026-10-25
 
 ### Fixed
