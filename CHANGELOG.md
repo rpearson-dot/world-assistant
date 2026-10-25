@@ -8,6 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Fixed
 - **The Leaf dashboard shows the same charge level as the car and the Home charging dashboard.** Its gauge and "Nothing to do" line read OVMS's `battery_level` (worked out from the battery's energy against a new battery's capacity), so it disagreed with the dashboard figure the charging plan uses. Both now read the car's own instrument figure (`sensor.<car>_instrument_soc_nissan_leaf`).
+- **The Leaf's range tiles agree with that charge level too.** The car charging package adds `sensor.wa_car_range_mi` (the car's range in miles) and `sensor.wa_car_full_range_mi` (today's range scaled up to 100% of the instrument figure), and the Leaf dashboard uses them instead of hand-made templates; so it now needs `wa_ev_plan.yaml` installed.
 
 ## [0.21.1] - 2026-10-25
 

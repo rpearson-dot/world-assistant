@@ -120,6 +120,23 @@ template:
           {% set e = states('input_text.wa_ev_entity_range') %}
           {% set v = states(e if e.count('.') == 1 else 'sensor.nissan_leaf_hv66bzd_estimated_range') %}
           {{ v | float | round(0) if is_number(v) else none }}
+      # In miles, and what a full charge would give: today's range per % of the car's own charge figure (the one
+      # the plan uses), so it agrees with the charge gauge. Below 5% the figure is too coarse to scale up.
+      - name: "WA car range miles"
+        unique_id: wa_car_range_mi
+        unit_of_measurement: mi
+        icon: mdi:map-marker-distance
+        state: >-
+          {% set km = states('sensor.wa_car_range') %}
+          {{ (km | float * 0.621371) | round(1) if is_number(km) else none }}
+      - name: "WA car full charge range"
+        unique_id: wa_car_full_range_mi
+        unit_of_measurement: mi
+        icon: mdi:map-marker-distance
+        state: >-
+          {% set km = states('sensor.wa_car_range') %}
+          {% set soc = states('sensor.wa_car_charge_level') %}
+          {{ (km | float * 0.621371 * 100 / soc | float) | round(0) if is_number(km) and is_number(soc) and soc | float >= 5 else none }}
 
       - name: "WA car charging plan"
         unique_id: wa_ev_plan

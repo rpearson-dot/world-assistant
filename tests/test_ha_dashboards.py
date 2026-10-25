@@ -429,7 +429,7 @@ def test_manage_dashboard_lists_what_is_set_up() -> None:
 
 LEAF_OK = {
     "sensor.hv66bzd_instrument_soc_nissan_leaf": ("81.0757", {}),
-    "sensor.leaf_estimated_range_mi": ("111.7", {}),
+    "sensor.wa_car_range_mi": ("111.7", {}),
     "sensor.nissan_leaf_hv66bzd_charge_substate": ("onrequest", {}),
     "binary_sensor.nissan_leaf_hv66bzd_charging_status": ("off", {}),
     "binary_sensor.nissan_leaf_hv66bzd_charge_port": ("off", {}),
@@ -469,7 +469,7 @@ def test_leaf_flags_what_needs_doing() -> None:
     out = _leaf(**{
         "binary_sensor.nissan_leaf_hv66bzd_charge_port": ("on", {}),  # plugged in, not charging
         "sensor.hv66bzd_instrument_soc_nissan_leaf": ("7", {}),
-        "sensor.leaf_estimated_range_mi": ("7.7", {}),
+        "sensor.wa_car_range_mi": ("7.7", {}),
         "sensor.hv66bzd_12v_battery_voltage": ("11.6", {}),
         "lock.hv66bzd_vehicle_lock": ("unlocked", {}),
         "binary_sensor.hv66bzd_trunk": ("on", {}),
