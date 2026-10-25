@@ -10,8 +10,8 @@
       "sha256": "cc1e311d9753e7702784fedd5779b8394df31454fff1704f5bf22eec54ee88ce"
     },
     "dashboards/home-charging.yaml": {
-      "changed_in": "0.21.0",
-      "sha256": "24d3c696d388747b665824f56bc8a14261c0173b3c6910ef092b8bc9910609bc"
+      "changed_in": "0.21.1",
+      "sha256": "0a77326b2010d90b67974366538e1d15dd8a5ddb4f2ffa04b792103a9749e628"
     },
     "dashboards/leaf.yaml": {
       "changed_in": "0.8.0",

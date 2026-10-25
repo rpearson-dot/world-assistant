@@ -45,11 +45,7 @@ async def main() -> int:
                 t = await kraken.token(c, key)
                 secrets.append(t)
                 show("token", "obtained", secrets)
-                r = await c.post(
-                    f"{kraken.BACKEND_HOST}/v1/graphql/",
-                    json={"query": kraken.SESSIONS_QUERY % account},
-                    headers={"Authorization": t},
-                )
+                r = await kraken.post_sessions(c, t, account)
                 show(f"saving sessions raw (HTTP {r.status_code}, first part)", r.text[:1500], secrets)
                 if r.status_code == 200:
                     recent = datetime.now(UTC) - timedelta(days=7)
@@ -57,7 +53,7 @@ async def main() -> int:
                     show("saving sessions as parsed (the past week and upcoming; "
                          f"{len(parsed)} in all)", [x for x in parsed if x["end_at"] >= recent], secrets)  # fmt: skip
             except (httpx.HTTPError, OctopusError, ValueError) as exc:
-                show("saving sessions failed", f"{type(exc).__name__}: {exc}", secrets)
+                show("saving sessions failed", f"{type(exc).__name__}: {exc or 'no answer in 2 x 90 s'}", secrets)
         else:
             show(
                 "saving sessions",

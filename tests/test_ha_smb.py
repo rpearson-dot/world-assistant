@@ -114,7 +114,7 @@ def test_the_inverter_name_is_saved_and_used_in_every_download_and_copy(db: None
 
     sent: dict[str, str] = {}
 
-    def fake_copy(share: object, user: str, pw: str, files: dict[str, str], secrets: object) -> dict[str, object]:
+    def fake_copy(share: object, user: str, pw: str, files: dict[str, str], secrets: object, *rest: object) -> dict[str, object]:
         sent.update(files)
         return {"ok": False, "error": "test"}
 
@@ -206,3 +206,20 @@ def test_zones_become_places_and_the_token_is_kept_safe(db: None, monkeypatch: p
         with sync.begin() as conn:
             conn.execute(text("DROP TABLE IF EXISTS place"))
         sync.dispose()
+
+
+def test_dashboards_go_into_configuration_yaml_once_and_never_into_yours() -> None:
+    from app.ha_smb import merge_lovelace
+
+    block = "lovelace:\n  dashboards:\n    wa-fuel:\n      mode: yaml\n      filename: world_assistant/dashboards/fuel.yaml\n"
+    base = "default_config:\nhomeassistant:\n  packages: !include_dir_named packages\n"
+    new, what = merge_lovelace(base, block, ["wa-fuel"])
+    assert what == "added" and new is not None and new.startswith(base) and new.endswith(block)
+    assert merge_lovelace(new, block, ["wa-fuel"]) == (None, "already set up")  # copying again changes nothing
+    bigger = block + "    wa-home-charging:\n      mode: yaml\n"
+    again, what = merge_lovelace(new + "\nautomation: !include automations.yaml\n", bigger, ["wa-fuel", "wa-home-charging"])
+    assert what == "updated" and again is not None and again.count("lovelace:") == 1 and "wa-home-charging" in again
+    assert again.rstrip().endswith("automation: !include automations.yaml")  # what follows our block is kept
+    mine = base + "lovelace:\n  mode: storage\n"
+    assert merge_lovelace(mine, block, ["wa-fuel"]) == (None, "manual")  # a lovelace: section of yours: never edited
+    assert merge_lovelace(base + "lovelace:\n  dashboards:\n    wa-fuel:\n      mode: yaml\n", block, ["wa-fuel"]) == (None, "already set up")

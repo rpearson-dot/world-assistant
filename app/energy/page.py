@@ -48,7 +48,6 @@ PAGE = """<!doctype html>
     <div class="next" id="tiles"></div></div>
   <div class="card" id="powercard" hidden><h2>Power cuts</h2><div class="next" id="power"></div>
     <div id="cutlist"></div><p class="dim" id="pnote"></p></div>
-  <div class="card" id="carboncard" hidden><h2>How clean is your electricity</h2><div class="next" id="carbon"></div>
     <p class="dim" id="cnote"></p></div>
   <div class="card"><h2>Octopus sessions</h2><div class="next" id="sessions"></div>
     <p class="dim" id="snote"></p></div>
@@ -126,18 +125,6 @@ function sessionTiles(s) {
     + 'electricity free for the hour. Sign up to both in the Octopus app.';
 }
 
-// Local carbon intensity (UK Power Networks, the grid supply point feeding home). Hidden when there is none.
-async function carbon() {
-  try {
-    const c = await get('/v1/power/carbon?hours=' + $('hours').value);
-    if (!c.available) { $('carboncard').hidden = true; return; }
-    const box = $('carbon'); box.replaceChildren();
-    box.append(tile('', 'Now', Math.round(c.now) + ' g', 'CO2 per kWh'),
-      tile('', 'Cleanest ' + c.hours + ' hours', hm(c.best_start), when(c.best_start) + ' · ' + Math.round(c.best_average) + ' g average'));
-    $('cnote').textContent = 'At ' + c.grid_supply_point + ', the grid supply point feeding home. From UK Power Networks (CC BY 4.0).';
-    $('carboncard').hidden = false;
-  } catch (e) { $('carboncard').hidden = true; }  // the module is off, or home is not on their network
-}
 
 // Power cuts at home and nearby, and what supplies home (UK Power Networks). Hidden when home is not on their network.
 async function power() {
@@ -172,7 +159,6 @@ async function power() {
 
 async function load() {
   power();
-  carbon();
   msg.textContent = ''; try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
   try {
     const [now, rates] = await Promise.all([get('/v1/energy/now?hours=' + $('hours').value), get('/v1/energy/rates?hours=48')]);

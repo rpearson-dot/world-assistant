@@ -96,7 +96,7 @@ def test_inventory_checks_everything_shared() -> None:
     assert by["Home Assistant version"]["level"] == "ok" and inv["version"] == "2026.10.2"
     assert by["MQTT broker"]["level"] == "ok" and inv["mqtt"] == {"host": "10.0.2.49", "port": 1883}
     assert "sensor.wa_energy_charge_schedule_2 (expected sensor.wa_energy_charge_schedule)" in by["Renamed sensors"]["detail"]
-    assert by["Sensors the packages need"]["detail"].endswith("sensor.wa_energy_charge_schedule")
+    assert by["Sensors your files need"]["detail"].endswith("sensor.wa_energy_charge_schedule")
     assert by["Home"]["level"] == "ok" and inv["home"]["time_zone"] == "Europe/London"
     assert by["Inverter"]["level"] == "change" and "found garage_deye" in by["Inverter"]["detail"]
     assert {f["path"]: f["state"] for f in inv["files"]} == {
@@ -147,13 +147,13 @@ def test_live_checks_with_a_token() -> None:
               {"entity_id": "sensor.charger_status_connector", "state": "unavailable"},
               {"entity_id": "sensor.energy_production_today", "state": "3.3"},
               {"entity_id": "sensor.wa_energy_rate", "state": "14.27", "last_updated": "2026-10-25T08:30:00+00:00"},
-              {"entity_id": "sensor.wa_power_carbon_intensity", "state": "unavailable"}]  # fmt: skip
+              {"entity_id": "sensor.wa_power_power_cut_home", "state": "unavailable"}]  # fmt: skip
     inv = inventory(RAW, dict(N.DEFAULTS), {}, {}, {}, None, [], {"states": states})
     by = {c["what"]: c for c in inv["checks"]}
     assert by["Home Assistant API"]["level"] == "ok" and inv["live"] is True
     assert by["Entities not reporting"]["detail"] == "sensor.charger_status_connector (unavailable)"
     assert "sensor.office_inverter_battery_soc (53)" in by["Entities reporting"]["detail"]
-    assert "sensor.wa_power_carbon_intensity" in by["World Assistant sensors unavailable"]["detail"]
+    assert "sensor.wa_power_power_cut_home" in by["World Assistant sensors unavailable"]["detail"]
     bad = inventory(RAW, dict(N.DEFAULTS), {}, {}, {}, None, [], {"error": "Home Assistant refused the token (401)"})
     assert {c["what"]: c["level"] for c in bad["checks"]}["Home Assistant API"] == "problem"
 
@@ -196,3 +196,67 @@ def test_dashboards_pasted_in_the_editor_are_compared() -> None:
 
 def _data_items(raw: dict[str, Any]) -> list[dict[str, Any]]:
     return json.loads(raw["lovelace_dashboards"])["data"]["items"]
+
+
+def test_only_real_problems_are_problems() -> None:
+    """From a real run: hyphenated ids, older names nothing uses, a name prefix, area tiles, a failing REST sensor."""
+    ents = ENTITIES + [
+        _e("sensor.wa_bus_lotties_bus_journeys_chance", "mqtt", "wa_bus_lotties-bus-journeys_chance"),  # hyphens
+        _e("sensor.bus_tracker_213_last_bus_to_target", "mqtt", "wa_bus_213_last_bus"),  # an older name...
+        _e("sensor.fuel_prices_petrol_e10_tile_110_7", "mqtt", "wa_fuel_tile_e10_110_m7"),  # ...nothing uses
+        _e("sensor.wa_events_home_upcoming", "rest", "wa_events_home_upcoming"),
+        _e("sensor.wa_fuel_tile_e10_99_m11", "mqtt", "wa_fuel_tile_e10_99_m11"),
+    ]  # fmt: skip
+    raw = dict(RAW, **{"core.entity_registry": _store("core.entity_registry", {"entities": ents})})
+    installed = {"packages/wa_energy_plan.yaml": "sensor.wa_energy_charge_schedule sensor.wa_energy_rate",
+                 "dashboards/pollen.yaml": "states.sensor | selectattr('entity_id', 'search', 'sensor.wa_pollen_tile_')",
+                 "dashboards/trains-buses.yaml": "entity: sensor.wa_energy_rate"}  # fmt: skip
+    live = {"states": [{"entity_id": "sensor.wa_events_home_upcoming", "state": "unavailable"},
+                       {"entity_id": "sensor.wa_fuel_tile_e10_99_m11", "state": "unavailable"},
+                       {"entity_id": "sensor.wa_energy_rate", "state": "14.27", "last_updated": "2026-10-25T09:00:00"}]}  # fmt: skip
+    inv = inventory(raw, dict(N.DEFAULTS), installed, {}, {}, None, [], live)
+    by = {c["what"]: c for c in inv["checks"]}
+    assert by["Renamed sensors"]["detail"].endswith("sensor.wa_energy_charge_schedule_2 (expected sensor.wa_energy_charge_schedule)")
+    assert "lotties" not in by["Renamed sensors"]["detail"] and "bus_tracker" not in by["Renamed sensors"]["detail"]
+    assert by["Older sensor names"]["level"] == "info" and by["Older sensor names"]["detail"].startswith("2 World")
+    assert "Sensors your files need" not in by or "wa_pollen_tile_" not in by["Sensors your files need"]["detail"]
+    assert by["Package sensors failing"]["detail"].startswith("sensor.wa_events_home_upcoming: these ask World Assistant")
+    assert by["Area tiles"]["level"] == "info" and "World Assistant sensors unavailable" not in by
+
+
+def test_secrets_are_checked_without_keeping_them() -> None:
+    from app.ha_setup import SECRET_PATHS
+
+    pkg = {"packages/world_assistant_events.yaml": "resource: !secret wa_events_url\nauth: !secret wa_authorization"}
+    good = 'wa_events_url: "http://10.0.2.49:8010/v1/events/near"\nwa_authorization: "Bearer tok123"\nother: x\n'
+    inv = inventory(dict(RAW, **{"secrets.yaml": good}), dict(N.DEFAULTS), pkg, {}, {}, None, [], None, "tok123", SECRET_PATHS)
+    assert {c["what"]: c for c in inv["checks"]}["secrets.yaml"]["detail"] == "2 lines in place, pointing at 10.0.2.49:8010"
+    old = good.replace("tok123", "OLDTOKEN")
+    inv = inventory(dict(RAW, **{"secrets.yaml": old}), dict(N.DEFAULTS), pkg, {}, {}, None, [], None, "tok123", SECRET_PATHS)
+    details = [c["detail"] for c in inv["checks"] if c["what"] == "secrets.yaml"]
+    assert any("not World Assistant's current API token" in d for d in details)
+    assert "OLDTOKEN" not in json.dumps(inv) and "tok123" not in json.dumps(inv)
+    inv = inventory(dict(RAW, **{"secrets.yaml": "wa_events_url: http://x/v1/wrong\n"}), dict(N.DEFAULTS), pkg, {}, {}, None,
+                    [], None, "tok123", SECRET_PATHS)  # fmt: skip
+    details = " ".join(c["detail"] for c in inv["checks"] if c["what"] == "secrets.yaml")
+    assert "missing wa_authorization" in details and "wa_events_url do not end in World Assistant's path" in details
+
+
+def test_pasted_dashboards_are_checked_for_missing_sensors() -> None:
+    raw = dict(RAW, **{
+        "lovelace_dashboards": _store("lovelace_dashboards", {"items": [{"id": "dash_home", "title": "Home charging", "mode": "storage"}]}),
+        "lovelace.dash_home": _store("lovelace.dash_home", {"config": {"title": "Home charging", "views": [{"cards": [
+            {"type": "tile", "entity": "sensor.wa_power_power_cut_home"}, {"type": "tile", "entity": "sensor.wa_energy_rate"}]}]}}),
+    })  # fmt: skip
+    inv = inventory(raw, dict(N.DEFAULTS), {}, {}, {}, None)
+    assert {c["what"]: c["detail"] for c in inv["checks"]}["Sensors your files need"].endswith("sensor.wa_power_power_cut_home")
+
+
+def test_find_my_setup_says_whether_the_dashboards_update_by_themselves() -> None:
+    rendered = {"dashboards/home-charging.yaml": "title: Home charging\nviews: []\n"}
+    raw = dict(RAW, **{"configuration.yaml": "default_config:\n"})
+    by = {c["what"]: c for c in inventory(raw, dict(N.DEFAULTS), {}, rendered, {}, None)["checks"]}
+    assert by["Dashboards"]["level"] == "info" and "sidebar" in by["Dashboards"]["detail"]
+    raw["configuration.yaml"] += "lovelace:\n  dashboards:\n    wa-home-charging:\n      mode: yaml\n"
+    by = {c["what"]: c for c in inventory(raw, dict(N.DEFAULTS), {}, rendered, {}, None)["checks"]}
+    assert by["Dashboards"]["level"] == "ok"

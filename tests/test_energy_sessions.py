@@ -260,3 +260,25 @@ def ZoneInfoLondon():
     from zoneinfo import ZoneInfo
 
     return ZoneInfo("Europe/London")
+
+
+async def test_saving_sessions_query_retried_once_after_a_timeout() -> None:
+    import httpx
+
+    from app.energy import kraken
+
+    calls = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls.append(req.url.host)
+        if req.url.host == "api.oegb-kraken.energy":
+            return httpx.Response(200, json={"data": {"obtainKrakenToken": {"token": "t"}}})
+        if len(calls) == 2:
+            raise httpx.ReadTimeout("slow", request=req)
+        return httpx.Response(200, json={"data": {"savingSessions": {"events": [], "account": {"joinedEvents": [
+            {"eventId": "9", "startAt": "2026-10-25T13:00:00+00:00", "endAt": "2026-10-25T14:00:00+00:00",
+             "eventType": "FREE_ELECTRICITY"}]}}}})  # fmt: skip
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+        rows = await kraken.fetch_saving(c, "k", "A-1")
+    assert len(calls) == 3 and rows[0]["joined"] and rows[0]["kind"] == "boost"

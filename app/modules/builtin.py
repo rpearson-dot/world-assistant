@@ -137,10 +137,10 @@ BUILTIN: tuple[Module, ...] = (
                        {"hour": {3}, "minute": {40}, "timeout": 600, "max_tries": 2}),
                    Job("app.integrations.tflstations.sync:tfl_station_alerts",
                        {"minute": {4, 14, 24, 34, 44, 54}, "timeout": 120, "max_tries": 1}))),
-    Module("ukpn", "UK Power Networks", "Power cuts and electricity street works near your places, the substations feeding them, "
-           "your rota block, and how clean your local electricity is (London, South East and East of England)",
+    Module("ukpn", "UK Power Networks", "Power cuts and electricity street works near your places, and the substations feeding them "
+           "(London, South East and East of England)",
            category="energy", keys=("ukpn_api_key",), key_optional=True, switch="ukpn_poll_enabled",
-           jobs=("ukpn_places", "ukpn_faults", "ukpn_works", "ukpn_proposed", "ukpn_carbon"),
+           jobs=("ukpn_places", "ukpn_faults", "ukpn_works", "ukpn_proposed"),
            link="https://ukpowernetworks.opendatasoft.com/", note="Reads nothing unless a saved place is on their network. CC BY 4.0.",
            coverage=("london", "south east", "east of england"), area=(50.75, -1.30, 53.05, 1.80),
            routers=("app.power:router",), prefixes=("/v1/power",), tools=("power",),
@@ -148,8 +148,7 @@ BUILTIN: tuple[Module, ...] = (
                    Job("app.integrations.ukpn.sync:ukpn_faults", {"minute": {2, 17, 32, 47}, "timeout": 120, "max_tries": 1}),
                    Job("app.integrations.ukpn.sync:ukpn_works_open", {"hour": set(range(0, 24, 2)), "minute": {12},
                                                                        "timeout": 600, "max_tries": 1}),
-                   Job("app.integrations.ukpn.sync:ukpn_works_proposed", {"hour": {4}, "minute": {50}, "timeout": 900, "max_tries": 2}),
-                   Job("app.integrations.ukpn.sync:ukpn_carbon", {"minute": {8, 38}, "timeout": 300, "max_tries": 1}))),
+                   Job("app.integrations.ukpn.sync:ukpn_works_proposed", {"hour": {4}, "minute": {50}, "timeout": 900, "max_tries": 2}))),
     Module("busdisruptions", "Bus disruptions (BODS)",
            "Bus, tram and ferry diversions and closures near your places, where the local authority publishes them",
            category="transport", keys=("bods_api_key",), jobs=("bus_disruptions",), switch="bus_disruptions_poll_enabled",

@@ -75,8 +75,6 @@ async def main(lat: float | None, lon: float | None) -> int:
                 w = N.works(r, kind.split("_")[1], now)
                 print("   read as:", {k: w[k] for k in ("id", "street", "town", "usrn", "category", "traffic",
                                                         "starts_at", "ends_at", "lat", "lon")})  # fmt: skip
-            elif kind == "carbon":
-                print("   read as:", N.carbon(r))
     return 0
 
 

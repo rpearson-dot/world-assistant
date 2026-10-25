@@ -1,15 +1,13 @@
-"""Power: cuts and works near your places, what supplies them, and how clean the electricity is (UK Power Networks)."""
+"""Power: cuts and works near your places, and what supplies them (UK Power Networks)."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import text
 
 from app.auth import require_token
-from app.integrations.ukpn.normalise import cleanest
 from app.places import place_or_default
 
 router = APIRouter(prefix="/v1/power", tags=["power"], dependencies=[Depends(require_token)])
@@ -78,31 +76,10 @@ async def works(request: Request, place: str | None = None, km: float = Query(1.
             "proposed": sum(i["stage"] == "proposed" for i in items), "works": items}  # fmt: skip
 
 
-async def carbon_for(conn: Any, place_id: str, hours: float = 3.0) -> dict[str, Any] | None:
-    gsp = (await conn.execute(text("SELECT name FROM ukpn_place_area WHERE place_id = :p AND kind = 'gsp' LIMIT 1"),
-                              {"p": place_id})).scalar()  # fmt: skip
-    if not gsp:
-        return None
-    rows = [(r[0], r[1]) for r in await conn.execute(
-        text("SELECT at, intensity FROM ukpn_carbon WHERE gsp = :g AND at >= now() - interval '1 hour' ORDER BY at"),
-        {"g": gsp})]  # fmt: skip
-    best = cleanest(rows, datetime.now(UTC), hours)
-    return {"grid_supply_point": gsp, "unit": "gCO2/kWh", **(best or {"now": None})}
-
-
-@router.get("/carbon")
-async def carbon(request: Request, place: str | None = None, hours: float = Query(3.0, ge=0.5, le=12)) -> dict[str, Any]:
-    """How clean the electricity is at the grid supply point feeding a place, now, and its cleanest block ahead."""
-    p = await _place(request, place)
-    async with request.app.state.engine.connect() as conn:
-        out = await carbon_for(conn, p.id, hours)
-    return {"place": p.id, "available": bool(out and out.get("now") is not None), **(out or {})}
-
-
 @router.get("/supply")
 async def supply(request: Request, place: str | None = None) -> dict[str, Any]:
     """What supplies a place: whether it is on UK Power Networks' network, the grid supply point, primary and
-    secondary substation feeding it, its rota load disconnection block, power cuts there now, and carbon intensity."""
+    secondary substation feeding it, and power cuts there now."""
     p = await _place(request, place)
     async with request.app.state.engine.connect() as conn:
         areas = (await conn.execute(text("SELECT kind, code, name FROM ukpn_place_area WHERE place_id = :p ORDER BY kind"),
@@ -111,7 +88,6 @@ async def supply(request: Request, place: str | None = None) -> dict[str, Any]:
         for a in areas:
             by.setdefault(a.kind, []).append({"code": a.code, "name": a.name})
         here = [c for c in await cuts_near(conn, p, NEAR_KM) if c["at_place"]]
-        carbon_now = await carbon_for(conn, p.id)
     checked = bool(areas)
     on_network = bool(by.get("boundary")) and not by.get("idno")
     return {
@@ -119,8 +95,8 @@ async def supply(request: Request, place: str | None = None) -> dict[str, Any]:
         "on_network": on_network if checked else None,
         "independent_operator": (by.get("idno") or [{}])[0].get("name") if by.get("idno") else None,
         "grid_supply_point": (by.get("gsp") or [None])[0], "primary": (by.get("primary") or [None])[0],
-        "secondary": (by.get("secondary") or [None])[0], "rota_block": (by.get("rota") or [None])[0],
-        "power_cut_now": bool(here), "cuts": here, "carbon": carbon_now,
+        "secondary": (by.get("secondary") or [None])[0],
+        "power_cut_now": bool(here), "cuts": here,
     }  # fmt: skip
 
 

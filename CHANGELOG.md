@@ -4,6 +4,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-10-25
+
+### Fixed
+- **Find my setup reports only real problems** (from the first real run):
+  - a sensor whose World Assistant id has hyphens (a bus tracker named "lotties-bus-journeys") is not "renamed": Home Assistant writes hyphens as _;
+  - World Assistant sensors that kept older names are a problem only when one of your files (installed or pasted in the editor) names them; otherwise one line says how many and that nothing needs doing;
+  - a name prefix a dashboard uses to find a set of sensors (`sensor.wa_pollen_tile_`) is not a missing sensor;
+  - map-area tiles with no current data (fuel, roads, pollen) are listed as normal, not as unavailable sensors;
+  - dashboards pasted into the editor are checked for missing World Assistant sensors too ("Sensors your files need"), so a tile showing "Entity not found" is named;
+  - a package sensor that asks World Assistant directly (`sensor.wa_events_home_upcoming`, a REST sensor) is reported as failing, with where to look.
+- **Free Electricity and Saving Sessions kept up to date when Octopus is slow**: the sessions query (the part that says which ones you joined) timed out after 30 seconds at busy times, leaving the stored list as it was. It now waits up to 90 seconds and tries once more.
+
+### Added
+- **Dashboards that update by themselves.** "Copy to Home Assistant" (Samba) can now put World Assistant's dashboards in Home Assistant's sidebar as YAML dashboards (ticked by default): it adds them to `configuration.yaml`, backed up first, under a marked block it rewrites on later copies. A `lovelace:` section of yours is never edited; the lines to add are shown instead. After one restart every copy updates the dashboards, with nothing to paste. Find my setup says whether this is set up, and which pasted dashboards can then be deleted.
+- **Find my setup checks secrets.yaml** for the installed packages: every `wa_*` line they use is there, each URL ends in World Assistant's path for it, and `wa_authorization` is World Assistant's current API token. Values are compared, never kept or shown.
+
+### Removed
+- **Carbon intensity** (UK Power Networks): the Energy tab card, `/v1/power/carbon`, the assistant's "carbon" answer, the half-hourly sync job and its table (migration 0033). Home Assistant's `sensor.wa_power_carbon_intensity` and `sensor.wa_power_cleanest_start` are removed from MQTT on the next publish, and the "Grid carbon now" tile is gone from the Home charging dashboard. The unused rota block sensor is cleared the same way.
+
 ## [0.21.0] - 2026-10-25
 
 ### Added
