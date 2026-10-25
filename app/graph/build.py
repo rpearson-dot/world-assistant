@@ -117,8 +117,8 @@ SELECT d.id, l.id FROM tfl_road_disruption d JOIN lines l ON ST_DWithin(d.geom, 
 WHERE d.geom IS NOT NULL AND (d.ends_at IS NULL OR d.ends_at > now())
 """
 
-# What lies inside which administrative area (Boundary-Line, kinds chosen in settings). Stations are left
-# out: thousands of them would bury the areas.
+# What lies inside which administrative area (Boundary-Line, kinds chosen in settings). Fuel stations are in
+# INSIDE_MORE, only those near you: all of Britain's would bury the areas.
 INSIDE_PAIRS = """
 SELECT 'Place' AS label, p.id AS thing, b.id AS area
 FROM place p JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, p.geog::geometry)
@@ -137,6 +137,31 @@ UNION ALL
 SELECT 'Disruption', d.id, b.id
 FROM tfl_road_disruption d JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, d.geom::geometry)
 WHERE d.geom IS NOT NULL AND (d.ends_at IS NULL OR d.ends_at > now())
+"""
+
+# The rest of what has a position, once what the graph holds of it is known: fuel stations near a place or along a
+# corridor (not all of Britain's), Home Assistant's zones, power cuts, the street works in the graph, and live flood
+# warnings (each area the warning's area reaches into).
+INSIDE_MORE = """
+SELECT 'Station' AS label, s.node_id AS thing, b.id AS area
+FROM fuel_station s JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, s.geog::geometry)
+WHERE s.coords_ok AND NOT s.permanent_closure
+  AND (s.node_id = ANY(:stations) OR EXISTS (SELECT 1 FROM place p WHERE ST_DWithin(s.geog, p.geog, :near_m)))
+UNION ALL
+SELECT 'Location', l.id, b.id
+FROM ha_location l JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, l.geog::geometry)
+UNION ALL
+SELECT 'PowerCut', f.id, b.id
+FROM ukpn_fault f JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, f.geog::geometry)
+UNION ALL
+SELECT 'StreetWork', w.id, b.id
+FROM ukpn_works w JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, w.geog::geometry)
+WHERE w.id = ANY(:works)
+UNION ALL
+SELECT 'FloodWarning', w.id, b.id
+FROM flood_warning w JOIN flood_area a ON a.notation = w.area AND a.geom IS NOT NULL
+JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, a.geom::geometry)
+WHERE w.severity_level <= 3
 """
 
 # The next wider area each area sits in (a ward in a district, a district in a county, a county in a region).
@@ -237,6 +262,9 @@ async def read(
             text(NEAR_PAIRS), {"near_m": near_km * 1000.0})]  # fmt: skip
         out["along_pairs"] = [tuple(r) for r in await conn.execute(
             text(ALONG_PAIRS), {"along_m": along_km * 1000.0})]  # fmt: skip
+        out["inside_pairs"] += [tuple(r) for r in await conn.execute(text(INSIDE_MORE), {
+            **kinds, "near_m": near_km * 1000.0, "stations": sorted({s for s, _, _ in out["along_pairs"]}),
+            "works": [w["id"] for w in out["street_work_rows"]]})]  # fmt: skip
     return out
 
 

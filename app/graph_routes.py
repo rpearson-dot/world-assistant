@@ -132,9 +132,10 @@ async def presets() -> dict[str, Any]:
 
 
 @router.get("/overview")
-async def overview(limit: int = Query(200, ge=1, le=400)) -> dict[str, Any]:
-    """Your places, trips, vehicles and bus trackers, and what they connect to."""
-    return await _view(explore.OVERVIEW, limit=limit)
+async def overview(limit: int = Query(400, ge=1, le=500), per: int = Query(12, ge=1, le=100)) -> dict[str, Any]:
+    """Your places, trips, vehicles and bus trackers, and what they connect to: up to `per` each, so every place
+    shows, not only the busiest."""
+    return await _view(explore.OVERVIEW, limit=limit, per=per)
 
 
 @router.get("/search")

@@ -191,12 +191,14 @@ class TicketmasterClient:
     async def search(
         self, lat: float, lon: float, *, radius_km: float = 8.0, start: datetime | None = None,
         end: datetime | None = None, event_type: str | None = None, keyword: str | None = None,
-        limit: int = 20,
+        limit: int = 20, page: int = 0,
     ) -> dict[str, Any]:  # fmt: skip
         params = {
             "geoPoint": geohash(lat, lon), "radius": f"{max(1, round(radius_km))}", "unit": "km",
             "size": str(max(1, min(limit, 100))), "sort": "date,asc", "countryCode": "GB",
         }  # fmt: skip
+        if page > 0:
+            params["page"] = str(page)
         fmt = "%Y-%m-%dT%H:%M:%SZ"
         if start:
             params["startDateTime"] = start.strftime(fmt)

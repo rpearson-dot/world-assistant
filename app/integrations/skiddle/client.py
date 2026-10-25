@@ -173,7 +173,7 @@ class SkiddleClient:
     async def search(
         self, lat: float, lon: float, *, radius_km: float = 8.0, min_date: date | None = None,
         max_date: date | None = None, event_code: str | None = None, keyword: str | None = None,
-        limit: int = 20, order: str = "date",
+        limit: int = 20, order: str = "date", offset: int = 0,
     ) -> dict[str, Any]:  # fmt: skip
         """Events near a point. Latitude, longitude and radius (miles) must travel together."""
         params = {
@@ -181,6 +181,8 @@ class SkiddleClient:
             "radius": str(max(1, math.ceil(radius_km / KM_PER_MILE))),
             "order": order, "limit": str(max(1, min(limit, MAX_LIMIT))),
         }  # fmt: skip
+        if offset > 0:
+            params["offset"] = str(offset)
         if min_date:
             params["minDate"] = min_date.isoformat()
         if max_date:

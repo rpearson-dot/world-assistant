@@ -491,3 +491,12 @@ def test_the_outcome_log_counts_the_car() -> None:
     for k, tpl in branch[0]["variables"].items():
         v[k] = render(tpl, st, at, **v)
     assert words(branch[1]["data"]["message"], st, **v).endswith("12.0 kWh from the grid. The car took 9.2 kWh.")
+
+
+def test_car_range_in_miles_and_at_full_charge_agree_with_the_charge_level() -> None:
+    miles, full = EV_SENSORS["wa_car_range_mi"]["state"], EV_SENSORS["wa_car_full_range_mi"]["state"]
+    car = {"sensor.wa_car_range": "160", "sensor.wa_car_charge_level": "80.0"}
+    assert render(miles, car) == 99.4
+    assert render(full, car) == 124.0  # 160 km at 80% -> 200 km at 100%
+    assert render(full, car | {"sensor.wa_car_charge_level": "3"}) in (None, "None")
+    assert render(full, car | {"sensor.wa_car_range": "unavailable"}) in (None, "None")

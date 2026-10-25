@@ -99,7 +99,7 @@ BUILTIN: tuple[Module, ...] = (
            routers=("app.events:router", "app.events:page_router"), prefixes=("/v1/events", "/events"),
            tools=("events_near",),
            worker=(Job("app.integrations.localevents.sync:events_sync",
-                       {"hour": {0, 6, 12, 18}, "minute": {12}, "timeout": 300, "max_tries": 1}),)),
+                       {"hour": {0, 6, 12, 18}, "minute": {12}, "timeout": 900, "max_tries": 1}),)),
     Module("pollen", "Polleninformation", "Pollen by allergen, today and three days ahead",
            category="place", keys=("pollen_api_key",), jobs=("pollen_grid_sync", "pollen_sync"),
            link="https://www.polleninformation.at/en/data-interface", note="Free for personal use; 40 requests a day.",

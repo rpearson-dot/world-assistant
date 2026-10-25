@@ -91,7 +91,15 @@ EXPAND = (
     "MATCH (n) WHERE n.id = $id AND ($label IS NULL OR $label IN labels(n)) "
     "OPTIONAL MATCH (n)-[r]-(m) RETURN n, r, m LIMIT $limit"
 )
-OVERVIEW = "MATCH (n)-[r]-(m) WHERE n:Place OR n:Trip OR n:Vehicle OR n:BusTracker RETURN n, r, m LIMIT $limit"
+# A share for each place, trip, vehicle and tracker: what it is (its areas, routes, supply) before what is near it,
+# nearest first. A plain LIMIT filled up on whatever came first (home's hundreds of NEAR) and left other places out.
+OVERVIEW = (
+    "MATCH (n) WHERE n:Place OR n:Trip OR n:Vehicle OR n:BusTracker "
+    "MATCH (n)-[r]-(m) "
+    "WITH n, r, m ORDER BY n.id, CASE type(r) WHEN 'NEAR' THEN 1 ELSE 0 END, coalesce(r.km, 0) "
+    "WITH n, collect({r: r, m: m})[..$per] AS some UNWIND some AS x "
+    "RETURN n, x.r AS r, x.m AS m LIMIT $limit"
+)
 
 
 def _plain(value: Any) -> Any:
