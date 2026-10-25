@@ -96,7 +96,7 @@ def test_inventory_checks_everything_shared() -> None:
     assert by["Home Assistant version"]["level"] == "ok" and inv["version"] == "2026.10.2"
     assert by["MQTT broker"]["level"] == "ok" and inv["mqtt"] == {"host": "10.0.2.49", "port": 1883}
     assert "sensor.wa_energy_charge_schedule_2 (expected sensor.wa_energy_charge_schedule)" in by["Renamed sensors"]["detail"]
-    assert by["Sensors the packages need"]["detail"].endswith("sensor.wa_energy_charge_schedule")
+    assert by["Sensors your files need"]["detail"].endswith("sensor.wa_energy_charge_schedule")
     assert by["Home"]["level"] == "ok" and inv["home"]["time_zone"] == "Europe/London"
     assert by["Inverter"]["level"] == "change" and "found garage_deye" in by["Inverter"]["detail"]
     assert {f["path"]: f["state"] for f in inv["files"]} == {
@@ -219,7 +219,7 @@ def test_only_real_problems_are_problems() -> None:
     assert by["Renamed sensors"]["detail"].endswith("sensor.wa_energy_charge_schedule_2 (expected sensor.wa_energy_charge_schedule)")
     assert "lotties" not in by["Renamed sensors"]["detail"] and "bus_tracker" not in by["Renamed sensors"]["detail"]
     assert by["Older sensor names"]["level"] == "info" and by["Older sensor names"]["detail"].startswith("2 World")
-    assert "Sensors the packages need" not in by or "wa_pollen_tile_" not in by["Sensors the packages need"]["detail"]
+    assert "Sensors your files need" not in by or "wa_pollen_tile_" not in by["Sensors your files need"]["detail"]
     assert by["Package sensors failing"]["detail"].startswith("sensor.wa_events_home_upcoming: these ask World Assistant")
     assert by["Area tiles"]["level"] == "info" and "World Assistant sensors unavailable" not in by
 
@@ -240,3 +240,13 @@ def test_secrets_are_checked_without_keeping_them() -> None:
                     [], None, "tok123", SECRET_PATHS)  # fmt: skip
     details = " ".join(c["detail"] for c in inv["checks"] if c["what"] == "secrets.yaml")
     assert "missing wa_authorization" in details and "wa_events_url do not end in World Assistant's path" in details
+
+
+def test_pasted_dashboards_are_checked_for_missing_sensors() -> None:
+    raw = dict(RAW, **{
+        "lovelace_dashboards": _store("lovelace_dashboards", {"items": [{"id": "dash_home", "title": "Home charging", "mode": "storage"}]}),
+        "lovelace.dash_home": _store("lovelace.dash_home", {"config": {"title": "Home charging", "views": [{"cards": [
+            {"type": "tile", "entity": "sensor.wa_power_power_cut_home"}, {"type": "tile", "entity": "sensor.wa_energy_rate"}]}]}}),
+    })  # fmt: skip
+    inv = inventory(raw, dict(N.DEFAULTS), {}, {}, {}, None)
+    assert {c["what"]: c["detail"] for c in inv["checks"]}["Sensors your files need"].endswith("sensor.wa_power_power_cut_home")

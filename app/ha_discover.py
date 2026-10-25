@@ -284,8 +284,8 @@ def inventory(raw: dict[str, str | None], current: dict[str, str], installed: di
     renamed = [f"{have} (expected {want})" for have, want in renamed_all if re.search(re.escape(want) + r"(?![a-z0-9_])", used)]
     ids = {e["entity_id"] for e in entities}
     needed: set[str] = set()
-    for path, body in installed.items():
-        if body is not None:
+    for body in [*installed.values(), *(json.dumps(d["config"]) for d in editor_dashboards(dashboards, raw) if d["config"])]:
+        if body is not None:  # installed files, and dashboards pasted in the editor
             needed |= {x for x in WA_ENTITY.findall(body)
                        if not x.endswith("_") and x.split(".", 1)[1].split("_")[1] in WA_DEVICES}  # a prefix is not a sensor
     missing = sorted(needed - ids)
@@ -300,8 +300,8 @@ def inventory(raw: dict[str, str | None], current: dict[str, str], installed: di
         check("info", "Older sensor names", f"{len(renamed_all) - len(renamed)} World Assistant sensors keep names from an "
                                             "earlier version; none of your files use them, so nothing needs doing")  # fmt: skip
     if missing:
-        check("problem", "Sensors the packages need", "not in Home Assistant (World Assistant too old, that part not "
-                                                      "set up, or not published yet): " + ", ".join(missing[:30]))  # fmt: skip
+        check("problem", "Sensors your files need", "not in Home Assistant (World Assistant too old, that part not set up "
+                                                    "or switched off, or not published yet): " + ", ".join(missing[:30]))  # fmt: skip
 
     secrets_checks(check, raw.get("secrets.yaml"), installed, api_token, secret_paths or {})
 

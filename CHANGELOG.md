@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   - World Assistant sensors that kept older names are a problem only when one of your files (installed or pasted in the editor) names them; otherwise one line says how many and that nothing needs doing;
   - a name prefix a dashboard uses to find a set of sensors (`sensor.wa_pollen_tile_`) is not a missing sensor;
   - map-area tiles with no current data (fuel, roads, pollen) are listed as normal, not as unavailable sensors;
+  - dashboards pasted into the editor are checked for missing World Assistant sensors too ("Sensors your files need"), so a tile showing "Entity not found" is named;
   - a package sensor that asks World Assistant directly (`sensor.wa_events_home_upcoming`, a REST sensor) is reported as failing, with where to look.
 
 ### Added
