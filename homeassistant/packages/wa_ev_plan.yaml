@@ -1,31 +1,37 @@
 # World Assistant car charging plan for Home Assistant: charges the car only when electricity is cheap or free, and
-# stops at your target, using an OCPP charger (Home Assistant's OCPP integration) and, if you have it, the car's
-# charge level from OVMS.
+# stops at your target, through an OCPP charger (Home Assistant's OCPP integration) and, if you have it, the car's
+# charge level (from OVMS, or any other integration).
 #
-# WHEN IT CHARGES: the car is plugged in and its charge level is below "WA car: charge to" (80%), and one of:
-#   - a cheap window of your tariff is on (sensor.wa_energy_charge_schedule, from World Assistant: on Cosy
-#     04:00-07:00, 13:00-16:00 and 22:00-24:00), so the house battery is charging from the grid too and is not
-#     drained by the car;
+# WHEN IT CHARGES: the car is plugged in, below "WA car: charge to", and one of:
+#   - the electricity rate is cheap now: World Assistant's live rate band (sensor.wa_energy_cheap_now), which
+#     follows your tariff as it is (Cosy's windows, Go's night, Agile's cheap half hours as they move), or a
+#     charging window of the energy plan is on;
 #   - a Free Electricity hour you joined is on (sensor.wa_energy_free_electricity_now);
-#   - the car is below "WA car: always charge below" (20%), at any rate.
-# Otherwise charging is stopped. Without a charge level from the car (no OVMS, or it is asleep) the target is not
-# checked: the car charges through each cheap window until it stops by itself.
+#   - "WA car: always charge when low" is on and the car is below "WA car: low means below".
+# Otherwise charging is stopped. Without a charge level (none set, or the car is asleep) the target is not checked:
+# the car charges whenever it is cheap or free until it stops by itself.
 #
-# HOW: the charger's charge control switch (OCPP remote start/stop), checked every 5 minutes and whenever the
-# window, the free hour, the plug or the car's charge level changes. The charger's own maximum current is left as it
-# is. Every start and stop (or, in a dry run, what would have happened) goes to the logbook under "WA car charging".
-# The charger does not send meter readings by itself, so they are asked for every minute while it is charging.
+# YOUR ENTITIES: set them on the Home charging dashboard (Car settings), or in Settings > Helpers, "WA car: ..."
+# entity fields. Left empty, the names below are used (a Sync EV charger named "charger" in the OCPP integration and
+# an OVMS Nissan Leaf). The plan reads them through its own sensors (sensor.wa_car_*, sensor.wa_charger_*), so the
+# dashboard and the energy plan's outcome log follow whatever you set.
+#
+# HOW: the charger's charge control switch (OCPP remote start/stop), checked every 5 minutes and whenever the rate,
+# a free hour, the plug or the car's charge level changes. The charger's own maximum current is left as it is. Every
+# start and stop (or, in a dry run, what would have happened) goes to the logbook under "WA car charging". The
+# charger is asked for meter readings every minute while it charges (some, like the Sync EV, never send them).
 #
 # DRY RUN FIRST: "WA car: control the charger" starts OFF; while off, decisions are only logged.
-#
-# Entity names below are for a charger named "charger" in the OCPP integration and an OVMS car HV66BZD (a Nissan
-# Leaf); change them to yours. The charger's own schedule (in its app) should be off, or it will hold the car back
-# outside it ("SuspendedEVSE"). Needs World Assistant 0.20 or later and the energy plan package.
+# Turn the charger's own schedule off (in its app) or it will hold the car back ("SuspendedEVSE").
+# Needs World Assistant 0.20 or later; works best with the energy plan package (wa_energy_plan.yaml).
 
 input_boolean:
   wa_ev_apply:
     name: "WA car: control the charger"
     icon: mdi:ev-station
+  wa_ev_low_enabled:
+    name: "WA car: always charge when low"
+    icon: mdi:battery-alert-variant-outline
 
 input_number:
   wa_ev_target_soc:
@@ -36,54 +42,138 @@ input_number:
     unit_of_measurement: "%"
     initial: 80
   wa_ev_min_soc:
-    name: "WA car: always charge below"
-    min: 0
+    name: "WA car: low means below"
+    min: 5
     max: 60
     step: 5
     unit_of_measurement: "%"
     initial: 20
 
+# The entities this plan uses. No "initial": what you set is kept across restarts; empty means the default.
+input_text:
+  wa_ev_entity_status:
+    name: "WA car: charger status entity (default sensor.charger_status_connector)"
+    max: 255
+  wa_ev_entity_switch:
+    name: "WA car: charger start/stop switch (default switch.charger_charge_control)"
+    max: 255
+  wa_ev_entity_power:
+    name: "WA car: charger power entity (default sensor.charger_power_active_import)"
+    max: 255
+  wa_ev_entity_session:
+    name: "WA car: charger session energy entity (default sensor.charger_energy_session)"
+    max: 255
+  wa_ev_entity_meter:
+    name: "WA car: charger energy meter entity (default sensor.charger_energy_active_import_register)"
+    max: 255
+  wa_ev_entity_soc:
+    name: "WA car: car charge level entity (default sensor.hv66bzd_instrument_soc_nissan_leaf)"
+    max: 255
+  wa_ev_entity_range:
+    name: "WA car: car range entity (default sensor.nissan_leaf_hv66bzd_estimated_range)"
+    max: 255
+
 template:
   - sensor:
+      # The configured entities, read through fixed names so triggers, the dashboard and the outcome log never change.
+      - name: "WA charger status"
+        unique_id: wa_charger_status
+        icon: mdi:ev-plug-type2
+        state: >-
+          {% set e = states('input_text.wa_ev_entity_status') %}
+          {{ states(e if e.count('.') == 1 else 'sensor.charger_status_connector') }}
+      - name: "WA charger power"
+        unique_id: wa_charger_power
+        unit_of_measurement: kW
+        device_class: power
+        state: >-
+          {% set e = states('input_text.wa_ev_entity_power') %}
+          {{ states(e if e.count('.') == 1 else 'sensor.charger_power_active_import') | float(0) }}
+      - name: "WA charger session energy"
+        unique_id: wa_charger_session_energy
+        unit_of_measurement: kWh
+        device_class: energy
+        state: >-
+          {% set e = states('input_text.wa_ev_entity_session') %}
+          {{ states(e if e.count('.') == 1 else 'sensor.charger_energy_session') | float(0) }}
+      - name: "WA charger energy total"
+        unique_id: wa_charger_energy_total
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total_increasing
+        state: >-
+          {% set e = states('input_text.wa_ev_entity_meter') %}
+          {% set v = states(e if e.count('.') == 1 else 'sensor.charger_energy_active_import_register') %}
+          {{ v | float if is_number(v) else none }}
+      - name: "WA car charge level"
+        unique_id: wa_car_charge_level
+        unit_of_measurement: "%"
+        device_class: battery
+        state: >-
+          {% set e = states('input_text.wa_ev_entity_soc') %}
+          {% set v = states(e if e.count('.') == 1 else 'sensor.hv66bzd_instrument_soc_nissan_leaf') %}
+          {{ v | float if is_number(v) else none }}
+      - name: "WA car range"
+        unique_id: wa_car_range
+        unit_of_measurement: km
+        state: >-
+          {% set e = states('input_text.wa_ev_entity_range') %}
+          {% set v = states(e if e.count('.') == 1 else 'sensor.nissan_leaf_hv66bzd_estimated_range') %}
+          {{ v | float | round(0) if is_number(v) else none }}
+
       - name: "WA car charging plan"
         unique_id: wa_ev_plan
         icon: mdi:car-electric
         # charge | wait | full | unplugged
         state: >-
-          {% set status = states('sensor.charger_status_connector') %}
-          {% set soc = states('sensor.hv66bzd_instrument_soc_nissan_leaf') | float(-1) %}
+          {% set status = states('sensor.wa_charger_status') %}
+          {% set soc = states('sensor.wa_car_charge_level') | float(-1) %}
           {% set target = states('input_number.wa_ev_target_soc') | float(80) %}
-          {% set floor = states('input_number.wa_ev_min_soc') | float(20) %}
+          {% set low = is_state('input_boolean.wa_ev_low_enabled', 'on') and 0 <= soc < states('input_number.wa_ev_min_soc') | float(20) %}
           {% set hm = now().strftime('%H:%M') %}
-          {% set ns = namespace(cheap=false) %}
+          {% set ns = namespace(window=false) %}
           {% for w in state_attr('sensor.wa_energy_charge_schedule', 'windows') or [] %}
             {% if (w.start < w.end and w.start <= hm < w.end) or (w.end <= w.start and (hm >= w.start or hm < w.end)) %}
-              {% set ns.cheap = true %}{% endif %}
+              {% set ns.window = true %}{% endif %}
           {% endfor %}
+          {% set cheap = is_state('sensor.wa_energy_cheap_now', 'on') or ns.window %}
           {% set free = is_state('sensor.wa_energy_free_electricity_now', 'on') %}
           {% if status in ['Available', 'Unavailable', 'Faulted', 'unknown', 'unavailable'] %}unplugged
           {% elif soc >= 0 and soc >= target %}full
-          {% elif ns.cheap or free or (soc >= 0 and soc < floor) %}charge
+          {% elif cheap or free or low %}charge
           {% else %}wait{% endif %}
         attributes:
           why: >-
-            {% set soc = states('sensor.hv66bzd_instrument_soc_nissan_leaf') | float(-1) %}
-            {% set hm = now().strftime('%H:%M') %}
-            {% set ns = namespace(win='') %}
-            {% for w in state_attr('sensor.wa_energy_charge_schedule', 'windows') or [] %}
-              {% if (w.start < w.end and w.start <= hm < w.end) or (w.end <= w.start and (hm >= w.start or hm < w.end)) %}
-                {% set ns.win = w.start ~ '-' ~ w.end %}{% endif %}
-            {% endfor %}
-            {% if is_state('sensor.wa_energy_free_electricity_now', 'on') %}a free hour you joined
-            {% elif ns.win %}the cheap window {{ ns.win }}
-            {% elif soc >= 0 and soc < states('input_number.wa_ev_min_soc') | float(20) %}the car is below {{ states('input_number.wa_ev_min_soc') | int }}%
-            {% else %}not a cheap window{% endif %}
-          car_soc: "{{ states('sensor.hv66bzd_instrument_soc_nissan_leaf') | float(none) }}"
-          next_window: >-
-            {% set hm = now().strftime('%H:%M') %}
-            {% set wins = (state_attr('sensor.wa_energy_charge_schedule', 'windows') or []) | map(attribute='start') | list | sort %}
-            {% set later = wins | select('>', hm) | list %}
-            {{ (later or wins or [none])[0] }}
+            {% set soc = states('sensor.wa_car_charge_level') | float(-1) %}
+            {% if is_state('sensor.wa_energy_free_electricity_now', 'on') %}a Free Electricity hour you joined
+            {% elif is_state('sensor.wa_energy_cheap_now', 'on') %}the rate is cheap now ({{ states('sensor.wa_energy_rate') }} p/kWh)
+            {% elif is_state('input_boolean.wa_ev_low_enabled', 'on') and 0 <= soc < states('input_number.wa_ev_min_soc') | float(20) %}the car is below {{ states('input_number.wa_ev_min_soc') | int }}%
+            {% else %}the rate is not cheap now{% endif %}
+          # the next cheap or joined free time, whichever is sooner
+          next_start: >-
+            {% set c = as_datetime(states('sensor.wa_energy_next_cheap_start'), none) %}
+            {% set f = as_datetime(states('sensor.wa_energy_free_electricity_next_start'), none) %}
+            {% set f = f if f is not none and state_attr('sensor.wa_energy_free_electricity_next_start', 'joined') == true else none %}
+            {% set t = [c, f] | reject('none') | min if c is not none or f is not none else none %}
+            {{ t.isoformat() if t is not none else none }}
+
+script:
+  wa_car_charge_start:
+    alias: "WA car: start charging now"
+    icon: mdi:play
+    sequence:
+      - action: switch.turn_on
+        target:
+          entity_id: >-
+            {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else 'switch.charger_charge_control' }}
+  wa_car_charge_stop:
+    alias: "WA car: stop charging now"
+    icon: mdi:stop
+    sequence:
+      - action: switch.turn_off
+        target:
+          entity_id: >-
+            {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else 'switch.charger_charge_control' }}
 
 automation:
   - id: wa_ev_plan
@@ -96,17 +186,22 @@ automation:
       - trigger: state
         entity_id:
           - sensor.wa_ev_plan
-          - sensor.charger_status_connector
+          - sensor.wa_charger_status
           - input_boolean.wa_ev_apply
     variables:
+      switch: >-
+        {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else 'switch.charger_charge_control' }}
       plan: "{{ states('sensor.wa_ev_plan') }}"
-      status: "{{ states('sensor.charger_status_connector') }}"
+      status: "{{ states('sensor.wa_charger_status') }}"
       charging: "{{ status == 'Charging' }}"
-      switch_on: "{{ is_state('switch.charger_charge_control', 'on') }}"
+      switch_on: "{{ is_state(switch, 'on') }}"
       apply: "{{ is_state('input_boolean.wa_ev_apply', 'on') }}"
       start: "{{ plan == 'charge' and not charging and not switch_on }}"
       stop: "{{ plan in ['wait', 'full'] and (charging or switch_on) }}"
-      soc: "{{ states('sensor.hv66bzd_instrument_soc_nissan_leaf') }}"
+      soc: "{{ states('sensor.wa_car_charge_level') }}"
+      next: >-
+        {% set t = as_datetime(state_attr('sensor.wa_ev_plan', 'next_start'), none) %}
+        {{ (t | as_local).strftime('%a %H:%M') if t is not none else 'not known yet' }}
     conditions:
       - condition: template
         value_template: "{{ start or stop }}"
@@ -117,7 +212,7 @@ automation:
         then:
           - action: "switch.turn_{{ 'on' if start else 'off' }}"
             target:
-              entity_id: switch.charger_charge_control
+              entity_id: "{{ switch }}"
       - action: logbook.log
         data:
           name: WA car charging
@@ -126,7 +221,7 @@ automation:
             {{ 'Started' if start else 'Stopped' }} charging the car{{ ' (dry run: nothing changed)' if not apply else '' }}:
             {% if start %}{{ state_attr('sensor.wa_ev_plan', 'why') | trim }}{% elif plan == 'full' %}it is at {{ soc }}%, the
             target is {{ states('input_number.wa_ev_target_soc') | int }}%{% else %}{{ state_attr('sensor.wa_ev_plan', 'why') | trim }};
-            next cheap window {{ state_attr('sensor.wa_ev_plan', 'next_window') }}{% endif %}. Car {{ soc }}%, charger {{ status }}.
+            next cheap or free time {{ next }}{% endif %}. Car {{ soc }}%, charger {{ status }}.
 
   - id: wa_ev_meter_values
     alias: "WA car charging: ask the charger for meter readings while it charges"
@@ -136,9 +231,10 @@ automation:
         minutes: "/1"
     conditions:
       - condition: state
-        entity_id: sensor.charger_status_connector
+        entity_id: sensor.wa_charger_status
         state: Charging
     actions:
       - action: ocpp.trigger_custom_message
+        continue_on_error: true
         data:
           requested_message: MeterValues

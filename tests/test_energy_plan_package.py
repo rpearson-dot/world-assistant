@@ -58,7 +58,8 @@ def _env(states: dict[str, Any], now: datetime = NOW) -> tuple[Any, dict[str, An
                     "int": lambda v, d=0: int(num(v, d)), "float": num, "as_datetime": as_dt}  # fmt: skip
     funcs = {"states": lambda e: str(states.get(e, "unknown")), "is_state": lambda e, v: states.get(e) == v,
              "state_attr": lambda e, a: states.get(f"{e}#{a}"), "as_datetime": as_dt, "now": lambda: now,
-             "timedelta": timedelta, "none": None, "range": range}  # fmt: skip
+             "timedelta": timedelta, "none": None, "range": range,
+             "is_number": lambda v: str(v).lstrip("-").replace(".", "", 1).isdigit()}  # fmt: skip
     return env, funcs
 
 
@@ -384,29 +385,52 @@ def test_nothing_is_logged_between_boundaries() -> None:
 # --- the car charging plan -----------------------------------------------------------------------------------------
 
 EV = yaml.safe_load((Path(__file__).parent.parent / "homeassistant/packages/wa_ev_plan.yaml").read_text())
+EV_SENSORS = {x["unique_id"]: x for x in EV["template"][0]["sensor"]}
+CAR = {"sensor.wa_charger_status": "SuspendedEVSE", "sensor.wa_car_charge_level": "55.0", "input_number.wa_ev_target_soc": "80.0",
+       "input_number.wa_ev_min_soc": "20.0", "input_boolean.wa_ev_low_enabled": "on", "sensor.wa_energy_cheap_now": "off",
+       "sensor.wa_energy_free_electricity_now": "off", "sensor.wa_energy_rate": "14.27",
+       "sensor.wa_energy_charge_schedule#windows": WINDOWS}  # fmt: skip
 
 
-def _ev(states: dict[str, Any], at: datetime) -> str:
-    plan = EV["template"][0]["sensor"][0]
-    return render(plan["state"], states, at)
+def _plan(states: dict[str, Any], at: datetime) -> str:
+    return render(EV_SENSORS["wa_ev_plan"]["state"], states, at)
 
 
-def test_the_car_charges_only_in_cheap_or_free_time_and_stops_at_its_target() -> None:
-    st = {"sensor.wa_energy_charge_schedule#windows": WINDOWS, "sensor.charger_status_connector": "SuspendedEVSE",
-          "sensor.hv66bzd_instrument_soc_nissan_leaf": "55", "input_number.wa_ev_target_soc": "80.0",
-          "input_number.wa_ev_min_soc": "20.0", "sensor.wa_energy_free_electricity_now": "off"}  # fmt: skip
-    day = lambda h, m=0: datetime(2026, 10, 25, h, m, tzinfo=LONDON)
-    assert _ev(st, day(22, 30)) == "charge" and _ev(st, day(23, 55)) == "charge"  # 22:00-00:00 crosses midnight
-    assert _ev(st, day(0, 5)) == "wait"  # never 00:00-04:00: the house battery would feed the car
-    assert _ev(st, day(4, 0)) == "charge" and _ev(st, day(13, 30)) == "charge" and _ev(st, day(16, 0)) == "wait"
-    assert _ev(st | {"sensor.wa_energy_free_electricity_now": "on"}, day(10)) == "charge"
-    assert _ev(st | {"sensor.hv66bzd_instrument_soc_nissan_leaf": "15"}, day(10)) == "charge"  # below the minimum
-    assert _ev(st | {"sensor.hv66bzd_instrument_soc_nissan_leaf": "80"}, day(22, 30)) == "full"
-    assert _ev(st | {"sensor.hv66bzd_instrument_soc_nissan_leaf": "unavailable"}, day(22, 30)) == "charge"  # no level
-    assert _ev(st | {"sensor.charger_status_connector": "Available"}, day(22, 30)) == "unplugged"
-    why = EV["template"][0]["sensor"][0]["attributes"]
-    assert " ".join(str(render(why["why"], st, day(13, 30))).split()) == "the cheap window 13:00-16:00"
-    assert render(why["next_window"], st, day(16, 0)) == "22:00" and render(why["next_window"], st, day(23, 0)) == "04:00"
+def test_the_entities_are_settings_with_defaults() -> None:
+    soc = EV_SENSORS["wa_car_charge_level"]["state"]
+    assert render(soc, {"sensor.hv66bzd_instrument_soc_nissan_leaf": "85"}) == 85.0  # empty setting: the default
+    mine = {"input_text.wa_ev_entity_soc": "sensor.my_car_battery", "sensor.my_car_battery": "42"}
+    assert render(soc, mine | {"sensor.hv66bzd_instrument_soc_nissan_leaf": "85"}) == 42.0
+    assert render(soc, {"input_text.wa_ev_entity_soc": "sensor.my_car_battery", "sensor.my_car_battery": "unavailable"}) in (None, "None")
+    status = EV_SENSORS["wa_charger_status"]["state"]
+    assert render(status, {"input_text.wa_ev_entity_status": "sensor.wallbox_status", "sensor.wallbox_status": "Charging"}) == "Charging"
+    assert all(k.startswith("wa_ev_entity_") for k in EV["input_text"])
+    switch = EV["script"]["wa_car_charge_start"]["sequence"][0]["target"]["entity_id"]
+    assert render(switch, {}) == "switch.charger_charge_control"
+    assert render(switch, {"input_text.wa_ev_entity_switch": "switch.wallbox_charging"}) == "switch.wallbox_charging"
+
+
+def test_the_car_charges_when_the_rate_is_cheap_or_free_and_stops_at_its_target() -> None:
+    at = datetime(2026, 10, 25, 10, 0, tzinfo=LONDON)  # not one of Cosy's windows
+    assert _plan(CAR, at) == "wait"
+    assert _plan(CAR | {"sensor.wa_energy_cheap_now": "on"}, at) == "charge"  # follows the live rate (Agile too)
+    assert _plan(CAR, datetime(2026, 10, 25, 22, 30, tzinfo=LONDON)) == "charge"  # an energy plan charging window
+    assert _plan(CAR, datetime(2026, 10, 25, 0, 30, tzinfo=LONDON)) == "wait"  # Cosy 00:00-04:00 is not cheap
+    assert _plan(CAR | {"sensor.wa_energy_free_electricity_now": "on"}, at) == "charge"
+    low = CAR | {"sensor.wa_car_charge_level": "15.0"}
+    assert _plan(low, at) == "charge" and _plan(low | {"input_boolean.wa_ev_low_enabled": "off"}, at) == "wait"
+    assert _plan(low | {"input_number.wa_ev_min_soc": "10.0"}, at) == "wait"
+    assert _plan(CAR | {"sensor.wa_car_charge_level": "80.0", "sensor.wa_energy_cheap_now": "on"}, at) == "full"
+    assert _plan(CAR | {"sensor.wa_car_charge_level": "unknown", "sensor.wa_energy_cheap_now": "on"}, at) == "charge"
+    assert _plan(CAR | {"sensor.wa_charger_status": "Available", "sensor.wa_energy_cheap_now": "on"}, at) == "unplugged"
+    why = EV_SENSORS["wa_ev_plan"]["attributes"]
+    assert words(why["why"], CAR | {"sensor.wa_energy_cheap_now": "on"}) == "the rate is cheap now (14.27 p/kWh)"
+    nxt = CAR | {"sensor.wa_energy_next_cheap_start": "2026-10-25T13:00:00+00:00",
+                 "sensor.wa_energy_free_electricity_next_start": "2026-10-25T12:00:00+00:00",
+                 "sensor.wa_energy_free_electricity_next_start#joined": True}  # fmt: skip
+    assert render(why["next_start"], nxt) == "2026-10-25T12:00:00+00:00"  # the joined free hour comes first
+    nxt["sensor.wa_energy_free_electricity_next_start#joined"] = False
+    assert render(why["next_start"], nxt) == "2026-10-25T13:00:00+00:00"
 
 
 def test_the_charger_is_started_and_stopped_and_logged() -> None:
@@ -418,30 +442,34 @@ def test_the_charger_is_started_and_stopped_and_logged() -> None:
             v[k] = render(tpl, states, NOW, **v)
         return v
 
-    base = {"switch.charger_charge_control": "off", "input_boolean.wa_ev_apply": "on",
-            "sensor.hv66bzd_instrument_soc_nissan_leaf": "55", "input_number.wa_ev_target_soc": "80.0",
-            "sensor.wa_ev_plan#why": "the cheap window 22:00-00:00", "sensor.wa_ev_plan#next_window": "04:00"}  # fmt: skip
-    v = go(base | {"sensor.wa_ev_plan": "charge", "sensor.charger_status_connector": "SuspendedEVSE"})
-    assert (v["start"], v["stop"]) == (True, False)
-    assert words(a["actions"][1]["data"]["message"], base | {"sensor.wa_ev_plan": "charge"}, **v) == (
-        "Started charging the car: the cheap window 22:00-00:00. Car 55%, charger SuspendedEVSE.")
-    v = go(base | {"sensor.wa_ev_plan": "wait", "sensor.charger_status_connector": "Charging",
-                   "switch.charger_charge_control": "on", "sensor.wa_ev_plan#why": "not a cheap window"})  # fmt: skip
+    base = CAR | {"switch.charger_charge_control": "off", "input_boolean.wa_ev_apply": "on",
+                  "sensor.wa_ev_plan#why": "the rate is cheap now (14.27 p/kWh)",
+                  "sensor.wa_ev_plan#next_start": "2026-10-25T13:00:00+00:00"}  # fmt: skip
+    v = go(base | {"sensor.wa_ev_plan": "charge"})
+    assert (v["start"], v["stop"], v["switch"]) == (True, False, "switch.charger_charge_control")
+    assert words(a["actions"][1]["data"]["message"], base, **v) == (
+        "Started charging the car: the rate is cheap now (14.27 p/kWh). Car 55.0%, charger SuspendedEVSE.")
+    waiting = base | {"sensor.wa_ev_plan": "wait", "sensor.wa_charger_status": "Charging", "switch.charger_charge_control": "on",
+                      "sensor.wa_ev_plan#why": "the rate is not cheap now"}  # fmt: skip
+    v = go(waiting)
     assert (v["start"], v["stop"]) == (False, True)
-    v = go(base | {"sensor.wa_ev_plan": "full", "sensor.charger_status_connector": "Charging", "input_boolean.wa_ev_apply": "off"})
+    assert words(a["actions"][1]["data"]["message"], waiting, **v).startswith(
+        "Stopped charging the car: the rate is not cheap now; next cheap or free time Sun 13:00.")
+    v = go(base | {"sensor.wa_ev_plan": "full", "sensor.wa_charger_status": "Charging", "input_boolean.wa_ev_apply": "off"})
     assert v["stop"] and not v["apply"]
-    msg = words(a["actions"][1]["data"]["message"], base, **v)
-    assert msg.startswith("Stopped charging the car (dry run: nothing changed): it is at 55%, the target is 80%.")
-    v = go(base | {"sensor.wa_ev_plan": "charge", "sensor.charger_status_connector": "Charging", "switch.charger_charge_control": "on"})
-    assert not v["start"] and not v["stop"]  # already charging: nothing to do
-    assert go(base | {"sensor.wa_ev_plan": "unplugged", "sensor.charger_status_connector": "Available"})["stop"] is False
+    assert words(a["actions"][1]["data"]["message"], base, **v).startswith(
+        "Stopped charging the car (dry run: nothing changed): it is at 55.0%, the target is 80%.")
+    mine = base | {"input_text.wa_ev_entity_switch": "switch.wallbox", "switch.wallbox": "on", "sensor.wa_ev_plan": "charge",
+                   "sensor.wa_charger_status": "Charging"}  # fmt: skip
+    assert go(mine)["switch"] == "switch.wallbox" and not go(mine)["start"]
+    assert go(base | {"sensor.wa_ev_plan": "unplugged", "sensor.wa_charger_status": "Available"})["stop"] is False
 
 
 def test_the_outcome_log_counts_the_car() -> None:
     mark = json.dumps({"kind": "charge", "from": "22:00", "soc": 30, "imp": 100.0, "chg": 10.0, "pv": 5.0, "ev": 12900.0})
     st = _base(**{"input_text.wa_outcome_mark": mark, "sensor.office_inverter_battery_soc": "30",
                   "sensor.wa_grid_import_total": "112.0", "sensor.wa_battery_charge_total": "14.8",
-                  "sensor.wa_solar_total": "5.0", "sensor.charger_energy_active_import_register": "12909.2"})  # fmt: skip
+                  "sensor.wa_solar_total": "5.0", "sensor.wa_charger_energy_total": "12909.2"})  # fmt: skip
     at = datetime(2026, 10, 25, 0, 0, 5, tzinfo=LONDON)
     v, actions = _outcome(st, at)
     branch = actions[0]["then"][0]["then"]

@@ -46,9 +46,9 @@ ABOUT: dict[str, tuple[str, str]] = {
         "from the grid in Free Electricity hours you joined. For a Deye/Sunsynk inverter with Cosy-shaped slots: set "
         "your inverter's entity name above first. Starts as a dry run.")),
     "packages/wa_ev_plan.yaml": ("Car charging plan", (
-        "Charges the car only in cheap windows and Free Electricity hours you joined, and stops at your target, through "
-        "an OCPP charger and OVMS. Written for a charger named \"charger\" and an OVMS Nissan Leaf: change the entity "
-        "names to yours. Needs the energy plan package. Starts as a dry run.")),
+        "Charges the car only while the rate is cheap or in Free Electricity hours you joined, and stops at your "
+        "target, through an OCPP charger and the car's charge level (OVMS or any integration). Set your charger and car "
+        "entities on the Home charging dashboard. Starts as a dry run.")),
     "dashboards/home-charging.yaml": ("Home charging", (
         "Battery, solar, prices, free hours and Saving Sessions, the charge plan and its tuning. "
         "Needs the energy plan package.")),

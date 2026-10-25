@@ -106,8 +106,8 @@ views:
           - type: heading
             heading: Car
           - type: gauge
-            entity: sensor.hv66bzd_instrument_soc_nissan_leaf
-            name: Leaf
+            entity: sensor.wa_car_charge_level
+            name: Car
             min: 0
             max: 100
             needle: true
@@ -119,16 +119,16 @@ views:
             entity: sensor.wa_ev_plan
             name: Plan
           - type: tile
-            entity: sensor.charger_status_connector
+            entity: sensor.wa_charger_status
             name: Charger
           - type: tile
-            entity: sensor.charger_power_active_import
+            entity: sensor.wa_charger_power
             name: Charging power
           - type: tile
-            entity: sensor.charger_energy_session
+            entity: sensor.wa_charger_session_energy
             name: This session
           - type: tile
-            entity: sensor.nissan_leaf_hv66bzd_estimated_range
+            entity: sensor.wa_car_range
             name: Range
           - type: tile
             entity: input_boolean.wa_ev_apply
@@ -137,28 +137,41 @@ views:
               - type: toggle
             grid_options:
               columns: 12
+          - type: tile
+            entity: script.wa_car_charge_start
+            name: Start now
+            tap_action:
+              action: perform-action
+              perform_action: script.wa_car_charge_start
+          - type: tile
+            entity: script.wa_car_charge_stop
+            name: Stop now
+            tap_action:
+              action: perform-action
+              perform_action: script.wa_car_charge_stop
           - type: entities
             show_header_toggle: false
             entities:
               - entity: input_number.wa_ev_target_soc
                 name: Charge to
+              - entity: input_boolean.wa_ev_low_enabled
+                name: Always charge when low
               - entity: input_number.wa_ev_min_soc
-                name: Always charge below
-              - entity: switch.charger_charge_control
-                name: Charging now (manual override)
+                name: Low means below
             grid_options:
               columns: full
           - type: markdown
             content: |
               {%- set plan = states('sensor.wa_ev_plan') %}
               {%- set why = state_attr('sensor.wa_ev_plan', 'why') | trim %}
+              {%- set t = as_datetime(state_attr('sensor.wa_ev_plan', 'next_start'), none) %}
               {%- if plan == 'charge' %}Charging: {{ why }}.
               {%- elif plan == 'full' %}At its target of {{ states('input_number.wa_ev_target_soc') | int }}%: not charging.
-              {%- elif plan == 'wait' %}Waiting for the next cheap window at {{ state_attr('sensor.wa_ev_plan', 'next_window') }}.
+              {%- elif plan == 'wait' %}Waiting: {{ why }}. Next cheap or free time {{ (t | as_local).strftime('%a %H:%M') if t is not none else 'not known yet' }}.
               {%- else %}Not plugged in.{% endif %}
-              {%- if states('sensor.hv66bzd_12v_battery_voltage') | float(13) < 12.0 %}
+              {%- if not is_number(states('sensor.wa_car_charge_level')) %}
 
-              ⚠️ The car's 12 V battery is at {{ states('sensor.hv66bzd_12v_battery_voltage') }} V.
+              No charge level from the car: it charges whenever it is cheap or free, until it stops by itself.
               {%- endif %}
             grid_options:
               columns: full
@@ -167,6 +180,27 @@ views:
             hours_to_show: 72
             target:
               entity_id: input_boolean.wa_ev_apply
+            grid_options:
+              columns: full
+          - type: entities
+            title: Car settings (your entities; empty = the default shown)
+            show_header_toggle: false
+            state_color: false
+            entities:
+              - entity: input_text.wa_ev_entity_status
+                name: Charger status
+              - entity: input_text.wa_ev_entity_switch
+                name: Charger start/stop switch
+              - entity: input_text.wa_ev_entity_power
+                name: Charger power
+              - entity: input_text.wa_ev_entity_session
+                name: Charger session energy
+              - entity: input_text.wa_ev_entity_meter
+                name: Charger energy meter
+              - entity: input_text.wa_ev_entity_soc
+                name: Car charge level
+              - entity: input_text.wa_ev_entity_range
+                name: Car range
             grid_options:
               columns: full
 

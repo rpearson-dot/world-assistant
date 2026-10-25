@@ -131,11 +131,12 @@ Deye/Sunsynk-style inverter with six daily time slots. It works with any Octopus
 ### Car charging plan
 
 `wa_ev_plan.yaml` (on /ha) charges the car through an OCPP charger in Home Assistant's OCPP integration (tested on a
-Sync EV EVCP-7KW-S-1PH pointed at `ws://<Home Assistant>:9000/`), with the car's charge level from OVMS if you have
-it. The car charges only in a cheap window, in a Free Electricity hour you joined, or below "WA car: always charge
-below" (20%), and stops at "WA car: charge to" (80%). In a cheap window the energy plan has the inverter charging the
-house battery from the grid, so the car never drains it. Turn the charger's own schedule off (in its app, before
-moving it to Home Assistant). It starts as a dry run ("WA car: control the charger").
+Sync EV EVCP-7KW-S-1PH pointed at `ws://<Home Assistant>:9000/`), with the car's charge level from OVMS or any other
+integration. The car charges only while the rate is cheap (World Assistant's live rate band, which follows the tariff
+as it is, or one of the energy plan's charging windows), in a Free Electricity hour you joined, or, with "always charge
+when low" on, below the level you set; it stops at "WA car: charge to" (80%). Set your charger's and car's entities in
+"Car settings" on the Home charging dashboard (empty fields use the defaults named there). Turn the charger's own
+schedule off (in its app, before moving it to Home Assistant). It starts as a dry run ("WA car: control the charger").
 
 ### Home charging dashboard
 

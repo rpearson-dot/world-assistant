@@ -676,7 +676,7 @@ automation:
       chg: "{{ states('sensor.wa_battery_charge_total') | float(0) }}"
       pv: "{{ states('sensor.wa_solar_total') | float(0) }}"
       # the car charger's meter, if there is one (the car charging plan, wa_ev_plan.yaml)
-      ev: "{{ states('sensor.charger_energy_active_import_register') | float(-1) }}"
+      ev: "{{ states('sensor.wa_charger_energy_total') | float(-1) }}"
       mark: >-
         {% set r = states('input_text.wa_outcome_mark') %}{{ r | from_json if r.startswith('{') else {} }}
       floor: "{{ states('input_number.wa_floor_pct') | int(20) }}"
