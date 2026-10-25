@@ -39,7 +39,8 @@ SETTINGS = {"input_number.wa_battery_kwh": "40.0", "input_number.wa_floor_pct": 
             "input_number.wa_max_target_pct": "80.0", "input_number.wa_margin": "1.25", "input_number.wa_night_load_kw": "0.6",
             "input_number.wa_morning_load_kw": "1.2", "input_number.wa_evening_load_kw": "2.0", "input_number.wa_solar_trust": "0.8",
             "input_number.wa_session_margin": "1.5", "input_number.wa_session_extra_floor_pct": "10",
-            "sensor.energy_production_today": "3.3", "sensor.energy_production_tomorrow": "7.7"}  # fmt: skip
+            "sensor.energy_production_today": "3.3", "sensor.energy_production_tomorrow": "7.7",
+            "input_select.wa_charge_mode": "Just enough"}  # fmt: skip
 CAPS = ["10.0", "80.0", "10.0", "70.0", "10.0", "80.0"]
 INVERTER = ({f"text.office_inverter_time_slot_{s['n']}_start": s["start"] for s in SCHED}
             | {f"switch.office_inverter_time_slot_{s['n']}_on": "on" if s["charge"] else "off" for s in SCHED}
@@ -166,6 +167,20 @@ def test_targets_from_the_schedule_and_the_house() -> None:
     four = {x["n"]: x for x in targets(SETTINGS | INVERTER | {"sensor.wa_energy_charge_schedule#slots": joined})}[4]
     assert (four["wanted"], four["target"], four["session"]) == (75, 75, True)  # 20 + 10 extra + 17.7 kWh of 40 = 74
     assert targets(SETTINGS) == []  # no schedule yet
+
+
+def test_fill_mode_fills_to_the_health_max_but_leaves_room_for_solar() -> None:
+    fill = SETTINGS | INVERTER | {"input_select.wa_charge_mode": "Fill (leave room for solar)"}
+    t = {x["n"]: x for x in targets(fill)}
+    assert (t[2]["target"], t[4]["target"], t[6]["target"]) == (80, 80, 80)  # October: no solar to spare
+    assert (t[2]["needed"], t[4]["needed"], t[6]["needed"]) == (35, 55, 30) and not t[4]["over"]
+    # a bright day: 30 kWh tomorrow, half of it 07:00-13:00 (x 0.8 trust = 12 kWh) against 7.2 kWh used then
+    sunny = {x["n"]: x for x in targets(fill | {"sensor.energy_production_tomorrow": "30.0"})}
+    assert (sunny[2]["solar_room"], sunny[2]["target"]) == (12, 65)  # 4.8 kWh of 40 left free for the sun
+    assert {x["n"]: x for x in targets(fill | {"input_select.wa_charge_mode": "unknown"})}[2]["target"] == 80  # the default
+    # what the house needs still wins, and still asks for a higher health max
+    big = {x["n"]: x for x in targets(fill | {"input_number.wa_evening_load_kw": "4.5"})}
+    assert (big[4]["needed"], big[4]["target"], big[4]["over"]) == (100, 80, True)
 
 
 def test_slot_check_against_the_schedule() -> None:

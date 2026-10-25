@@ -114,6 +114,9 @@ Deye/Sunsynk-style inverter with six daily time slots. It works with any Octopus
   00:00-07:00, day 07:00-16:00 and evening 16:00-24:00 loads, with a margin), less the solar Forecast.Solar expects in
   that time, never above the battery health max (80% by default; above it the plan stops and suggests raising it).
   The other slots are set to the floor (20% by default), which is how low the inverter lets the battery discharge.
+* Charge mode: "Fill (leave room for solar)", the default, charges each window as far as the health max less the
+  solar expected after it beyond the house's own use then; "Just enough" charges only what the house needs (the
+  previous bullet), which is also the minimum in fill mode.
 * A window can only add the inverter's grid charge rate times its hours (read from the inverter; a setting if it
   cannot be). When a window cannot put back what the next stretch needs, the window before it charges higher.
 * A joined Saving Session raises the target of the slot that covers it; one inside a charging window is warned

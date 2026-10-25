@@ -15,8 +15,16 @@
 # from the grid" if those cannot be read) times the window's hours. When a window cannot put back all the next
 # stretch needs, the window before it charges higher to make up the difference ("WA battery charge rate").
 #
-# TARGETS: each charging slot is charged to the battery floor plus what the house uses from the end of its window to
-# the start of the next one (your night 00-07, day 07-16 and evening 16-24 loads, with a safety margin), less the
+# CHARGE MODE ("WA energy plan: charge mode"):
+#   Fill (leave room for solar), the default: each charging window fills the battery as far as the battery health
+#     max, less room for the solar expected after it beyond what the house uses then (so sunshine is stored, not
+#     exported). Cheap energy left over at the next window just means less to buy there.
+#   Just enough: each window buys only what the house needs until the next one (below).
+# Either way, a window never charges less than the house needs (below), which is also what triggers the
+# suggestion to raise the health max.
+#
+# TARGETS: what the house needs from each charging slot is the battery floor plus what it uses from the end of its
+# window to the start of the next one (your night 00-07, day 07-16 and evening 16-24 loads, with a safety margin), less the
 # Forecast.Solar production expected in that time, never above the battery health max. When more is wanted than the
 # health max, the plan stops there and suggests raising it. The other slots are set to the battery floor: their
 # target is how low the inverter lets the battery discharge. Checked every 15 minutes and whenever the schedule
@@ -76,6 +84,15 @@ input_text:
   wa_plan_last:
     name: "WA energy plan: last logged"
     max: 255
+
+input_select:
+  wa_charge_mode:
+    # no "initial": your choice is kept across restarts; the first option is the default
+    name: "WA energy plan: charge mode"
+    icon: mdi:battery-charging-high
+    options:
+      - "Fill (leave room for solar)"
+      - "Just enough"
 
 input_number:
   wa_outcome_min_soc:
@@ -288,8 +305,10 @@ template:
                             + s.load_hours.evening * states('input_number.wa_evening_load_kw') | float(2)) * m %}
               {% set sun = trust * (s.solar_share.today * today + s.solar_share.tomorrow * tomorrow) %}
               {% set net = [use - sun, 0] | max / cap * 100 %}
+              {# room to leave for solar: what it brings beyond the house's own use in that stretch (no margin) #}
+              {% set room = [sun - use / m, 0] | max / cap * 100 %}
               {% set ns.win = ns.win + [{'w': s.window, 'net': net, 'extra': extra, 'add': rate * s.window_hours / cap * 100,
-                                         'use': use | round(1), 'sun': sun | round(1)}] %}
+                                         'use': use | round(1), 'sun': sun | round(1), 'room': room}] %}
               {% set ns.want = ns.want + [floor + extra + net] %}
             {% endfor %}
             {# walk back round the windows twice: each must start high enough for the next to reach its level #}
@@ -306,12 +325,16 @@ template:
                 {% for x in ns.win %}{% if x.w == s.window %}{% set ns.i = loop.index0 %}{% endif %}{% endfor %}
                 {% set i = ns.i %}
                 {% set w = ns.win[i] %}
-                {% set wanted = [[(ns.want[i] / 5) | round(0) * 5, lo] | max, 100] | min | int %}
+                {% set needed = [[(ns.want[i] / 5) | round(0) * 5, lo] | max, 100] | min | int %}
+                {% set fill = not is_state('input_select.wa_charge_mode', 'Just enough') %}
+                {% set full = [((hi - w.room) / 5) | round(0, 'floor') * 5, lo] | max | int %}
+                {% set wanted = [needed, full] | max if fill else needed %}
                 {% set ns.out = ns.out + [{'n': s.n, 'start': s.start, 'end': s.end, 'charge': true,
                                            'covers': s.cover_from ~ '-' ~ s.cover_to, 'use_kwh': w.use, 'solar_kwh': w.sun,
                                            'adds_up_to': w.add | round(0) | int, 'session': s.session,
                                            'carried': ns.want[i] > floor + w.extra + w.net + 0.5,
-                                           'wanted': wanted, 'target': [wanted, hi] | min, 'over': wanted > hi}] %}
+                                           'needed': needed, 'solar_room': (w.room | round(0) | int) if fill else 0,
+                                           'wanted': wanted, 'target': [wanted, hi] | min, 'over': needed > hi}] %}
               {% else %}
                 {% set ns.out = ns.out + [{'n': s.n, 'start': s.start, 'end': s.end, 'charge': false,
                                            'wanted': floor | int, 'target': floor | int, 'over': false}] %}

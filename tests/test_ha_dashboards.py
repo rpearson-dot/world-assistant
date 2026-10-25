@@ -524,6 +524,7 @@ def test_home_charging_plan_table_renders() -> None:
     assert "Charging free now**: slot 4 until 14:00, then put back to 70%." in free
     lines = [x for x in plan.splitlines() if x.startswith("|")]
     assert len(lines) == 8 and lines[5] == "| 4 | 13:00 | on | 16:00-22:00 | 95% | **80%** ⚠️ | 70% |"
+    assert lines[0].startswith("| Slot | From | Grid charge | Covers | Needed |")
     assert lines[2] == "| 1 | 00:00 | off | discharge to the floor | 20% | **20%** | 10% |"
     assert lines[7] == "| 6 | 22:00 | on | x-y | 50% | **50%** | 80% (starts 23:00) |"
     assert "Suggest raising the health max**: slot 4 (13:00) wants 95%" in plan and "**E-1R-COSY-22-12-08-C**" in plan
