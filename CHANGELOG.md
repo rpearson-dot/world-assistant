@@ -4,6 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-10-26
+
+### Fixed
+- **The Outcomes logbook shows only outcomes.** Its lines were written against the helper that also holds the outcome log's bookkeeping, so every change of that helper showed too, as raw JSON (`{"kind":"cover","from":"16:00",...}`). The lines now go to their own helper, `input_text.wa_outcome_log`, which the logbook shows.
+
 ## [0.22.1] - 2026-10-25
 
 ### Fixed

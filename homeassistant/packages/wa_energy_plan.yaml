@@ -74,6 +74,11 @@ input_text:
     # where the current stretch began: {kind: charge|cover, from, soc, imp, chg, pv}
     name: "WA energy plan: outcomes"
     max: 255
+  wa_outcome_log:
+    # never set: the Outcomes logbook's lines are written against it, so the logbook shows only them (not the
+    # bookkeeping in wa_outcome_mark)
+    name: "WA energy plan: outcome log"
+    max: 255
   wa_outcome_day:
     # the day's counters at midnight, and grid import inside cheap windows so far
     name: "WA energy plan: today's counters"
@@ -735,7 +740,7 @@ automation:
               - action: logbook.log
                 data:
                   name: WA energy plan
-                  entity_id: input_text.wa_outcome_mark
+                  entity_id: input_text.wa_outcome_log
                   message: >-
                     Charging {{ w.start }}-{{ w.end }}: {{ ('target ' ~ target ~ '%, ') if target > 0 else '' }}reached
                     {{ soc | int }}%{{ (' (' ~ (target - soc) | int ~ '% short' ~ ('; at ' ~ rate ~ ' kW the window adds at most about '
@@ -777,7 +782,7 @@ automation:
               - action: logbook.log
                 data:
                   name: WA energy plan
-                  entity_id: input_text.wa_outcome_mark
+                  entity_id: input_text.wa_outcome_log
                   message: >-
                     Between windows {{ mark2.from }}-{{ hm }}: lowest {{ low }}%{{ (' (below the ' ~ floor ~ '% floor)') if low < floor
                     else (' (floor ' ~ floor ~ '%)') }}, now {{ soc | int }}%. Bought {{ (imp - mark2.imp) | round(1) }} kWh at dearer
@@ -807,7 +812,7 @@ automation:
               - action: logbook.log
                 data:
                   name: WA energy plan
-                  entity_id: input_text.wa_outcome_mark
+                  entity_id: input_text.wa_outcome_log
                   message: >-
                     Yesterday: bought {{ bought }} kWh from the grid, {{ cheap }} kWh in cheap windows and
                     {{ [bought - cheap, 0] | max | round(1) }} kWh outside them; the battery took {{ (chg - day.chg) | round(1) }} kWh;
