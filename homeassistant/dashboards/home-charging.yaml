@@ -308,7 +308,7 @@ views:
             title: Outcomes
             hours_to_show: 168
             target:
-              entity_id: input_text.wa_outcome_mark
+              entity_id: input_text.wa_outcome_log
             grid_options:
               columns: full
 
