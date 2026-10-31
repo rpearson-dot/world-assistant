@@ -140,7 +140,7 @@ class Settings(BaseSettings):
     # GRIDSERVE's EV chargers (their open data API, needs a key): sites, chargers and whether each works, prices.
     # The compose file turns it on; it reads nothing without the key.
     gridserve_poll_enabled: bool = False
-    gridserve_interval_min: int = 10
+    gridserve_interval_min: int = 60  # the whole network (about 2 MB) each read: hourly by default
     # Bus disruptions published to BODS (SIRI-SX) by 12 or so authorities, none of them London or the Midlands
     # yet: off unless you live where they publish (python -m app.integrations.bods.disruptions_probe shows it).
     bus_disruptions_poll_enabled: bool = False

@@ -1,6 +1,6 @@
 """GRIDSERVE: read every site, its chargers and their status, and the prices, on a schedule.
 
-    every WA_GRIDSERVE_INTERVAL_MIN (10) minutes   sites, chargers and status (about 2 MB), then the prices
+    every WA_GRIDSERVE_INTERVAL_MIN (60) minutes   sites, chargers and status (about 2 MB), then the prices
 
     python -m app.integrations.gridserve.sync
 

@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Added
 - **GRIDSERVE EV chargers** ([docs/ev.md](docs/ev.md)), with a GRIDSERVE open data key (`gridserve_api_key`, Settings > Keys):
-  - every site, each charger's live status, its connectors and power, and prices (with VAT), read every 10 minutes;
+  - every site, each charger's live status, its connectors and power, and prices (with VAT), read hourly (`WA_GRIDSERVE_INTERVAL_MIN`, 5 to 60);
   - `GET /v1/ev/sites` (nearest a place, or by name), `/v1/ev/sites/{id}` and `/v1/ev/trips/{trip}` (along a route, in the order you pass them), filtered by connector (`ccs`, `chademo`, `type2`) and to sites with a free charger;
   - chargers are counted as boxes in the car park, not leads: a CHAdeMO lead on a charger busy on CCS is not free;
   - the assistant's `ev_chargers` tool, an "EV chargers" map layer (green free, amber busy, red none working), and `ChargeSite` in the knowledge graph near your places and along your corridors;
