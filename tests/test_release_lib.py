@@ -45,7 +45,7 @@ def _run(tmp: Path, files_ver: str, image: str | None, checkout: bool = True, **
     else:
         full.pop("WA_IMAGE", None)
     r = subprocess.run(["bash", "-c", ". scripts/lib-release.sh; wa_align_image"], cwd=proj, env=full,
-                       capture_output=True, text=True, timeout=30)  # fmt: skip
+                       capture_output=True, text=True, timeout=30, check=False)  # fmt: skip
     calls = (t / "calls").read_text() if (t / "calls").exists() else ""
     return r.returncode, r.stdout, (proj / ".env").read_text(), calls
 
