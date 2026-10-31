@@ -13,6 +13,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   - chargers are counted as boxes in the car park, not leads: a CHAdeMO lead on a charger busy on CCS is not free;
   - the assistant's `ev_chargers` tool, an "EV chargers" map layer (green free, amber busy, red none working), and `ChargeSite` in the knowledge graph near your places and along your corridors;
   - `python -m app.integrations.gridserve.probe` shows what the API sends and how it is read.
+  - **open now**: each site's opening hours give open or closed now and when it opens; a closed site says so and is left out of "free now";
+  - **reliability**: each read records how many chargers worked and were out of order (kept 400 days); a site asked about by name says how often one was out of order over the last 30 days (`/v1/ev/sites/{id}?days=`);
+  - **your car's connector**: set it on the Vehicles page (migration 0035); the assistant then counts only chargers your car can use, and the API takes `vehicle=`;
+  - **Home Assistant**: every site published in map tiles (`sensor.wa_ev_tile_*`) with a summary; the Leaf dashboard's "Chargers near you" lists the nearest for whoever is looking (their phone while away, else home), for the car's connector; a new EV package adds a connector picker and `sensor.wa_nearest_free_charger` for automations, measured from one person or home.
 
 ## [0.22.2] - 2026-10-26
 

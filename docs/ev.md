@@ -15,6 +15,28 @@ site, each charger's live status, its connectors and power, and the price. World
 
 Ask the assistant: "GRIDSERVE chargers on the way to Mum's with CHAdeMO", "is there a free charger at Rugby?".
 
+## Your car's connector
+
+Set the rapid-charging connector on the Vehicles page (CCS, CHAdeMO or Type 2). The assistant then counts only
+chargers your car can use ("for Leaf's CHAdeMO"); ask for any connector to see all. The API takes `vehicle=<id>` to
+do the same, and `connector=any` for all.
+
+## Open now and reliability
+
+Each site's opening hours (OCPI regular hours and exceptional closings) give `open_now`, `closes` and `opens`; a site
+that is closed says so ("closed now (opens Sun 05:30)") and is left out when only free chargers are asked for.
+Every read records how many of each site's chargers were working, free and out of order (kept 400 days).
+`/v1/ev/sites/{id}?days=30` and the assistant, asked about a site by name, say how often at least one charger was out
+of order, how many on average and at worst.
+
+## Home Assistant
+
+Every site is published nationwide in map tiles (`sensor.wa_ev_tile_*`) with a summary (`sensor.wa_ev_summary`). The
+Leaf dashboard's **Chargers near you** lists the nearest to whoever is looking (their phone while away, else home), for
+the connector picked (the car's by default). The EV package (`world_assistant_ev.yaml`) adds the picker and
+`sensor.wa_nearest_free_charger` for automations, measured from one person (`input_text.wa_ev_person`) or home.
+See [home-assistant.md](home-assistant.md).
+
 ## Counting chargers
 
 GRIDSERVE lists each lead as its own charger (an OCPI EVSE), numbered on the charger's id: `GB-GRD-EGS10343-1` (CCS),

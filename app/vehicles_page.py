@@ -44,6 +44,7 @@ PAGE = """<!doctype html>
     <label>Battery health, % <input id="vsoh" type="number" step="1" min="31" max="100" value="100"></label>
     <label>Miles per kWh <input id="vmpk" type="number" step="0.1" min="0.5" max="10" placeholder="e.g. 3.6"></label>
     <label>Home electricity, p/kWh <input id="vhome" type="number" step="0.1" min="0" max="200" placeholder="blank: Energy tab"></label>
+    <label>Rapid charging <select id="vconn"><option value="">not set</option><option>CCS</option><option>CHAdeMO</option><option>Type 2</option></select></label>
   </span>
   <button id="save" class="primary">Add vehicle</button>
   <button id="cancel" type="button" hidden>Cancel</button>
@@ -103,7 +104,8 @@ function showType(keepGrade) {
 function describe(v) {
   if (v.type === 'electric') return 'Electric, ' + v.battery_kwh + ' kWh at ' + v.soh_percent + '% health, ' + v.miles_per_kwh + ' mi/kWh'
     + (v.home_pence_per_kwh ? ', home ' + v.home_pence_per_kwh + 'p/kWh'
-       : cheapest ? ', home at the Energy tab cheapest rate, ' + cheapest.pence_per_kwh + 'p/kWh' : ', no home rate (Energy tab has none)');
+       : cheapest ? ', home at the Energy tab cheapest rate, ' + cheapest.pence_per_kwh + 'p/kWh' : ', no home rate (Energy tab has none)')
+    + (v.connector ? ', charges on ' + v.connector : '');
   return (LABEL[v.fuel] || v.fuel) + ', ' + v.mpg + ' mpg' + (v.fuel_pence_per_litre ? ', your price ' + v.fuel_pence_per_litre + 'p/litre' : '');
 }
 function button(text, onclick) { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.onclick = onclick; return b; }
@@ -130,7 +132,7 @@ function edit(v) {
   $('vname').value = v.name; $('vtype').value = v.type; showType(false);
   if (v.type === 'electric') {
     $('vbat').value = v.battery_kwh ?? ''; $('vsoh').value = v.soh_percent ?? 100; $('vmpk').value = v.miles_per_kwh ?? '';
-    $('vhome').value = v.home_pence_per_kwh ?? '';
+    $('vhome').value = v.home_pence_per_kwh ?? ''; $('vconn').value = v.connector || '';
   } else { $('vfuel').value = v.fuel; $('vmpg').value = v.mpg ?? ''; $('vown').value = v.fuel_pence_per_litre ?? ''; }
   $('vname').focus();
 }
@@ -151,7 +153,7 @@ $('addveh').onsubmit = e => {
   const name = $('vname').value.trim(), type = $('vtype').value;
   const body = type === 'electric'
     ? { name, kind: 'electric', battery_kwh: num('vbat'), soh_percent: num('vsoh') || 100, miles_per_kwh: num('vmpk'),
-        home_pence_per_kwh: num('vhome') }
+        home_pence_per_kwh: num('vhome'), connector: $('vconn').value || null }
     : { name, kind: type, fuel: $('vfuel').value, mpg: num('vmpg'), fuel_pence_per_litre: type === 'lpg' ? num('vown') : null };
   const id = editing || slug(name);
   if (!id) { vmsg.textContent = 'Give the vehicle a name with at least one letter or digit.'; return; }

@@ -21,7 +21,7 @@ URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
 MIGRATIONS = ["0003_nh_storage", "0006_places_trips", "0007_fuel", "0015_pollen_grid", "0016_ha_location",
               "0017_ha_origin", "0018_geography", "0020_naptan", "0021_flood", "0034_ev"]  # fmt: skip
-TABLES = ["ev_tariff", "ev_evse", "ev_site", "flood_warning", "flood_area", "naptan_stop", "pollen_grid", "ha_location", "fuel_price_change", "fuel_price", "fuel_station", "trip", "place",
+TABLES = ["ev_site_log", "ev_tariff", "ev_evse", "ev_site", "flood_warning", "flood_area", "naptan_stop", "pollen_grid", "ha_location", "fuel_price_change", "fuel_price", "fuel_station", "trip", "place",
           "nh_sign_message", "nh_sign", "nh_event_corridor", "nh_event", "nh_corridor"]  # fmt: skip
 
 HOME = (51.5074, -0.1278)  # the centre every test measures from

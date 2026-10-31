@@ -51,7 +51,7 @@ def test_detour_can_wipe_out_a_saving() -> None:
 
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
 NAMES = ["0003_nh_storage", "0006_places_trips", "0007_fuel", "0008_trip_routes", "0009_vehicle",
-         "0029_vehicle_own_price"]
+         "0029_vehicle_own_price", "0035_vehicle_connector"]
 TABLES = ["vehicle", "fuel_price_change", "fuel_price", "fuel_station", "trip", "place",
           "nh_sign_message", "nh_sign", "nh_event_corridor", "nh_event", "nh_corridor"]  # fmt: skip
 
@@ -172,6 +172,10 @@ def test_the_four_types_and_their_fuels() -> None:
     assert (lpg.kind, lpg.fuel, type_of(lpg.kind, lpg.fuel)) == ("fuel", "LPG", "lpg")
     ev = VehicleIn(name="Leaf", kind="electric", battery_kwh=30, miles_per_kwh=3.6)
     assert (ev.kind, type_of(ev.kind, ev.fuel)) == ("ev", "electric")
+    assert VehicleIn(name="Leaf", kind="electric", battery_kwh=30, miles_per_kwh=3.6, connector="chademo").connector == "CHAdeMO"
+    assert VehicleIn(name="Van", kind="diesel", mpg=40, connector="ccs").connector is None  # only an EV has one
+    with pytest.raises(ValidationError, match="unknown connector"):
+        VehicleIn(name="x", kind="electric", battery_kwh=30, miles_per_kwh=3.6, connector="hydrogen")
     old = VehicleIn(name="Old", kind="fuel", fuel="diesel", mpg=40)  # the earlier form still works
     assert (old.fuel, type_of(old.kind, old.fuel)) == ("B7_STANDARD", "diesel")
     with pytest.raises(ValidationError, match="not a petrol fuel"):

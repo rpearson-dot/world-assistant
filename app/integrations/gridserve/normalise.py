@@ -135,6 +135,60 @@ def tariff(t: dict[str, Any]) -> dict[str, Any] | None:
             "pence_per_kwh": round(price, 1) if price is not None else None, "detail": t}  # fmt: skip
 
 
+# --- opening hours ----------------------------------------------------------------------------------------------------
+
+DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+def _mins(hhmm: Any) -> int | None:
+    m = re.match(r"^(\d{1,2}):(\d{2})$", str(hhmm or ""))
+    return int(m.group(1)) * 60 + int(m.group(2)) if m else None
+
+
+def _hm(minutes: int) -> str:
+    return f"{minutes // 60 % 24:02d}:{minutes % 60:02d}"
+
+
+def _spans(opening: dict[str, Any]) -> list[tuple[int, int]]:
+    """Open spans in minutes of the week (Monday 00:00 = 0), from OCPI regular_hours (weekday 1 = Monday). A span
+    whose end is not after its start runs past midnight."""
+    out = []
+    for h in opening.get("regular_hours") or []:
+        day, b, e = h.get("weekday"), _mins(h.get("period_begin")), _mins(h.get("period_end"))
+        if not isinstance(day, int) or not 1 <= day <= 7 or b is None or e is None:
+            continue
+        start = (day - 1) * 1440 + b
+        end = (day - 1) * 1440 + (e if e > b else e + 1440)
+        out.append((start, end))
+    return out
+
+
+def hours_now(opening: dict[str, Any] | None, now: datetime, tz: Any) -> dict[str, Any]:
+    """{"open": True/False/None, "closes": "21:45", "opens": "Mon 05:30"} for a site now. None: hours not given."""
+    o = opening or {}
+    local = now.astimezone(tz)
+    for kind, is_open in (("exceptional_closings", False), ("exceptional_openings", True)):
+        for x in o.get(kind) or []:
+            b, e = _when(x.get("period_begin")), _when(x.get("period_end"))
+            if b and e and b <= now < e:
+                return {"open": is_open, "closes": e.astimezone(tz).strftime("%H:%M") if is_open else None,
+                        "opens": None if is_open else e.astimezone(tz).strftime("%a %H:%M")}  # fmt: skip
+    if o.get("twentyfourseven"):
+        return {"open": True, "closes": None, "opens": None}
+    spans = _spans(o)
+    if not spans:
+        return {"open": None, "closes": None, "opens": None}
+    week = 7 * 1440
+    t = local.weekday() * 1440 + local.hour * 60 + local.minute
+    for start, end in spans:
+        for shift in (0, -week):  # a span from late Sunday runs into Monday
+            if start + shift <= t < end + shift:
+                return {"open": True, "closes": _hm(end), "opens": None}
+    nxt = min(((start - t) % week, start) for start, _ in spans)[1]
+    same_day = nxt // 1440 == local.weekday() and nxt > t
+    return {"open": False, "closes": None, "opens": _hm(nxt) if same_day else f"{DAYS[nxt // 1440]} {_hm(nxt)}"}
+
+
 # --- a site summed up -------------------------------------------------------------------------------------------------
 
 BUSY = {"CHARGING", "BLOCKED", "RESERVED"}
@@ -186,12 +240,16 @@ def summary(chargers: list[dict[str, Any]], prices: dict[str, float], want: str 
             "pence_per_kwh": {"min": min(pence), "max": max(pence)} if pence else None}  # fmt: skip
 
 
-def sentence(name: str, s: dict[str, Any], km: float | None = None, want: str | None = None) -> str:
+def sentence(name: str, s: dict[str, Any], km: float | None = None, want: str | None = None,
+             hours: dict[str, Any] | None = None) -> str:  # fmt: skip
     """'MOTO Thurrock: 22 of 26 chargers working, 15 free now, up to 350 kW, 79p/kWh, 3.2 km away.'"""
     what = f"{want} chargers" if want else "chargers"
     if not s["total"]:
         return f"{name}: no {what}."
     bits = [f"{s['working']} of {s['total']} {what} working", f"{s['free']} free now"]
+    if hours and hours.get("open") is False:
+        bits = [f"closed now (opens {hours['opens']})" if hours.get("opens") else "closed now",
+                f"{s['working']} of {s['total']} {what} working"]
     if s["max_kw"]:
         bits.append(f"up to {s['max_kw']:g} kW")
     p = s["pence_per_kwh"]
@@ -200,3 +258,14 @@ def sentence(name: str, s: dict[str, Any], km: float | None = None, want: str | 
     if km is not None:
         bits.append(f"{km:.1f} km away")
     return f"{name}: " + ", ".join(bits) + "."
+
+
+def reliability_sentence(r: dict[str, Any] | None) -> str:
+    """'Over the last 30 days (712 readings): at least one charger out of order 81% of the time, 1.6 on average.'"""
+    if not r or r["readings"] < 24:
+        return "Not enough history yet to tell how reliable it is."
+    if not r["share_with_broken"]:
+        return f"Over the last {r['days']} days ({r['readings']} readings): no charger seen out of order."
+    return (f"Over the last {r['days']} days ({r['readings']} readings): at least one charger out of order "
+            f"{r['share_with_broken'] * 100:.0f}% of the time, {r['average_out_of_order']:g} on average, "
+            f"{r['worst_out_of_order']} at worst.")

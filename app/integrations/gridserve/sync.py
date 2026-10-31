@@ -89,6 +89,20 @@ async def sync(engine: AsyncEngine, client: GridserveClient, now: datetime | Non
                                          {"o": N.OPERATOR, "now": now})).rowcount  # fmt: skip
         if tariffs:
             await conn.execute(TARIFF_UPSERT, [{**t, "detail": _j(t["detail"]), "seen": now} for t in tariffs])
+        # how each site stood at this read, kept to tell how reliable it is
+        by_site: dict[str, list[dict[str, Any]]] = {s["id"]: [] for s in sites}
+        for c in chargers:
+            by_site[c["site_id"]].append(c)
+        log_rows = []
+        for sid, cs in by_site.items():
+            got = N.summary(cs, {})
+            if got["total"]:
+                log_rows.append({"site_id": sid, "at": now, **{k: got[k] for k in ("total", "working", "free", "out_of_order")}})
+        if log_rows:
+            await conn.execute(text("INSERT INTO ev_site_log (site_id, at, total, working, free, out_of_order) "
+                                    "VALUES (:site_id, :at, :total, :working, :free, :out_of_order) "
+                                    "ON CONFLICT DO NOTHING"), log_rows)  # fmt: skip
+        await conn.execute(text("DELETE FROM ev_site_log WHERE at < :now - interval '400 days'"), {"now": now})
     statuses: dict[str, int] = {}
     for c in chargers:
         statuses[c["status"]] = statuses.get(c["status"], 0) + 1

@@ -142,7 +142,7 @@ def schema() -> Iterator[None]:
     assert spec and spec.loader
     mig = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mig)
-    tables = ("ev_tariff", "ev_evse", "ev_site", "trip", "nh_corridor", "place", "app_setting")
+    tables = ("ev_site_log", "ev_tariff", "ev_evse", "ev_site", "trip", "nh_corridor", "place", "app_setting", "vehicle")
     with sync.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
         for t in tables:
@@ -161,6 +161,8 @@ def schema() -> Iterator[None]:
         conn.execute(text("INSERT INTO nh_corridor (id, name, centreline) VALUES ('trip-north', 'North', CAST(:c AS jsonb))"),
                      {"c": f"[[{HOME[0]}, {HOME[1]}], [51.62, -0.20], [51.80, -0.30]]"})  # fmt: skip
         conn.execute(text("INSERT INTO trip (id, name, corridor_id, distance_km) VALUES ('north', 'North', 'trip-north', 40)"))
+        conn.execute(text("CREATE TABLE vehicle (id text primary key, name text, kind text, connector text)"))
+        conn.execute(text("INSERT INTO vehicle VALUES ('leaf', 'Leaf', 'ev', 'CHAdeMO'), ('van', 'Van', 'fuel', NULL)"))
         with Operations.context(MigrationContext.configure(conn)):
             mig.upgrade()
     yield
@@ -205,6 +207,15 @@ async def test_synced_then_asked_near_home_along_a_trip_and_by_name(schema: None
     assert [s["name"] for s in by_name["sites"]] == ["MOTO Far"]  # found anywhere
     one = client.get("/v1/ev/sites/gridserve:near", headers=h).json()
     assert len(one["charger_list"]) == 5 and one["facilities"] == ["RESTAURANT", "WIFI"]
+    assert one["reliability"]["readings"] == 1 and one["reliability_summary"].startswith("Not enough history yet")
+    async with engine.begin() as conn:  # a month of readings: out of order at one in four
+        await conn.execute(text(
+            "INSERT INTO ev_site_log (site_id, at, total, working, free, out_of_order) "
+            "SELECT 'gridserve:near', now() - make_interval(hours => h), 3, 3 - (h % 4 = 0)::int, 1, (h % 4 = 0)::int "
+            "FROM generate_series(1, 100) h"))  # fmt: skip
+    rel = client.get("/v1/ev/sites/gridserve:near", headers=h).json()
+    assert rel["reliability"]["readings"] == 101 and rel["reliability"]["worst_out_of_order"] == 1
+    assert rel["reliability_summary"].startswith("Over the last 30 days (101 readings): at least one charger out of order 26%")
     trip = client.get("/v1/ev/trips/north", headers=h).json()
     assert [s["name"] for s in trip["sites"]] == ["MOTO Near", "HU - Priory Fields"]  # in the order passed
     assert trip["sites"][1]["km_along"] > trip["sites"][0]["km_along"] and trip["sites"][1]["off_route_km"] < 0.1
@@ -220,10 +231,17 @@ async def test_synced_then_asked_near_home_along_a_trip_and_by_name(schema: None
         return set(assistant.TOOLS)
 
     monkeypatch.setattr(assistant, "_available", everything)
-    said = (await assistant.run_tool(Req(), "ev_chargers", {}))["text"]  # type: ignore[arg-type]
+    said = (await assistant.run_tool(Req(), "ev_chargers", {"connector": "any"}))["text"]  # type: ignore[arg-type]
     assert said.startswith("MOTO Near: 2 of 3 chargers working, 1 free now, up to 350 kW, 79-89p/kWh")
-    along = (await assistant.run_tool(Req(), "ev_chargers", {"trip": "north", "connector": "chademo"}))["text"]  # type: ignore[arg-type]
-    assert along.startswith("1 GRIDSERVE site(s) along North: MOTO Near: 1 of 1 CHAdeMO chargers working, 0 free now")
+    mine = (await assistant.run_tool(Req(), "ev_chargers", {}))["text"]  # type: ignore[arg-type]
+    assert mine.startswith("For Leaf's CHAdeMO; ask for any connector to see all: MOTO Near: 1 of 1 CHAdeMO chargers")
+    assert "Priory" not in mine  # no CHAdeMO there
+    assert client.get("/v1/ev/sites?km=25&vehicle=leaf", headers=h).json()["connector"] == "CHAdeMO"
+    along = (await assistant.run_tool(Req(), "ev_chargers", {"trip": "north"}))["text"]  # type: ignore[arg-type]
+    assert along.startswith("1 GRIDSERVE site(s) along North (for Leaf's CHAdeMO; ask for any connector to see all): "
+                            "MOTO Near: 1 of 1 CHAdeMO chargers working, 0 free now")
+    named = (await assistant.run_tool(Req(), "ev_chargers", {"name": "MOTO Near", "connector": "any"}))["text"]  # type: ignore[arg-type]
+    assert "Over the last 30 days (101 readings)" in named
     none = (await assistant.run_tool(Req(), "ev_chargers", {"km": 1, "connector": "type2", "free_only": True}))["text"]  # type: ignore[arg-type]
     assert none == "No GRIDSERVE chargers within 1 km with Type 2."
 
@@ -234,3 +252,39 @@ async def test_synced_then_asked_near_home_along_a_trip_and_by_name(schema: None
         again = await sync.sync(engine, c)
     assert again["removed"]["chargers"] == 3
     await engine.dispose()
+
+
+def test_open_now_from_the_opening_hours() -> None:
+    from zoneinfo import ZoneInfo
+
+    london = ZoneInfo("Europe/London")
+    week = {"twentyfourseven": False, "regular_hours": [{"weekday": d, "period_begin": "05:30", "period_end": "21:45"}
+                                                        for d in range(1, 8)]}  # fmt: skip
+    sat_noon = datetime(2026, 10, 31, 12, 0, tzinfo=UTC)  # a Saturday
+    assert N.hours_now(week, sat_noon, london) == {"open": True, "closes": "21:45", "opens": None}
+    late = datetime(2026, 10, 31, 23, 0, tzinfo=UTC)
+    assert N.hours_now(week, late, london) == {"open": False, "closes": None, "opens": "Sun 05:30"}
+    early = datetime(2026, 11, 1, 4, 0, tzinfo=UTC)
+    assert N.hours_now(week, early, london) == {"open": False, "closes": None, "opens": "05:30"}
+    night = {"regular_hours": [{"weekday": 7, "period_begin": "22:00", "period_end": "06:00"}]}  # Sunday night into Monday
+    assert N.hours_now(night, datetime(2026, 11, 2, 3, 0, tzinfo=UTC), london)["open"] is True
+    shut = {**week, "exceptional_closings": [{"period_begin": "2026-10-31T00:00:00Z", "period_end": "2026-11-01T00:00:00Z"}]}
+    assert N.hours_now(shut, sat_noon, london) == {"open": False, "closes": None, "opens": "Sun 00:00"}
+    assert N.hours_now({"twentyfourseven": True}, sat_noon, london)["open"] is True
+    assert N.hours_now({}, sat_noon, london)["open"] is None
+    s = {"total": 2, "working": 2, "free": 2, "max_kw": 50, "pence_per_kwh": None}
+    assert N.sentence("Rheged", s, None, None, {"open": False, "opens": "Sun 05:30"}) == (
+        "Rheged: closed now (opens Sun 05:30), 2 of 2 chargers working, up to 50 kW.")
+
+
+def test_charging_sites_go_to_home_assistant_in_map_tiles() -> None:
+    from app.ha_publish import ev_device
+
+    site = {"id": "gridserve:a", "name": "A", "postcode": "X", "lat": 51.5, "lon": -0.1, "total": 2, "working": 2, "free": 1,
+            "open": True, "opens": None, "kw": 50, "p": 79.0, "p_max": 79.0, "by": {"CHAdeMO": [1, 1, 1, 50]}, "broken": 0.0}
+    dev = ev_device({"updated": "2026-10-31T08:06:00+00:00", "my_connector": "CHAdeMO", "my_vehicle": "Leaf", "count": 2,
+                     "sites": [site, {**site, "id": "gridserve:b", "lat": 53.4, "lon": -2.2}]})  # fmt: skip
+    keys = {s.key: s for s in dev.sensors}
+    assert set(keys) == {"summary", "tile_51_m1", "tile_53_m3"}
+    assert keys["summary"].attributes["my_connector"] == "CHAdeMO" and keys["summary"].attributes["free"] == 2
+    assert keys["tile_51_m1"].attributes["sites"][0]["name"] == "A" and "id" not in keys["tile_51_m1"].attributes["sites"][0]

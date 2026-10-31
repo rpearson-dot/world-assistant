@@ -50,6 +50,9 @@ ABOUT: dict[str, tuple[str, str]] = {
         "Charges the car only while the rate is cheap or in Free Electricity hours you joined, and stops at your "
         "target, through an OCPP charger and the car's charge level (OVMS or any integration). Set your charger and car "
         "entities on the Home charging dashboard. Starts as a dry run.")),
+    "packages/world_assistant_ev.yaml": ("EV chargers near you", (
+        "The nearest GRIDSERVE site with a free charger for your car's connector, from a person's location while away "
+        "or home, as sensors for automations; and the connector picker on the Leaf dashboard. Needs the GRIDSERVE module.")),
     "dashboards/home-charging.yaml": ("Home charging", (
         "Battery, solar, prices, free hours and Saving Sessions, the charge plan and its tuning. "
         "Needs the energy plan package.")),
@@ -59,7 +62,7 @@ ABOUT: dict[str, tuple[str, str]] = {
     "dashboards/events.yaml": ("Events", "What is on near home and your extra places."),
     "dashboards/pollen.yaml": ("Pollen", "The pollen map, your own forecast and the home history."),
     "dashboards/manage.yaml": ("Manage", "Add places and routes."),
-    "dashboards/leaf.yaml": ("Leaf", "Nissan Leaf battery and charging (with OVMS)."),
+    "dashboards/leaf.yaml": ("Leaf", "Nissan Leaf battery and charging (with OVMS), and chargers near you."),
 }  # fmt: skip
 
 # For dashboards kept as files (copied over SMB): Home Assistant's YAML-mode dashboards, so they update by themselves.

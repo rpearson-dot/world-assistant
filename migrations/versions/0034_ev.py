@@ -1,9 +1,10 @@
-"""ev_site, ev_evse, ev_tariff: public EV chargers (GRIDSERVE's open data API first)
+"""ev_site, ev_evse, ev_tariff, ev_site_log: public EV chargers (GRIDSERVE's open data API first)
 
 ev_site: a charging site (a location, in OCPI terms) with its position, facilities and opening times. ev_evse: one
 charger at a site (an EVSE), its live status and its connectors ({standard, kind, kw, tariffs}). ev_tariff: a price
-per kWh, with VAT. `operator` keeps other networks' feeds apart when they are added. Each row keeps the record as
-published (`detail`), so a field this app does not read yet is not lost.
+per kWh, with VAT. ev_site_log: each read's count of a site's chargers working, free and out of order, kept for
+400 days, so how reliable a site is can be told. `operator` keeps other networks' feeds apart when they are added.
+Each row keeps the record as published (`detail`), so a field this app does not read yet is not lost.
 
 Revision ID: 0034
 Revises: 0033
@@ -65,8 +66,18 @@ def upgrade() -> None:
         sa.Column("detail", pg.JSONB(), nullable=False, server_default="{}"),
         sa.Column("seen", TS, nullable=False),
     )
+    op.create_table(
+        "ev_site_log",
+        sa.Column("site_id", sa.Text(), nullable=False),  # not a foreign key: a closed site's history stays
+        sa.Column("at", TS, nullable=False),
+        sa.Column("total", sa.Integer(), nullable=False),
+        sa.Column("working", sa.Integer(), nullable=False),
+        sa.Column("free", sa.Integer(), nullable=False),
+        sa.Column("out_of_order", sa.Integer(), nullable=False),
+        sa.PrimaryKeyConstraint("site_id", "at"),
+    )
 
 
 def downgrade() -> None:
-    for t in ("ev_tariff", "ev_evse", "ev_site"):
+    for t in ("ev_site_log", "ev_tariff", "ev_evse", "ev_site"):
         op.drop_table(t)

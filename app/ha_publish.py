@@ -351,6 +351,35 @@ def power_device(supply: dict[str, Any], cuts: dict[str, Any], works: dict[str, 
     return Device("power", "Power", sensors)
 
 
+EV_TILE_DEG = 1.0  # charging sites are few: one sensor per degree square (about 110 by 70 km) holds a handful
+
+
+def ev_device(data: dict[str, Any]) -> Device:
+    """Every charging site, nationwide, in map tiles (state: how many sites; attributes: each site's position,
+    chargers working and free, by connector [total, working, free, kW], open now, price and how often one has been
+    out of order), and a summary with the connector your electric vehicle takes. Home Assistant picks what is near
+    whoever is looking."""
+    sites = data.get("sites") or []
+    sensors = [Sensor("summary", "EV chargers", data.get("count"), icon="mdi:ev-station", state_class="measurement",
+                      attributes={"updated": data.get("updated"), "my_connector": data.get("my_connector"),
+                                  "my_vehicle": data.get("my_vehicle"),
+                                  "chargers": sum(s["total"] for s in sites), "working": sum(s["working"] for s in sites),
+                                  "free": sum(s["free"] for s in sites)})]  # fmt: skip
+    tiles: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    for s in sites:
+        tiles.setdefault((math.floor(s["lat"] / EV_TILE_DEG), math.floor(s["lon"] / EV_TILE_DEG)), []).append(
+            {k: v for k, v in s.items() if k != "id"})
+    for (ti, tj), rows in sorted(tiles.items()):
+        for part, chunk in enumerate(_chunks(rows)):
+            sensors.append(Sensor(
+                f"tile_{ti}_{tj}".replace("-", "m") + (f"_p{part + 1}" if part else ""),
+                f"EV chargers tile {ti}/{tj}" + (f" part {part + 1}" if part else ""), len(chunk),
+                icon="mdi:map-marker-radius", state_class="measurement",
+                attributes={"lat_from": ti * EV_TILE_DEG, "lon_from": tj * EV_TILE_DEG, "size_deg": EV_TILE_DEG,
+                            "sites": chunk}))  # fmt: skip
+    return Device("ev", "EV chargers", sensors)
+
+
 def trips_device(trips: list[dict[str, Any]]) -> Device:
     """One status sensor and one planned-works sensor for each trip with a route."""
 
@@ -473,7 +502,13 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
         return power_device(supply, await _get(c, "/v1/power/cuts"), await _get(c, "/v1/power/works"),
                             await _get(c, "/v1/power/history", days=365))  # fmt: skip
 
-    for name, build in (("trips", trips), ("energy", energy), ("power", power), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
+    async def ev() -> Device:
+        data = await _get(c, "/v1/ev/all")
+        if not data.get("count"):
+            raise ValueError("no charging sites stored (GRIDSERVE not set up yet)")
+        return ev_device(data)
+
+    for name, build in (("ev", ev), ("trips", trips), ("energy", energy), ("power", power), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
         await attempt(name, build)
     return devices
 
