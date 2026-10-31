@@ -9,6 +9,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ### Changed
 - **The bus tracker no longer reports "Reported at an earlier stop than before"**, at any stop: a bus listed at an earlier stop in the same direction is the live predictions shifting, not the bus, so it is not recorded, and ones recorded before are not shown (`?type=reverse_movement` still lists them). Direction changes, turnarounds, early ends and trip starts are reported as before.
 
+### Fixed
+- **Tailscale signs in with an ordinary auth key.** The sidecar added `?ephemeral=false` to every key, which only an OAuth client secret (`tskey-client-…`) understands; an auth key (`tskey-auth-…`) then failed with "invalid key: unable to validate API key". It is now added only to an OAuth client secret, and stray spaces or a newline in the key file are ignored.
+
 ## [0.23.1] - 2026-10-31
 
 ### Fixed
