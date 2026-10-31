@@ -36,3 +36,8 @@ def test_no_key_leaves_it_to_sign_in_by_link(tmp_path: Path) -> None:
     missing = tmp_path / "none"
     missing.mkdir()
     assert _key_given(missing, None) == "<unset>"  # no secret file at all
+
+
+def test_the_key_is_used_only_to_sign_in_the_first_time() -> None:
+    svc = yaml.safe_load((ROOT / "docker-compose.tailscale.yml").read_text())["services"]["wa-tailscale"]
+    assert svc["environment"]["TS_AUTH_ONCE"] == "true"  # a used one-off key must not log a signed-in device out
