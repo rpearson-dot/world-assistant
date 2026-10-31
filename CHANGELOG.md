@@ -4,6 +4,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.23.4] - 2026-10-31
+
+### Fixed
+- **The car no longer bounces on and off once it is full.** After charging stops because the car reached its target, the car's reading often slips a point, which started it again within minutes, over and over. Now:
+  - it rests for "After a full charge, wait before starting again" (a new setting on the Home charging dashboard, 60 minutes to 6 hours, starting at 60) before starting again, unless the car drops more than 5% below the target; the dashboard says when it may start again;
+  - a stop is sent once: while the charger still shows on but is not charging, it is not sent again for 30 minutes (it always is while it charges).
+
 ## [0.23.3] - 2026-10-31
 
 ### Fixed

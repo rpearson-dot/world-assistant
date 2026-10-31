@@ -462,17 +462,17 @@ def test_the_charger_is_started_and_stopped_and_logged() -> None:
                   "sensor.wa_car_charging_plan#next_start": "2026-10-25T13:00:00+00:00"}  # fmt: skip
     v = go(base | {"sensor.wa_car_charging_plan": "charge"})
     assert (v["start"], v["stop"], v["switch"]) == (True, False, "switch.charger_charge_control")
-    assert words(a["actions"][1]["data"]["message"], base, **v) == (
+    assert words(a["actions"][2]["data"]["message"], base, **v) == (
         "Started charging the car: the rate is cheap now (14.27 p/kWh). Car 55.0%, charger SuspendedEVSE.")
     waiting = base | {"sensor.wa_car_charging_plan": "wait", "sensor.wa_charger_status": "Charging", "switch.charger_charge_control": "on",
                       "sensor.wa_car_charging_plan#why": "the rate is not cheap now"}  # fmt: skip
     v = go(waiting)
     assert (v["start"], v["stop"]) == (False, True)
-    assert words(a["actions"][1]["data"]["message"], waiting, **v).startswith(
+    assert words(a["actions"][2]["data"]["message"], waiting, **v).startswith(
         "Stopped charging the car: the rate is not cheap now; next cheap or free time Sun 13:00.")
     v = go(base | {"sensor.wa_car_charging_plan": "full", "sensor.wa_charger_status": "Charging", "input_boolean.wa_ev_apply": "off"})
     assert v["stop"] and not v["apply"]
-    assert words(a["actions"][1]["data"]["message"], base, **v).startswith(
+    assert words(a["actions"][2]["data"]["message"], base, **v).startswith(
         "Stopped charging the car (dry run: nothing changed): it is at 55.0%, the target is 80%.")
     mine = base | {"input_text.wa_ev_entity_switch": "switch.wallbox", "switch.wallbox": "on", "sensor.wa_car_charging_plan": "charge",
                    "sensor.wa_charger_status": "Charging"}  # fmt: skip
@@ -521,3 +521,35 @@ def test_the_car_can_leave_room_for_a_joined_free_hour() -> None:
     assert _plan(at_cap, later) == "charge"
     low = at_cap | {"sensor.wa_car_charge_level": "15.0", "sensor.wa_energy_cheap_now": "off"}
     assert _plan(low, evening) == "charge"  # low still charges
+
+
+def test_after_a_full_charge_it_rests_instead_of_bouncing() -> None:
+    at = datetime(2026, 10, 31, 23, 0, tzinfo=LONDON)  # cheap now
+    car = CAR | {"sensor.wa_energy_cheap_now": "on", "sensor.wa_car_charge_level": "79.0"}
+    assert _plan(car, at) == "charge"  # never been full: charges
+    stopped = car | {"input_datetime.wa_ev_full_at#timestamp": at.timestamp() - 10 * 60}  # full 10 minutes ago
+    assert _plan(stopped, at) == "full"  # the reading slipped to 79%: rests, does not start again
+    rests = render(EV_SENSORS["wa_ev_plan"]["attributes"]["rests_until"], stopped, at)
+    assert datetime.fromisoformat(str(rests)) == at + timedelta(minutes=50)  # 60 minutes after it stopped full
+    assert _plan(stopped | {"input_number.wa_ev_rest_min": "120"}, at + timedelta(minutes=70)) == "full"  # a longer rest
+    assert _plan(stopped, at + timedelta(minutes=55)) == "charge"  # the hour is up
+    dropped = stopped | {"sensor.wa_car_charge_level": "70.0"}
+    assert _plan(dropped, at) == "charge"  # more than 5% below the target: not held back
+
+    a = next(x for x in EV["automation"] if x["id"] == "wa_ev_plan")
+
+    def go(states: dict[str, Any]) -> dict[str, Any]:
+        v: dict[str, Any] = {}
+        for k, tpl in a["variables"].items():
+            v[k] = render(tpl, states, at, **v)
+        return v
+
+    on_idle = {**CAR, "sensor.wa_car_charging_plan": "full", "switch.charger_charge_control": "on",
+               "sensor.wa_charger_status": "SuspendedEV"}  # fmt: skip
+    assert go(on_idle)["stop"] is True  # first time: the stop is sent
+    again = on_idle | {"input_datetime.wa_ev_stopped_at#timestamp": at.timestamp() - 5 * 60}
+    assert go(again)["stop"] is False  # not sent again every 5 minutes
+    assert go(again | {"sensor.wa_charger_status": "Charging"})["stop"] is True  # but always while it charges
+    marks = a["actions"][1]["then"]
+    assert marks[0]["target"]["entity_id"] == "input_datetime.wa_ev_stopped_at"
+    assert marks[1]["if"][0]["value_template"] == "{{ plan == 'full' and charging }}"  # only a real full stop rests
