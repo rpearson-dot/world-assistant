@@ -48,6 +48,7 @@ It started as a personal project on a home Unraid server. Nothing in it is speci
 | **Live buses** | Where buses are right now, anywhere in Great Britain, from the Bus Open Data Service (a free key); a layer on the map and `GET /v1/live-buses` ([how](docs/live-buses.md)). The bus tracker above remains the TfL record; this is a live snapshot. |
 | **Postcodes** | Every UK postcode with a position, held locally from Ordnance Survey Code-Point Open, so adding a place no longer needs an outside service; the nearest postcode to any point ([how](docs/postcodes.md)). |
 | **Energy** | Your Octopus tariff's rates (Cosy, Agile, fixed) banded cheap / standard / peak, the next cheap window and cheapest block, Saving Sessions, on a page at `/energy` and as sensors for Home Assistant to run the battery from ([how](docs/energy.md)). |
+| **EV chargers** | GRIDSERVE's chargers near your places, along a trip or by name: how many work and are free now, by connector (CCS, CHAdeMO, Type 2), how fast and the price, refreshed every 10 minutes; on the map and in the graph ([how](docs/ev.md)). |
 | **Trip conditions** | What is on the way for a trip with a route: works, closures and incidents (National Highways and TfL) and flood warnings, now and planned ([how](docs/trip-conditions.md)). |
 | **London road disruptions** | TfL works, closures and incidents with their position, every 15 minutes; ask what is near a point ([how](docs/tfl-roads.md)). |
 | **Floods** | Environment Agency flood alerts and warnings for England, refreshed every 15 minutes, with each warned area drawn on the map; ask what covers home, or what crosses the way to work ([how](docs/floods.md)). |
@@ -142,7 +143,7 @@ releases are signed (Sigstore) with SBOMs, and every push is scanned for secrets
 - [Assistant](docs/assistant.md): Siri Shortcuts, MCP, the default place
 - [Tailscale](docs/tailscale.md): the app on your phone anywhere, Siri and MCP over your tailnet
 - [MQTT over TLS](docs/mqtt-tls.md): certificates from the car's OVMS module to Home Assistant
-- [Bus tracker](docs/bus.md), [Trains](docs/trains.md), [Leaf dashboard](docs/leaf.md), [Map](docs/map.md), [Knowledge graph](docs/graph.md)
+- [Bus tracker](docs/bus.md), [Trains](docs/trains.md), [Leaf dashboard](docs/leaf.md), [EV chargers](docs/ev.md), [Map](docs/map.md), [Knowledge graph](docs/graph.md)
 - [Backups](docs/backup.md): the status-page button, the deploy script and restoring
 - [Secrets and key vaults](docs/secrets.md), [bundled OpenBao](docs/openbao.md)
 - [Security](docs/security.md): what is protected and how; supply chain

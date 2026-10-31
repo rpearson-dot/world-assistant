@@ -34,6 +34,11 @@ def _fuel_prices(s: Any) -> dict[str, Any]:
     return {"minute": set(range(14, 60, m)), "timeout": 900, "max_tries": 1}
 
 
+def _gridserve(s: Any) -> dict[str, Any]:
+    m = _clamp(s.gridserve_interval_min, 5, 60)
+    return {"minute": set(range(6, 60, m)), "timeout": 240, "max_tries": 1}
+
+
 def _ha(s: Any) -> dict[str, Any]:
     m = _clamp(s.ha_interval_min, 1, 60)
     return {"minute": set(range(1, 60, m)), "timeout": 120, "max_tries": 1}
@@ -149,6 +154,12 @@ BUILTIN: tuple[Module, ...] = (
                    Job("app.integrations.ukpn.sync:ukpn_works_open", {"hour": set(range(0, 24, 2)), "minute": {12},
                                                                        "timeout": 600, "max_tries": 1}),
                    Job("app.integrations.ukpn.sync:ukpn_works_proposed", {"hour": {4}, "minute": {50}, "timeout": 900, "max_tries": 2}))),
+    Module("gridserve", "GRIDSERVE EV chargers", "GRIDSERVE's chargers near your places and along your trips: how many "
+           "work and are free now, by connector, and the price",
+           category="transport", keys=("gridserve_api_key",), jobs=("gridserve",), switch="gridserve_poll_enabled",
+           link="https://www.gridserve.com/open-data/", note="Open data under the Public Charge Point Regulations 2023.",
+           routers=("app.ev:router",), prefixes=("/v1/ev",), tools=("ev_chargers",),
+           worker=(Job("app.integrations.gridserve.sync:gridserve_sync", _gridserve),)),
     Module("busdisruptions", "Bus disruptions (BODS)",
            "Bus, tram and ferry diversions and closures near your places, where the local authority publishes them",
            category="transport", keys=("bods_api_key",), jobs=("bus_disruptions",), switch="bus_disruptions_poll_enabled",

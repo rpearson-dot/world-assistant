@@ -137,6 +137,10 @@ class Settings(BaseSettings):
     ukpn_poll_enabled: bool = False
     ukpn_fault_interval_min: int = 60  # how often power cuts are read normally
     ukpn_fault_alert_interval_min: int = 15  # while a cut affects home (the job runs every 15 minutes and decides)
+    # GRIDSERVE's EV chargers (their open data API, needs a key): sites, chargers and whether each works, prices.
+    # The compose file turns it on; it reads nothing without the key.
+    gridserve_poll_enabled: bool = False
+    gridserve_interval_min: int = 10
     # Bus disruptions published to BODS (SIRI-SX) by 12 or so authorities, none of them London or the Midlands
     # yet: off unless you live where they publish (python -m app.integrations.bods.disruptions_probe shows it).
     bus_disruptions_poll_enabled: bool = False
@@ -206,6 +210,10 @@ class Settings(BaseSettings):
     def ukpn_api_key(self) -> str:
         """Optional: the UK Power Networks portal answers some datasets without one."""
         return read_secret("ukpn_api_key")
+
+    @property
+    def gridserve_api_key(self) -> str:
+        return read_secret("gridserve_api_key")
 
     @property
     def skiddle_api_key(self) -> str:

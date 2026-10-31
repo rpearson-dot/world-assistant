@@ -24,8 +24,11 @@ AREA, DISRUPTION, LOCAL_EVENT = "Area", "Disruption", "LocalEvent"
 RAIL_STATION, ENTRANCE, LINE, CLOSURE = "RailStation", "Entrance", "Line", "StationClosure"
 # UK Power Networks: power cuts, their street works, and the substations that feed your places
 POWER_CUT, STREET_WORK, SUBSTATION = "PowerCut", "StreetWork", "Substation"
+# EV charging sites (GRIDSERVE): only those near a place or along a corridor
+CHARGE_SITE = "ChargeSite"
 LABELS = (PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER, BUS_STOP, FLOOD,
-          AREA, DISRUPTION, LOCAL_EVENT, RAIL_STATION, ENTRANCE, LINE, CLOSURE, POWER_CUT, STREET_WORK, SUBSTATION)
+          AREA, DISRUPTION, LOCAL_EVENT, RAIL_STATION, ENTRANCE, LINE, CLOSURE, POWER_CUT, STREET_WORK, SUBSTATION,
+          CHARGE_SITE)
 
 # Relationship types.
 FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT, COVERS, CROSSES = (
@@ -276,6 +279,15 @@ def power(
     return nodes, rels
 
 
+def charge_sites(rows: Iterable[dict[str, Any]], along: Iterable[tuple[str, str, float]]) -> tuple[list[Node], list[Rel]]:
+    """EV charging sites with how many chargers work and are free, and ALONG the corridors they are by."""
+    nodes = [Node(CHARGE_SITE, r["id"], {"name": r["name"], "network": r.get("network"), "postcode": r.get("postcode"),
+                                         "chargers": r.get("total"), "working": r.get("working"), "free": r.get("free"),
+                                         "max_kw": r.get("max_kw"), "lat": r.get("lat"), "lon": r.get("lon")})
+             for r in rows]  # fmt: skip
+    return nodes, [Rel(ALONG, (CHARGE_SITE, s), (CORRIDOR, c), {"km": round(float(km), 3)}) for s, c, km in along]
+
+
 def drives(vehicle_nodes: Sequence[Node], trip_nodes: Sequence[Node]) -> list[Rel]:
     """Every vehicle can make every trip. Stated once so a traversal can cost a trip per vehicle."""
     return [Rel(DRIVES, v.key(), t.key()) for v in vehicle_nodes for t in trip_nodes]
@@ -312,6 +324,8 @@ def build(
     street_work_rows: Sequence[dict[str, Any]] = (),
     work_corridors: Sequence[tuple[str, str]] = (),
     supply_rows: Sequence[dict[str, Any]] = (),
+    charge_site_rows: Sequence[dict[str, Any]] = (),
+    charge_along: Sequence[tuple[str, str, float]] = (),
 ) -> Graph:
     """The whole graph, from one read of Postgres. Pure, so the shape is testable on its own."""
     place_nodes = places(place_rows)
@@ -329,10 +343,11 @@ def build(
     area_nodes, area_rels = areas(area_rows, inside_pairs, area_parents)
     rail_nodes, rail_rels = rail_stations(rail_station_rows, rail_part_rows, rail_closure_rows)
     power_nodes, power_rels = power(power_cut_rows, street_work_rows, work_corridors, supply_rows)
+    charge_nodes, charge_rels = charge_sites(charge_site_rows, charge_along)
 
     nodes = [*place_nodes, *trip_nodes, *corridor_nodes, *event_nodes, *station_nodes,
              *location_nodes, *vehicle_nodes, *tracker_nodes, *stop_nodes, *flood_nodes,
-             *disruption_nodes, *event_here, *area_nodes, *rail_nodes, *power_nodes]  # fmt: skip
+             *disruption_nodes, *event_here, *area_nodes, *rail_nodes, *power_nodes, *charge_nodes]  # fmt: skip
     rels = [
         *trip_rels,
         *event_rels,
@@ -341,6 +356,7 @@ def build(
         *area_rels,
         *rail_rels,
         *power_rels,
+        *charge_rels,
         *flood_reach(flood_covers, flood_crosses),
         *near_places(near_pairs),
         *along_corridors(along_pairs),

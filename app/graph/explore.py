@@ -78,6 +78,8 @@ PRESETS: dict[str, tuple[str, str]] = {
                      "MATCH path = (:Substation)-[:FEEDS*1..3]->(:Place) RETURN path LIMIT 100"),
     "power-cuts": ("Power cuts and electricity works near my places and routes",
                    "MATCH path = (n)-[:NEAR|AFFECTS]->() WHERE n:PowerCut OR n:StreetWork RETURN path LIMIT 200"),
+    "chargers": ("EV chargers near my places and along my routes",
+                 "MATCH path = (:ChargeSite)-[:NEAR|ALONG]->() RETURN path LIMIT 200"),
     "trips": ("My trips, places and roads",
               "MATCH path = (:Place)<-[:FROM|TO]-(:Trip)-[:USES]->(:Corridor) RETURN path LIMIT 150"),
 }  # fmt: skip
