@@ -76,5 +76,5 @@ def test_a_bad_signature_changes_nothing(tmp_path: Path) -> None:
 
 def test_building_from_the_folder_or_a_plain_copy_is_not_touched(tmp_path: Path) -> None:
     assert _run(tmp_path, "0.23.0", None)[0] == 0  # no WA_IMAGE: the files are the version
-    code, out, env, calls = _run(tmp_path / "copy", "0.23.0", OLD, checkout=False)
+    code, out, _, calls = _run(tmp_path / "copy", "0.23.0", OLD, checkout=False)
     assert code == 0 and out == "" and calls == ""  # a copy's files do not say which release they are
