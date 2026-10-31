@@ -8,6 +8,10 @@
 #     charging window of the energy plan is on;
 #   - a Free Electricity hour you joined is on (sensor.wa_energy_free_electricity_now);
 #   - "WA car: always charge when low" is on and the car is below "WA car: low means below".
+# RESTING WHEN FULL: once charging stops because the car reached its target, it is not started again for "WA car:
+# rest after full" (60 minutes or more), unless the car drops more than 5% below the target. The car's reading
+# often slips a point after a charge stops, which would otherwise start it again within minutes, over and over.
+# A stop is sent once; while the charger still shows on but is not charging, it is not sent again for 30 minutes.
 # LEAVING ROOM FOR FREE ELECTRICITY: with "WA car: leave room per free hour" above 0, cheap charging stops that much
 # below the target for each Free Electricity hour you joined in the next 24 hours, and the free hour fills the rest.
 # One hour at 4.6 kW is about 4.6 kWh: roughly 20% of a 24 kWh (usable) battery. 0 (the default) leaves no room.
@@ -27,6 +31,17 @@
 # DRY RUN FIRST: "WA car: control the charger" starts OFF; while off, decisions are only logged.
 # Turn the charger's own schedule off (in its app) or it will hold the car back ("SuspendedEVSE").
 # Needs World Assistant 0.20 or later; works best with the energy plan package (wa_energy_plan.yaml).
+
+# When charging last stopped (any reason), and when it last stopped because the car was full. Kept across restarts.
+input_datetime:
+  wa_ev_stopped_at:
+    name: "WA car: last stopped"
+    has_date: true
+    has_time: true
+  wa_ev_full_at:
+    name: "WA car: last stopped full"
+    has_date: true
+    has_time: true
 
 input_boolean:
   wa_ev_apply:
@@ -52,6 +67,14 @@ input_number:
     max: 50
     step: 5
     unit_of_measurement: "%"
+  wa_ev_rest_min:
+    # no "initial": kept across restarts; it starts at 60
+    name: "WA car: rest after full"
+    icon: mdi:timer-sand
+    min: 60
+    max: 360
+    step: 30
+    unit_of_measurement: min
   wa_ev_min_soc:
     name: "WA car: low means below"
     min: 5
@@ -174,8 +197,12 @@ template:
             {% if u.joined and st is not none and now() < st <= now() + timedelta(hours=24) %}{% set ns2.n = ns2.n + 1 %}{% endif %}
           {% endfor %}
           {% set room = [states('input_number.wa_ev_free_room_pct') | float(0) * ns2.n, target] | min %}
+          {% set full_ts = state_attr('input_datetime.wa_ev_full_at', 'timestamp') %}
+          {% set rest = states('input_number.wa_ev_rest_min') | float(60) %}
+          {% set held = full_ts is number and now().timestamp() < full_ts + rest * 60 and (soc < 0 or soc >= target - 5) %}
           {% if status in ['Available', 'Unavailable', 'Faulted', 'unknown', 'unavailable'] %}unplugged
           {% elif soc >= 0 and soc >= target %}full
+          {% elif held %}full
           {% elif free or low %}charge
           {% elif cheap and (soc < 0 or soc < target - room) %}charge
           {% else %}wait{% endif %}
@@ -194,6 +221,11 @@ template:
             {% elif room > 0 and soc >= 0 and target - room <= soc < target %}leaving {{ room | int }}% for the free electricity at {{ (ns2.first | as_local).strftime('%a %H:%M') }}: charged to {{ (target - room) | int }}% until then
             {% elif is_state('sensor.wa_energy_cheap_now', 'on') %}the rate is cheap now ({{ states('sensor.wa_energy_rate') }} p/kWh)
             {% else %}the rate is not cheap now{% endif %}
+          # while resting after a full charge: when it may start again
+          rests_until: >-
+            {% set full_ts = state_attr('input_datetime.wa_ev_full_at', 'timestamp') %}
+            {% set until = full_ts + (states('input_number.wa_ev_rest_min') | float(60)) * 60 if full_ts is number else none %}
+            {{ (now() + timedelta(seconds=until - now().timestamp())).isoformat() if until is not none and now().timestamp() < until else none }}
           # the next cheap or joined free time, whichever is sooner
           next_start: >-
             {% set c = as_datetime(states('sensor.wa_energy_next_cheap_start'), none) %}
@@ -242,7 +274,11 @@ automation:
       switch_on: "{{ is_state(switch, 'on') }}"
       apply: "{{ is_state('input_boolean.wa_ev_apply', 'on') }}"
       start: "{{ plan == 'charge' and not charging and not switch_on }}"
-      stop: "{{ plan in ['wait', 'full'] and (charging or switch_on) }}"
+      # a stop is sent while it charges; with the switch still showing on but not charging, at most every 30 minutes
+      stopped_recently: >-
+        {% set t = state_attr('input_datetime.wa_ev_stopped_at', 'timestamp') %}
+        {{ t is number and now().timestamp() < t + 1800 }}
+      stop: "{{ plan in ['wait', 'full'] and (charging or (switch_on and not stopped_recently)) }}"
       soc: "{{ states('sensor.wa_car_charge_level') }}"
       next: >-
         {% set t = as_datetime(state_attr('sensor.wa_car_charging_plan', 'next_start'), none) %}
@@ -258,6 +294,24 @@ automation:
           - action: "switch.turn_{{ 'on' if start else 'off' }}"
             target:
               entity_id: "{{ switch }}"
+      - if:
+          - condition: template
+            value_template: "{{ stop }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.wa_ev_stopped_at
+            data:
+              timestamp: "{{ now().timestamp() }}"
+          - if:
+              - condition: template
+                value_template: "{{ plan == 'full' and charging }}"
+            then:  # stopped because it reached the target: rest before starting again
+              - action: input_datetime.set_datetime
+                target:
+                  entity_id: input_datetime.wa_ev_full_at
+                data:
+                  timestamp: "{{ now().timestamp() }}"
       - action: logbook.log
         data:
           name: WA car charging

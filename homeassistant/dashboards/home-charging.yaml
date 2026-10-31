@@ -153,6 +153,8 @@ views:
                 name: Charge to
               - entity: input_number.wa_ev_free_room_pct
                 name: Leave room per joined free hour (0 = off)
+              - entity: input_number.wa_ev_rest_min
+                name: After a full charge, wait before starting again
               - entity: input_boolean.wa_ev_low_enabled
                 name: Always charge when low
               - entity: input_number.wa_ev_min_soc
@@ -165,7 +167,7 @@ views:
               {%- set why = state_attr('sensor.wa_car_charging_plan', 'why') | trim %}
               {%- set t = as_datetime(state_attr('sensor.wa_car_charging_plan', 'next_start'), none) %}
               {%- if plan == 'charge' %}Charging: {{ why }}.
-              {%- elif plan == 'full' %}At its target of {{ states('input_number.wa_ev_target_soc') | int }}%: not charging.
+              {%- elif plan == 'full' %}{% set r = as_datetime(state_attr('sensor.wa_car_charging_plan', 'rests_until'), none) %}At its target of {{ states('input_number.wa_ev_target_soc') | int }}%: not charging{{ ' (resting until ' ~ (r | as_local).strftime('%H:%M') ~ ', so a slipped reading does not restart it)' if r is not none else '' }}.
               {%- elif plan == 'wait' %}Waiting: {{ why }}. Next cheap or free time {{ (t | as_local).strftime('%a %H:%M') if t is not none else 'not known yet' }}.
               {%- else %}Not plugged in.{% endif %}
               {%- if not is_number(states('sensor.wa_car_charge_level')) %}
