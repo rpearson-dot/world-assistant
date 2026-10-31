@@ -151,6 +151,8 @@ views:
             entities:
               - entity: input_number.wa_ev_target_soc
                 name: Charge to
+              - entity: input_number.wa_ev_free_room_pct
+                name: Leave room per joined free hour (0 = off)
               - entity: input_boolean.wa_ev_low_enabled
                 name: Always charge when low
               - entity: input_number.wa_ev_min_soc

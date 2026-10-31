@@ -500,3 +500,24 @@ def test_car_range_in_miles_and_at_full_charge_agree_with_the_charge_level() -> 
     assert render(full, car) == 124.0  # 160 km at 80% -> 200 km at 100%
     assert render(full, car | {"sensor.wa_car_charge_level": "3"}) in (None, "None")
     assert render(full, car | {"sensor.wa_car_range": "unavailable"}) in (None, "None")
+
+
+def test_the_car_can_leave_room_for_a_joined_free_hour() -> None:
+    evening = datetime(2026, 10, 31, 22, 30, tzinfo=LONDON)  # cheap now; a joined free hour at 13:00 tomorrow
+    free = [{"start": "2026-11-01T13:00:00+00:00", "end": "2026-11-01T14:00:00+00:00", "joined": True},
+            {"start": "2026-11-01T15:00:00+00:00", "end": "2026-11-01T16:00:00+00:00", "joined": False}]  # fmt: skip
+    car = CAR | {"sensor.wa_energy_cheap_now": "on", "sensor.wa_energy_free_electricity_next_start#upcoming": free,
+                 "sensor.wa_car_charge_level": "62.0"}  # fmt: skip
+    assert _plan(car, evening) == "charge"  # no room asked for (0): charges to the target
+    room = car | {"input_number.wa_ev_free_room_pct": "20.0", "sensor.wa_car_charge_level": "55.0"}
+    assert _plan(room, evening) == "charge"  # 55% is below 80 - 20
+    at_cap = room | {"sensor.wa_car_charge_level": "60.0"}
+    assert _plan(at_cap, evening) == "wait"  # the joined hour fills the last 20% (the one not joined counts nothing)
+    why = render(EV_SENSORS["wa_ev_plan"]["attributes"]["why"], at_cap, evening)
+    assert " ".join(str(why).split()) == "leaving 20% for the free electricity at Sun 13:00: charged to 60% until then"
+    during = at_cap | {"sensor.wa_energy_free_electricity_now": "on"}
+    assert _plan(during, datetime(2026, 11, 1, 13, 5, tzinfo=LONDON)) == "charge"  # in the free hour: on to 80%
+    later = datetime(2026, 11, 2, 22, 30, tzinfo=LONDON)  # the hour has passed: nothing held back
+    assert _plan(at_cap, later) == "charge"
+    low = at_cap | {"sensor.wa_car_charge_level": "15.0", "sensor.wa_energy_cheap_now": "off"}
+    assert _plan(low, evening) == "charge"  # low still charges

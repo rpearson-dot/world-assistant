@@ -8,6 +8,9 @@
 #     charging window of the energy plan is on;
 #   - a Free Electricity hour you joined is on (sensor.wa_energy_free_electricity_now);
 #   - "WA car: always charge when low" is on and the car is below "WA car: low means below".
+# LEAVING ROOM FOR FREE ELECTRICITY: with "WA car: leave room per free hour" above 0, cheap charging stops that much
+# below the target for each Free Electricity hour you joined in the next 24 hours, and the free hour fills the rest.
+# One hour at 4.6 kW is about 4.6 kWh: roughly 20% of a 24 kWh (usable) battery. 0 (the default) leaves no room.
 # Otherwise charging is stopped. Without a charge level (none set, or the car is asleep) the target is not checked:
 # the car charges whenever it is cheap or free until it stops by itself.
 #
@@ -41,6 +44,14 @@ input_number:
     step: 5
     unit_of_measurement: "%"
     initial: 80
+  wa_ev_free_room_pct:
+    # no "initial": what you set is kept across restarts; it starts at 0 (no room left)
+    name: "WA car: leave room per free hour"
+    icon: mdi:gift-outline
+    min: 0
+    max: 50
+    step: 5
+    unit_of_measurement: "%"
   wa_ev_min_soc:
     name: "WA car: low means below"
     min: 5
@@ -157,16 +168,31 @@ template:
           {% endfor %}
           {% set cheap = is_state('sensor.wa_energy_cheap_now', 'on') or ns.window %}
           {% set free = is_state('sensor.wa_energy_free_electricity_now', 'on') %}
+          {% set ns2 = namespace(n=0) %}
+          {% for u in state_attr('sensor.wa_energy_free_electricity_next_start', 'upcoming') or [] %}
+            {% set st = as_datetime(u.start, none) %}
+            {% if u.joined and st is not none and now() < st <= now() + timedelta(hours=24) %}{% set ns2.n = ns2.n + 1 %}{% endif %}
+          {% endfor %}
+          {% set room = [states('input_number.wa_ev_free_room_pct') | float(0) * ns2.n, target] | min %}
           {% if status in ['Available', 'Unavailable', 'Faulted', 'unknown', 'unavailable'] %}unplugged
           {% elif soc >= 0 and soc >= target %}full
-          {% elif cheap or free or low %}charge
+          {% elif free or low %}charge
+          {% elif cheap and (soc < 0 or soc < target - room) %}charge
           {% else %}wait{% endif %}
         attributes:
           why: >-
             {% set soc = states('sensor.wa_car_charge_level') | float(-1) %}
+            {% set target = states('input_number.wa_ev_target_soc') | float(80) %}
+            {% set ns2 = namespace(n=0, first=none) %}
+            {% for u in state_attr('sensor.wa_energy_free_electricity_next_start', 'upcoming') or [] %}
+              {% set st = as_datetime(u.start, none) %}
+              {% if u.joined and st is not none and now() < st <= now() + timedelta(hours=24) %}{% set ns2.n = ns2.n + 1 %}{% if ns2.first is none %}{% set ns2.first = st %}{% endif %}{% endif %}
+            {% endfor %}
+            {% set room = [states('input_number.wa_ev_free_room_pct') | float(0) * ns2.n, target] | min %}
             {% if is_state('sensor.wa_energy_free_electricity_now', 'on') %}a Free Electricity hour you joined
-            {% elif is_state('sensor.wa_energy_cheap_now', 'on') %}the rate is cheap now ({{ states('sensor.wa_energy_rate') }} p/kWh)
             {% elif is_state('input_boolean.wa_ev_low_enabled', 'on') and 0 <= soc < states('input_number.wa_ev_min_soc') | float(20) %}the car is below {{ states('input_number.wa_ev_min_soc') | int }}%
+            {% elif room > 0 and soc >= 0 and target - room <= soc < target %}leaving {{ room | int }}% for the free electricity at {{ (ns2.first | as_local).strftime('%a %H:%M') }}: charged to {{ (target - room) | int }}% until then
+            {% elif is_state('sensor.wa_energy_cheap_now', 'on') %}the rate is cheap now ({{ states('sensor.wa_energy_rate') }} p/kWh)
             {% else %}the rate is not cheap now{% endif %}
           # the next cheap or joined free time, whichever is sooner
           next_start: >-
