@@ -4,6 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.23.3] - 2026-10-31
+
+### Fixed
+- **Tailscale stays signed in.** The sidecar signed in again with the key on every start, so once a one-off key had been used, a restart (an update, a reboot) logged the device out. It now uses the key only when the device is not signed in already (`TS_AUTH_ONCE`).
+
 ## [0.23.2] - 2026-10-31
 
 ### Changed

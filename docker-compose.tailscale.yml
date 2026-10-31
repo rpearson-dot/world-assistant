@@ -27,6 +27,9 @@ services:
       TS_STATE_DIR: /var/lib/tailscale
       TS_SERVE_CONFIG: /config/serve.json
       TS_USERSPACE: "true"
+      # Sign in with the key only when not signed in already. Without this, containerboot signs in again with the
+      # key on every start, and a one-off key that has been used logs the device out.
+      TS_AUTH_ONCE: "true"
       TS_EXTRA_ARGS: ${WA_TAILSCALE_ARGS:-}
     secrets:
       - tailscale_authkey
