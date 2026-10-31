@@ -126,3 +126,15 @@ def test_the_token_never_appears_in_arguments_or_config(world: dict[str, object]
     (tmp / "secrets" / "github_token.txt").write_text("SECRETSECRETSECRET\n")  # type: ignore[operator]
     assert sh("bash", "scripts/git-setup.sh", cwd=proj, env=env).returncode == 0  # type: ignore[arg-type]
     assert "SECRETSECRET" not in (proj / ".git" / "config").read_text()  # type: ignore[operator]
+
+
+def test_with_a_pinned_release_image_sync_takes_the_newest_release_not_main(world: dict[str, object]) -> None:
+    proj, env, (_, c2, c3) = world["proj"], world["env"], world["commits"]  # type: ignore[misc]
+    sh("bash", "scripts/git-setup.sh", cwd=proj, env=env)  # type: ignore[arg-type]
+    with (proj / ".env").open("a") as f:  # type: ignore[operator]
+        f.write("WA_IMAGE=ghcr.io/o/wa@sha256:" + "a" * 64 + "\n")
+    r = sh("bash", "scripts/sync.sh", cwd=proj, env=env)  # type: ignore[arg-type]
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert head(proj) == c2 and "newest release, v0.6.0" in r.stdout  # so the files match a release image
+    r = sh("bash", "scripts/sync.sh", "--main", cwd=proj, env=env)  # type: ignore[arg-type]
+    assert r.returncode == 0 and head(proj) == c3

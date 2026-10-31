@@ -171,6 +171,33 @@ class VaultBackend:
         return value.strip() if value is not None else None
 
 
+def vault_merge(values: dict[str, str], token: str) -> int:
+    """Write `values` into the vault document, keeping every field already there, with a token given for this one
+    write (the app's own login may only read). Check-and-set on the version read, so a change made meanwhile is never
+    overwritten. Returns the new version. The token is not kept."""
+    mount = os.environ.get("WA_VAULT_MOUNT", "secret").strip("/")
+    path = os.environ.get("WA_VAULT_PATH", "world-assistant").strip("/")
+    url = f"{VaultBackend._addr()}/v1/{mount}/data/{path}"
+    with _VAULT._client() as client:
+        r = client.get(url, headers={"X-Vault-Token": token})
+        if r.status_code == 404:
+            current, version = {}, 0
+        else:
+            if r.status_code == 403:
+                raise SecretError("the vault refused that token (it needs to read and write the document)")
+            r.raise_for_status()
+            body = r.json()["data"]
+            current, version = dict(body.get("data") or {}), int((body.get("metadata") or {}).get("version") or 0)
+        w = client.post(url, headers={"X-Vault-Token": token},
+                        json={"data": {**current, **values}, "options": {"cas": version}})  # fmt: skip
+        if w.status_code == 403:
+            raise SecretError("the vault refused that token for writing (an admin or root token is needed)")
+        if w.status_code == 400 and "check-and-set" in w.text:
+            raise SecretError("the vault document changed while this was copying; try again")
+        w.raise_for_status()
+        return int(w.json()["data"]["version"])
+
+
 class CommandBackend:
     """Run WA_SECRETS_COMMAND with {name} replaced; stdout is the value."""
 

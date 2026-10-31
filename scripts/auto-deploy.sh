@@ -3,6 +3,7 @@
 #
 #   bash scripts/auto-deploy.sh             # what the nightly schedule runs
 #   bash scripts/auto-deploy.sh --dry-run   # say what it would do; change nothing
+#   bash scripts/auto-deploy.sh --now       # update now, even with the switch off (the same checks and rollback)
 #
 # When the switch is on it: finds the newest release image, verifies its signature, refuses if the
 # release needs newer compose files than this folder has (unless the folder is a git checkout, in which
@@ -15,8 +16,9 @@ cd "$(dirname "$0")/.."
 # The whole script is one function, read in full before anything runs: this job replaces files in the
 # project folder (including this one) part-way through, and bash must not be reading the old file then.
 auto_deploy_main() {
-  DRY_RUN=0
+  DRY_RUN=0 NOW=0
   [ "${1:-}" = "--dry-run" ] && DRY_RUN=1
+  [ "${1:-}" = "--now" ] && NOW=1
 
   if [ -f .env ]; then
     set -a
@@ -60,7 +62,7 @@ auto_deploy_main() {
   }
 
   state="$(call "$API/v1/auto-deploy")" || { log "The api did not answer at $API."; exit 1; }
-  if ! printf '%s' "$state" | grep -q '"enabled":true'; then
+  if [ "$NOW" = 0 ] && ! printf '%s' "$state" | grep -q '"enabled":true'; then
     log "Automatic updates are switched off (status page); nothing to do."
     exit 0
   fi

@@ -72,6 +72,12 @@ PAGE = """<!doctype html>
   <p class="dim">Every key is free and optional; a feature without its key says so. Keys saved here are kept on the
   server in its own keys folder and work straight away. They are never shown again, only whether one is set.</p>
   <p id="kwarn" class="note" hidden></p>
+  <div id="tovault" class="keycard" hidden><div class="name">Move the keys into the vault</div>
+    <p class="dim" id="tvtext"></p>
+    <label>Vault token that can write (root or admin; used once, not kept)
+      <div class="field"><input id="tvtoken" type="password" autocomplete="off" placeholder="Paste the token">
+      <button id="tvgo" class="primary" type="button">Copy to the vault</button></div></label>
+    <span class="dim" id="tvmsg"></span></div>
   <div id="keylist"></div></div>
 </section>
 
@@ -214,8 +220,19 @@ async function refreshKeys() {
   $('kwarn').hidden = keys.writable; $('kwarn').textContent = keys.writable ? '' :
     'Keys cannot be saved from here yet: ' + keys.reason + '. You can still put them in the secrets folder on the server (scripts/setup.sh).';
   $('keylist').replaceChildren(...setup.keys.map(s => keyCard(s, renderAll)));
+  const outside = keys.keys.filter(k => ['settings', 'file', 'env'].includes(k.source));
+  $('tovault').hidden = keys.backend !== 'vault' || !outside.length;
+  $('tvtext').textContent = outside.length + ' key(s) are kept outside the vault (' + outside.map(k => k.name).join(', ')
+    + '). This copies them into it and forgets the copies saved on this page; secret files on the server are left for you to delete.';
   renderSetup();
 }
+$('tvgo').onclick = async () => {
+  const t = $('tvtoken').value.trim(); if (!t) return;
+  $('tvmsg').textContent = 'Copying...';
+  try { const r = await api('/v1/settings/keys/to-vault', { method: 'POST', body: JSON.stringify({ token: t }) });
+    $('tvtoken').value = ''; $('tvmsg').textContent = r.message + '.'; await refreshKeys(); }
+  catch (e) { $('tvmsg').textContent = e.message; }
+};
 function renderAll() { renderSetup(); if (!$('wizard').hidden) wizard(wizStep); }
 
 // --- the wizard -------------------------------------------------------------------------------------

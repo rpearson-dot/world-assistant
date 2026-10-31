@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Bring this project folder (a git checkout; see git-setup.sh) to a version from GitHub.
 #
-#   bash scripts/sync.sh                 # the newest main
+#   bash scripts/sync.sh                 # the newest release when WA_IMAGE pins a release image, else the newest main
+#   bash scripts/sync.sh --main          # the newest main, whatever is pinned
 #   bash scripts/sync.sh v0.6.0          # a release (tag)
 #   bash scripts/sync.sh <commit>        # an exact commit
 #   bash scripts/sync.sh --deploy        # then run scripts/deploy.sh
@@ -25,10 +26,11 @@ sync_main() {
     WA_GITHUB_TOKEN_FILE="${WA_GITHUB_TOKEN_FILE:-$WA_SECRETS/github_token.txt}"
   fi
 
-  local ref="" deploy=0 arg
+  local ref="" deploy=0 main=0 arg
   for arg in "$@"; do
     case "$arg" in
       --deploy) deploy=1 ;;
+      --main) main=1 ;;
       *) ref="$arg" ;;
     esac
   done
@@ -36,6 +38,12 @@ sync_main() {
 
   wa_git fetch -q --tags --prune origin || { echo "Could not fetch from GitHub (token or network)."; return 1; }
   local target before after
+  if [ -z "$ref" ] && [ "$main" = 0 ] && [ -n "${WA_IMAGE:-}" ]; then
+    # Running a pinned release image: the files go to the newest release, so the image and the files agree.
+    ref="$(wa_git tag -l 'v[0-9]*' --sort=-v:refname | head -1)"
+    [ -n "$ref" ] || { echo "No release tags found; use --main to take the newest main."; return 1; }
+    echo "WA_IMAGE pins a release image, so this takes the newest release, $ref (--main for the newest main)."
+  fi
   if [ -z "$ref" ]; then
     target="origin/main"
   elif wa_git rev-parse -q --verify "refs/tags/$ref^{commit}" >/dev/null; then
