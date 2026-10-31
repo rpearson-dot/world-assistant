@@ -35,6 +35,7 @@ LAYERS: dict[str, str] = {
     "road_events": "Closures and speed limits",
     "signs": "Motorway signs",
     "fuel": "Fuel stations",
+    "ev": "EV chargers (GRIDSERVE)",
     "stops": "Bus stops and stations",
     "floods": "Flood warnings",
     "buses": "Live buses",
@@ -180,6 +181,23 @@ async def _fuel(conn: Any, centre: Point | None, radius_km: float, fuel: str) ->
             for r in res]  # fmt: skip
 
 
+async def _ev(conn: Any, centre: Point | None, radius_km: float) -> list[dict[str, Any]]:
+    """Charging sites, each with how many chargers work and are free now."""
+    from app.ev import _details
+    from app.integrations.gridserve.normalise import summary
+
+    res = (await _near(conn, "SELECT s.id, s.name, s.network, s.postcode, s.lat, s.lon FROM ev_site s WHERE s.lat IS NOT NULL",
+                       centre, radius_km, alias="s", order="name")).all()  # fmt: skip
+    by, prices = await _details(conn, [r.id for r in res])
+    out = []
+    for r in res:
+        s = summary(by[r.id], prices)
+        out.append(_point(r.lat, r.lon, {"id": r.id, "name": r.name, "network": r.network, "postcode": r.postcode,
+                                         "total": s["total"], "working": s["working"], "free": s["free"],
+                                         "max_kw": s["max_kw"], "chademo": "CHAdeMO" in s["connectors"]}))  # fmt: skip
+    return out
+
+
 async def _stops(conn: Any, centre: Point | None, radius_km: float) -> list[dict[str, Any]]:
     """Near a point, every stop (nearest first, capped). Over the whole country, only the stations:
     400,000 bus stops would be a smear, and one record per station is what a national map wants."""
@@ -258,6 +276,7 @@ async def layers(request: Request) -> dict[str, Any]:
         "road_events": "SELECT count(*) FROM nh_event WHERE cleared_at IS NULL",
         "signs": "SELECT count(*) FROM nh_sign WHERE lat IS NOT NULL",
         "fuel": "SELECT count(*) FROM fuel_station WHERE coords_ok AND NOT permanent_closure",
+        "ev": "SELECT count(*) FROM ev_site",
         "stops": "SELECT count(*) FROM naptan_stop",
         "floods": "SELECT count(*) FROM flood_warning WHERE severity_level <= 3",
         "buses": None,  # live, not stored: there is nothing to count until it is fetched
@@ -322,6 +341,8 @@ async def geojson(
                 features = await _signs(conn, centre, radius_km)
             elif key == "fuel":
                 features = await _fuel(conn, centre, radius_km, fuel_key)
+            elif key == "ev":
+                features = await _ev(conn, centre, radius_km)
             elif key == "stops":
                 features = await _stops(conn, centre, radius_km)
             elif key == "floods":

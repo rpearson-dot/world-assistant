@@ -20,8 +20,8 @@ from app.main import app
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
 MIGRATIONS = ["0003_nh_storage", "0006_places_trips", "0007_fuel", "0015_pollen_grid", "0016_ha_location",
-              "0017_ha_origin", "0018_geography", "0020_naptan", "0021_flood"]  # fmt: skip
-TABLES = ["flood_warning", "flood_area", "naptan_stop", "pollen_grid", "ha_location", "fuel_price_change", "fuel_price", "fuel_station", "trip", "place",
+              "0017_ha_origin", "0018_geography", "0020_naptan", "0021_flood", "0034_ev"]  # fmt: skip
+TABLES = ["ev_site_log", "ev_tariff", "ev_evse", "ev_site", "flood_warning", "flood_area", "naptan_stop", "pollen_grid", "ha_location", "fuel_price_change", "fuel_price", "fuel_station", "trip", "place",
           "nh_sign_message", "nh_sign", "nh_event_corridor", "nh_event", "nh_corridor"]  # fmt: skip
 
 HOME = (51.5074, -0.1278)  # the centre every test measures from
@@ -97,6 +97,16 @@ def schema() -> Iterator[None]:
         conn.execute(text("INSERT INTO flood_warning (id, area, severity_level, severity, seen) VALUES "
                           "('near', 'near', 2, 'Flood Warning', now()), ('far', 'far', 3, 'Flood Alert', now()), "
                           "('over', 'over', 4, 'Gone', now())"))
+        conn.execute(text("INSERT INTO ev_site (id, operator, name, lat, lon, seen) VALUES "
+                          "('gridserve:near', 'gridserve', 'Near hub', :la, :lo, now()), "
+                          "('gridserve:far', 'gridserve', 'Far hub', :fa, :fo, now())"),
+                     {"la": NEAR[0], "lo": NEAR[1], "fa": FAR[0], "fo": FAR[1]})  # fmt: skip
+        conn.execute(text("INSERT INTO ev_evse (id, site_id, status, connectors, max_kw, seen) VALUES "
+                          "('gridserve:X-1', 'gridserve:near', 'AVAILABLE', CAST(:ccs AS jsonb), 350, now()), "
+                          "('gridserve:X-2', 'gridserve:near', 'AVAILABLE', CAST(:cha AS jsonb), 50, now()), "
+                          "('gridserve:Y-1', 'gridserve:near', 'OUT_OF_ORDER', CAST(:ccs AS jsonb), 350, now())"),
+                     {"ccs": '[{"type": "CCS", "kw": 350, "tariffs": []}]',
+                      "cha": '[{"type": "CHAdeMO", "kw": 50, "tariffs": []}]'})  # fmt: skip
         conn.execute(text("INSERT INTO pollen_grid (lat, lon, forecast, fingerprint) "
                           "VALUES (:la, :lo, CAST(:f AS jsonb), 'x')"),
                      {"la": NEAR[0], "lo": NEAR[1], "f": '{"allergy_risk_label": ["low"]}'})  # fmt: skip
@@ -107,7 +117,7 @@ def schema() -> Iterator[None]:
     sync.dispose()
 
 
-ALL = "places,locations,roads,road_events,signs,fuel,stops,floods,pollen"  # buses are live, tested below
+ALL = "places,locations,roads,road_events,signs,fuel,ev,stops,floods,pollen"  # buses are live, tested below
 
 
 @pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
@@ -143,6 +153,9 @@ async def test_every_layer_is_served_and_cut_to_the_radius(
         assert [f["properties"]["id"] for f in flood] == ["near"]  # in range, live; the ended one is out
         assert flood[0]["geometry"]["type"] in ("Polygon", "MultiPolygon") and flood[0]["properties"]["level"] == 2
         assert [f["properties"]["label"] for f in lay["pollen"]["features"]] == ["low"]
+        ev = lay["ev"]["features"]  # two boxes: one free (CCS and CHAdeMO leads), one out of order
+        assert [(f["properties"]["name"], f["properties"]["total"], f["properties"]["working"], f["properties"]["free"],
+                 f["properties"]["chademo"]) for f in ev] == [("Near hub", 2, 1, 1, True)]  # fmt: skip
         # the corridor runs from far away to nearby: in range, and drawn in full
         roads = lay["roads"]["features"]
         assert len(roads) == 1 and len(roads[0]["geometry"]["coordinates"]) == 2

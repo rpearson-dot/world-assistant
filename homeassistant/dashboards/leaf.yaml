@@ -106,6 +106,31 @@ views:
           Assistant gives this car. It is the route driven, not a road condition. For just the
           current position and no trail, delete `hours_to_show` from the map card above.
 
+      # Chargers near whoever is looking: their phone's location while away, else zone.home (as the Fuel dashboard).
+      # Needs World Assistant's GRIDSERVE module; the connector picker comes with the EV chargers package.
+      - type: markdown
+        title: Chargers near you
+        content: |
+          {% set radius_km = 50 %}
+          {% set me = states.person | selectattr('name', 'eq', user) | list %}{% set p = me[0] if me else none %}{% set away = p is not none and p.state not in ['home', 'unknown', 'unavailable'] and p.attributes.latitude is defined and p.attributes.latitude is not none and (p.attributes.gps_accuracy | default(0) | float(0)) <= 1000 %}{% set z = p if away else states.zone.home %}{% set where = 'your location' if away else 'home' %}
+          {% set pick = states('input_select.wa_ev_connector') %}{% set mine = state_attr('sensor.wa_ev_summary', 'my_connector') %}{% set c = none if pick == 'Any' else pick if pick in ['CCS', 'CHAdeMO', 'Type 2'] else mine %}
+          {% set ns = namespace(r=[]) %}
+          {% for t in states.sensor if t.entity_id.startswith('sensor.wa_ev_tile_') %}{% for s in t.attributes.sites | default([]) %}{% set b = s.by.get(c) if c else [s.total, s.working, s.free, s.kw] %}{% if b and b[0] %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, s.lat, s.lon) %}{% if d is not none and d <= radius_km %}{% set ns.r = ns.r + [[d, s.name, b[2], b[1], b[0], b[3], s.p, s.open, s.opens, s.broken]] %}{% endif %}{% endif %}{% endfor %}{% endfor %}
+          {% if ns.r %}Within {{ radius_km }} km of {{ where }}{{ ', ' ~ c ~ ' only' if c else '' }}:
+          {% for x in (ns.r | sort(attribute='0'))[:6] %}
+          - **{{ x[1] }}**, {{ '%.1f' | format(x[0]) }} km: {% if x[7] == false %}closed now{{ ', opens ' ~ x[8] if x[8] else '' }}{% else %}{{ x[2] }} of {{ x[4] }} free{% endif %}{{ ', up to ' ~ (x[5] | int) ~ ' kW' if x[5] else '' }}{{ ', ' ~ (x[6] | round(0) | int) ~ 'p/kWh' if x[6] else '' }}{{ ', ' ~ (x[4] - x[3]) ~ ' not working' if x[3] < x[4] else '' }}{{ ' ⚠️ often has one out of order' if x[9] and x[9] > 0.5 else '' }}
+          {% endfor %}{% elif states.sensor | selectattr('entity_id', 'search', '^sensor[.]wa_ev_tile_') | list %}No GRIDSERVE chargers within {{ radius_km }} km of {{ where }}{{ ' with ' ~ c if c else '' }}.{% else %}No charger data yet: World Assistant's GRIDSERVE module needs its key (gridserve_api_key).{% endif %}
+      - type: entities
+        title: Chargers
+        show_header_toggle: false
+        entities:
+          - entity: input_select.wa_ev_connector
+            name: Connector
+          - entity: sensor.wa_nearest_free_charger
+            name: Nearest free
+          - entity: sensor.wa_chargers_near
+            name: Measured from
+
   - title: Health
     path: leaf-health
     icon: mdi:battery-heart-variant

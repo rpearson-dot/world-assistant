@@ -67,6 +67,7 @@ KNOWN: tuple[Known, ...] = (
     Known("tfwm_app_id", False, "Transport for West Midlands application ID"),
     Known("tfwm_app_key", False, "Transport for West Midlands application key"),
     Known("ukpn_api_key", False, "UK Power Networks open data portal API key (power cuts, street works)"),
+    Known("gridserve_api_key", False, "GRIDSERVE open data API key (their EV chargers and whether they work)"),
     Known("pollen_api_key", False, "Polleninformation (Austrian Pollen Information Service) API key"),
     Known("redis_password", False, "Password of the stack's own Redis"),
     Known("mqtt_password", False, "MQTT broker password"),
@@ -244,6 +245,7 @@ WEB_KEYS = frozenset({
     "nh_subscription_key", "nh_subscription_key_secondary", "fuel_finder_client_id", "fuel_finder_client_secret",
     "tfl_app_key", "nr_access_token", "ticketmaster_api_key", "skiddle_api_key", "octopus_api_key", "bods_api_key",
     "tfwm_app_id", "tfwm_app_key", "pollen_api_key", "ukpn_api_key",
+    "gridserve_api_key",
 })  # fmt: skip
 
 

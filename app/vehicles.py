@@ -84,6 +84,19 @@ class VehicleIn(BaseModel):
     soh_percent: float = Field(100.0, gt=30, le=100, description="battery state of health")
     miles_per_kwh: float | None = Field(default=None, gt=0.5, lt=10, description="real-world")
     home_pence_per_kwh: float | None = Field(default=None, gt=0, lt=200)
+    connector: str | None = Field(default=None, description="rapid charging: CCS, CHAdeMO or Type 2")
+
+    @field_validator("connector")
+    @classmethod
+    def _connector(cls, v: str | None) -> str | None:
+        from app.integrations.gridserve.normalise import asked_connector
+
+        if v is None or not v.strip():
+            return None
+        got = asked_connector(v)
+        if got is None:
+            raise ValueError(f"unknown connector {v!r}; choose CCS, CHAdeMO or Type 2")
+        return got
 
     @field_validator("fuel")
     @classmethod
@@ -102,6 +115,7 @@ class VehicleIn(BaseModel):
             if self.battery_kwh is None or self.miles_per_kwh is None:
                 raise ValueError("an electric vehicle needs battery_kwh and miles_per_kwh")
             return self
+        self.connector = None
         wanted = self.kind if self.kind in TYPES else None  # "fuel": the type follows the fuel code
         self.kind = "fuel"
         if wanted:
@@ -116,7 +130,7 @@ class VehicleIn(BaseModel):
 
 
 _COLS = ("id, name, kind, fuel, mpg, tank_litres, fuel_pence_per_litre, battery_kwh, soh_percent, miles_per_kwh, "
-         "home_pence_per_kwh")  # fmt: skip
+         "home_pence_per_kwh, connector")  # fmt: skip
 
 
 def _shown(row: dict[str, Any]) -> dict[str, Any]:
@@ -167,15 +181,15 @@ async def put_vehicle(vehicle_id: str, body: VehicleIn, request: Request) -> dic
             text(
                 """
                 INSERT INTO vehicle (id, name, kind, fuel, mpg, tank_litres, fuel_pence_per_litre, battery_kwh,
-                                     soh_percent, miles_per_kwh, home_pence_per_kwh)
+                                     soh_percent, miles_per_kwh, home_pence_per_kwh, connector)
                 VALUES (:id, :name, :kind, :fuel, :mpg, :tank_litres, :fuel_pence_per_litre, :battery_kwh,
-                        :soh_percent, :miles_per_kwh, :home_pence_per_kwh)
+                        :soh_percent, :miles_per_kwh, :home_pence_per_kwh, :connector)
                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, kind = EXCLUDED.kind,
                   fuel = EXCLUDED.fuel, mpg = EXCLUDED.mpg, tank_litres = EXCLUDED.tank_litres,
                   fuel_pence_per_litre = EXCLUDED.fuel_pence_per_litre,
                   battery_kwh = EXCLUDED.battery_kwh, soh_percent = EXCLUDED.soh_percent,
                   miles_per_kwh = EXCLUDED.miles_per_kwh,
-                  home_pence_per_kwh = EXCLUDED.home_pence_per_kwh
+                  home_pence_per_kwh = EXCLUDED.home_pence_per_kwh, connector = EXCLUDED.connector
                 """
             ),
             {"id": vehicle_id, **body.model_dump()},

@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from app.config import get_settings
 from app.graph import model, store
+from app.integrations.gridserve.normalise import summary
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ QUERIES: dict[str, str] = {
         "LEFT JOIN tfl_station s ON s.id = a.station_id"
     ),
     "power_cut_rows": "SELECT id, planned, status, customers, restore_at FROM ukpn_fault",
+    # Charging sites near a place or along a corridor (CHARGE_SITES, below), with their chargers counted
     "supply_rows": "SELECT place_id, kind, code, name FROM ukpn_place_area WHERE kind IN ('gsp', 'primary', 'secondary')",
     # Only the stops a tracker watches, with the position NaPTAN gives them.
     "bus_stop_rows": (
@@ -54,6 +56,22 @@ QUERIES: dict[str, str] = {
         "WHERE n.atco IN (SELECT sid FROM bus_stop)"
     ),
 }
+CHARGE_SITES = """
+SELECT s.id, s.name, s.network, s.postcode, s.lat, s.lon FROM ev_site s
+WHERE s.id = ANY(:along) OR EXISTS (SELECT 1 FROM place p WHERE ST_DWithin(s.geog, p.geog, :near_m))
+"""
+CHARGERS = "SELECT id, site_id, status, connectors, max_kw FROM ev_evse WHERE site_id = ANY(:ids)"
+CHARGE_ALONG = """
+WITH lines AS (
+  SELECT c.id, ST_MakeLine(ARRAY(
+           SELECT ST_SetSRID(ST_MakePoint((pt->>1)::float8, (pt->>0)::float8), 4326)
+           FROM jsonb_array_elements(c.centreline) AS pt
+         ))::geography AS line
+  FROM nh_corridor c
+  WHERE c.enabled AND jsonb_array_length(c.centreline) > 1
+)
+SELECT s.id, l.id, ST_Distance(s.geog, l.line) / 1000.0 FROM ev_site s JOIN lines l ON ST_DWithin(s.geog, l.line, :along_m)
+"""
 FLOODS = (
     "SELECT w.id, a.label AS name, w.severity_level AS level, w.severity, a.county, a.river_or_sea "
     "FROM flood_warning w JOIN flood_area a ON a.notation = w.area WHERE w.severity_level <= 3"
@@ -101,6 +119,9 @@ UNION ALL
 SELECT 'Disruption', d.id, p.id, ST_Distance(d.geom, p.geog) / 1000.0
 FROM tfl_road_disruption d JOIN place p ON ST_DWithin(d.geom, p.geog, :near_m)
 WHERE d.geom IS NOT NULL AND (d.ends_at IS NULL OR d.ends_at > now())
+UNION ALL
+SELECT 'ChargeSite', s.id, p.id, ST_Distance(s.geog, p.geog) / 1000.0
+FROM ev_site s JOIN place p ON ST_DWithin(s.geog, p.geog, :near_m)
 """
 
 # Which disruptions lie along a watched corridor (same buffer as fuel stations).
@@ -157,6 +178,10 @@ UNION ALL
 SELECT 'StreetWork', w.id, b.id
 FROM ukpn_works w JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, w.geog::geometry)
 WHERE w.id = ANY(:works)
+UNION ALL
+SELECT 'ChargeSite', s.id, b.id
+FROM ev_site s JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, s.geog::geometry)
+WHERE s.id = ANY(:charge) OR EXISTS (SELECT 1 FROM place p WHERE ST_DWithin(s.geog, p.geog, :near_m))
 UNION ALL
 SELECT 'FloodWarning', w.id, b.id
 FROM flood_warning w JOIN flood_area a ON a.notation = w.area AND a.geom IS NOT NULL
@@ -262,9 +287,20 @@ async def read(
             text(NEAR_PAIRS), {"near_m": near_km * 1000.0})]  # fmt: skip
         out["along_pairs"] = [tuple(r) for r in await conn.execute(
             text(ALONG_PAIRS), {"along_m": along_km * 1000.0})]  # fmt: skip
+        out["charge_along"] = [tuple(r) for r in await conn.execute(text(CHARGE_ALONG), {"along_m": along_km * 1000.0})]
+        charge_along_ids = sorted({s for s, _, _ in out["charge_along"]})
+        out["charge_site_rows"] = [dict(r._mapping) for r in await conn.execute(
+            text(CHARGE_SITES), {"along": charge_along_ids, "near_m": near_km * 1000.0})]  # fmt: skip
+        chargers: dict[str, list[dict[str, Any]]] = {}
+        for r in await conn.execute(text(CHARGERS), {"ids": [s["id"] for s in out["charge_site_rows"]]}):
+            chargers.setdefault(r.site_id, []).append({"id": r.id, "status": r.status, "connectors": r.connectors or [],
+                                                       "max_kw": r.max_kw})  # fmt: skip
+        for s in out["charge_site_rows"]:  # chargers counted as boxes in the car park, as the API does
+            got = summary(chargers.get(s["id"], []), {})
+            s.update({k: got[k] for k in ("total", "working", "free", "max_kw")})
         out["inside_pairs"] += [tuple(r) for r in await conn.execute(text(INSIDE_MORE), {
             **kinds, "near_m": near_km * 1000.0, "stations": sorted({s for s, _, _ in out["along_pairs"]}),
-            "works": [w["id"] for w in out["street_work_rows"]]})]  # fmt: skip
+            "works": [w["id"] for w in out["street_work_rows"]], "charge": charge_along_ids})]  # fmt: skip
     return out
 
 

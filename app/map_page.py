@@ -70,6 +70,7 @@ const STYLE = {
   road_events: { colour: '#b42318', label: 'Closures', weight: 5 },
   signs:       { colour: '#b54708', label: 'Signs', small: true },
   fuel:        { colour: '#1a7f4b', label: 'Fuel', small: true },
+  ev:          { colour: '#0e9f6e', label: 'EV chargers' },
   stops:       { colour: '#0d6e6e', label: 'Stops', small: true },
   floods:      { colour: '#1d4ed8', label: 'Floods' },
   buses:       { colour: '#c2410c', label: 'Live buses', small: true },
@@ -101,6 +102,8 @@ function popup(key, p) {
   if (key === 'signs') lines.push((p.lines || []).join(' / '), p.working ? '' : 'not working');
   if (key === 'fuel') lines.push(p.pence ? p.fuel + ' at ' + p.pence.toFixed(1) + 'p' : 'no ' + p.fuel + ' price',
     p.price_at ? 'set ' + new Date(p.price_at).toLocaleDateString('en-GB') : '', p.postcode || '');
+  if (key === 'ev') lines.push(p.total ? p.working + ' of ' + p.total + ' working, ' + p.free + ' free now' : 'no chargers listed',
+    [p.max_kw ? 'up to ' + p.max_kw + ' kW' : '', p.chademo ? 'CHAdeMO' : ''].filter(Boolean).join(' · '), [p.network, p.postcode].filter(Boolean).join(' · '));
   if (key === 'stops') lines.push([p.kind ? p.kind.replace('_', ' ') : '', p.indicator, p.street].filter(Boolean).join(' · '), p.locality || '', p.id);
   if (key === 'floods') lines.push(p.severity || '', [p.river_or_sea, p.county].filter(Boolean).join(' · '), p.message ? String(p.message).slice(0, 220) : '', 'Environment Agency flood data');
   if (key === 'buses') lines.push((p.line ? 'route ' + p.line : '') + (p.destination ? ' to ' + p.destination : ''), p.operator || '', p.recorded_at ? 'at ' + new Date(p.recorded_at).toLocaleTimeString('en-GB') : '');
@@ -123,6 +126,7 @@ function draw(key, collection, cheapest) {
       let colour = s.colour, r = s.small ? 4 : 7;
       if (key === 'stops' && p.kind && p.kind !== 'bus_stop') { colour = '#0b3d91'; r = 6; }  // stations stand out from stops
       if (key === 'pollen') colour = POLLEN[p.level == null ? 0 : p.level];
+      if (key === 'ev') colour = !p.total ? '#7c7c7c' : p.free ? '#0e9f6e' : p.working ? '#b54708' : '#b42318';  // free, busy, none working
       if (key === 'fuel' && p.pence && cheapest) colour = p.pence <= cheapest + 2 ? '#1a7f4b' : p.pence <= cheapest + 6 ? '#b54708' : '#b42318';
       shape = L.circleMarker([g.coordinates[1], g.coordinates[0]],
         { radius: r, color: '#00000055', weight: 1, fillColor: colour, fillOpacity: .9 });

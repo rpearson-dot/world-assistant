@@ -556,3 +556,79 @@ def test_files_name_package_sensors_by_the_id_home_assistant_gives_them() -> Non
         text = f.read_text(encoding="utf-8")
         for bad, good in wrong.items():
             assert not re.search(re.escape(bad) + r"(?![a-z0-9_])", text), f"{f.name} names {bad}; Home Assistant calls it {good}"
+
+
+# --- EV chargers near you (Leaf dashboard card and the EV package) -------------------------------------------------
+
+THURROCK = {"name": "MOTO Thurrock", "postcode": "RM16 3BG", "lat": 51.4925, "lon": 0.2711, "total": 20, "working": 19,
+            "free": 18, "open": True, "opens": None, "kw": 360, "p": 59.0, "p_max": 59.0, "broken": 0.8,
+            "by": {"CCS": [24, 23, 20, 360], "CHAdeMO": [6, 6, 0, 50]}}
+COBHAM = {"name": "Cobham", "postcode": "KT11 3DB", "lat": 51.40, "lon": -0.30, "total": 8, "working": 8, "free": 3,
+          "open": True, "opens": None, "kw": 350, "p": 79.0, "p_max": 79.0, "broken": 0.0,
+          "by": {"CCS": [8, 8, 3, 350], "CHAdeMO": [2, 2, 1, 50]}}
+RUGBY = {"name": "Rugby", "postcode": "CV23", "lat": 52.38, "lon": -1.20, "total": 4, "working": 4, "free": 4,
+         "open": False, "opens": "Sun 05:30", "kw": 150, "p": 79.0, "p_max": 79.0, "broken": None,
+         "by": {"CHAdeMO": [1, 1, 1, 50]}}
+EV_ENTS = {
+    "zone.home": ("zoning", {"latitude": 51.5, "longitude": -0.12, "friendly_name": "Home"}),
+    "person.alex": ("Coventry", {"latitude": 52.4, "longitude": -1.5, "gps_accuracy": 20, "friendly_name": "Alex"}),
+    "person.sam": ("home", {"friendly_name": "Sam", "latitude": 51.5, "longitude": -0.12}),
+    "sensor.wa_ev_summary": ("3", {"my_connector": "CHAdeMO"}),
+    "sensor.wa_ev_tile_51_m1": ("1", {"sites": [COBHAM]}),
+    "sensor.wa_ev_tile_51_0": ("1", {"sites": [THURROCK]}),
+    "sensor.wa_ev_tile_52_m2": ("1", {"sites": [RUGBY]}),
+}
+
+
+def _leaf_chargers(ents: dict[str, Any], user: str) -> str:
+    card = next(c for c in yaml.safe_load((ROOT / "homeassistant/dashboards/leaf.yaml").read_text())["views"][0]["cards"]
+                if c.get("title") == "Chargers near you")  # fmt: skip
+    return _env(ents, user=user).from_string(card["content"]).render()
+
+
+def test_chargers_near_whoever_is_looking_for_the_cars_connector() -> None:
+    home = _leaf_chargers(EV_ENTS, "Sam")
+    assert "Within 50 km of home, CHAdeMO only" in home  # the car's connector, from World Assistant
+    assert "**Thurrock" not in home and "**MOTO Thurrock**" in home and "**Cobham**" in home
+    assert home.index("**Cobham**") < home.index("**MOTO Thurrock**")  # nearest first
+    assert "0 of 6 free" in home and "⚠️ often has one out of order" in home  # Thurrock's CHAdeMO leads are busy
+    away = _leaf_chargers(EV_ENTS, "Alex")  # Alex's phone is in Coventry
+    assert "of your location" in away and "**Rugby**" in away and "closed now, opens Sun 05:30" in away
+    assert "Cobham" not in away
+    anyc = _leaf_chargers({**EV_ENTS, "input_select.wa_ev_connector": ("Any", {})}, "Sam")
+    assert "CHAdeMO only" not in anyc and "3 of 8 free, up to 350 kW, 79p/kWh" in anyc
+    none = _leaf_chargers({k: v for k, v in EV_ENTS.items() if not k.startswith("sensor.wa_ev_tile")}, "Sam")
+    assert "No charger data yet" in none
+
+
+def _package_sensor(name: str) -> dict[str, Any]:
+    pkg = yaml.safe_load((ROOT / "homeassistant/packages/world_assistant_ev.yaml").read_text())
+    return next(x for x in pkg["template"][0]["sensor"] if x["unique_id"] == name)
+
+
+def test_the_ev_package_finds_the_nearest_free_charger_for_one_person() -> None:
+    import ast
+
+    near = _package_sensor("wa_chargers_near")
+    nearest = _package_sensor("wa_nearest_free_charger")
+    for x in (near, nearest):  # Home Assistant makes the entity id from the name
+        assert re.sub(r"[^a-z0-9]+", "_", x["name"].lower()).strip("_") == x["unique_id"]
+    ents = {**EV_ENTS, "input_text.wa_ev_person": ("person.alex", {})}
+    env = _env(ents)
+    assert env.from_string(near["state"]).render().strip() == "Alex's location"
+    got = ast.literal_eval(env.from_string(near["attributes"]["near"]).render().strip())
+    assert [g["name"] for g in got] == ["Rugby"]  # within 50 km of Coventry, with CHAdeMO
+    # Rugby is closed: nothing open and free near Alex
+    ents["sensor.wa_chargers_near"] = ("Alex's location", {"near": got, "connector": "CHAdeMO"})
+    assert _env(ents).from_string(nearest["state"]).render().strip() == "none within 50 km"
+    # nobody named and two people: measured from home
+    home = {**EV_ENTS}
+    env = _env(home)
+    assert env.from_string(near["state"]).render().strip() == "home"
+    got = ast.literal_eval(env.from_string(near["attributes"]["near"]).render().strip())
+    assert [g["name"] for g in got] == ["Cobham", "MOTO Thurrock"]
+    home["sensor.wa_chargers_near"] = ("home", {"near": got, "connector": "CHAdeMO"})
+    env = _env(home)
+    assert env.from_string(nearest["state"]).render().strip() == "Cobham"  # Thurrock's CHAdeMO is busy
+    assert float(env.from_string(nearest["attributes"]["km"]).render()) > 0
+    assert env.from_string(nearest["attributes"]["pence_per_kwh"]).render().strip() == "79.0"

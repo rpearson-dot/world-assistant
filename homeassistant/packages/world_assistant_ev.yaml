@@ -1,0 +1,89 @@
+# EV chargers near you (GRIDSERVE, from World Assistant). Add this file to your packages folder.
+#
+# World Assistant publishes every GRIDSERVE site nationwide (sensor.wa_ev_tile_*), with how many chargers work and
+# are free by connector. These two sensors pick what is near one person: the person named below (their phone's
+# location while away from home), or zone.home when no person is named and there is more than one, when the person
+# is at home, or when their phone's position is unknown or rough. The Leaf dashboard's "Chargers near you" card does
+# the same for whoever is looking, without any of this.
+#
+# Which connector counts: "Car's connector" is the one set for your electric vehicle on World Assistant's Vehicles
+# page (sensor.wa_ev_summary's my_connector); Any counts every charger.
+
+input_select:
+  wa_ev_connector:
+    name: "WA chargers: connector"
+    icon: mdi:ev-plug-chademo
+    options:
+      - "Car's connector"
+      - Any
+      - CCS
+      - CHAdeMO
+      - Type 2
+
+input_text:
+  wa_ev_person:
+    # e.g. person.richard; empty: the only person, if there is one, else zone.home
+    name: "WA chargers: whose location (person)"
+    max: 100
+
+template:
+  - sensor:
+      - name: "WA chargers near"
+        unique_id: wa_chargers_near
+        icon: mdi:ev-station
+        # state: where it is measured from; attributes: the sites within 50 km, nearest first
+        state: >-
+          {% set pid = states('input_text.wa_ev_person') %}{% set people = states.person | list %}
+          {% set p = (people | selectattr('entity_id', 'eq', pid) | list | first | default(none)) if pid.startswith('person.') else (people[0] if people | count == 1 else none) %}
+          {% set away = p is not none and p.state not in ['home', 'unknown', 'unavailable'] and p.attributes.latitude is defined and p.attributes.latitude is not none and (p.attributes.gps_accuracy | default(0) | float(0)) <= 1000 %}
+          {{ p.name ~ "'s location" if away else 'home' }}
+        attributes:
+          connector: >-
+            {% set pick = states('input_select.wa_ev_connector') %}{% set mine = state_attr('sensor.wa_ev_summary', 'my_connector') %}
+            {{ (none if pick == 'Any' else pick if pick in ['CCS', 'CHAdeMO', 'Type 2'] else mine) or 'any' }}
+          near: >-
+            {% set radius_km = 50 %}
+            {% set pid = states('input_text.wa_ev_person') %}{% set people = states.person | list %}
+            {% set p = (people | selectattr('entity_id', 'eq', pid) | list | first | default(none)) if pid.startswith('person.') else (people[0] if people | count == 1 else none) %}
+            {% set away = p is not none and p.state not in ['home', 'unknown', 'unavailable'] and p.attributes.latitude is defined and p.attributes.latitude is not none and (p.attributes.gps_accuracy | default(0) | float(0)) <= 1000 %}
+            {% set z = p if away else states.zone.home %}
+            {% set pick = states('input_select.wa_ev_connector') %}{% set mine = state_attr('sensor.wa_ev_summary', 'my_connector') %}
+            {% set c = none if pick == 'Any' else pick if pick in ['CCS', 'CHAdeMO', 'Type 2'] else mine %}
+            {% set ns = namespace(r=[]) %}
+            {% for t in states.sensor if t.entity_id.startswith('sensor.wa_ev_tile_') %}{% for s in t.attributes.sites | default([]) %}{% set b = s.by.get(c) if c else [s.total, s.working, s.free, s.kw] %}{% if b and b[0] %}{% set d = distance(z.attributes.latitude, z.attributes.longitude, s.lat, s.lon) %}{% if d is not none and d <= radius_km %}{% set ns.r = ns.r + [{'name': s.name, 'km': d | round(1), 'free': b[2], 'working': b[1], 'total': b[0], 'kw': b[3], 'p': s.p, 'open': s.open, 'opens': s.opens, 'postcode': s.postcode, 'broken': s.broken, 'lat': s.lat, 'lon': s.lon}] %}{% endif %}{% endif %}{% endfor %}{% endfor %}
+            {{ (ns.r | sort(attribute='km'))[:10] }}
+
+      - name: "WA nearest free charger"
+        unique_id: wa_nearest_free_charger
+        icon: mdi:ev-station
+        # the nearest site within 50 km, open, with a free charger for the connector chosen
+        state: >-
+          {% set f = (state_attr('sensor.wa_chargers_near', 'near') or []) | selectattr('free', 'gt', 0) | rejectattr('open', 'eq', false) | list %}
+          {{ f[0].name if f else 'none within 50 km' }}
+        attributes:
+          km: >-
+            {% set f = (state_attr('sensor.wa_chargers_near', 'near') or []) | selectattr('free', 'gt', 0) | rejectattr('open', 'eq', false) | list %}
+            {{ f[0].km if f else none }}
+          free: >-
+            {% set f = (state_attr('sensor.wa_chargers_near', 'near') or []) | selectattr('free', 'gt', 0) | rejectattr('open', 'eq', false) | list %}
+            {{ f[0].free if f else none }}
+          working: >-
+            {% set f = (state_attr('sensor.wa_chargers_near', 'near') or []) | selectattr('free', 'gt', 0) | rejectattr('open', 'eq', false) | list %}
+            {{ f[0].working ~ ' of ' ~ f[0].total if f else none }}
+          kw: >-
+            {% set f = (state_attr('sensor.wa_chargers_near', 'near') or []) | selectattr('free', 'gt', 0) | rejectattr('open', 'eq', false) | list %}
+            {{ f[0].kw if f else none }}
+          pence_per_kwh: >-
+            {% set f = (state_attr('sensor.wa_chargers_near', 'near') or []) | selectattr('free', 'gt', 0) | rejectattr('open', 'eq', false) | list %}
+            {{ f[0].p if f else none }}
+          postcode: >-
+            {% set f = (state_attr('sensor.wa_chargers_near', 'near') or []) | selectattr('free', 'gt', 0) | rejectattr('open', 'eq', false) | list %}
+            {{ f[0].postcode if f else none }}
+          latitude: >-
+            {% set f = (state_attr('sensor.wa_chargers_near', 'near') or []) | selectattr('free', 'gt', 0) | rejectattr('open', 'eq', false) | list %}
+            {{ f[0].lat if f else none }}
+          longitude: >-
+            {% set f = (state_attr('sensor.wa_chargers_near', 'near') or []) | selectattr('free', 'gt', 0) | rejectattr('open', 'eq', false) | list %}
+            {{ f[0].lon if f else none }}
+          connector: "{{ state_attr('sensor.wa_chargers_near', 'connector') }}"
+          measured_from: "{{ states('sensor.wa_chargers_near') }}"

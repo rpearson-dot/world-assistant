@@ -356,6 +356,36 @@ async def power_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
     return {"text": f"{head}{r['count']} power cut(s) nearby: " + "; ".join(bits) + ".", "data": r}
 
 
+async def ev_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.ev import along_trip, car_connector, sites
+
+    connector = args.get("connector") or None
+    free = bool(args.get("free_only"))
+    note = ""
+    if not connector:  # the car's own, when you have said which it takes
+        connector, whose = await _wrap(car_connector(request.app.state.engine, args.get("vehicle") or None))
+        note = f" (for {whose}'s {connector}; ask for any connector to see all)" if connector else ""
+    lead = f"For {note[6:-1]}: " if note else ""
+    if args.get("trip"):
+        r = await _wrap(along_trip(request, str(args["trip"]), within_km=float(args.get("km") or 2), connector=connector,
+                                   free=free, vehicle=None))  # fmt: skip
+        if not r["count"]:
+            return {"text": f"No GRIDSERVE chargers within {r['within_km']:g} km of {r['trip']['name']}'s route.", "data": r}
+        return {"text": f"{r['count']} GRIDSERVE site(s) along {r['trip']['name']}{note}: "
+                        + " ".join(x["summary"] for x in r["sites"][:6]), "data": r}  # fmt: skip
+    q = args.get("name") or None
+    r = await _wrap(sites(request, place=args.get("place"), km=float(args.get("km") or 25), connector=connector, free=free,
+                          vehicle=None, q=q, limit=5))  # fmt: skip
+    if not r["count"]:
+        where = f"called {q!r}" if q else f"within {r['km']:g} km"
+        return {"text": f"No GRIDSERVE chargers {where}" + (f" with {r['connector']}" if r["connector"] else "") + ".",
+                "data": r}  # fmt: skip
+    if q:  # asked about a site by name: how reliable it has been too
+        return {"text": lead + r["sites"][0]["summary"] + " " + r["sites"][0]["reliability_summary"]
+                + "".join(" " + x["summary"] for x in r["sites"][1:3]), "data": r}  # fmt: skip
+    return {"text": lead + " ".join(x["summary"] for x in r["sites"][:5]), "data": r}
+
+
 TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool("list_options", "List the saved places, vehicles, trips, train boards and bus trackers (their ids).",
          {"type": "object", "properties": {}}, list_options),
@@ -394,6 +424,15 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
          {"type": "object", "properties": _props(
              about=("string", "cuts (default), history, works or supply"), days=("integer", "history: how far back, default 365"),
              place=("string", "id of a saved place; default: home"), km=("number", "how far to look"))}, power_tool),
+    Tool("ev_chargers", "GRIDSERVE EV chargers near a saved place, along a trip, or by name: how many work and are free "
+         "now, by connector (CCS, CHAdeMO, Type 2), how fast, and the price per kWh.",
+         {"type": "object", "properties": _props(
+             place=("string", "id of a saved place; default: home"), trip=("string", "id of a trip: chargers along its route"),
+             name=("string", "part of a site's name, town or postcode, e.g. Rugby"),
+             connector=("string", "ccs, chademo, type2, or any; default: the car's own (set on the Vehicles page)"),
+             vehicle=("string", "id of a saved vehicle whose connector to use"),
+             free_only=("boolean", "only sites with a free charger now"),
+             km=("number", "near a place: how far, default 25; along a trip: how far off the route, default 2"))}, ev_tool),
     Tool("bus", "Bus tracker: has a bus made it to the target stop before the deadline, and next buses at your stops.",
          {"type": "object", "properties": _props(tracker=("string", "tracker id; optional if only one"),
                                                  stop=("string", "only this stop key; optional"))}, bus),
@@ -478,7 +517,7 @@ async def handle_rpc(request: Request, msg: Any) -> dict[str, Any] | None:
         return {"jsonrpc": "2.0", "id": rid, "result": {
             "protocolVersion": asked if asked in PROTOCOLS else PROTOCOLS[0],
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": "world-assistant", "version": "0.22.2"},
+            "serverInfo": {"name": "world-assistant", "version": "0.23.0"},
             "instructions": "Personal assistant for fuel prices, trips, trains and buses. "
                             "Call list_options first to see saved ids.",
         }}  # fmt: skip
