@@ -5,6 +5,10 @@
 #   WA_IMAGE=ghcr.io/...@sha256:... bash scripts/deploy.sh   # same, using a released image
 #   bash scripts/deploy.sh --skip-backup   # first install, or you have just taken one
 #
+# With WA_IMAGE set (the nightly update pins the release it installed) on a git checkout, the pin is kept on the
+# same release as the files: if they differ, the files' release image is used (signature checked), or the deploy
+# stops before anything changes when there is no release for these files (scripts/lib-release.sh).
+#
 # The backup is taken by the version that is running now, before anything changes. If it fails the
 # deploy stops, so you never upgrade without a copy of your data.
 set -euo pipefail
@@ -21,6 +25,13 @@ if [ -f .env ]; then
 fi
 DATA="${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}"
 BACKUPS="$DATA/backups"
+
+# shellcheck source=scripts/lib-release.sh
+[ -f scripts/lib-release.sh ] && . scripts/lib-release.sh
+if declare -F wa_align_image >/dev/null && ! wa_align_image; then
+  echo "Nothing was changed."
+  exit 1
+fi
 
 # The app runs as uid 10001 and must be able to write here.
 mkdir -p "$BACKUPS"

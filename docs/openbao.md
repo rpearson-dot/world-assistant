@@ -43,6 +43,12 @@ files, so nothing stops.
 
 ## Changing or adding a secret
 
+A key saved on the Settings page's Keys tab is kept on the server, outside the vault. With the vault set up, the Keys
+tab shows **Move the keys into the vault**: paste a token that can write (the root token, or an admin one; it is used
+once and not kept) and every key saved on the page or in a secret file is copied into the vault, checked through the
+app's own login, and the page's copies are forgotten. Secret files on the server are left for you to delete.
+
+
 Edit the secret file, then `bash scripts/openbao.sh import` (asks for the root token, hidden). The app picks
 it up within 5 minutes. Or use the UI inside the Docker network, or `bao kv patch` in the container.
 

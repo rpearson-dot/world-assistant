@@ -55,3 +55,52 @@ def test_a_missing_or_read_only_folder_is_explained(client: TestClient, tmp_path
     assert d["writable"] is False and "not mounted" in d["reason"]
     r = client.put("/v1/settings/keys/tfl_app_key", json={"value": "x"}, headers=H)
     assert r.status_code == 409
+
+
+def test_keys_are_copied_into_the_vault_then_forgotten_here(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import httpx
+
+    from app import keys
+
+    doc = {"version": 3, "data": {"pollen_api_key": "already-there"}}
+    writes: list[dict[str, object]] = []
+
+    def vault(req: httpx.Request) -> httpx.Response:
+        token = req.headers.get("X-Vault-Token")
+        if req.method == "GET":
+            return httpx.Response(200, json={"data": {"data": doc["data"], "metadata": {"version": doc["version"]}}})
+        if token != "admin":
+            return httpx.Response(403, json={"errors": ["permission denied"]})
+        body = __import__("json").loads(req.content)
+        writes.append(body)
+        assert body["options"]["cas"] == doc["version"]  # never over a change made meanwhile
+        doc["data"], doc["version"] = body["data"], doc["version"] + 1  # type: ignore[operator]
+        return httpx.Response(200, json={"data": {"version": doc["version"]}})
+
+    secrets = tmp_path / "secrets"
+    secrets.mkdir()
+    (secrets / "vault_token").write_text("app-login")
+    (secrets / "tfwm_app_id.txt").write_text("from-a-file")
+    monkeypatch.setattr(keys, "SECRETS_DIR", secrets)
+    monkeypatch.setenv("WA_SECRETS_BACKEND", "vault")
+    monkeypatch.setenv("WA_VAULT_ADDR", "http://vault.test:8200")
+    monkeypatch.setattr(secretstore.VaultBackend, "_client", lambda self: httpx.Client(transport=httpx.MockTransport(vault)))
+    secretstore.clear_cache()
+    client.put("/v1/settings/keys/gridserve_api_key", json={"value": "gs-key"}, headers=H)
+    listed = client.get("/v1/settings/keys", headers=H).json()
+    assert listed["backend"] == "vault"
+
+    refused = client.post("/v1/settings/keys/to-vault", json={"token": "read-only"}, headers=H)
+    assert refused.status_code == 403 and "refused that token for writing" in refused.json()["detail"]
+    assert (tmp_path / "gridserve_api_key.txt").exists()  # nothing forgotten
+
+    r = client.post("/v1/settings/keys/to-vault", json={"token": "admin"}, headers=H).json()
+    assert r["copied"] == ["gridserve_api_key", "tfwm_app_id"] and r["removed"] == ["gridserve_api_key"]
+    assert doc["data"] == {"pollen_api_key": "already-there", "gridserve_api_key": "gs-key", "tfwm_app_id": "from-a-file"}
+    assert not (tmp_path / "gridserve_api_key.txt").exists()  # the vault is where it comes from now
+    secretstore.clear_cache()
+    assert secretstore.resolve("gridserve_api_key", secrets) == ("gs-key", "vault")
+    assert "admin" not in client.get("/v1/settings/keys", headers=H).text
+    secretstore.clear_cache()

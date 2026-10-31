@@ -8,6 +8,7 @@ secret file; deleting it falls back to the file. Values are never returned, only
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
 from typing import Any
@@ -24,6 +25,11 @@ router = APIRouter(prefix="/v1/settings/keys", tags=["settings"], dependencies=[
 
 class KeyIn(BaseModel):
     value: str = Field(min_length=1, max_length=1024)
+
+
+class VaultIn(BaseModel):
+    token: str = Field(min_length=1, max_length=512, description="a vault token that can write; used once, not kept")
+    remove_local: bool = Field(True, description="forget the copies saved here once the vault has them")
 
 
 def writable() -> tuple[bool, str]:
@@ -46,7 +52,45 @@ async def list_keys() -> dict[str, Any]:
         except Exception:  # noqa: BLE001 - a vault that cannot be reached: say so, not fail
             source = "unknown"
         rows.append({"name": name, "set": source not in ("missing", "default", "unknown"), "source": source})
-    return {"writable": ok, "reason": why, "keys": rows}
+    return {"writable": ok, "reason": why, "keys": rows, "backend": secretstore.backend_name()}
+
+
+@router.post("/to-vault")
+async def to_vault(body: VaultIn) -> dict[str, Any]:
+    """Copy every key saved here or in a secret file into the vault, then (by default) forget the copies saved here,
+    so the vault is where they come from. Each is checked by reading it back through the app's own vault login
+    before its copy here is removed. The token is used for this one write and not kept."""
+    if secretstore.backend_name() != "vault":
+        raise HTTPException(409, "no vault is set up (WA_SECRETS_BACKEND=vault): see docs/openbao.md")
+    values: dict[str, str] = {}
+    for name in sorted(secretstore.WEB_KEYS):
+        value, source = secretstore.resolve(name, SECRETS_DIR)
+        if source in ("settings", "file", "env") and value:
+            values[name] = value
+    if not values:
+        return {"copied": [], "removed": [], "version": None, "message": "every key set is already in the vault"}
+    try:
+        version = await asyncio.to_thread(secretstore.vault_merge, values, body.token.strip())
+    except secretstore.SecretError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, f"the vault could not be written: {type(exc).__name__}") from exc
+    secretstore.clear_cache()
+    removed = []
+    if body.remove_local:
+        for name, value in values.items():
+            path = secretstore.keys_dir() / f"{name}.txt"
+            if not path.exists():
+                continue
+            path.unlink()  # the vault's copy is checked next; put back if it is not there
+            secretstore.clear_cache()
+            got, source = secretstore.resolve(name, SECRETS_DIR)
+            if source == "vault" and got == value:
+                removed.append(name)
+            else:
+                await save_key(name, KeyIn(value=value))
+    return {"copied": sorted(values), "removed": removed, "version": version,
+            "message": f"{len(values)} key(s) copied into the vault" + (f"; {len(removed)} no longer kept here" if removed else "")}  # fmt: skip
 
 
 def _check(name: str) -> None:

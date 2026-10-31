@@ -40,6 +40,10 @@ failed it stops at once. To retry after a red build, fix it on `main` and run th
 
 ## Upgrade and roll back
 
+- **Update now, the same way as the nightly update:** `bash scripts/auto-deploy.sh --now` (newest release, signature
+  checked, backup, page check, rollback on failure; works with the switch off).
+- **Pinned image and files kept together:** with `WA_IMAGE` set, `scripts/sync.sh` takes the newest release (not main;
+  `--main` for main), and `scripts/deploy.sh` moves the pin to the files' release if they differ, or stops and says why.
 - **Upgrade:** `bash scripts/deploy.sh` (with `WA_IMAGE` set to the release digest when using a released
   image). It takes a backup first, starts the new version, waits for it to be healthy and shows your
   secrets check. The `migrate` service applies schema changes before api and worker start.

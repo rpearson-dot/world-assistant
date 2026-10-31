@@ -4,6 +4,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.23.1] - 2026-10-31
+
+### Fixed
+- **A pinned release image no longer holds an update back.** The nightly update pins the release it installs (`WA_IMAGE` in `.env`); moving the files on by hand (`sync.sh --deploy`) then started the old image with the new files, so new features were missing. Now:
+  - `deploy.sh` keeps the pin on the same release as the files: when they differ it uses the files' release image (signature checked) and says so, or stops before anything changes if the files are newer than any release, saying what to do;
+  - `sync.sh` with a pinned image takes the newest **release**, not the newest main (`--main` for main);
+  - `auto-deploy.sh --now` runs the nightly update straight away, even with the switch off (same checks and rollback).
+
+### Added
+- **Copy the keys into the vault** from the Keys tab: with a vault set up, one button copies every key saved on the page or in a secret file into it (keeping what is there; never over a change made meanwhile), checks each through the app's own vault login, then forgets the copies saved on the page. It asks for a vault token that can write (the app's own login only reads), uses it once and does not keep it.
+
 ## [0.23.0] - 2026-10-31
 
 ### Added
