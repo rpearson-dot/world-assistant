@@ -9,6 +9,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ### Fixed
 - **Tailscale stays signed in.** The sidecar signed in again with the key on every start, so once a one-off key had been used, a restart (an update, a reboot) logged the device out. It now uses the key only when the device is not signed in already (`TS_AUTH_ONCE`).
 
+### Added
+- **The car can leave room for free electricity.** A new setting on the Home charging dashboard, "Leave room per joined free hour" (0 = off, the default): for each Free Electricity hour you joined in the next 24 hours, cheap charging stops that much below the car's target, and the free hour fills the rest. While it holds back, the plan says so ("leaving 20% for the free electricity at Sun 13:00: charged to 60% until then"). One hour at the Sync EV's 4.6 kW is about 4.6 kWh, roughly 20% of a 24 kWh usable battery. "Always charge when low" still charges.
+
 ## [0.23.2] - 2026-10-31
 
 ### Changed
