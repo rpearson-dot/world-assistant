@@ -530,13 +530,14 @@ async def positions(
 async def anomalies(
     request: Request, tid: str, limit: int = Query(50, ge=1, le=500), type: str | None = None
 ) -> list[dict[str, Any]]:
-    """Recent anomalies. The bookkeeping `first_seen` entries are left out unless asked for with `?type=first_seen`."""
+    """Recent anomalies. The bookkeeping `first_seen` entries, and the "reported at an earlier stop" entries recorded
+    before 0.23.2 (the predictions shifting, not the bus), are left out unless asked for with `?type=`."""
     await _load(request, tid)
     async with request.app.state.engine.connect() as conn:
         res = await conn.execute(
             text(
                 "SELECT at, vehicle, type, detail FROM bus_anomaly WHERE tracker = :t "
-                "AND (CAST(:ty AS text) IS NULL AND type <> 'first_seen' OR type = CAST(:ty AS text)) "
+                "AND (CAST(:ty AS text) IS NULL AND type NOT IN ('first_seen', 'reverse_movement') OR type = CAST(:ty AS text)) "
                 "ORDER BY at DESC LIMIT :n"
             ),
             {"t": tid, "n": limit, "ty": type},

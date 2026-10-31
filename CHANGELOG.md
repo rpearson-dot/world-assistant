@@ -4,6 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.23.2] - 2026-10-31
+
+### Changed
+- **The bus tracker no longer reports "Reported at an earlier stop than before"**, at any stop: a bus listed at an earlier stop in the same direction is the live predictions shifting, not the bus, so it is not recorded, and ones recorded before are not shown (`?type=reverse_movement` still lists them). Direction changes, turnarounds, early ends and trip starts are reported as before.
+
 ## [0.23.1] - 2026-10-31
 
 ### Fixed

@@ -70,16 +70,13 @@ def note(v: dict[str, Any], towards: dict[str, str]) -> dict[str, Any]:
 
 
 def attach(anomalies: list[dict[str, Any]], by_vehicle: dict[str, dict[str, Any]], towards: dict[str, str]) -> int:
-    """Add what the GPS says to each event about a bus it can see. A 'reported at an earlier stop' event whose bus
-    is still heading the same way is marked as the predictions shifting. Returns how many were annotated."""
+    """Add what the GPS says to each event about a bus it can see. Returns how many were annotated."""
     done = 0
     for a in anomalies:
         v = by_vehicle.get(a.get("vehicle", ""))
         if not v:
             continue
-        a["live"] = live = note(v, towards)
-        if a.get("type") == "reverse_movement" and live["direction"] and a.get("direction"):
-            a["verdict"] = "prediction_shift" if live["direction"] == a["direction"] else "check"
+        a["live"] = note(v, towards)
         done += 1
     return done
 

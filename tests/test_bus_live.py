@@ -49,18 +49,16 @@ def test_only_buses_heading_for_the_trackers_stops_are_known() -> None:
     assert live.known_vehicles(state, preds, {"AAAA0001", "AAAA0002"}) == {"A", "C"}
 
 
-def test_gps_is_added_to_events_and_marks_a_prediction_shift() -> None:
+def test_gps_is_added_to_events_about_a_bus_it_can_see() -> None:
     fix = {"vehicle": "V1", "destination": "Fairfield Bus Station", "bearing": 315.0, "lat": 51.38, "lon": -0.24,
            "recorded_at": "2026-10-22T15:28:01+00:00"}  # fmt: skip
-    events = [{"vehicle": "V1", "type": "reverse_movement", "direction": "outbound"},
-              {"vehicle": "V1", "type": "reverse_movement", "direction": "inbound"},
-              {"vehicle": "V2", "type": "reverse_movement", "direction": "outbound"},
+    events = [{"vehicle": "V1", "type": "direction_change", "direction": "outbound"},
+              {"vehicle": "V2", "type": "trip_start", "direction": "outbound"},
               {"vehicle": "V1", "type": "early_termination"}]  # fmt: skip
-    assert live.attach(events, {"V1": fix}, TOWARDS) == 3
-    assert events[0]["verdict"] == "prediction_shift" and events[0]["live"]["towards"] == "Kingston Fairfield Bus Station"
-    assert events[1]["verdict"] == "check"  # GPS says the other way: worth a look
-    assert "live" not in events[2] and "verdict" not in events[2]  # not a bus we can see
-    assert "live" in events[3] and "verdict" not in events[3]
+    assert live.attach(events, {"V1": fix}, TOWARDS) == 2
+    assert events[0]["live"]["towards"] == "Kingston Fairfield Bus Station"
+    assert "live" not in events[1]  # not a bus we can see
+    assert "live" in events[2]
 
 
 def test_the_way_back_swaps_the_sides_and_has_its_own_window() -> None:

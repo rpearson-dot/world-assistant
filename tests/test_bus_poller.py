@@ -250,6 +250,14 @@ async def test_poll_stores_hit_and_api_reports_it(
         cond = c.get("/v1/bus/trackers/main/conditions", headers=h).json()
         assert len(cond) == 3
         assert c.get("/v1/bus/trackers/main/anomalies", headers=h).status_code == 200
+        async with engine.begin() as conn:  # one recorded before 0.23.2: no longer shown
+            from sqlalchemy import text
+
+            await conn.execute(text("INSERT INTO bus_anomaly (tracker, vehicle, type, detail) "
+                                    "VALUES ('main', 'V7', 'reverse_movement', '{}')"))  # fmt: skip
+        shown = c.get("/v1/bus/trackers/main/anomalies", headers=h).json()
+        assert all(a["type"] != "reverse_movement" for a in shown)
+        assert c.get("/v1/bus/trackers/main/anomalies?type=reverse_movement", headers=h).json()[0]["vehicle"] == "V7"
         assert c.post("/v1/bus/trackers/main/refresh-route", headers=h).status_code == 200
         assert c.delete("/v1/bus/trackers/main", headers=h).status_code == 204
     finally:
