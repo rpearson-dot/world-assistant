@@ -39,8 +39,13 @@ services:
       - sh
       - -c
       - |
-        key="$$(cat /run/secrets/tailscale_authkey 2>/dev/null || true)"
-        [ -n "$$key" ] && export TS_AUTHKEY="$$key?ephemeral=false"
+        key="$$(tr -d '[:space:]' < /run/secrets/tailscale_authkey 2>/dev/null || true)"
+        # ?ephemeral=false is understood only on an OAuth client secret (tskey-client-...); on an ordinary auth
+        # key (tskey-auth-...) it becomes part of the key, which Tailscale then rejects as invalid.
+        case "$$key" in
+          tskey-client-*) export TS_AUTHKEY="$$key?ephemeral=false" ;;
+          ?*) export TS_AUTHKEY="$$key" ;;
+        esac
         exec /usr/local/bin/containerboot
     depends_on:
       api:

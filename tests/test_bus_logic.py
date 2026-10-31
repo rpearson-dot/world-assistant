@@ -326,8 +326,7 @@ def test_anomalies_say_where_and_which_way() -> None:
         state["trips"]["V1"]["stops"].append({"sid": sid, "pos": POS[sid][1], "expected": T0})
         anoms += trips.detect_anomalies(state, lambda s: POS[s][0], names, TOWARDS)
     by = {a["type"]: a for a in anoms}
-    assert by["reverse_movement"]["stop"] == "Second Stop" and by["reverse_movement"]["from_stop"] == "Mid Stop"
-    assert by["reverse_movement"]["towards"] == "Sutton"  # same direction: not a return journey
+    assert "reverse_movement" not in by  # back a stop, same direction: the predictions shifting, not reported
     assert by["direction_change"]["towards"] == "Kingston" and by["direction_change"]["from_towards"] == "Sutton"
     assert by["direction_change"]["stop"] == "Back Start"
 

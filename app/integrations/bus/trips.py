@@ -162,8 +162,9 @@ def detect_anomalies(
     state: dict[str, Any], dir_of: Callable[[str], str | None],
     names: dict[str, str] | None = None, towards: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Trip starts, direction changes and backwards moves, each reported once, at the moment
-    a new stop is added to a trip. With `names` and `towards` each says where (the stop's name) and which
+    """Trip starts and direction changes, each reported once, at the moment a new stop is added to a trip. A bus
+    reported at an earlier stop than before in the same direction is not reported: that is the live predictions
+    shifting, not the bus. With `names` and `towards` each says where (the stop's name) and which
     way (where that direction is heading: "towards Kingston")."""
     names, towards = names or {}, towards or {}
 
@@ -197,11 +198,6 @@ def detect_anomalies(
             out.append({"vehicle": vehicle, "type": "direction_change", "sid": latest["sid"],
                         **where(latest["sid"], latest_dir),
                         "from_towards": towards.get(prev_dir or ""), "from_stop": names.get(prev["sid"])})  # fmt: skip
-        elif latest["pos"] < prev["pos"]:
-            out.append({"vehicle": vehicle, "type": "reverse_movement", "sid": latest["sid"],
-                        "from_pos": prev["pos"], "to_pos": latest["pos"], "direction": latest_dir,
-                        **where(latest["sid"], latest_dir),
-                        "from_stop": names.get(prev["sid"])})  # fmt: skip
         elif latest["pos"] == 0 and prev["pos"] != 0:
             out.append({"vehicle": vehicle, "type": "trip_start", "sid": latest["sid"],
                         **where(latest["sid"], latest_dir)})  # fmt: skip

@@ -161,11 +161,6 @@ function anomalyBase(a) {
   if (a.type === 'direction_change')
     return 'Changed direction' + at + (d.from_towards ? ': was heading' + way(d.from_towards) + ', now' + way(d.towards) : '');
   if (a.type === 'trip_start') return 'Started its route' + at + (d.towards ? ', heading' + way(d.towards) : '');
-  if (a.type === 'reverse_movement' && d.verdict === 'prediction_shift')
-    return 'Predictions shifted' + (d.from_stop ? ' (' + d.from_stop + ' then ' + (d.stop || 'an earlier stop') + ')' : '') + ': the GPS shows it still heading' + way(d.live && d.live.towards) + ', so the bus did not go back';
-  if (a.type === 'reverse_movement')
-    return 'Reported at an earlier stop than before' + (d.from_stop ? ' (' + d.from_stop + ' then ' + (d.stop || 'an earlier stop') + ')' : '')
-      + ', same direction: usually the live predictions shifting, not the bus';
   return a.type;
 }
 /* ---- guided setup ---- */

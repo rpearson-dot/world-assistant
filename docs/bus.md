@@ -52,9 +52,10 @@ What it does with it:
 
 - stores each followed bus's fixes (position, bearing, destination) for 30 days: `GET /v1/bus/trackers/{id}/positions?day=&vehicle=`
   gives a bus's track along the route;
-- adds what the GPS says to any event about that bus (its real destination, bearing and position);
-- a "reported at an earlier stop than before" event whose bus is still heading the same way by its destination
-  board is marked as the predictions shifting, not the bus going back.
+- adds what the GPS says to any event about that bus (its real destination, bearing and position).
+
+A bus reported at an earlier stop than before, in the same direction, is not recorded: it is the live predictions
+shifting, not the bus.
 
 A failure of the BODS feed never stops the tracker: it carries on from TfL alone.
 
