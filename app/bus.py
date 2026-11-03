@@ -324,13 +324,20 @@ async def live(request: Request, tid: str) -> dict[str, Any]:
              "expected": p.get("expectedArrival"), "towards": p.get("destinationName")}
             for p in rows[:3]
         ]  # fmt: skip
+    async with request.app.state.engine.connect() as conn:  # how full each one says it is, when it does
+        vehicles = sorted({r["vehicle"] for rows in next_at.values() for r in rows if r["vehicle"]})
+        occ = await store.latest_occupancy(conn, tid, vehicles)
+    for rows in next_at.values():
+        for r in rows:
+            o = occ.get(r["vehicle"] or "")
+            r["occupancy"], r["occupancy_counts"] = (o or {}).get("occupancy"), (o or {}).get("counts") or {}
     return {"as_of": now, "active": active, "next": next_at}
 
 
 async def _history(request: Request, tid: str, since: Any) -> tuple[list[Any], list[Any]]:
     async with request.app.state.engine.connect() as conn:
         day_rows = (await conn.execute(
-            text("SELECT day, slots FROM bus_target_day WHERE tracker = :t AND day >= :s ORDER BY day"),
+            text("SELECT day, slots, explained FROM bus_target_day WHERE tracker = :t AND day >= :s ORDER BY day"),
             {"t": tid, "s": since})).all()  # fmt: skip
         hit_rows = (await conn.execute(
             text("SELECT day, slot, arrive_at, delay_min FROM bus_target_hit "
@@ -353,7 +360,7 @@ async def target(
     the_day = day or now.date().isoformat()
     async with request.app.state.engine.connect() as conn:
         d = (await conn.execute(
-            text("SELECT slots FROM bus_target_day WHERE tracker = :t AND day = :d"),
+            text("SELECT slots, explained FROM bus_target_day WHERE tracker = :t AND day = :d"),
             {"t": tid, "d": the_day})).first()  # fmt: skip
         hits = [dict(r._mapping) for r in await conn.execute(
             text("SELECT vehicle, board_at, arrive_at, slot, delay_min, via_return FROM bus_target_hit "
@@ -368,6 +375,20 @@ async def target(
         slots, hits, pair_arrivals(slots, due or []), now.hour * 60 + now.minute if is_today else None,
         lambda t: t.astimezone(tz).strftime("%H:%M") if t else None,
     )
+    explained = dict(d[1] or {}) if d else {}
+    left_ts = {(h["vehicle"], h["board_at"].astimezone(tz).strftime("%H:%M")): h["board_at"].timestamp() for h in hits}
+    for j in journeys:  # the bus that missed, and why (see events.explain_misses)
+        why = explained.get(j["slot"]) if j["status"] == "missed" else None
+        if why:
+            j.update(vehicle=why.get("vehicle"), why=why.get("why"), why_kind=why.get("kind"))
+        j["left_ts"] = (why or {}).get("left_ts") or left_ts.get((j.get("vehicle"), j.get("left")))
+    async with request.app.state.engine.connect() as conn:  # how full each bus said it was as it left your stop
+        for j in journeys:
+            ts = j.pop("left_ts", None)
+            occ = await store.occupancy_at(conn, tid, j["vehicle"], ts) if j.get("vehicle") and ts else None
+            j["occupancy"] = (occ or {}).get("occupancy")
+            j["occupancy_counts"] = (occ or {}).get("counts") or {}
+        occupancy = await store.occupancy_summary(conn, tid, (now - timedelta(days=HISTORY_DAYS)).date())
     labels = {s.key: s.label for s in cfg.stops}
     pending = [s for s in slots if s not in hit_slots]
     last = hits[-1] if hits else None
@@ -377,7 +398,7 @@ async def target(
     for hday, slot, _a, _d in hit_rows:
         by_day.setdefault(hday.isoformat(), []).append(slot)
     reliability = slot_reliability(
-        [{"date": dd.isoformat(), "slots": list(ss), "hit_slots": by_day.get(dd.isoformat(), [])} for dd, ss in day_rows],
+        [{"date": dd.isoformat(), "slots": list(ss), "hit_slots": by_day.get(dd.isoformat(), [])} for dd, ss, _e in day_rows],
         now.date().isoformat(), now.hour * 60 + now.minute,
     )  # fmt: skip
     chance = outlook(
@@ -390,7 +411,7 @@ async def target(
         "board": cfg.target.board, "tracking_now": in_window(cfg, now), "scheduled": slots, "pending": pending,
         "hits": hits, "last_bus": last, "outlook": chance, "journeys": journeys,
         "board_label": labels.get(cfg.target.board, ""), "alight_label": labels.get(cfg.target.alight, ""),
-        "summary": sentence(last, cfg.deadline, tz),
+        "summary": sentence(last, cfg.deadline, tz), "occupancy": occupancy,
     }  # fmt: skip
 
 
@@ -407,8 +428,8 @@ async def log(request: Request, tid: str, days: int = Query(HISTORY_DAYS, ge=1, 
          "delay_min": delay}
         for hday, slot, arrive, delay in hit_rows
     ]  # fmt: skip
-    out = result_log([(dd.isoformat(), list(ss)) for dd, ss in day_rows], hits, now.date().isoformat(),
-                     now.hour * 60 + now.minute)  # fmt: skip
+    out = result_log([(dd.isoformat(), list(ss)) for dd, ss, _e in day_rows], hits, now.date().isoformat(),
+                     now.hour * 60 + now.minute, {dd.isoformat(): dict(e or {}) for dd, _s, e in day_rows})  # fmt: skip
     return {"deadline": cfg.deadline, "window_days": days, **out}
 
 
@@ -516,13 +537,15 @@ async def positions(
     lo = datetime(d.year, d.month, d.day, tzinfo=tz)
     async with request.app.state.engine.connect() as conn:
         rows = (await conn.execute(
-            text("SELECT vehicle, recorded_at, lat, lon, bearing, destination, bods_direction FROM bus_position "
+            text("SELECT vehicle, recorded_at, lat, lon, bearing, destination, bods_direction, occupancy, occupancy_counts "
+                 "FROM bus_position "
                  "WHERE tracker = :t AND recorded_at >= :lo AND recorded_at < :hi "
                  "AND (CAST(:v AS text) IS NULL OR vehicle = :v) ORDER BY recorded_at LIMIT :n"),
             {"t": tid, "lo": lo, "hi": lo + timedelta(days=1), "v": vehicle, "n": limit})).all()  # fmt: skip
     return {"date": d.isoformat(), "count": len(rows),
             "fixes": [{"vehicle": r.vehicle, "at": r.recorded_at.astimezone(tz).isoformat(), "lat": r.lat, "lon": r.lon,
-                       "bearing": r.bearing, "destination": r.destination, "direction": r.bods_direction}
+                       "bearing": r.bearing, "destination": r.destination, "direction": r.bods_direction,
+                       "occupancy": r.occupancy, "occupancy_counts": r.occupancy_counts}
                       for r in rows]}  # fmt: skip
 
 

@@ -202,7 +202,8 @@ def journey_rows(
         h = by_slot.get(slot)
         due = arrivals.get(slot)
         row: dict[str, Any] = {"slot": slot, "due_arrive": due, "left": fmt(h["board_at"]) if h else None,
-                               "arrived": fmt(h["arrive_at"]) if h else None, "late_min": None}  # fmt: skip
+                               "arrived": fmt(h["arrive_at"]) if h else None, "late_min": None,
+                               "vehicle": h.get("vehicle") if h else None}  # fmt: skip
         if h:
             row["status"] = "arrived"
             if due and row["arrived"]:
@@ -215,7 +216,7 @@ def journey_rows(
     for h in hits:  # a bus that made it but matched no slot still belongs in the list
         if not h.get("slot"):
             rows.append({"slot": None, "due_arrive": None, "left": fmt(h["board_at"]), "arrived": fmt(h["arrive_at"]),
-                         "late_min": None, "status": "arrived"})  # fmt: skip
+                         "late_min": None, "vehicle": h.get("vehicle"), "status": "arrived"})  # fmt: skip
     return rows
 
 
@@ -348,11 +349,13 @@ def outlook(
 
 
 def result_log(
-    day_slots: Sequence[tuple[str, Sequence[str]]], hits: Sequence[dict[str, Any]], today: str, now_minutes: int
+    day_slots: Sequence[tuple[str, Sequence[str]]], hits: Sequence[dict[str, Any]], today: str, now_minutes: int,
+    explained: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:  # fmt: skip
     """Success and failure for every scheduled bus, newest day first. `day_slots` is
     (date, slots); `hits` carry date, slot, arrive (local HH:MM) and delay_min. A slot with no bus
-    is a failure once RESOLVE_AFTER_MIN has passed; until then it is pending."""
+    is a failure once RESOLVE_AFTER_MIN has passed; until then it is pending. `explained` ({date: {slot:
+    {vehicle, kind, why}}}, from explain_misses) adds the bus and the reason to a failure."""
     by = {(h["date"], h["slot"]): h for h in hits if h.get("slot")}
     days: list[dict[str, Any]] = []
     ok = bad = 0
@@ -366,7 +369,8 @@ def result_log(
             elif date == today and now_minutes <= to_minutes(slot) + RESOLVE_AFTER_MIN:
                 rows.append({"slot": slot, "result": "pending"})
             else:
-                rows.append({"slot": slot, "result": "failure"})
+                why = ((explained or {}).get(date) or {}).get(slot) or {}
+                rows.append({"slot": slot, "result": "failure", "vehicle": why.get("vehicle"), "why": why.get("why")})
                 bad += 1
         days.append({"date": date, "buses": rows})
     return {"success": ok, "failure": bad, "success_rate": round(100 * ok / (ok + bad)) if ok + bad else None, "days": days}
@@ -395,4 +399,116 @@ def early_terminations(
             "kind": "turned back" if e["reason"] == "reversed" else "stopped reporting",
             "resumed_sid": nxt.get("sid"), "resumed_stop": names.get(nxt.get("sid") or "") or None, "resumed_at": nxt.get("at"),
         })  # fmt: skip
+    return out
+
+
+def track_boarders(
+    state: dict[str, Any], board: str, alight: str | None, earliest_ts: float, deadline_ts: float
+) -> None:  # fmt: skip
+    """Remember every bus that left the boarding stop in the window today and how far it has got: the last
+    stop it passed after boarding (and when) and when it reached the target, if it did. Kept in the state under
+    "boarders", so a bus is still known after its trip has dropped out of the recent list."""
+    boarders: dict[str, dict[str, Any]] = state.setdefault("boarders", {})
+    for trip in all_trips(state):
+        stops = trip["stops"]
+        idx = next((i for i, s in enumerate(stops) if s["sid"] == board), None)
+        if idx is None:
+            continue
+        board_ts = stops[idx].get("expected")
+        if board_ts is None or not earliest_ts <= board_ts < deadline_ts:
+            continue
+        after = [s for s in stops[idx:] if s.get("expected") is not None]
+        last = after[-1]
+        arrive = next((s["expected"] for s in after if s["sid"] == alight), None) if alight else None
+        key = f"{trip['vehicle']}@{int(board_ts)}"
+        b = boarders.setdefault(key, {"vehicle": trip["vehicle"], "board_ts": board_ts, "dir": trip["dir"]})
+        if last["expected"] >= b.get("last_at", 0):
+            b.update(last_sid=last["sid"], last_at=last["expected"])
+        if arrive is not None:
+            b["arrive_ts"] = arrive
+
+
+def remember_terminations(state: dict[str, Any], anomalies: Sequence[dict[str, Any]]) -> None:
+    """Keep today's early terminations (from early_terminations) in the state, for explain_misses."""
+    kept = state.setdefault("ended_today", [])
+    kept.extend({k: a.get(k) for k in ("vehicle", "sid", "stop", "direction", "at", "stops_before_end", "kind",
+                                       "resumed_stop", "resumed_at")}
+                for a in anomalies if a.get("type") == "early_termination")  # fmt: skip
+    del kept[:-200]
+
+
+def explain_misses(
+    slots: Sequence[str], claimed: Collection[str], state: dict[str, Any], now_minutes: int | None,
+    deadline_ts: float, board: tuple[str, int] | None, pos_of: Callable[[str], tuple[str, int] | None],
+    names: dict[str, str], labels: dict[str, str], fmt: Callable[[float], str],
+) -> dict[str, dict[str, Any]]:  # fmt: skip
+    """Why each scheduled bus that has been missed (no bus reached the target for it) missed: {slot: {vehicle,
+    kind, why}}. The buses that left the boarding stop and did not reach the target in time are matched to the
+    unclaimed slots in order, as compute_hits matches the ones that did. A matched bus arrived after the deadline,
+    ended early (turned back or stopped reporting: where and when), or was last seen somewhere. A slot no bus left
+    for may have had a bus turn back before it reached the boarding stop. `board` is the boarding stop's
+    (direction, position); `names` maps stop ids to names; `labels` has "board", "alight" and "deadline"; `fmt` turns a timestamp into HH:MM."""
+    reported = set(state.get("reported") or [])
+    open_ = sorted((s for s in slots if s not in claimed), key=to_minutes)
+    missed = [s for s in open_ if now_minutes is None or now_minutes > to_minutes(s) + RESOLVE_AFTER_MIN]
+    if not missed:
+        return {}
+    ended = list(state.get("ended_today") or [])
+    left = sorted((b for k, b in (state.get("boarders") or {}).items() if k not in reported), key=lambda b: b["board_ts"])
+    chosen = assign_slots([to_minutes(fmt(b["board_ts"])) for b in left], open_)
+    by_slot = {slot: b for b, slot in zip(left, chosen, strict=True) if slot}
+    out: dict[str, dict[str, Any]] = {}
+    used: set[int] = set()
+
+    def ended_after(vehicle: str, since: float) -> dict[str, Any] | None:
+        for i, e in enumerate(ended):
+            if i not in used and e.get("vehicle") == vehicle and (e.get("at") or 0) >= since:
+                used.add(i)
+                return e
+        return None
+
+    def ending(e: dict[str, Any]) -> str:
+        where = (e.get("stop") or "an unnamed stop") + (" at " + fmt(e["at"]) if e.get("at") else "")
+        text = ("Turned back at " if e.get("kind") == "turned back" else "Stopped reporting at ") + where
+        if e.get("stops_before_end"):
+            text += f", {e['stops_before_end']} stops short of the end of the route"
+        if e.get("resumed_stop"):
+            text += "; then due at " + e["resumed_stop"] + (" " + fmt(e["resumed_at"]) if e.get("resumed_at") else "")
+        return text
+
+    for slot in missed:
+        b = by_slot.get(slot)
+        if b is not None:
+            gone = "Left " + labels["board"] + " " + fmt(b["board_ts"]) + "; "
+            if b.get("arrive_ts") is not None and b["arrive_ts"] >= deadline_ts:
+                why = f"{gone}reached {labels['alight']} at {fmt(b['arrive_ts'])}, after the {labels['deadline']} deadline"
+                kind = "late"
+            elif (e := ended_after(b["vehicle"], b["board_ts"])) is not None:
+                text = ending(e)
+                why, kind = gone + text[0].lower() + text[1:], e.get("kind") or "ended"
+            elif b.get("last_sid"):
+                where = names.get(b["last_sid"]) or b["last_sid"]
+                why, kind = f"{gone}last seen at {where} {fmt(b['last_at'])} and not seen at {labels['alight']}", "lost"
+            else:
+                why, kind = gone + "not seen after that", "lost"
+            out[slot] = {"vehicle": b["vehicle"], "kind": kind, "why": why, "left_ts": b["board_ts"]}
+            continue
+        # no bus left the boarding stop for this one: did one end its trip on the way there?
+        best, best_gap = None, None
+        for i, e in enumerate(ended):
+            where = pos_of(e.get("sid") or "")
+            if i in used or not e.get("at") or board is None or where is None:
+                continue
+            if where[0] != board[0] or where[1] >= board[1]:
+                continue
+            gap = abs(to_minutes(fmt(e["at"])) - to_minutes(slot))
+            if gap <= MATCH_TOLERANCE_MIN and (best_gap is None or gap < best_gap):
+                best, best_gap = i, gap
+        if best is not None:
+            used.add(best)
+            e = ended[best]
+            out[slot] = {"vehicle": e.get("vehicle"), "kind": e.get("kind") or "ended",
+                         "why": ending(e) + ", before reaching " + labels["board"]}  # fmt: skip
+        else:
+            out[slot] = {"vehicle": None, "kind": "not seen", "why": "No bus was seen leaving " + labels["board"] + " for this one"}
     return out

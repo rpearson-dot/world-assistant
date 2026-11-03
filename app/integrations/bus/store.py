@@ -181,6 +181,14 @@ async def ensure_day(conn: AsyncConnection, tid: str, day: date, slots: list[str
     )
 
 
+async def save_explained(conn: AsyncConnection, tid: str, day: date, explained: dict[str, Any]) -> None:
+    """Why each missed bus missed (events.explain_misses), rewritten each poll."""
+    await conn.execute(
+        text("UPDATE bus_target_day SET explained = CAST(:e AS jsonb) WHERE tracker = :t AND day = :d"),
+        {"t": tid, "d": day, "e": _j(explained)},
+    )
+
+
 async def save_hits(conn: AsyncConnection, tid: str, day: date, hits: list[dict[str, Any]]) -> None:
     if not hits:
         return
@@ -220,7 +228,8 @@ async def save_positions(conn: AsyncConnection, tid: str, vehicles: list[dict[st
     """GPS fixes of followed buses. A fix already stored (BODS refreshes less often than we poll) is skipped."""
     rows = [
         {"t": tid, "v": v["vehicle"], "at": v["recorded_at"], "lat": v["lat"], "lon": v["lon"],
-         "b": v.get("bearing"), "d": v.get("destination"), "bd": v.get("direction")}
+         "b": v.get("bearing"), "d": v.get("destination"), "bd": v.get("direction"),
+         "o": v.get("occupancy"), "oc": _j(v.get("occupancy_counts") or {})}
         for v in vehicles if v.get("recorded_at")
     ]  # fmt: skip
     if not rows:
@@ -231,12 +240,45 @@ async def save_positions(conn: AsyncConnection, tid: str, vehicles: list[dict[st
         r["at"] = datetime.fromisoformat(r["at"])
     result = await conn.execute(
         text(
-            "INSERT INTO bus_position (tracker, vehicle, recorded_at, lat, lon, bearing, destination, bods_direction) "
-            "VALUES (:t, :v, :at, :lat, :lon, :b, :d, :bd) ON CONFLICT DO NOTHING"
+            "INSERT INTO bus_position (tracker, vehicle, recorded_at, lat, lon, bearing, destination, bods_direction, "
+            "occupancy, occupancy_counts) VALUES (:t, :v, :at, :lat, :lon, :b, :d, :bd, :o, CAST(:oc AS jsonb)) "
+            "ON CONFLICT DO NOTHING"
         ),
         rows,
     )
     return int(result.rowcount or 0)
+
+
+async def occupancy_at(conn: AsyncConnection, tid: str, vehicle: str, at: float) -> dict[str, Any] | None:
+    """How full a bus said it was in its GPS report nearest `at` (15 minutes before to 5 after): {occupancy,
+    counts} (occupancy None: the report did not say). None when there was no report from it then."""
+    row = (await conn.execute(text(
+        "SELECT occupancy, occupancy_counts FROM bus_position WHERE tracker = :t AND vehicle = :v "
+        "AND recorded_at BETWEEN to_timestamp(:a) - interval '15 minutes' AND to_timestamp(:a) + interval '5 minutes' "
+        "ORDER BY abs(extract(epoch FROM recorded_at) - :a) LIMIT 1"), {"t": tid, "v": vehicle, "a": at})).first()  # fmt: skip
+    return {"occupancy": row[0], "counts": dict(row[1] or {})} if row else None
+
+
+async def latest_occupancy(conn: AsyncConnection, tid: str, vehicles: list[str]) -> dict[str, dict[str, Any]]:
+    """Each bus's latest GPS report in the last 10 minutes: {vehicle: {occupancy, counts, recorded_at}}."""
+    if not vehicles:
+        return {}
+    res = await conn.execute(text(
+        "SELECT DISTINCT ON (vehicle) vehicle, occupancy, occupancy_counts, recorded_at FROM bus_position "
+        "WHERE tracker = :t AND vehicle = ANY(:v) AND recorded_at > now() - interval '10 minutes' "
+        "ORDER BY vehicle, recorded_at DESC"), {"t": tid, "v": vehicles})  # fmt: skip
+    return {r[0]: {"occupancy": r[1], "counts": dict(r[2] or {}), "recorded_at": r[3].isoformat()} for r in res}
+
+
+async def occupancy_summary(conn: AsyncConnection, tid: str, since: date) -> dict[str, Any]:
+    """Whether this route's buses share how full they are: GPS reports kept since `since`, how many said, and
+    the last time one did."""
+    row = (await conn.execute(text(
+        "SELECT count(*), count(occupancy), max(recorded_at) FILTER (WHERE occupancy IS NOT NULL) FROM bus_position "
+        "WHERE tracker = :t AND recorded_at >= :s"), {"t": tid, "s": since})).first()  # fmt: skip
+    reports, shared, last = (row[0], row[1], row[2]) if row else (0, 0, None)
+    return {"reports": reports, "with_occupancy": shared, "last_shared": last.isoformat() if last else None,
+            "shared": bool(shared)}  # fmt: skip
 
 
 async def prune_positions(conn: AsyncConnection, days: int) -> None:

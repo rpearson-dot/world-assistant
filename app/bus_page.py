@@ -15,7 +15,8 @@ PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>World Assistant buses</title>
 <style>
-/*BASE_CSS*/</style></head><body><main>
+/*BASE_CSS*/
+.why .small{font-size:.85em;margin-top:3px;max-width:30em;white-space:normal}</style></head><body><main>
 <!--NAV-->
 <h1>Buses</h1>
 <div class="bar"><input id="t" type="password" placeholder="API token" autocomplete="current-password">
@@ -121,31 +122,62 @@ async function load() {
       if (!rows.length) continue;
       const box = el('div', null, 'stop'); box.appendChild(el('div', rows[0].label, 'name'));
       box.appendChild(el('div', rows[0].minutes + ' min', 'mins'));
-      if (rows.length > 1) box.appendChild(el('div', 'then ' + rows.slice(1).map(r => r.minutes + ' min').join(', '), 'more'));
+      if (rows[0].occupancy) box.appendChild(el('div', occText(rows[0]), 'more'));
+      if (rows.length > 1) box.appendChild(el('div', 'then ' + rows.slice(1).map(r => r.minutes + ' min' + (r.occupancy ? ' (' + occText(r).toLowerCase() + ')' : '')).join(', '), 'more'));
       next.appendChild(box);
     }
     if (!next.children.length) next.appendChild(el('p', 'No buses predicted at your stops right now.', 'dim'));
     const lab = n => (n || '').split(' (')[0];
     const mins = m => badge((m > 0 ? '+' : '') + m + ' min', m >= 5 ? 'bad' : m >= 2 ? 'warn' : 'good');
     const rows = target ? (target.journeys || []) : [];
-    table('hits', ['Scheduled', 'Actual', 'Scheduled', 'Late / early', 'Arrived today?'],
-      rows.map(j => [j.slot || '', j.left || '', j.due_arrive || '', j.late_min == null ? '' : mins(j.late_min),
+    table('hits', ['Scheduled', 'Actual', 'How full', 'Scheduled', 'Late / early', 'Arrived today?'],
+      rows.map(j => [j.slot || '', j.left || '', j.vehicle ? full(j) : '', j.due_arrive || '', j.late_min == null ? '' : mins(j.late_min),
         j.status === 'arrived' ? badge('Arrived ' + (j.arrived || ''), 'good')
-          : j.status === 'missed' ? badge('Did not arrive', 'bad') : el('span', 'Not yet', 'dim')]),
+          : j.status === 'missed' ? missed(j) : el('span', 'Not yet', 'dim')]),
       'No buses scheduled in the window.');
     const t = $('hits');
     if (rows.length) { const g = t.tHead.insertRow(0);
-      for (const [text, span] of [[lab(target.board_label) || 'Start', 2], [lab(target.alight_label) || 'Target', 2], ['', 1]]) {
+      for (const [text, span] of [[lab(target.board_label) || 'Start', 3], [lab(target.alight_label) || 'Target', 2], ['', 1]]) {
         const c = el('th', text, 'group'); c.colSpan = span; c.style.textAlign = 'center'; g.appendChild(c); } }
-    $('pending').textContent = '';
+    const o = target && target.occupancy;
+    $('pending').textContent = !o ? '' : o.shared ? 'How full: as each bus reported it to Bus Open Data when it left.'
+      : 'How full: not shared by the buses on this route yet' + (o.reports ? ' (none of ' + o.reports + ' GPS reports in the last 30 days said)' : '') + '. It is recorded as soon as they start.';
     table('cond', ['Leg', 'Usual', 'Last 30 min', ''], cond.map(c => [c.from + ' to ' + c.to,
       c.day_avg_min == null ? '' : c.day_avg_min + ' min', c.recent_avg_min == null ? '' : c.recent_avg_min + ' min',
       c.delta_min == null ? '' : badge((c.delta_min > 0 ? '+' : '') + c.delta_min + ' min', c.delta_min >= 3 ? 'bad' : c.delta_min >= 1.5 ? 'warn' : 'good')]),
       'No leg times yet today.');
     table('rel', ['Bus', 'Days', 'Made it'], rel.slots.map(s => [s.slot, s.days_scheduled, s.miss_rate == null ? '' : meter(s.miss_rate)]),
       'History builds up over the days the tracker runs.');
-    table('an', ['When', 'Bus', 'What happened'], an.map(a => [hhmm(a.at), a.vehicle, anomalyText(a)]), 'Nothing recorded.');
+    table('an', ['When', 'Bus', 'What happened'], events(an).map(a => [hhmm(a.when), a.vehicle, anomalyText(a)]), 'Nothing recorded.');
   } catch (e) { msg.textContent = e.message; }
+}
+const OCC = { full: 'Full', standingAvailable: 'Standing room only', seatsAvailable: 'Seats available' };
+function occText(r) {  // how full a bus said it was, with seat counts when its operator adds them
+  const c = r.occupancy_counts || {}, seats = c.SeatedOccupancy != null && c.SeatedCapacity ? ' (' + c.SeatedOccupancy + ' of ' + c.SeatedCapacity + ' seats taken)' : '';
+  return (OCC[r.occupancy] || r.occupancy) + seats;
+}
+function full(j) {
+  if (!j.occupancy) return el('span', 'Not shared', 'dim');
+  return badge(occText(j), j.occupancy === 'full' ? 'bad' : j.occupancy === 'standingAvailable' ? 'warn' : 'good');
+}
+function missed(j) {  // the bus (vehicle id) that was meant to make this run, and why it did not
+  const box = el('div', null, 'why'); box.appendChild(badge('Did not arrive', 'bad'));
+  if (j.why) box.appendChild(el('div', (j.vehicle ? 'Bus ' + j.vehicle + ': ' : '') + j.why + '.', 'dim small'));
+  return box;
+}
+// One time per event, when it happened: an early end is logged only once the bus shows up going the other way, so
+// it takes the time the bus was last at the stop where it ended, not the time it was logged. The same thing logged
+// again within 15 minutes (the feed flickering a bus between directions) is shown once.
+function events(an) {
+  const out = [];
+  const rows = an.map(a => ({ ...a, when: (a.detail || {}).at && a.type === 'early_termination' ? new Date(a.detail.at * 1000).toISOString() : a.at }))
+    .sort((x, y) => new Date(x.when) - new Date(y.when));
+  for (const a of rows) {
+    const k = a.vehicle + '|' + a.type + '|' + ((a.detail || {}).stop || '');
+    if (out.some(b => b.key === k && new Date(a.when) - new Date(b.when) < 15 * 60000)) continue;
+    out.push({ ...a, key: k });
+  }
+  return out.reverse();
 }
 const way = t => t ? ' towards ' + t : '';
 const gps = l => l ? ' GPS: ' + (l.destination ? 'destination ' + l.destination : 'seen') + (l.bearing != null ? ', bearing ' + Math.round(l.bearing) + '°' : '') + (l.recorded_at ? ' at ' + hhmm(l.recorded_at) : '') + '.' : '';
@@ -154,7 +186,7 @@ function anomalyBase(a) {
   const d = a.detail || {}, at = d.stop ? ' at ' + d.stop : '';
   if (a.type === 'early_termination')
     return 'Ended early' + at + ', heading' + way(d.towards) + ' (' + (d.kind || 'ended') + ', ' + d.stops_before_end + ' stops short of the end)'
-      + (d.resumed_stop ? '; next seen at ' + d.resumed_stop + (d.resumed_at ? ' ' + hhmm(new Date(d.resumed_at * 1000).toISOString()) : '') : '');
+      + (d.resumed_stop ? '; then due at ' + d.resumed_stop + (d.resumed_at ? ' ' + hhmm(new Date(d.resumed_at * 1000).toISOString()) : '') : '');
   if (a.type === 'turnaround')
     return 'Turned round at ' + (d.place || '').replaceAll('_', ' ') + (d.from_towards ? ': was heading' + way(d.from_towards) + ', now' + way(d.to_towards) : '')
       + ' (' + d.gap_s + ' s between sides)';

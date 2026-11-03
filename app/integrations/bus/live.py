@@ -65,7 +65,7 @@ def direction_of(destination: str | None, towards: dict[str, str]) -> str | None
 def note(v: dict[str, Any], towards: dict[str, str]) -> dict[str, Any]:
     d = direction_of(v.get("destination"), towards)
     return {"destination": v.get("destination"), "bearing": v.get("bearing"), "lat": v.get("lat"),
-            "lon": v.get("lon"), "recorded_at": v.get("recorded_at"), "direction": d,
+            "lon": v.get("lon"), "recorded_at": v.get("recorded_at"), "direction": d, "occupancy": v.get("occupancy"),
             "towards": towards.get(d) if d else None}  # fmt: skip
 
 

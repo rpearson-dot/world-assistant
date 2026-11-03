@@ -351,3 +351,69 @@ def test_a_scheduled_time_at_the_target_for_each_departure() -> None:
     assert rows[0]["late_min"] == 3 and rows[0]["due_arrive"] == "07:09" and rows[1]["late_min"] is None
     over = journey_rows(["07:26"], [], due, None, clock.get)  # a finished day: no bus is still waiting
     assert over[0]["status"] == "missed"
+
+
+def _fmt(ts: float) -> str:
+    return datetime.fromtimestamp(ts, UTC).strftime("%H:%M")
+
+
+def _at(hhmm: str) -> float:
+    h, m = hhmm.split(":")
+    return datetime(2026, 10, 20, int(h), int(m), tzinfo=UTC).timestamp()
+
+
+LABELS = {"board": "Worcester Park", "alight": "Coombe Girls", "deadline": "08:10"}
+MISS_POS = {"UP1": ("outbound", 2), "BOARD": ("outbound", 5), "DOWN1": ("outbound", 8), "OTHER": ("inbound", 3)}
+
+
+def _explain(state: dict[str, Any], slots: list[str], claimed: tuple[str, ...] = (), now: int | None = None) -> dict[str, Any]:
+    return events.explain_misses(slots, claimed, state, now, _at("08:10"), MISS_POS["BOARD"], MISS_POS.get,
+                                 {"DOWN1": "New Malden"}, LABELS, _fmt)  # fmt: skip
+
+
+def test_a_bus_that_turned_back_before_the_boarding_stop_explains_the_slot_it_was_for() -> None:
+    state = {"boarders": {}, "ended_today": [
+        {"vehicle": "BUS7", "sid": "UP1", "stop": "Tolworth", "direction": "outbound", "at": _at("07:25"),
+         "stops_before_end": 20, "kind": "turned back", "resumed_stop": "Surbiton", "resumed_at": _at("07:31")},
+        {"vehicle": "BUS8", "sid": "OTHER", "stop": "Elsewhere", "direction": "inbound", "at": _at("07:58"),
+         "stops_before_end": 4, "kind": "turned back"},
+    ]}  # fmt: skip
+    why = _explain(state, ["07:30", "08:00"])
+    assert why["07:30"]["vehicle"] == "BUS7"
+    assert why["07:30"]["why"] == ("Turned back at Tolworth at 07:25, 20 stops short of the end of the route; "
+                                   "then due at Surbiton 07:31, before reaching Worcester Park")  # fmt: skip
+    assert why["08:00"]["kind"] == "not seen"  # the other direction's bus is not the reason
+
+
+def test_a_boarded_bus_that_stopped_reporting_or_was_lost_is_named() -> None:
+    state = {"reported": ["OK1@" + str(int(_at("07:10")))], "boarders": {
+        "OK1@" + str(int(_at("07:10"))): {"vehicle": "OK1", "board_ts": _at("07:10")},
+        "GONE@x": {"vehicle": "GONE", "board_ts": _at("07:31"), "last_sid": "DOWN1", "last_at": _at("07:40")},
+        "LOST@x": {"vehicle": "LOST", "board_ts": _at("07:45"), "last_sid": "DOWN1", "last_at": _at("07:52")},
+    }, "ended_today": [{"vehicle": "GONE", "sid": "DOWN1", "stop": "New Malden", "at": _at("07:40"),
+                        "stops_before_end": 9, "kind": "stopped reporting"}]}  # fmt: skip
+    why = _explain(state, ["07:10", "07:30", "07:45", "08:00"], claimed=("07:10",), now=8 * 60 + 20)
+    assert set(why) == {"07:30", "07:45"}  # 08:00 is not resolved yet; 07:10 made it
+    assert why["07:30"]["vehicle"] == "GONE" and why["07:30"]["kind"] == "stopped reporting"
+    assert why["07:30"]["why"].startswith("Left Worcester Park 07:31; stopped reporting at New Malden at 07:40")
+    assert why["07:45"] == {"vehicle": "LOST", "kind": "lost", "left_ts": _at("07:45"),
+                            "why": "Left Worcester Park 07:45; last seen at New Malden 07:52 and not seen at Coombe Girls"}
+
+
+def test_boarders_are_remembered_with_how_far_they_got() -> None:
+    state = trips.new_state()
+    state["recent"].append({"vehicle": "V1", "dir": "outbound", "stops": [
+        {"sid": "UP1", "pos": 2, "expected": _at("07:20")}, {"sid": "BOARD", "pos": 5, "expected": _at("07:30")},
+        {"sid": "DOWN1", "pos": 8, "expected": _at("07:41")}]})  # fmt: skip
+    events.track_boarders(state, "BOARD", "TARGET", _at("07:00"), _at("08:10"))
+    (b,) = state["boarders"].values()
+    assert b["vehicle"] == "V1" and b["last_sid"] == "DOWN1" and b["last_at"] == _at("07:41") and "arrive_ts" not in b
+    state["recent"].clear()  # the trip drops out of the recent list: the bus is still known
+    events.track_boarders(state, "BOARD", "TARGET", _at("07:00"), _at("08:10"))
+    assert len(state["boarders"]) == 1
+
+
+def test_result_log_carries_the_reason_for_a_failure() -> None:
+    out = events.result_log([("2026-10-20", ["07:30"])], [], "2026-10-21", 0,
+                            {"2026-10-20": {"07:30": {"vehicle": "BUS7", "why": "Turned back at Tolworth"}}})  # fmt: skip
+    assert out["days"][0]["buses"][0] == {"slot": "07:30", "result": "failure", "vehicle": "BUS7", "why": "Turned back at Tolworth"}

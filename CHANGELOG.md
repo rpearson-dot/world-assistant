@@ -4,6 +4,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.23.6] - 2026-11-03
+
+### Added
+- **Bus tracker: why a bus did not arrive.** In "Today's buses", a scheduled bus that did not reach the target stop now says which bus it was (its vehicle id) and why, for example "Bus LJ12ABC: Left Worcester Park station 07:31; turned back at New Malden / Fountain Roundabout at 07:40, 15 stops short of the end of the route; then due at St James Church 07:46." The reasons:
+  - it turned back, or stopped reporting, after leaving your stop (where and when, and where it was due next);
+  - it reached the target after the deadline (when);
+  - it was last seen somewhere on the way and not at the target;
+  - a bus turned back before it reached your stop;
+  - no bus was seen leaving your stop for it.
+- The reasons are logged with each day (database migration 0036), so past days keep them; the `/log` endpoint gives the bus and reason for each failure, and the `/target` endpoint gives them on each missed journey (`vehicle`, `why`, `why_kind`), and the bus on each one that arrived.
+- **Bus tracker: how full each bus is, when its operator shares it.** The Bus Open Data feed has an optional "how full" field (full, standing room only, seats available, sometimes with seat counts) that few operators fill in yet (on 3 November, 2 of 1,213 buses around Kingston: London General's school routes 668 and 669; none on the 213). It is now kept with every GPS report of the buses being followed, so it is there from the day an operator starts. "Today's buses" has a "How full" column (as each bus left your stop), showing "Not shared" until then, with a note under the table saying whether this route's buses share it; "Next buses" shows it beside each bus that does. Also in the `/positions`, `/live` and `/target` endpoints.
+
+### Changed
+- **Recent events are consistent about time.** "When" is now when each thing happened: an early end is logged only once the bus shows up going the other way, so it used to show the time it was logged, with the time it was last at the stop missing; it now shows the time it was last there, and the list is in that order. The time after the stop it went on to is when it was due there (a prediction), so it now says "then due at" rather than "next seen at". The same event logged again within 15 minutes (the feed flickering a bus between directions, or a bus waiting at the garage) is shown once.
+
 ## [0.23.5] - 2026-11-03
 
 ### Fixed

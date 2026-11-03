@@ -76,6 +76,29 @@ def _time(value: str | None) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
+OCCUPANCY = {"full": "full", "standingavailable": "standingAvailable", "seatsavailable": "seatsAvailable"}
+# Counts some operators add (SIRI 2.0 / the BODS extension); kept when present, as numbers.
+OCCUPANCY_COUNTS = ("SeatedOccupancy", "SeatedCapacity", "WheelchairsOccupancy", "WheelchairCapacity",
+                    "PushchairsOccupancy", "PushchairCapacity", "StandingOccupancy", "StandingCapacity")  # fmt: skip
+
+
+def occupancy_of(activity: ET.Element) -> tuple[str | None, dict[str, int]]:
+    """How full a bus says it is (SIRI-VM's optional Occupancy: full, standingAvailable or seatsAvailable),
+    wherever in the record it is, and any passenger counts beside it. (None, {}) when it does not say: most
+    operators do not publish it yet."""
+    level, counts = None, {}
+    for el in activity.iter():
+        name = _local(el.tag)
+        if name == "Occupancy" and level is None:
+            level = OCCUPANCY.get((_text(el) or "").lower())
+        elif name in OCCUPANCY_COUNTS:
+            try:
+                counts[name] = int(float(_text(el) or ""))
+            except ValueError:
+                pass
+    return level, counts
+
+
 def parse_vehicles(body: bytes) -> list[dict[str, Any]]:
     """Vehicles from a SIRI-VM document. Anything without a usable position is dropped."""
     if len(body) > MAX_BYTES:
@@ -105,6 +128,7 @@ def parse_vehicles(body: bytes) -> list[dict[str, Any]]:
         except ValueError:
             bearing = None
         recorded = _time(_text(parts.get("RecordedAtTime")))
+        occupancy, counts = occupancy_of(activity)
         out.append({
             "vehicle": _text(journey.get("VehicleRef")),
             "line": _text(journey.get("PublishedLineName")) or _text(journey.get("LineRef")),
@@ -113,6 +137,7 @@ def parse_vehicles(body: bytes) -> list[dict[str, Any]]:
             "direction": _text(journey.get("DirectionRef")),
             "bearing": bearing, "lat": lat, "lon": lon,
             "recorded_at": recorded.isoformat() if recorded else None,
+            "occupancy": occupancy, "occupancy_counts": counts,
         })  # fmt: skip
     return out
 

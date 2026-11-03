@@ -98,7 +98,7 @@ def schema() -> Iterator[None]:
         for t in TABLES:
             conn.execute(sa.text(f"DROP TABLE IF EXISTS {t} CASCADE"))
         with Operations.context(MigrationContext.configure(conn)):
-            for name in ("0011_bus_tracking", "0020_naptan", "0026_bus_position"):
+            for name in ("0011_bus_tracking", "0020_naptan", "0026_bus_position", "0036_bus_miss_why_occupancy"):
                 spec = importlib.util.spec_from_file_location(name, VERSIONS / f"{name}.py")
                 assert spec and spec.loader
                 m = importlib.util.module_from_spec(spec)
@@ -131,7 +131,8 @@ async def drive(engine: Any, start: float, end: float, monkeypatch: pytest.Monke
             asked.append(_t)
             base = {"line": "213", "operator": "TFLO", "destination": "Fairfield Bus Station", "direction": "2",
                     "bearing": 315.0, "lat": 51.381, "lon": -0.241, "recorded_at": iso(_t - 5)}  # fmt: skip
-            return [{**base, "vehicle": "V9"}, {**base, "vehicle": "OTHER"}, {**base, "vehicle": "V9", "line": "999"}]
+            return [{**base, "vehicle": "V9", "occupancy": "standingAvailable", "occupancy_counts": {"SeatedOccupancy": 40}},
+                    {**base, "vehicle": "OTHER"}, {**base, "vehicle": "V9", "line": "999"}]
 
         monkeypatch.setattr(live, "fetch_vehicles", fake_fetch)
         await poll_one(engine, client, row, now)  # type: ignore[arg-type]
@@ -152,11 +153,14 @@ async def test_positions_are_gathered_only_in_the_window_and_only_for_followed_b
         assert c.put("/v1/bus/trackers/main", json={"config": cfg_dict()}, headers=h).status_code == 200
         asked: list[float] = []
         board = _FakeClient.board
-        await drive(engine, board - 600, board + 600, monkeypatch, asked)  # 07:20 to 07:40, inside 07:00-08:10
+        await drive(engine, board - 600, board + 1000, monkeypatch, asked)  # 07:20 to 07:47, inside 07:00-08:10
         assert asked and len(asked) == len({*asked})
         got = c.get("/v1/bus/trackers/main/positions?day=2026-10-20", headers=h).json()
         assert got["count"] == len(asked) and {f["vehicle"] for f in got["fixes"]} == {"V9"}  # not OTHER, not the wrong line
         assert got["fixes"][0]["destination"] == "Fairfield Bus Station" and got["fixes"][0]["bearing"] == 315.0
+        assert got["fixes"][0]["occupancy"] == "standingAvailable" and got["fixes"][0]["occupancy_counts"] == {"SeatedOccupancy": 40}
+        j = {x["slot"]: x for x in c.get("/v1/bus/trackers/main/target?day=2026-10-20", headers=h).json()["journeys"]}
+        assert j["07:30"]["vehicle"] == "V9" and j["07:30"]["occupancy"] == "standingAvailable"  # as it left the stop
         assert c.get("/v1/bus/trackers/main/positions?day=2026-10-20&vehicle=NOPE", headers=h).json()["count"] == 0
 
         # 06:40 to 06:55 is polled (from 06:30) but is before the earliest bus: nothing is asked of BODS
@@ -167,7 +171,7 @@ async def test_positions_are_gathered_only_in_the_window_and_only_for_followed_b
         monkeypatch.delenv("BODS_API_KEY")
         secretstore.clear_cache()
         quiet: list[float] = []
-        await drive(engine, board + 700, board + 800, monkeypatch, quiet)
+        await drive(engine, board + 1100, board + 1200, monkeypatch, quiet)
         assert quiet == []
     finally:
         await engine.dispose()
