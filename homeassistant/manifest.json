@@ -50,8 +50,8 @@
       "sha256": "3bb33af1f30426377f754cee81f3fb4782b6191ded2315ea9321f6f51d45c6f6"
     },
     "packages/world_assistant_events.yaml": {
-      "changed_in": "0.7.5",
-      "sha256": "7aecb013c5806c2535d85f13632c72d29a7db36d04ba15c959f0cee23e99bfe5"
+      "changed_in": "0.23.5",
+      "sha256": "aa3b941ef72b4139f63b336e926772729bd58ee7b36385d344e05b1388ba491b"
     },
     "packages/world_assistant_fuel.yaml": {
       "changed_in": "0.7.5",
@@ -62,8 +62,8 @@
       "sha256": "465cf63cc16f7eb48ee68cc51d726f4e9a667f8af1850119a0eedaf3a22079de"
     },
     "packages/world_assistant_pollen.yaml": {
-      "changed_in": "0.7.3",
-      "sha256": "b47596d43f8fafe34e29f448d3d143bf1f987eb36b2848d203b9206d0c489bdb"
+      "changed_in": "0.23.5",
+      "sha256": "3f39e55aab9d0cddfe9f4bf608bcbb59ca7d77941a072f24d353accd5dd382bb"
     }
   }
 }

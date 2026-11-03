@@ -18,13 +18,16 @@ rest:
     sensor:
       - name: WA events home upcoming
         unique_id: wa_events_home_upcoming
-        value_template: "{{ value_json.count if value_json is mapping and value_json.count is defined else none }}"
+        # unavailable (not an error) until World Assistant answers: a REST sensor's "none" would be the text "None"
+        availability: "{{ value_json is defined and value_json is mapping and value_json.count is defined }}"
+        value_template: "{{ value_json.count }}"
         state_class: measurement
         icon: mdi:calendar-star
         json_attributes: [events, days, radius_km, sources]
       - name: WA events home next
         unique_id: wa_events_home_next
-        value_template: "{{ (value_json.events[0].name if value_json.events else 'Nothing listed') if value_json is mapping and value_json.events is defined else none }}"
+        availability: "{{ value_json is defined and value_json is mapping and value_json.events is defined }}"
+        value_template: "{{ value_json.events[0].name if value_json.events else 'Nothing listed' }}"
         icon: mdi:ticket
         json_attributes_path: "$.events[0]"
         json_attributes: [date, venue, town, distance_km, price, type]
