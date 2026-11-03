@@ -215,7 +215,7 @@ def _migration(name: str) -> Any:
 
 @pytest.fixture
 def schema() -> Iterator[None]:
-    m11, m26, m36 = _migration("0011_bus_tracking"), _migration("0026_bus_position"), _migration("0036_bus_miss_why")
+    m11, m26, m36 = _migration("0011_bus_tracking"), _migration("0026_bus_position"), _migration("0036_bus_miss_why_occupancy")
     eng = sa.create_engine(URL)  # type: ignore[arg-type]
     with eng.begin() as conn:
         for t in ("bus_position", "bus_timetable", "bus_target_hit", "bus_target_day", "bus_anomaly",
@@ -289,7 +289,8 @@ async def test_poll_stores_hit_and_api_reports_it(
         assert "reached the target stop" in t["summary"]
         assert t["pending"] and "07:30" not in t["pending"]
         j = {x["slot"]: x for x in t["journeys"]}
-        assert j["07:30"]["vehicle"] == "V9"
+        assert j["07:30"]["vehicle"] == "V9" and j["07:30"]["occupancy"] is None  # no GPS here: not shared
+        assert t["occupancy"]["shared"] is False
         assert j["07:00"]["status"] == "missed" and j["07:00"]["why"] == "No bus was seen leaving Start stop for this one"
         fails = [b for d in c.get("/v1/bus/trackers/main/log?days=90", headers=h).json()["days"] for b in d["buses"]
                  if b["slot"] == "07:00"]  # fmt: skip

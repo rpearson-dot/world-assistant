@@ -396,7 +396,7 @@ def test_a_boarded_bus_that_stopped_reporting_or_was_lost_is_named() -> None:
     assert set(why) == {"07:30", "07:45"}  # 08:00 is not resolved yet; 07:10 made it
     assert why["07:30"]["vehicle"] == "GONE" and why["07:30"]["kind"] == "stopped reporting"
     assert why["07:30"]["why"].startswith("Left Worcester Park 07:31; stopped reporting at New Malden at 07:40")
-    assert why["07:45"] == {"vehicle": "LOST", "kind": "lost",
+    assert why["07:45"] == {"vehicle": "LOST", "kind": "lost", "left_ts": _at("07:45"),
                             "why": "Left Worcester Park 07:45; last seen at New Malden 07:52 and not seen at Coombe Girls"}
 
 

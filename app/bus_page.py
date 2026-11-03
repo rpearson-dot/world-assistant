@@ -122,23 +122,26 @@ async function load() {
       if (!rows.length) continue;
       const box = el('div', null, 'stop'); box.appendChild(el('div', rows[0].label, 'name'));
       box.appendChild(el('div', rows[0].minutes + ' min', 'mins'));
-      if (rows.length > 1) box.appendChild(el('div', 'then ' + rows.slice(1).map(r => r.minutes + ' min').join(', '), 'more'));
+      if (rows[0].occupancy) box.appendChild(el('div', occText(rows[0]), 'more'));
+      if (rows.length > 1) box.appendChild(el('div', 'then ' + rows.slice(1).map(r => r.minutes + ' min' + (r.occupancy ? ' (' + occText(r).toLowerCase() + ')' : '')).join(', '), 'more'));
       next.appendChild(box);
     }
     if (!next.children.length) next.appendChild(el('p', 'No buses predicted at your stops right now.', 'dim'));
     const lab = n => (n || '').split(' (')[0];
     const mins = m => badge((m > 0 ? '+' : '') + m + ' min', m >= 5 ? 'bad' : m >= 2 ? 'warn' : 'good');
     const rows = target ? (target.journeys || []) : [];
-    table('hits', ['Scheduled', 'Actual', 'Scheduled', 'Late / early', 'Arrived today?'],
-      rows.map(j => [j.slot || '', j.left || '', j.due_arrive || '', j.late_min == null ? '' : mins(j.late_min),
+    table('hits', ['Scheduled', 'Actual', 'How full', 'Scheduled', 'Late / early', 'Arrived today?'],
+      rows.map(j => [j.slot || '', j.left || '', j.vehicle ? full(j) : '', j.due_arrive || '', j.late_min == null ? '' : mins(j.late_min),
         j.status === 'arrived' ? badge('Arrived ' + (j.arrived || ''), 'good')
           : j.status === 'missed' ? missed(j) : el('span', 'Not yet', 'dim')]),
       'No buses scheduled in the window.');
     const t = $('hits');
     if (rows.length) { const g = t.tHead.insertRow(0);
-      for (const [text, span] of [[lab(target.board_label) || 'Start', 2], [lab(target.alight_label) || 'Target', 2], ['', 1]]) {
+      for (const [text, span] of [[lab(target.board_label) || 'Start', 3], [lab(target.alight_label) || 'Target', 2], ['', 1]]) {
         const c = el('th', text, 'group'); c.colSpan = span; c.style.textAlign = 'center'; g.appendChild(c); } }
-    $('pending').textContent = '';
+    const o = target && target.occupancy;
+    $('pending').textContent = !o ? '' : o.shared ? 'How full: as each bus reported it to Bus Open Data when it left.'
+      : 'How full: not shared by the buses on this route yet' + (o.reports ? ' (none of ' + o.reports + ' GPS reports in the last 30 days said)' : '') + '. It is recorded as soon as they start.';
     table('cond', ['Leg', 'Usual', 'Last 30 min', ''], cond.map(c => [c.from + ' to ' + c.to,
       c.day_avg_min == null ? '' : c.day_avg_min + ' min', c.recent_avg_min == null ? '' : c.recent_avg_min + ' min',
       c.delta_min == null ? '' : badge((c.delta_min > 0 ? '+' : '') + c.delta_min + ' min', c.delta_min >= 3 ? 'bad' : c.delta_min >= 1.5 ? 'warn' : 'good')]),
@@ -147,6 +150,15 @@ async function load() {
       'History builds up over the days the tracker runs.');
     table('an', ['When', 'Bus', 'What happened'], events(an).map(a => [hhmm(a.when), a.vehicle, anomalyText(a)]), 'Nothing recorded.');
   } catch (e) { msg.textContent = e.message; }
+}
+const OCC = { full: 'Full', standingAvailable: 'Standing room only', seatsAvailable: 'Seats available' };
+function occText(r) {  // how full a bus said it was, with seat counts when its operator adds them
+  const c = r.occupancy_counts || {}, seats = c.SeatedOccupancy != null && c.SeatedCapacity ? ' (' + c.SeatedOccupancy + ' of ' + c.SeatedCapacity + ' seats taken)' : '';
+  return (OCC[r.occupancy] || r.occupancy) + seats;
+}
+function full(j) {
+  if (!j.occupancy) return el('span', 'Not shared', 'dim');
+  return badge(occText(j), j.occupancy === 'full' ? 'bad' : j.occupancy === 'standingAvailable' ? 'warn' : 'good');
 }
 function missed(j) {  // the bus (vehicle id) that was meant to make this run, and why it did not
   const box = el('div', null, 'why'); box.appendChild(badge('Did not arrive', 'bad'));

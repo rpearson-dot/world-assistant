@@ -491,7 +491,7 @@ def explain_misses(
                 why, kind = f"{gone}last seen at {where} {fmt(b['last_at'])} and not seen at {labels['alight']}", "lost"
             else:
                 why, kind = gone + "not seen after that", "lost"
-            out[slot] = {"vehicle": b["vehicle"], "kind": kind, "why": why}
+            out[slot] = {"vehicle": b["vehicle"], "kind": kind, "why": why, "left_ts": b["board_ts"]}
             continue
         # no bus left the boarding stop for this one: did one end its trip on the way there?
         best, best_gap = None, None

@@ -24,8 +24,10 @@ SIRI = b"""<?xml version="1.0" encoding="UTF-8"?>
    <DirectionRef>outbound</DirectionRef><OperatorRef>LUAS</OperatorRef>
    <DestinationName>Kingston</DestinationName>
    <VehicleLocation><Longitude>-0.1280</Longitude><Latitude>51.5080</Latitude></VehicleLocation>
-   <Bearing>90.5</Bearing><VehicleRef>LJ12ABC</VehicleRef>
+   <Bearing>90.5</Bearing><VehicleRef>LJ12ABC</VehicleRef><Occupancy>seatsAvailable</Occupancy>
   </MonitoredVehicleJourney>
+  <Extensions><VehicleJourney><SeatedOccupancy>12</SeatedOccupancy><SeatedCapacity>40</SeatedCapacity>
+   <WheelchairCapacity>1</WheelchairCapacity></VehicleJourney></Extensions>
  </VehicleActivity>
  <VehicleActivity>
   <RecordedAtTime>2026-10-22T09:30:00</RecordedAtTime>
@@ -55,6 +57,9 @@ def test_the_parser_reads_buses_ignoring_namespaces_and_dropping_ones_without_a_
     second = buses[1]
     assert second["line"] == "X1" and second["bearing"] is None  # falls back to LineRef; no bearing given
     assert second["recorded_at"].endswith("+00:00")  # a time with no offset is read as UTC
+    assert first["occupancy"] == "seatsAvailable"  # optional in the feed, rarely published
+    assert first["occupancy_counts"] == {"SeatedOccupancy": 12, "SeatedCapacity": 40, "WheelchairCapacity": 1}
+    assert second["occupancy"] is None and second["occupancy_counts"] == {}  # not shared
 
 
 def test_hostile_or_broken_xml_is_refused() -> None:
