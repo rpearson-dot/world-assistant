@@ -243,9 +243,9 @@ def test_home_pollen_sensors_read_the_nearest_point_to_the_home_zone() -> None:
 
     assert run("wa_pollen_home_allergy_risk") == "3.0"  # the point near home, not the one near Alex
     assert run("wa_pollen_home_birch") == "1" and run("wa_pollen_home_grasses") == "0"
-    assert run("wa_pollen_home_alder") == "unknown"  # not in the forecast
+    assert run("wa_pollen_home_alder") == "None"  # not in the forecast: no value (Home Assistant shows unknown), not the text "unknown"
     far = _env({"zone.home": POLLEN_ENTS["zone.home"], "sensor.wa_pollen_tile_x": ("1", {"points": [_point(57.0, -4.0, 9, "high", 3)]})})
-    assert far.from_string(sensors["wa_pollen_home_allergy_risk"]["state"]).render().strip() == "unknown"  # too far to trust
+    assert far.from_string(sensors["wa_pollen_home_allergy_risk"]["state"]).render().strip() == "None"  # too far to trust
     # the dashboard graphs only sensors this package defines
     dash = yaml.safe_load((ROOT / "homeassistant" / "dashboards" / "pollen.yaml").read_text(encoding="utf-8"))
     graphed = {e["entity"] for c in dash["views"][0]["cards"] if c["type"] == "history-graph" for e in c["entities"]}

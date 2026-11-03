@@ -4,6 +4,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.23.5] - 2026-11-03
+
+### Fixed
+- **No more "Received invalid sensor state: unknown … expected a number" in Home Assistant's log** for the home pollen sensors (`world_assistant_pollen.yaml`): with no reading for an allergen (or none near enough), they gave the text "unknown", which a numeric sensor may not have; they now give no value, which Home Assistant shows as unknown without an error.
+- **No more "Error adding entity sensor.wa_events_home_upcoming"** at Home Assistant start-up: before World Assistant has answered (the home zone is not loaded yet when Home Assistant starts), the events sensors are now unavailable rather than the text "None", which a numeric sensor may not have.
+
 ## [0.23.4] - 2026-10-31
 
 ### Fixed
