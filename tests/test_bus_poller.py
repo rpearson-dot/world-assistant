@@ -169,7 +169,7 @@ def test_a_missed_bus_that_turned_back_after_boarding_says_where_and_which_bus()
                     board - 600, T0 + 95 * 60, SEQ_BACK)  # to 08:35  # fmt: skip
     assert why["07:30"]["vehicle"] == "LJ12ABC" and why["07:30"]["kind"] == "turned back"
     assert why["07:30"]["why"].startswith("Left Start stop 07:30; turned back at Middle stop at 07:40, 2 stops short")
-    assert "next seen at Back the other way" in why["07:30"]["why"]
+    assert "then due at Back the other way" in why["07:30"]["why"]
     assert why["08:00"] == {"vehicle": None, "kind": "not seen", "why": "No bus was seen leaving Start stop for this one"}
 
 

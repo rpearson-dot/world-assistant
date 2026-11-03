@@ -145,7 +145,7 @@ async function load() {
       'No leg times yet today.');
     table('rel', ['Bus', 'Days', 'Made it'], rel.slots.map(s => [s.slot, s.days_scheduled, s.miss_rate == null ? '' : meter(s.miss_rate)]),
       'History builds up over the days the tracker runs.');
-    table('an', ['When', 'Bus', 'What happened'], an.map(a => [hhmm(a.at), a.vehicle, anomalyText(a)]), 'Nothing recorded.');
+    table('an', ['When', 'Bus', 'What happened'], events(an).map(a => [hhmm(a.when), a.vehicle, anomalyText(a)]), 'Nothing recorded.');
   } catch (e) { msg.textContent = e.message; }
 }
 function missed(j) {  // the bus (vehicle id) that was meant to make this run, and why it did not
@@ -153,14 +153,28 @@ function missed(j) {  // the bus (vehicle id) that was meant to make this run, a
   if (j.why) box.appendChild(el('div', (j.vehicle ? 'Bus ' + j.vehicle + ': ' : '') + j.why + '.', 'dim small'));
   return box;
 }
+// One time per event, when it happened: an early end is logged only once the bus shows up going the other way, so
+// it takes the time the bus was last at the stop where it ended, not the time it was logged. The same thing logged
+// again within 15 minutes (the feed flickering a bus between directions) is shown once.
+function events(an) {
+  const out = [];
+  const rows = an.map(a => ({ ...a, when: (a.detail || {}).at && a.type === 'early_termination' ? new Date(a.detail.at * 1000).toISOString() : a.at }))
+    .sort((x, y) => new Date(x.when) - new Date(y.when));
+  for (const a of rows) {
+    const k = a.vehicle + '|' + a.type + '|' + ((a.detail || {}).stop || '');
+    if (out.some(b => b.key === k && new Date(a.when) - new Date(b.when) < 15 * 60000)) continue;
+    out.push({ ...a, key: k });
+  }
+  return out.reverse();
+}
 const way = t => t ? ' towards ' + t : '';
 const gps = l => l ? ' GPS: ' + (l.destination ? 'destination ' + l.destination : 'seen') + (l.bearing != null ? ', bearing ' + Math.round(l.bearing) + '°' : '') + (l.recorded_at ? ' at ' + hhmm(l.recorded_at) : '') + '.' : '';
 function anomalyText(a) { return anomalyBase(a) + gps((a.detail || {}).live); }
 function anomalyBase(a) {
   const d = a.detail || {}, at = d.stop ? ' at ' + d.stop : '';
   if (a.type === 'early_termination')
-    return 'Ended early' + at + (d.at ? ' ' + hhmm(new Date(d.at * 1000).toISOString()) : '') + ', heading' + way(d.towards) + ' (' + (d.kind || 'ended') + ', ' + d.stops_before_end + ' stops short of the end)'
-      + (d.resumed_stop ? '; next seen at ' + d.resumed_stop + (d.resumed_at ? ' ' + hhmm(new Date(d.resumed_at * 1000).toISOString()) : '') : '');
+    return 'Ended early' + at + ', heading' + way(d.towards) + ' (' + (d.kind || 'ended') + ', ' + d.stops_before_end + ' stops short of the end)'
+      + (d.resumed_stop ? '; then due at ' + d.resumed_stop + (d.resumed_at ? ' ' + hhmm(new Date(d.resumed_at * 1000).toISOString()) : '') : '');
   if (a.type === 'turnaround')
     return 'Turned round at ' + (d.place || '').replaceAll('_', ' ') + (d.from_towards ? ': was heading' + way(d.from_towards) + ', now' + way(d.to_towards) : '')
       + ' (' + d.gap_s + ' s between sides)';

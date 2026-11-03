@@ -381,7 +381,7 @@ def test_a_bus_that_turned_back_before_the_boarding_stop_explains_the_slot_it_wa
     why = _explain(state, ["07:30", "08:00"])
     assert why["07:30"]["vehicle"] == "BUS7"
     assert why["07:30"]["why"] == ("Turned back at Tolworth at 07:25, 20 stops short of the end of the route; "
-                                   "next seen at Surbiton 07:31, before reaching Worcester Park")  # fmt: skip
+                                   "then due at Surbiton 07:31, before reaching Worcester Park")  # fmt: skip
     assert why["08:00"]["kind"] == "not seen"  # the other direction's bus is not the reason
 
 

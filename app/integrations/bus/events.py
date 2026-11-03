@@ -473,7 +473,7 @@ def explain_misses(
         if e.get("stops_before_end"):
             text += f", {e['stops_before_end']} stops short of the end of the route"
         if e.get("resumed_stop"):
-            text += "; next seen at " + e["resumed_stop"] + (" " + fmt(e["resumed_at"]) if e.get("resumed_at") else "")
+            text += "; then due at " + e["resumed_stop"] + (" " + fmt(e["resumed_at"]) if e.get("resumed_at") else "")
         return text
 
     for slot in missed:
