@@ -181,6 +181,14 @@ async def ensure_day(conn: AsyncConnection, tid: str, day: date, slots: list[str
     )
 
 
+async def save_explained(conn: AsyncConnection, tid: str, day: date, explained: dict[str, Any]) -> None:
+    """Why each missed bus missed (events.explain_misses), rewritten each poll."""
+    await conn.execute(
+        text("UPDATE bus_target_day SET explained = CAST(:e AS jsonb) WHERE tracker = :t AND day = :d"),
+        {"t": tid, "d": day, "e": _j(explained)},
+    )
+
+
 async def save_hits(conn: AsyncConnection, tid: str, day: date, hits: list[dict[str, Any]]) -> None:
     if not hits:
         return

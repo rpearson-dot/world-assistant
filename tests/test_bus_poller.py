@@ -148,6 +148,47 @@ def test_bus_after_deadline_is_not_a_hit() -> None:
     assert hits == []
 
 
+def explained(feeds: list[tuple[str, dict[str, float]]], start: float, end: float,
+              seq: list[dict[str, Any]] | None = None) -> dict[str, Any]:  # fmt: skip
+    cfg = TrackerConfig.model_validate(cfg_dict())
+    state, lookup, out = new_state(), Lookup(seq or SEQ), {}
+    now = start
+    while now <= end:
+        preds = [p for v, arr in feeds for p in feed(v, arr, now)]
+        out = process_poll(cfg, state, preds, lookup, now, DAY, TZ, ["07:30", "08:00"])
+        now += 30
+    return out["explained"]
+
+
+SEQ_BACK = [*SEQ, {"direction": "inbound", "pos": 1, "sid": "AAAA0005", "name": "Back the other way"}]
+
+
+def test_a_missed_bus_that_turned_back_after_boarding_says_where_and_which_bus() -> None:
+    board = T0 + 30 * 60  # 07:30
+    why = explained([("LJ12ABC", {"AAAA0001": board, "AAAA0002": board + 600, "AAAA0005": board + 900})],
+                    board - 600, T0 + 95 * 60, SEQ_BACK)  # to 08:35  # fmt: skip
+    assert why["07:30"]["vehicle"] == "LJ12ABC" and why["07:30"]["kind"] == "turned back"
+    assert why["07:30"]["why"].startswith("Left Start stop 07:30; turned back at Middle stop at 07:40, 2 stops short")
+    assert "next seen at Back the other way" in why["07:30"]["why"]
+    assert why["08:00"] == {"vehicle": None, "kind": "not seen", "why": "No bus was seen leaving Start stop for this one"}
+
+
+def test_a_missed_bus_that_arrived_after_the_deadline_says_so() -> None:
+    board = T0 + 62 * 60  # 08:02; reaches the target 08:17, after 08:10
+    why = explained([("V5", {"AAAA0001": board, "AAAA0002": board + 600, "AAAA0003": board + 900, "AAAA0009": board + 1200})],
+                    T0 + 50 * 60, T0 + 95 * 60)  # fmt: skip
+    assert why["08:00"]["vehicle"] == "V5" and why["08:00"]["kind"] == "late"
+    assert "reached Destination stop at 08:17, after the 08:10 deadline" in why["08:00"]["why"]
+    assert why["07:30"]["kind"] == "not seen"
+
+
+def test_a_bus_that_made_it_is_not_explained() -> None:
+    board = T0 + 30 * 60
+    why = explained([("V1", {"AAAA0001": board, "AAAA0002": board + 600, "AAAA0003": board + 900, "AAAA0009": board + 1200})],
+                    board - 600, T0 + 95 * 60)  # fmt: skip
+    assert "07:30" not in why and why["08:00"]["kind"] == "not seen"
+
+
 def test_bus_terminating_at_destination_counts_via_return_side() -> None:
     board = T0 + 30 * 60
     hits = drive(
@@ -174,7 +215,7 @@ def _migration(name: str) -> Any:
 
 @pytest.fixture
 def schema() -> Iterator[None]:
-    m11, m26 = _migration("0011_bus_tracking"), _migration("0026_bus_position")
+    m11, m26, m36 = _migration("0011_bus_tracking"), _migration("0026_bus_position"), _migration("0036_bus_miss_why")
     eng = sa.create_engine(URL)  # type: ignore[arg-type]
     with eng.begin() as conn:
         for t in ("bus_position", "bus_timetable", "bus_target_hit", "bus_target_day", "bus_anomaly",
@@ -183,8 +224,10 @@ def schema() -> Iterator[None]:
         with Operations.context(MigrationContext.configure(conn)):
             m11.upgrade()
             m26.upgrade()
+            m36.upgrade()
     yield
     with eng.begin() as conn, Operations.context(MigrationContext.configure(conn)):
+        m36.downgrade()
         m26.downgrade()
         m11.downgrade()
     eng.dispose()
@@ -245,6 +288,12 @@ async def test_poll_stores_hit_and_api_reports_it(
         assert [x["vehicle"] for x in t["hits"]] == ["V9"] and t["hits"][0]["slot"] == "07:30"
         assert "reached the target stop" in t["summary"]
         assert t["pending"] and "07:30" not in t["pending"]
+        j = {x["slot"]: x for x in t["journeys"]}
+        assert j["07:30"]["vehicle"] == "V9"
+        assert j["07:00"]["status"] == "missed" and j["07:00"]["why"] == "No bus was seen leaving Start stop for this one"
+        fails = [b for d in c.get("/v1/bus/trackers/main/log?days=90", headers=h).json()["days"] for b in d["buses"]
+                 if b["slot"] == "07:00"]  # fmt: skip
+        assert fails and fails[0]["why"] == "No bus was seen leaving Start stop for this one"
         r = c.get("/v1/bus/trackers/main/reliability", headers=h).json()
         assert r["days_recorded"] == 1
         cond = c.get("/v1/bus/trackers/main/conditions", headers=h).json()

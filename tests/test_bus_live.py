@@ -98,7 +98,7 @@ def schema() -> Iterator[None]:
         for t in TABLES:
             conn.execute(sa.text(f"DROP TABLE IF EXISTS {t} CASCADE"))
         with Operations.context(MigrationContext.configure(conn)):
-            for name in ("0011_bus_tracking", "0020_naptan", "0026_bus_position"):
+            for name in ("0011_bus_tracking", "0020_naptan", "0026_bus_position", "0036_bus_miss_why"):
                 spec = importlib.util.spec_from_file_location(name, VERSIONS / f"{name}.py")
                 assert spec and spec.loader
                 m = importlib.util.module_from_spec(spec)

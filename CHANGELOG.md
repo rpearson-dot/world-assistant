@@ -4,6 +4,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.23.6] - 2026-11-03
+
+### Added
+- **Bus tracker: why a bus did not arrive.** In "Today's buses", a scheduled bus that did not reach the target stop now says which bus it was (its vehicle id) and why, for example "Bus LJ12ABC: Left Worcester Park station 07:31; turned back at New Malden / Fountain Roundabout at 07:40, 15 stops short of the end of the route; next seen at St James Church 07:46." The reasons:
+  - it turned back, or stopped reporting, after leaving your stop (where and when, and where it was next seen);
+  - it reached the target after the deadline (when);
+  - it was last seen somewhere on the way and not at the target;
+  - a bus turned back before it reached your stop;
+  - no bus was seen leaving your stop for it.
+- The reasons are logged with each day (database migration 0036), so past days keep them; the `/log` endpoint gives the bus and reason for each failure, and the `/target` endpoint gives them on each missed journey (`vehicle`, `why`, `why_kind`), and the bus on each one that arrived.
+
+### Changed
+- **Recent events: an early end says when the bus was last seen there** ("Ended early at New Malden High Street 08:31, …"), not only when it was logged, so the "next seen" time no longer looks earlier than the event.
+
 ## [0.23.5] - 2026-11-03
 
 ### Fixed

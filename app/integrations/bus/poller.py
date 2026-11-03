@@ -19,11 +19,14 @@ from app.integrations.bus.config import TrackerConfig
 from app.integrations.bus.events import (
     assign_slots,
     early_terminations,
+    explain_misses,
+    remember_terminations,
     segment_observations,
     sentence,
     slots_in_window,
     target_hits,
     to_minutes,
+    track_boarders,
     turnarounds,
 )
 from app.integrations.bus.trips import detect_anomalies, first_sightings, new_state, update_trips
@@ -111,14 +114,41 @@ def process_poll(
         state["claimed"] = []
         state["terminal"] = {}
         state["turned"] = []
+        state["boarders"] = {}
+        state["ended_today"] = []
     update_trips(state, preds, lookup.pos_of, now)
     anomalies = detect_anomalies(state, lookup.dir_of, lookup.names, lookup.towards)
     anomalies += turnarounds(state, cfg.place_of, lookup.towards)
-    anomalies += early_terminations(state, lookup.end_pos, lookup.names, towards=lookup.towards)
+    ended = early_terminations(state, lookup.end_pos, lookup.names, towards=lookup.towards)
+    remember_terminations(state, ended)
+    anomalies += ended
     anomalies += first_sightings(state, lookup.names)
     obs = segment_observations(state, now, cfg.segment_pairs())
     hits = compute_hits(cfg, state, now, local_day, tz, slots)
-    return {"anomalies": anomalies, "observations": obs, "hits": hits}
+    return {"anomalies": anomalies, "observations": obs, "hits": hits,
+            "explained": explain_day(cfg, state, lookup, now, local_day, tz, slots)}  # fmt: skip
+
+
+def explain_day(
+    cfg: TrackerConfig, state: dict[str, Any], lookup: Lookup, now: float, local_day: date, tz: ZoneInfo,
+    slots: list[str],
+) -> dict[str, dict[str, Any]]:  # fmt: skip
+    """Why each missed scheduled bus missed so far today (events.explain_misses), after following the buses
+    that left the boarding stop. Mutates `state`."""
+    tcfg = cfg.target_cfg()
+    if not tcfg or not cfg.target:
+        return {}
+    deadline_ts = local_epoch(local_day, cfg.deadline, tz)
+    track_boarders(state, tcfg["board"], tcfg["alight"], local_epoch(local_day, cfg.earliest, tz), deadline_ts)
+    labels = {s.key: (s.label or s.key).split(" (")[0] for s in cfg.stops}
+    local = datetime.fromtimestamp(now, tz)
+    return explain_misses(
+        slots, state.get("claimed") or [], state, local.hour * 60 + local.minute, deadline_ts,
+        lookup.pos_of(tcfg["board"]), lookup.pos_of, lookup.names,
+        {"board": labels.get(cfg.target.board, "the boarding stop"), "alight": labels.get(cfg.target.alight, "the target"),
+         "deadline": cfg.deadline},
+        lambda t: datetime.fromtimestamp(t, tz).strftime("%H:%M"),
+    )  # fmt: skip
 
 
 def build_snapshot(
@@ -279,6 +309,7 @@ async def poll_one(
         await store.save_observations(conn, tid, out["observations"])
         await store.save_anomalies(conn, tid, out["anomalies"])
         await store.save_hits(conn, tid, local.date(), out["hits"])
+        await store.save_explained(conn, tid, local.date(), out["explained"])
         await store.save_state(conn, tid, state)
         day_hits = await store.day_hits(conn, tid, local.date())
     if publisher:

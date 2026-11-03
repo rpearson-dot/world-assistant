@@ -330,7 +330,7 @@ async def live(request: Request, tid: str) -> dict[str, Any]:
 async def _history(request: Request, tid: str, since: Any) -> tuple[list[Any], list[Any]]:
     async with request.app.state.engine.connect() as conn:
         day_rows = (await conn.execute(
-            text("SELECT day, slots FROM bus_target_day WHERE tracker = :t AND day >= :s ORDER BY day"),
+            text("SELECT day, slots, explained FROM bus_target_day WHERE tracker = :t AND day >= :s ORDER BY day"),
             {"t": tid, "s": since})).all()  # fmt: skip
         hit_rows = (await conn.execute(
             text("SELECT day, slot, arrive_at, delay_min FROM bus_target_hit "
@@ -353,7 +353,7 @@ async def target(
     the_day = day or now.date().isoformat()
     async with request.app.state.engine.connect() as conn:
         d = (await conn.execute(
-            text("SELECT slots FROM bus_target_day WHERE tracker = :t AND day = :d"),
+            text("SELECT slots, explained FROM bus_target_day WHERE tracker = :t AND day = :d"),
             {"t": tid, "d": the_day})).first()  # fmt: skip
         hits = [dict(r._mapping) for r in await conn.execute(
             text("SELECT vehicle, board_at, arrive_at, slot, delay_min, via_return FROM bus_target_hit "
@@ -368,6 +368,11 @@ async def target(
         slots, hits, pair_arrivals(slots, due or []), now.hour * 60 + now.minute if is_today else None,
         lambda t: t.astimezone(tz).strftime("%H:%M") if t else None,
     )
+    explained = dict(d[1] or {}) if d else {}
+    for j in journeys:  # the bus that missed, and why (see events.explain_misses)
+        why = explained.get(j["slot"]) if j["status"] == "missed" else None
+        if why:
+            j.update(vehicle=why.get("vehicle"), why=why.get("why"), why_kind=why.get("kind"))
     labels = {s.key: s.label for s in cfg.stops}
     pending = [s for s in slots if s not in hit_slots]
     last = hits[-1] if hits else None
@@ -377,7 +382,7 @@ async def target(
     for hday, slot, _a, _d in hit_rows:
         by_day.setdefault(hday.isoformat(), []).append(slot)
     reliability = slot_reliability(
-        [{"date": dd.isoformat(), "slots": list(ss), "hit_slots": by_day.get(dd.isoformat(), [])} for dd, ss in day_rows],
+        [{"date": dd.isoformat(), "slots": list(ss), "hit_slots": by_day.get(dd.isoformat(), [])} for dd, ss, _e in day_rows],
         now.date().isoformat(), now.hour * 60 + now.minute,
     )  # fmt: skip
     chance = outlook(
@@ -407,8 +412,8 @@ async def log(request: Request, tid: str, days: int = Query(HISTORY_DAYS, ge=1, 
          "delay_min": delay}
         for hday, slot, arrive, delay in hit_rows
     ]  # fmt: skip
-    out = result_log([(dd.isoformat(), list(ss)) for dd, ss in day_rows], hits, now.date().isoformat(),
-                     now.hour * 60 + now.minute)  # fmt: skip
+    out = result_log([(dd.isoformat(), list(ss)) for dd, ss, _e in day_rows], hits, now.date().isoformat(),
+                     now.hour * 60 + now.minute, {dd.isoformat(): dict(e or {}) for dd, _s, e in day_rows})  # fmt: skip
     return {"deadline": cfg.deadline, "window_days": days, **out}
 
 

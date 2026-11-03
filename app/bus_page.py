@@ -15,7 +15,8 @@ PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>World Assistant buses</title>
 <style>
-/*BASE_CSS*/</style></head><body><main>
+/*BASE_CSS*/
+.why .small{font-size:.85em;margin-top:3px;max-width:30em;white-space:normal}</style></head><body><main>
 <!--NAV-->
 <h1>Buses</h1>
 <div class="bar"><input id="t" type="password" placeholder="API token" autocomplete="current-password">
@@ -131,7 +132,7 @@ async function load() {
     table('hits', ['Scheduled', 'Actual', 'Scheduled', 'Late / early', 'Arrived today?'],
       rows.map(j => [j.slot || '', j.left || '', j.due_arrive || '', j.late_min == null ? '' : mins(j.late_min),
         j.status === 'arrived' ? badge('Arrived ' + (j.arrived || ''), 'good')
-          : j.status === 'missed' ? badge('Did not arrive', 'bad') : el('span', 'Not yet', 'dim')]),
+          : j.status === 'missed' ? missed(j) : el('span', 'Not yet', 'dim')]),
       'No buses scheduled in the window.');
     const t = $('hits');
     if (rows.length) { const g = t.tHead.insertRow(0);
@@ -147,13 +148,18 @@ async function load() {
     table('an', ['When', 'Bus', 'What happened'], an.map(a => [hhmm(a.at), a.vehicle, anomalyText(a)]), 'Nothing recorded.');
   } catch (e) { msg.textContent = e.message; }
 }
+function missed(j) {  // the bus (vehicle id) that was meant to make this run, and why it did not
+  const box = el('div', null, 'why'); box.appendChild(badge('Did not arrive', 'bad'));
+  if (j.why) box.appendChild(el('div', (j.vehicle ? 'Bus ' + j.vehicle + ': ' : '') + j.why + '.', 'dim small'));
+  return box;
+}
 const way = t => t ? ' towards ' + t : '';
 const gps = l => l ? ' GPS: ' + (l.destination ? 'destination ' + l.destination : 'seen') + (l.bearing != null ? ', bearing ' + Math.round(l.bearing) + '°' : '') + (l.recorded_at ? ' at ' + hhmm(l.recorded_at) : '') + '.' : '';
 function anomalyText(a) { return anomalyBase(a) + gps((a.detail || {}).live); }
 function anomalyBase(a) {
   const d = a.detail || {}, at = d.stop ? ' at ' + d.stop : '';
   if (a.type === 'early_termination')
-    return 'Ended early' + at + ', heading' + way(d.towards) + ' (' + (d.kind || 'ended') + ', ' + d.stops_before_end + ' stops short of the end)'
+    return 'Ended early' + at + (d.at ? ' ' + hhmm(new Date(d.at * 1000).toISOString()) : '') + ', heading' + way(d.towards) + ' (' + (d.kind || 'ended') + ', ' + d.stops_before_end + ' stops short of the end)'
       + (d.resumed_stop ? '; next seen at ' + d.resumed_stop + (d.resumed_at ? ' ' + hhmm(new Date(d.resumed_at * 1000).toISOString()) : '') : '');
   if (a.type === 'turnaround')
     return 'Turned round at ' + (d.place || '').replaceAll('_', ' ') + (d.from_towards ? ': was heading' + way(d.from_towards) + ', now' + way(d.to_towards) : '')
