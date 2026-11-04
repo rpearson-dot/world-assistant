@@ -124,24 +124,79 @@ async function keepScreenshot(page, provider, now) {
 }
 
 function withShot(err, shot) {
-  if (shot) err.message = `${err.message} (a screenshot of the page is in the supermarket folder: ${shot})`;
+  if (shot) {
+    err.screenshot = shot;
+    err.message = `${err.message} (the Shopping page shows a screenshot of what the retailer's page said)`;
+  }
   return err;
 }
 
+/** The newest screenshot kept for a provider: its file path, or null. */
+function latestScreenshot(provider) {
+  try {
+    const dir = path.join(os.homedir(), 'login-debug');
+    const files = fs.readdirSync(dir).filter((f) => f.startsWith(`${provider}-`) && f.endsWith('.png')).sort();
+    return files.length ? path.join(dir, files[files.length - 1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+const LABELS = { ocado: 'Ocado', sainsburys: "Sainsbury's" };
+const CODE_BOX = '#code, input[name="code"], input[name*="otp" i], input[autocomplete="one-time-code"], input[inputmode="numeric"]';
+const CHECK_WORDS = /verif|confirm (your|it'?s you)|check your (email|inbox|phone)|we('ve| have) (sent|emailed|texted)|one[- ]time|security code|enter the code|(2|two)[- ]step|authenticat/i;
+
 /**
- * One login at a time. `launch` opens a browser (playwright's chromium.launch, or a fake in the tests).
- * State: idle, or waiting for a code (Sainsbury's) with the page held open until HOLD_MS passes.
+ * Is the page asking to confirm the sign-in? null, or how: sms (a code by text, as Sainsbury's always does),
+ * email_code (a code sent by email, typed here), email_link (a link in an email to click, then Continue here).
+ */
+async function challenge(page) {
+  const url = page.url();
+  if (url.includes('/mfa')) return 'sms';
+  // The sign-in form itself (with an error on it, say) is not a confirmation step.
+  const form = await page.locator(PASSWORD).first().isVisible().catch(() => false);
+  if (form && (await page.locator(EMAIL).first().isVisible().catch(() => false))) return null;
+  const text = await page.locator('body').first().innerText({ timeout: 3000 }).catch(() => '');
+  if (!CHECK_WORDS.test(text) && !/verif|challenge|otp|2fa|confirm/i.test(url)) return null;
+  const box = await page.locator(CODE_BOX).first().isVisible().catch(() => false);
+  if (box) return /\b(text|sms|phone|mobile)\b/i.test(text) && !/\bemail\b/i.test(text) ? 'sms' : 'email_code';
+  return 'email_link';
+}
+
+/** Where to look to see whether the sign-in went through. */
+const HOME = { ocado: 'https://www.ocado.com/', sainsburys: 'https://www.sainsburys.co.uk/gol-ui/groceries' };
+
+/**
+ * One login at a time. Each retailer has its own browser profile, kept in ~/browser/<retailer>
+ * (WA_DATA_DIR/supermarket/browser), so a sign-in it has confirmed once (an email link, a "new device" check) is a
+ * known device next time. `open(provider)` gives { context, close }: playwright's persistent context, or a fake in
+ * the tests. A login that needs confirming holds the page open until HOLD_MS passes.
  */
 class Logins {
-  constructor({ launch, now = () => new Date(), holdMs = HOLD_MS } = {}) {
-    this.launch = launch || (async (opts) => (await import('playwright')).chromium.launch(opts));
+  constructor({ open, launch, now = () => new Date(), holdMs = HOLD_MS } = {}) {
+    this.open = open || (launch
+      ? async () => { const b = await launch({ headless: true }); const c = await b.newContext({ userAgent: UA }); return { context: c, close: () => b.close() }; }
+      : async (provider) => {
+        const { chromium } = await import('playwright');
+        const dir = path.join(os.homedir(), 'browser', provider);
+        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+        const context = await chromium.launchPersistentContext(dir, {
+          headless: true, args: ['--disable-blink-features=AutomationControlled'],
+          userAgent: UA, locale: 'en-GB', timezoneId: 'Europe/London', viewport: { width: 1280, height: 900 },
+        });
+        return { context, close: () => context.close() };
+      });
     this.now = now;
     this.holdMs = holdMs;
-    this.pending = null; // { provider, browser, context, page, until, timer }
+    this.pending = null; // { provider, kind, context, close, page, until, timer, screenshot }
   }
 
   state() {
-    return this.pending ? { waiting_for_code: this.pending.provider, until: new Date(this.pending.until).toISOString() } : null;
+    const p = this.pending;
+    if (!p) return null;
+    const out = { provider: p.provider, kind: p.kind, until: new Date(p.until).toISOString(), screenshot: p.screenshot || null };
+    if (p.kind !== 'email_link') out.waiting_for_code = p.provider; // the name the page used before
+    return out;
   }
 
   async close() {
@@ -149,23 +204,48 @@ class Logins {
     this.pending = null;
     if (p) {
       clearTimeout(p.timer);
-      await p.browser.close().catch(() => {});
+      await p.close().catch(() => {});
     }
+  }
+
+  async hold(provider, kind, session) {
+    const until = this.now().getTime() + this.holdMs;
+    const timer = setTimeout(() => { this.close(); }, this.holdMs);
+    timer.unref?.();
+    const screenshot = await keepScreenshot(session.page, provider, this.now());
+    this.pending = { provider, kind, ...session, until, timer, screenshot };
+    const how = {
+      sms: `${LABELS[provider]} has sent a code to your phone: type it in`,
+      email_code: `${LABELS[provider]} has emailed a code: type it in`,
+      email_link: `${LABELS[provider]} has emailed a link to confirm it's you: click it, then press Continue`,
+    }[kind];
+    return { status: 'verify_needed', kind, provider, until: new Date(until).toISOString(), message: `${how} within ${Math.round(this.holdMs / 60000)} minutes.`, screenshot };
+  }
+
+  async done(provider, context) {
+    const saved = writeSession(provider, await context.cookies(), this.now());
+    return { status: 'logged_in', session: summary(provider, saved, this.now()) };
   }
 
   async start(provider, email, password) {
     if (!email || !password) {
-      throw Object.assign(new Error(`No ${provider === 'ocado' ? 'Ocado' : "Sainsbury's"} email and password saved.`), { statusCode: 400 });
+      throw Object.assign(new Error(`No ${LABELS[provider] || provider} email and password saved.`), { statusCode: 400 });
     }
     await this.close();
-    const browser = await this.launch({ headless: true, args: ['--disable-blink-features=AutomationControlled'] });
+    const { context, close } = await this.open(provider);
+    let page = null;
     try {
-      const context = await browser.newContext({ userAgent: UA, locale: 'en-GB', timezoneId: 'Europe/London' });
-      const page = await context.newPage();
+      page = await context.newPage();
       const url = provider === 'ocado' ? 'https://www.ocado.com/login' : 'https://www.sainsburys.co.uk/gol-ui/oauth/login';
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await page.waitForTimeout(3000);
       await dropCookieBanner(page);
+      // The remembered profile may still be signed in: then there is no form, and the login is already done.
+      if (!page.url().includes('login') && !(await page.locator(EMAIL).first().isVisible().catch(() => false))) {
+        const out = await this.done(provider, context);
+        await close();
+        return out;
+      }
       await page.waitForSelector(EMAIL, { timeout: 20000 });
       await page.locator(EMAIL).first().fill(email);
       const buttons = provider === 'ocado'
@@ -183,47 +263,62 @@ class Logins {
       await dropCookieBanner(page);
       await submit(page, buttons, PASSWORD);
       await page.waitForTimeout(6000);
-      const at = page.url();
-      if (provider === 'sainsburys' && at.includes('/mfa')) {
-        const until = this.now().getTime() + this.holdMs;
-        const timer = setTimeout(() => { this.close(); }, this.holdMs);
-        timer.unref?.();
-        this.pending = { provider, browser, context, page, until, timer };
-        return { status: 'code_needed', until: new Date(until).toISOString() };
-      }
-      if (at.includes('/login')) throw Object.assign(new Error('Still on the login page: check the email and password.'), { statusCode: 401 });
-      const saved = writeSession(provider, await context.cookies(), this.now());
-      await browser.close();
-      return { status: 'logged_in', session: summary(provider, saved, this.now()) };
+      const kind = await challenge(page);
+      if (kind) return await this.hold(provider, kind, { context, close, page });
+      if (page.url().includes('/login')) throw Object.assign(new Error('Still on the login page: check the email and password.'), { statusCode: 401 });
+      const out = await this.done(provider, context);
+      await close();
+      return out;
     } catch (e) {
-      if (!this.pending) {
-        const pages = (await Promise.resolve(browser.contexts?.() || []).catch(() => [])).flatMap((c) => c.pages?.() || []);
-        const shot = pages.length ? await keepScreenshot(pages[pages.length - 1], provider, this.now()) : null;
-        await browser.close().catch(() => {});
-        throw withShot(e, shot);
-      }
-      throw e;
+      if (this.pending) throw e;
+      const shot = page ? await keepScreenshot(page, provider, this.now()) : null;
+      await close().catch(() => {});
+      throw withShot(e, shot);
     }
   }
 
-  async code(code) {
+  /** The code from the text or email (Sainsbury's SMS, or a code Ocado emails). */
+  async code(code, provider) {
     const p = this.pending;
-    if (!p) throw Object.assign(new Error('No login is waiting for a code. Start the login again.'), { statusCode: 409 });
-    if (!/^\d{6}$/.test(String(code || '').trim())) throw Object.assign(new Error('The code is 6 digits.'), { statusCode: 400 });
+    if (!p || (provider && p.provider !== provider)) {
+      throw Object.assign(new Error('No login is waiting for a code. Start the login again.'), { statusCode: 409 });
+    }
+    if (p.kind === 'email_link') throw Object.assign(new Error('This one is a link in the email: click it, then press Continue.'), { statusCode: 400 });
+    const c = String(code || '').trim();
+    if (!/^[A-Za-z0-9]{4,10}$/.test(c)) throw Object.assign(new Error('That does not look like the code (4 to 10 letters or digits).'), { statusCode: 400 });
     try {
-      const box = '#code, input[name="code"], input[autocomplete="one-time-code"], input[inputmode="numeric"]';
-      await p.page.locator(box).first().fill(String(code).trim());
+      await p.page.locator(CODE_BOX).first().fill(c);
       await dropCookieBanner(p.page);
-      await submit(p.page, ['button[data-testid="submit-code"]', 'button[type="submit"]'], box);
+      await submit(p.page, ['button[data-testid="submit-code"]', 'button[type="submit"]'], CODE_BOX);
       await p.page.waitForTimeout(6000);
       const at = p.page.url();
-      if (at.includes('login') || at.includes('mfa')) {
-        throw Object.assign(new Error('Sainsbury\'s did not accept that code. Start the login again for a new one.'), { statusCode: 401 });
+      if (at.includes('login') || (await challenge(p.page))) {
+        throw Object.assign(new Error(`${LABELS[p.provider]} did not accept that code. Start the login again for a new one.`), { statusCode: 401 });
       }
-      const saved = writeSession(p.provider, await p.context.cookies(), this.now());
-      return { status: 'logged_in', session: summary(p.provider, saved, this.now()) };
+      return await this.done(p.provider, p.context);
     } catch (e) {
       throw withShot(e, await keepScreenshot(p.page, p.provider, this.now()));
+    } finally {
+      await this.close();
+    }
+  }
+
+  /** After clicking the link in the email: look again. Still waiting keeps the browser open for another try. */
+  async continue(provider) {
+    const p = this.pending;
+    if (!p || (provider && p.provider !== provider)) {
+      throw Object.assign(new Error('No login is waiting. Start the login again.'), { statusCode: 409 });
+    }
+    await p.page.goto(HOME[p.provider], { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+    await p.page.waitForTimeout(4000);
+    const signedOut = p.page.url().includes('login') || (await challenge(p.page))
+      || (await p.page.locator(EMAIL).first().isVisible().catch(() => false));
+    if (signedOut) {
+      p.screenshot = await keepScreenshot(p.page, p.provider, this.now());
+      throw Object.assign(new Error(`${LABELS[p.provider]} has not confirmed it yet. Click the link in the newest email, then press Continue again (or start the login again).`), { statusCode: 409, screenshot: p.screenshot });
+    }
+    try {
+      return await this.done(p.provider, p.context);
     } finally {
       await this.close();
     }
@@ -243,4 +338,4 @@ function summary(provider, data, now = new Date()) {
   };
 }
 
-module.exports = { Logins, writeSession, readSession, normaliseCookies, summary, sessionFile };
+module.exports = { Logins, writeSession, readSession, normaliseCookies, summary, sessionFile, latestScreenshot, challenge };

@@ -4,17 +4,21 @@
 //   GET  /health                      the service, each retailer's saved login, and a login waiting for a code
 //   POST /compare                     {items: [{key, query}], providers?, limit?}: search every item at each retailer
 //   GET  /slots?provider=             next delivery slots (read only)
+//   GET  /basket?provider=            what is in the basket now
+//   POST /basket/add                  {provider, items: [{id, name, quantity}]}: each item up to that quantity
 //   POST /login/start                 {provider, email, password}: log in (Sainsbury's stops for the SMS code)
-//   POST /login/code                  {code}: the Sainsbury's SMS code
+//   POST /login/code                  {code, provider}: the code the retailer texted or emailed
+//   POST /login/continue              {provider}: after clicking the link the retailer emailed
+//   GET  /login/screenshot?provider=  the newest screenshot of a login page (a failure, or the confirmation step)
 //   POST /session/import              {provider, cookies}: cookies exported from a real browser instead of a login
 //   POST /logout                      {provider}
 //
 // Every request needs the bearer token (SUPERMARKET_API_TOKEN, or the file named by SUPERMARKET_API_TOKEN_FILE).
-// It never books, fills a basket or checks out. It runs on World Assistant's internal network with no port published.
+// It never books a slot or checks out; it only puts products in the basket when World Assistant asks. It runs on World Assistant's internal network with no port published.
 
 const http = require('node:http');
 const fs = require('node:fs');
-const { Logins, readSession, writeSession, normaliseCookies, summary, sessionFile } = require('./login');
+const { Logins, readSession, writeSession, normaliseCookies, summary, sessionFile, latestScreenshot } = require('./login');
 
 const PROVIDERS = ['sainsburys', 'ocado'];
 const LABEL = { sainsburys: "Sainsbury's", ocado: 'Ocado' };
@@ -160,11 +164,70 @@ function makeServer({ token, createProvider, logins = new Logins(), secret = rea
     };
   }
 
+  /** The basket as World Assistant shows it. */
+  function basketOut(id, b) {
+    return {
+      provider: id,
+      items: (b?.items || []).map((i) => ({ id: String(i.item_id), product_id: String(i.product_uid ?? ''), name: i.name || '',
+        quantity: Number(i.quantity) || 0, total: Number(i.total_price) || 0 })),
+      total: Number(b?.total_cost) || 0,
+      count: Number(b?.total_quantity) || 0,
+    };
+  }
+
+  async function basket(id) {
+    const p = await provider(id);
+    if (typeof p.getBasket !== 'function') throw fail(501, `${LABEL[id]} has no basket here`);
+    return basketOut(id, await withTimeout(p.getBasket(), 60000, `${LABEL[id]} basket`));
+  }
+
+  /**
+   * Put the list's products in the basket. Each item reaches the quantity asked for: added when it is not there,
+   * raised when there are fewer, left alone when there are already enough (so sending twice never doubles it).
+   * One at a time, and one failure does not stop the rest.
+   */
+  async function addAll(id, items) {
+    if (!Array.isArray(items) || !items.length) throw fail(400, 'items: give at least one {id, quantity}');
+    if (items.length > MAX_ITEMS) throw fail(400, `items: at most ${MAX_ITEMS} at once`);
+    const p = await provider(id);
+    if (typeof p.addToBasket !== 'function') throw fail(501, `${LABEL[id]} has no basket here`);
+    const before = basketOut(id, await withTimeout(p.getBasket(), 60000, `${LABEL[id]} basket`));
+    const norm = (x) => String(x || '').trim().toLowerCase();
+    const results = [];
+    for (const it of items) {
+      const want = Math.min(Math.max(parseInt(it?.quantity, 10) || 1, 1), 99);
+      const pid = String(it?.id || '');
+      if (!pid) { results.push({ id: pid, name: it?.name || '', status: 'failed', error: 'no product id' }); continue; }
+      const have = before.items.find((b) => b.product_id === pid || b.id === pid || (it.name && norm(b.name) === norm(it.name)));
+      try {
+        if (!have) {
+          await withTimeout(p.addToBasket(pid, want), 30000, 'adding to the basket');
+          results.push({ id: pid, name: it.name || '', status: 'added', quantity: want });
+        } else if (have.quantity < want) {
+          await withTimeout(p.updateBasketItem(have.id, want), 30000, 'changing the basket');
+          results.push({ id: pid, name: it.name || '', status: 'raised', quantity: want, was: have.quantity });
+        } else {
+          results.push({ id: pid, name: it.name || '', status: 'already', quantity: have.quantity });
+        }
+      } catch (e) {
+        results.push({ id: pid, name: it.name || '', status: 'failed', error: e.message || String(e) });
+      }
+    }
+    let after = null;
+    try { after = basketOut(id, await withTimeout(p.getBasket(), 60000, `${LABEL[id]} basket`)); } catch { /* the results still stand */ }
+    return { provider: id, results, basket: after };
+  }
+
   async function route(req, url, body) {
     const p = url.pathname;
     if (req.method === 'GET' && (p === '/' || p === '/health')) return health();
     if (req.method === 'POST' && p === '/compare') return compare(body);
     if (req.method === 'GET' && p === '/slots') return slots(url.searchParams.get('provider') || '');
+    if (req.method === 'GET' && p === '/basket') return basket(url.searchParams.get('provider') || '');
+    if (req.method === 'POST' && p === '/basket/add') {
+      if (!PROVIDERS.includes(body?.provider)) throw fail(400, `provider must be one of ${PROVIDERS.join(', ')}`);
+      return addAll(body.provider, body.items);
+    }
     if (req.method === 'POST' && p === '/login/start') {
       const id = body?.provider;
       if (!PROVIDERS.includes(id)) throw fail(400, `provider must be one of ${PROVIDERS.join(', ')}`);
@@ -176,9 +239,21 @@ function makeServer({ token, createProvider, logins = new Logins(), secret = rea
       return out;
     }
     if (req.method === 'POST' && p === '/login/code') {
-      const out = await logins.code(body?.code);
-      cache.delete('sainsburys');
+      const out = await logins.code(body?.code, body?.provider);
+      cache.clear();
       return out;
+    }
+    if (req.method === 'POST' && p === '/login/continue') {
+      const out = await logins.continue(body?.provider);
+      cache.clear();
+      return out;
+    }
+    if (req.method === 'GET' && p === '/login/screenshot') {
+      const id = url.searchParams.get('provider') || '';
+      if (!PROVIDERS.includes(id)) throw fail(400, `provider must be one of ${PROVIDERS.join(', ')}`);
+      const file = latestScreenshot(id);
+      if (!file) throw fail(404, 'No screenshot kept for that retailer');
+      return { __file: file, __type: 'image/png', __name: require('node:path').basename(file) };
     }
     if (req.method === 'POST' && p === '/session/import') {
       const id = body?.provider;
@@ -194,7 +269,7 @@ function makeServer({ token, createProvider, logins = new Logins(), secret = rea
       cache.delete(id);
       return { status: 'logged_out' };
     }
-    if (['/', '/health', '/compare', '/slots', '/login/start', '/login/code', '/session/import', '/logout'].includes(p)) {
+    if (['/', '/health', '/compare', '/slots', '/basket', '/basket/add', '/login/start', '/login/code', '/login/continue', '/login/screenshot', '/session/import', '/logout'].includes(p)) {
       throw fail(405, 'Method not allowed');
     }
     throw fail(404, 'Not found');
@@ -220,9 +295,17 @@ function makeServer({ token, createProvider, logins = new Logins(), secret = rea
           try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw fail(400, 'The body is not JSON'); }
         }
         const url = new URL(req.url || '/', 'http://supermarket');
-        send(200, await route(req, url, body));
+        const out = await route(req, url, body);
+        if (out && out.__file) {
+          res.writeHead(200, { 'content-type': out.__type, 'cache-control': 'no-store', 'x-screenshot-name': out.__name || '' });
+          res.end(fs.readFileSync(out.__file));
+          return;
+        }
+        send(200, out);
       } catch (e) {
-        send(Number.isInteger(e?.statusCode) ? e.statusCode : 502, { error: e?.message || 'Failed' });
+        const err = { error: e?.message || 'Failed' };
+        if (e?.screenshot) err.screenshot = e.screenshot;
+        send(Number.isInteger(e?.statusCode) ? e.statusCode : 502, err);
       }
     });
   });

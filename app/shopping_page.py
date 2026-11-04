@@ -27,6 +27,9 @@ PAGE = """<!doctype html>
 td.p { white-space: nowrap; text-align: right; }
 .prod { font-size: 13px; }
 .slots li { margin: 2px 0; }
+.shot img { max-width: 100%; border: 1px solid var(--line, #ddd); border-radius: 8px; display: block; margin: 6px 0; }
+.shot { margin: 10px 0 0; }
+.warn { font-weight: 600; }
 .tot .big { font-size: 24px; font-weight: 650; margin: 2px 0 6px; }
 label.inline { display: inline-flex; align-items: center; gap: 6px; font-weight: normal; }
 label.inline input { width: auto; margin: 0; }
@@ -113,11 +116,33 @@ function renderTotals(d) {
     c.append(el('h2', null, x.label), el('p', 'big', money(x.total)),
       el('p', 'dim', x.items + ' items priced' + (x.missing ? ', ' + x.missing + ' not found' : '')));
     if (d.retailers.length > 1) c.append(el('p', 'dim', money(x.like_for_like) + ' for the ' + t.compared_items + ' items both have'));
+    if (x.items) {
+      const out = el('div', 'sent');
+      c.append(button('Send to ' + x.label + ' basket', () => sendBasket(r, x, out), 'primary'), out);
+    }
     box.append(c);
   }
   $('verdict').textContent = t.cheaper
     ? LABEL[t.cheaper] + ' is cheaper by ' + money(t.saving) + ' on the ' + t.compared_items + ' items both have.'
     : (d.retailers.length > 1 ? (t.compared_items ? 'They come to the same.' : 'No item was found at both, so there is nothing to compare.') : '');
+}
+
+// Put this retailer's chosen products in its basket, each up to the list's quantity (topped up, never doubled).
+async function sendBasket(r, x, out) {
+  if (!confirm('Put the ' + x.items + ' priced items (' + money(x.total) + ') in your ' + x.label + ' basket?\\n\\n'
+    + 'Anything already in it is topped up to the quantity on the list, never doubled. Nothing is ordered: you check out on '
+    + x.label + "'s site or app.")) return;
+  out.replaceChildren(el('p', 'dim', 'Adding to the ' + x.label + ' basket, one item at a time...'));
+  try {
+    const d = await api('POST', '/v1/shopping/basket/' + r);
+    const n = s => d.results.filter(i => i.status === s);
+    const parts = [[n('added'), 'added'], [n('raised'), 'topped up'], [n('already'), 'already there'], [n('failed'), 'failed']]
+      .filter(([l]) => l.length).map(([l, w]) => l.length + ' ' + w);
+    out.replaceChildren(el('p', null, parts.join(', ') + '.'));
+    for (const f of n('failed')) out.append(el('p', 'err', (f.item || f.name) + ': ' + f.error));
+    if (d.basket) out.append(el('p', 'dim', 'The ' + x.label + ' basket now has ' + d.basket.count + ' items, ' + money(d.basket.total)
+      + '. Check out on their site or app.'));
+  } catch (e) { out.replaceChildren(el('p', 'err', e.message)); }
 }
 
 function renderItems(d) {
@@ -240,26 +265,65 @@ function renderLogins() {
     }, out); };
     c.append(f);
     const acts = el('div', 'row');
-    acts.append(button('Log in', () => guard(async () => {
+    acts.append(button('Log in', async () => {
       out.textContent = 'Logging in to ' + LABEL[r] + ' (up to a minute)...';
-      const d = await api('POST', '/v1/shopping/login/' + r + '/start');
-      if (d.status === 'code_needed') { out.textContent = "Sainsbury's has sent a code to your phone: type it below within 5 minutes."; codeBox(c); }
-      else { out.textContent = 'Logged in to ' + LABEL[r] + '.'; await refresh(); }
-    }, out)));
+      try {
+        const d = await api('POST', '/v1/shopping/login/' + r + '/start');
+        if (d.status === 'verify_needed' || d.status === 'code_needed') { out.textContent = ''; verify(c, r, d); }
+        else { out.textContent = 'Logged in to ' + LABEL[r] + '.'; await refresh(); }
+      } catch (e) { out.textContent = e.message; showShot(c, r); }
+    }));
     acts.append(button('Log out', () => guard(async () => { await api('POST', '/v1/shopping/logout/' + r); await refresh(); }, out)));
     acts.append(button('Paste cookies instead', () => cookieBox(c, r)));
+    acts.append(button('Last screenshot', () => showShot(c, r, true)));
     c.append(acts);
-    if (r === 'sainsburys' && sm.login && sm.login.waiting_for_code === 'sainsburys') codeBox(c);
+    if (sm.login && (sm.login.provider || (sm.login.waiting_for_code && 'sainsburys')) === r) {
+      verify(c, r, { kind: sm.login.kind || 'sms', message: LABEL[r] + ' is waiting for you to confirm the login (until '
+        + new Date(sm.login.until).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ').' });
+    }
     box.append(c);
   }
 }
 
-function codeBox(card) {
-  if (card.querySelector('.code')) return;
-  const f = el('form', 'row code'), i = el('input'); i.inputMode = 'numeric'; i.maxLength = 6; i.placeholder = '6-digit code'; i.autocomplete = 'one-time-code';
-  f.append(i, el('button', 'primary', 'Send code'));
-  f.onsubmit = e => { e.preventDefault(); guard(async () => { await api('POST', '/v1/shopping/login/sainsburys/code', { code: i.value }); $('gmsg').textContent = "Logged in to Sainsbury's."; await refresh(); }, $('gmsg')); };
-  card.append(f); i.focus();
+// A login the retailer wants confirmed: a code (texted or emailed) to type in, or a link in an email, then Continue.
+function verify(card, r, d) {
+  card.querySelector('.verify')?.remove();
+  const v = el('div', 'verify'), note = el('p', 'warn', d.message || 'Confirm the login.'), msg = el('p', 'err');
+  v.append(note);
+  const done = async () => { $('gmsg').textContent = 'Logged in to ' + LABEL[r] + '.'; await refresh(); };
+  if (d.kind === 'email_link') {
+    v.append(button("I've clicked the link: Continue", () => guard(async () => {
+      await api('POST', '/v1/shopping/login/' + r + '/continue'); await done();
+    }, msg), 'primary'));
+  } else {
+    const f = el('form', 'row'), i = el('input');
+    i.maxLength = 10; i.autocomplete = 'one-time-code';
+    i.placeholder = d.kind === 'sms' ? 'code from the text' : 'code from the email';
+    if (d.kind === 'sms') i.inputMode = 'numeric';
+    f.append(i, el('button', 'primary', 'Send code'));
+    f.onsubmit = e => { e.preventDefault(); guard(async () => {
+      await api('POST', '/v1/shopping/login/' + r + '/code', { code: i.value.trim() }); await done();
+    }, msg); };
+    v.append(f);
+    setTimeout(() => i.focus(), 0);
+  }
+  v.append(msg);
+  card.append(v);
+  showShot(card, r);
+}
+
+// The newest screenshot of the retailer's sign-in page, under its card (fetched with the token, so not a plain <img src>).
+async function showShot(card, r, sayIfNone) {
+  card.querySelector('.shot')?.remove();
+  const r_ = await fetch('/v1/shopping/login/' + r + '/screenshot', { headers: { Authorization: 'Bearer ' + tok.value } }).catch(() => null);
+  if (!r_ || !r_.ok) { if (sayIfNone) $('gmsg').textContent = 'No screenshot kept for ' + LABEL[r] + ' yet.'; return; }
+  const name = r_.headers.get('X-Screenshot-Name') || '';
+  const m = name.match(/(\\d{4}-\\d{2}-\\d{2})T(\\d{2})-(\\d{2})/);
+  const fig = el('figure', 'shot'), img = el('img');
+  img.src = URL.createObjectURL(await r_.blob()); img.alt = 'What ' + LABEL[r] + "'s sign-in page showed";
+  fig.append(el('figcaption', 'dim', 'What ' + LABEL[r] + ' showed' + (m ? ' at ' + m[2] + ':' + m[3] + ' on ' + m[1].split('-').reverse().join('/') : '') + ' (UTC)'), img,
+    button('Hide', () => fig.remove()));
+  card.append(fig);
 }
 
 function cookieBox(card, r) {

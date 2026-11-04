@@ -4,8 +4,8 @@ KitchenOwl (docker-compose.kitchenowl.yml) holds the list; everyone edits it in 
 only reads it, with a long-lived token (key ``kitchenowl_token``). The supermarket service
 (docker-compose.supermarket.yml, services/supermarket) searches the retailers; World Assistant picks a product per
 item and retailer, lets you confirm or change it, and remembers the choice per KitchenOwl item, so "Milk" means the
-same pint every week. Searches are kept for six hours; delivery slots for an hour. Nothing is ever booked, put in a
-basket or bought from here.
+same pint every week. Searches are kept for six hours; delivery slots for an hour. Send to basket puts the chosen
+products in a retailer's basket when asked (topped up, never doubled). Nothing is ever booked or bought from here.
 
 Routes (all /v1/shopping):
   GET  /status         what is set up and reachable, the chosen list, each retailer's login
@@ -17,6 +17,7 @@ Routes (all /v1/shopping):
   PUT  /match          {item_key, retailer, product}: "this is what I mean"
   DELETE /match        {item_key, retailer}: forget it, go back to the best match
   GET  /slots          ?retailer=: next delivery slots (read only)
+  GET  /basket/{retailer}, POST /basket/{retailer}: the basket, and sending the last priced list to it
   POST /login/{retailer}/start, POST /login/sainsburys/code, POST /session/{retailer}, POST /logout/{retailer}
 """
 
@@ -28,7 +29,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
@@ -248,6 +249,21 @@ async def service(method: str, path: str, body: Any = None, timeout: float = 60,
     return data
 
 
+async def service_image(path: str, transport: httpx.AsyncBaseTransport | None = None) -> tuple[bytes, str]:
+    """A picture from the service (a login screenshot) and the name it was kept under."""
+    base = get_settings().supermarket_url.rstrip("/")
+    if not base:
+        raise HTTPException(409, "The supermarket service is not set up: add docker-compose.supermarket.yml (docs/shopping.md)")
+    try:
+        async with httpx.AsyncClient(timeout=20, transport=transport) as c:
+            r = await c.get(base + path, headers={"Authorization": f"Bearer {read_secret('supermarket_api_token')}"})
+    except httpx.HTTPError as exc:
+        raise HTTPException(503, f"The supermarket service did not answer ({type(exc).__name__})") from exc
+    if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image/png"):
+        raise HTTPException(404 if r.status_code in (200, 404) else 502, "No screenshot kept for that retailer")
+    return r.content, r.headers.get("x-screenshot-name", "")
+
+
 async def search_all(request: Request, wanted: dict[str, set[str]], refresh: bool) -> dict[tuple[str, str], dict[str, Any]]:
     """Every (retailer, query) result, from the six-hour store where it is fresh, else from the service."""
     found: dict[tuple[str, str], dict[str, Any]] = {}
@@ -437,8 +453,61 @@ async def slots(retailer: str = "", refresh: bool = False) -> dict[str, Any]:
     return {**data, "cached": False, "fetched_at": now.isoformat()}
 
 
+def basket_items(last: dict[str, Any] | None, retailer: str) -> list[dict[str, Any]]:
+    """What the last pricing chose at one retailer, as basket lines: the product id, its name and how many."""
+    if not last or retailer not in (last.get("retailers") or []):
+        return []
+    out = []
+    for it in last.get("items") or []:
+        x = (it.get("retailers") or {}).get(retailer) or {}
+        c = x.get("choice")
+        if c and c.get("id"):
+            out.append({"id": str(c["id"]), "name": c.get("name") or it.get("name", ""), "quantity": int(it.get("quantity") or 1),
+                        "item": it.get("name", "")})  # fmt: skip
+    return out
+
+
+def _login_first(retailer: str, exc: HTTPException) -> HTTPException:
+    """The retailer turning the basket away because nobody is logged in reads as that, not as an HTTP code."""
+    words = str(exc.detail)
+    if any(w in words for w in ("401", "403", "logged out", "session expired", "No CSRF token")):
+        return HTTPException(409, f"Log in to {LABEL[retailer]} first (Retailer logins, below), then send again")
+    return exc
+
+
+@router.get("/basket/{retailer}")
+async def get_basket(retailer: str) -> dict[str, Any]:
+    """What is in the retailer's basket now (needs that retailer's login)."""
+    _retailer(retailer)
+    try:
+        return await service("GET", f"/basket?provider={retailer}", timeout=90)  # type: ignore[no-any-return]
+    except HTTPException as exc:
+        raise _login_first(retailer, exc) from exc
+
+
+@router.post("/basket/{retailer}")
+async def send_to_basket(retailer: str, request: Request) -> dict[str, Any]:
+    """Put the last priced list's products for this retailer in its basket, each up to the quantity on the list. Items
+    already there are topped up, never doubled. It never books a slot or checks out: you finish on their site."""
+    _retailer(retailer)
+    items = basket_items(await _get(request, LAST_KEY), retailer)
+    if not items:
+        raise HTTPException(409, f"Price the list first: there is nothing chosen at {LABEL[retailer]} to send")
+    try:
+        out = await service("POST", "/basket/add", {"provider": retailer, "items": items}, timeout=600)
+    except HTTPException as exc:
+        raise _login_first(retailer, exc) from exc
+    names = {i["id"]: i["item"] for i in items}
+    for r in out.get("results", []):
+        r["item"] = names.get(r.get("id"), "")
+    failed = [r for r in out.get("results", []) if r.get("status") == "failed"]
+    if failed and len(failed) == len(items) and any("401" in str(r.get("error")) or "403" in str(r.get("error")) for r in failed):
+        raise HTTPException(409, f"Log in to {LABEL[retailer]} first (Retailer logins, below), then send again")
+    return out  # type: ignore[no-any-return]
+
+
 class CodeIn(BaseModel):
-    code: str = Field(pattern=r"^\s*\d{6}\s*$")
+    code: str = Field(pattern=r"^\s*[A-Za-z0-9]{4,10}\s*$")
 
 
 class CookiesIn(BaseModel):
@@ -455,10 +524,28 @@ async def login_start(retailer: str) -> dict[str, Any]:
     return await service("POST", "/login/start", {"provider": retailer, "email": email, "password": password}, timeout=120)  # type: ignore[no-any-return]
 
 
-@router.post("/login/sainsburys/code")
-async def login_code(body: CodeIn) -> dict[str, Any]:
-    _slots_cache.pop("sainsburys", None)
-    return await service("POST", "/login/code", {"code": body.code.strip()}, timeout=60)  # type: ignore[no-any-return]
+@router.post("/login/{retailer}/code")
+async def login_code(retailer: str, body: CodeIn) -> dict[str, Any]:
+    """The code the retailer texted (Sainsbury's) or emailed, while its login waits."""
+    _retailer(retailer)
+    _slots_cache.pop(retailer, None)
+    return await service("POST", "/login/code", {"code": body.code.strip(), "provider": retailer}, timeout=60)  # type: ignore[no-any-return]
+
+
+@router.post("/login/{retailer}/continue")
+async def login_continue(retailer: str) -> dict[str, Any]:
+    """After clicking the link the retailer emailed: look again, and finish the login if it is confirmed."""
+    _retailer(retailer)
+    _slots_cache.pop(retailer, None)
+    return await service("POST", "/login/continue", {"provider": retailer}, timeout=90)  # type: ignore[no-any-return]
+
+
+@router.get("/login/{retailer}/screenshot", response_class=Response)
+async def login_screenshot(retailer: str) -> Response:
+    """The newest screenshot of the retailer's sign-in page: what it showed when a login failed or waited."""
+    _retailer(retailer)
+    data, name = await service_image(f"/login/screenshot?provider={retailer}")
+    return Response(data, media_type="image/png", headers={"Cache-Control": "no-store", "X-Screenshot-Name": name})
 
 
 @router.post("/session/{retailer}")

@@ -2,8 +2,9 @@
 
 The family keeps one shopping list in **KitchenOwl**, an open-source shopping list app (iPhone, Android and web)
 that runs on your server. World Assistant reads that list, searches each item at Sainsbury's and Ocado, and shows
-what the list costs at each, which is cheaper and by how much. It also shows the next delivery slots. It never books
-a slot, fills a basket or buys anything: you order on the retailer's own site or app as usual.
+what the list costs at each, which is cheaper and by how much, and can put the list in either retailer's basket. It
+also shows the next delivery slots. It never books a slot or buys anything: you check out on the retailer's own site
+or app as usual.
 
 Two optional parts, each a compose overlay:
 
@@ -88,17 +89,37 @@ reused for six hours; **fresh prices** searches again.
 
 Neither retailer needs a login to search, so prices work without one.
 
+### Send to basket
+
+Under each retailer's total, **Send to <retailer> basket** puts the products chosen there in your basket at that
+retailer, each up to the quantity on the list. Anything already in the basket is topped up to that quantity, never
+doubled, so pressing it twice is safe. It asks first, then says what was added, topped up, already there or failed,
+and what the basket now comes to. It needs that retailer's login (below). Nothing is ordered: you choose a slot and
+check out on the retailer's site or app as usual.
+
+Check the basket on the retailer's site before checking out: a product the list chose may have changed, and offers
+the search did not show are applied there.
+
 ## 4. Delivery slots and logins
 
 **Delivery slots** show the next free slots at each retailer, read only. Both need you logged in.
 
-- **Ocado**: save the email and password under *Retailer logins*, then **Log in**. If Ocado refuses the login (it
-  sits behind bot protection), use **Paste cookies instead**: log in on ocado.com in your own browser, export its
-  cookies as JSON with a cookie export extension, and paste them.
+- **Ocado**: save the email and password under *Retailer logins*, then **Log in**. The first time, Ocado may email
+  you to confirm it's you: the page then says so and waits five minutes. Click the link in the email, then press
+  **I've clicked the link: Continue** (or, if Ocado emailed a code, type it in).
 - **Sainsbury's**: save the email and password, **Log in**, and Sainsbury's texts a code to your phone: type it in
   within five minutes. The login lasts about a week. Sainsbury's slots are read from its slot page in a browser,
   which takes 10 to 20 seconds; open-supermarkets reads that page by its layout, so this is the part most likely to
   stop working when Sainsbury's changes it.
+- **Paste cookies instead** works for either, whatever its sign-in asks for: log in on the retailer's site in your own
+  browser, export its cookies as JSON with a cookie export extension (Cookie-Editor: Export, JSON), and paste them.
+  Treat them like a password while that session lasts.
+
+The service signs in with a browser that it remembers between logins (`WA_DATA_DIR/supermarket/browser`, one per
+retailer), so once a retailer has confirmed it, the retailer treats it as a known device and stops asking.
+
+While a login waits, and whenever one fails, the Shopping page shows a screenshot of what the retailer's page said
+(**Last screenshot** shows it again). The last five are kept in `WA_DATA_DIR/supermarket/login-debug`.
 
 The passwords are kept with World Assistant's other keys (the keys folder, or your vault) and only passed to the
 supermarket service for a login. The logins themselves (cookies) are kept in `WA_DATA_DIR/supermarket`. **Log out**
@@ -112,7 +133,7 @@ deletes them.
 | No KitchenOwl token yet / KitchenOwl refused the token | Make a new long-lived token in KitchenOwl and save it |
 | KitchenOwl did not answer | `docker compose ps kitchenowl`, `docker compose logs --tail 40 kitchenowl` |
 | The supermarket service is not set up / did not answer | Add `docker-compose.supermarket.yml`; `docker compose logs --tail 40 wa-supermarket` |
-| A login fails | The error names a screenshot in `WA_DATA_DIR/supermarket/login-debug`: it shows what the retailer's page said (a captcha, a changed form, a wrong password). **Paste cookies instead** works whatever the form does |
+| A login fails | The page shows a screenshot of what the retailer's page said (a captcha, a changed form, a wrong password). **Paste cookies instead** works whatever the form does |
 | An item shows an error at one retailer | That search failed (often bot protection, briefly). Try again later with **fresh prices** |
 | The phones cannot reach KitchenOwl | Tailscale on and connected; the device shared with them; `docker compose logs kitchenowl-tailscale` |
 
