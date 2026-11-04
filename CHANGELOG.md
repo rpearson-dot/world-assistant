@@ -4,6 +4,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-04
+
+### Added
+- **Moving the database to PostgreSQL 18 (PostGIS 3.6)**: `bash scripts/pg-upgrade.sh`, once, on the server. A new major version of PostgreSQL cannot open the old one's data folder, so it backs up, stops World Assistant, copies the database into a new folder (`WA_DATA_DIR/pg18`) running PostgreSQL 18, checks every table has the same rows, then starts everything and checks every page: a few minutes' downtime. If any step fails it goes back to PostgreSQL 16 and the old folder by itself; the old folder is never changed, and `--rollback` goes back to it afterwards. See docs/postgres-upgrade.md.
+- New installs start on PostgreSQL 18 (`scripts/setup.sh`); the tests and the whole-stack check now run on it, and a new check runs the move from 16 on a real stack, including a failure and a rollback.
+
+### Changed
+- The database image and folder come from `.env` (`WA_PG_TAG`, `WA_PG_DIR`, `WA_PG_MOUNT`), set by the upgrade; with none set it is PostgreSQL 16 on `pgdata`, as before, so updating World Assistant alone changes nothing. Do not change the image tag by hand.
+
 ## [0.23.7] - 2026-11-04
 
 ### Fixed

@@ -19,8 +19,8 @@ jobs:
     timeout-minutes: 15
     services:
       postgres:
-        # PostGIS, as in production: the schema has geography columns and spatial indexes.
-        image: postgis/postgis:16-3.4
+        # PostGIS, as in production (18 since 0.24.0): the schema has geography columns and spatial indexes.
+        image: postgis/postgis:18-3.6
         env:
           POSTGRES_USER: wa
           POSTGRES_PASSWORD: wa
@@ -118,6 +118,18 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Whole-stack check
         run: bash scripts/ci-stack.sh
+
+  pg-upgrade:
+    # An existing install's move from PostgreSQL 16 to 18 (scripts/pg-upgrade.sh): a failure goes back by itself,
+    # the upgrade keeps every row, and --rollback returns to the old folder.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: PostgreSQL 16 to 18
+        run: bash scripts/ci-pg-upgrade.sh
 
   secrets:
     runs-on: ubuntu-24.04

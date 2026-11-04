@@ -21,7 +21,9 @@ export WA_NH_POLL_ENABLED=false WA_NH_CAPTURE_ENABLED=false WA_FUEL_POLL_ENABLED
 export COMPOSE_FILE=docker-compose.yml:docker-compose.mqtt.yml:docker-compose.graph.yml
 unset WA_IMAGE WA_REDIS_URL
 
-mkdir -p "$WA_DATA_DIR/backups" "$WA_DATA_DIR/pgdata"
+# A new install's database: PostgreSQL 18 (scripts/setup.sh); scripts/ci-pg-upgrade.sh checks the move from 16.
+export WA_PG_TAG=18-3.6 WA_PG_DIR=pg18 WA_PG_MOUNT=/var/lib/postgresql
+mkdir -p "$WA_DATA_DIR/backups" "$WA_DATA_DIR/$WA_PG_DIR"
 chmod 777 "$WA_DATA_DIR/backups"
 mkdir -p "$WA_DATA_DIR/keys" && chmod 777 "$WA_DATA_DIR/keys"
 # init-secrets.sh sources .env if there is one; a stray one must not redirect the directory.

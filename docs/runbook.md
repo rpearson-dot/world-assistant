@@ -51,6 +51,12 @@ failed it stops at once. To retry after a red build, fix it on `main` and run th
   forward-only in production; if the release added a migration, restore the backup taken before
   upgrading instead of downgrading (see [backup.md](backup.md)).
 
+## Moving the database to PostgreSQL 18 (one time)
+
+Installs from before 0.24.0 run PostgreSQL 16. `bash scripts/pg-upgrade.sh` copies the data to PostgreSQL 18 on a
+new folder, checks every row and page, and goes back by itself if anything fails. See
+[docs/postgres-upgrade.md](postgres-upgrade.md).
+
 ## Back up and restore
 
 Backups are built into the app: the status page, `scripts/deploy.sh` and `python -m app.backup`.

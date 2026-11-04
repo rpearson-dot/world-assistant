@@ -72,6 +72,13 @@ port="$(ask "Port for the web pages" "$(env_or WA_API_PORT 8010)")"
 env_set WA_DATA_DIR "$data"
 env_set WA_SECRETS_DIR "$secrets"
 env_set WA_API_PORT "$port"
+# A new install starts on PostgreSQL 18; one with a database already in "$data/pgdata" stays on 16 until
+# scripts/pg-upgrade.sh moves it (a new major version cannot open the old one's folder).
+if [ -z "$(env_get WA_PG_TAG)" ] && [ -z "$(ls -A "$data/pgdata" 2>/dev/null)" ]; then
+  env_set WA_PG_TAG 18-3.6
+  env_set WA_PG_DIR pg18
+  env_set WA_PG_MOUNT /var/lib/postgresql
+fi
 mkdir -p "$data/backups"
 # The app runs as uid 10001 and writes backups here (as scripts/deploy.sh sets it up).
 chown 10001:10001 "$data/backups" 2>/dev/null || chmod 777 "$data/backups"
