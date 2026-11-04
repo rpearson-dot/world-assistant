@@ -25,8 +25,13 @@ It speaks up when:
 | ⚠️ 12V battery at _n_V | the alert is on, or it is under 11.9V while nothing is charging it |
 | ⚠️ Cell voltage / temperature alert | the pack alerts are on |
 | 🛞 … tyre _n_ psi | a tyre is under 33 or over 40 psi, against the 36 recommended |
+| 📡 Nothing from the car for _n_ | no report from OVMS for 15 minutes while the car is away (no mobile signal where it is, or its SIM), or for an hour at home: everything else on the page is then its last values |
 
 Otherwise it says `Nothing to do.`, plus the charge and range, or the time to full when charging.
+
+Under that, `Last heard from the car n min ago` says how fresh the page is. It is the newest report from any of
+the car's entities: Home Assistant notes every message from OVMS, even one repeating a value, so a parked car
+with nothing changing still counts as heard.
 
 A missing or unavailable sensor never raises a warning: a car asleep says nothing rather than
 crying wolf. The thresholds are plain numbers in the template, so change them in place.

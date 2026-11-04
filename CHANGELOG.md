@@ -4,6 +4,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- **Leaf: "Last heard from the car"** under Before you go, and a 📡 warning when nothing has come from OVMS for
+  15 minutes while the car is away (or an hour at home), so a page of last-known values no longer looks live.
+
+### Changed
+- Leaf: the map's trail note is a comment in the dashboard file instead of a card (it landed away from the map).
+
 ## [0.26.0] - 2026-11-04
 
 ### Added
