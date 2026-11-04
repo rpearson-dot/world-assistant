@@ -175,3 +175,18 @@ async def test_a_service_failure_is_a_502_with_its_message(wired: dict[str, str]
     with pytest.raises(HTTPException) as e:
         await S.service("GET", "/slots?provider=ocado", transport=t)
     assert e.value.status_code == 502 and "25 s" in e.value.detail
+
+
+def test_every_address_the_shopping_page_calls_is_a_real_route() -> None:
+    """The page builds its URLs as strings; each must match a route (0.27.0 saved keys to a /v1/keys that is not one)."""
+    import re as _re
+
+    from app.main import app
+    from app.shopping_page import PAGE
+
+    routes = [(_re.sub(r"\{[^}]+\}", "[^/]+", path), {m.upper() for m in ops}) for path, ops in app.openapi()["paths"].items()]
+    calls = _re.findall(r"api\('(GET|PUT|POST|DELETE)', '(/v1/[^']*)'(?: \+ \w+(?: \+ '([^']*)')?)?", PAGE)
+    assert len(calls) >= 12
+    for method, path, tail in calls:
+        url = path.split("?")[0] + ("x" + tail if path.endswith("/") else "")
+        assert any(_re.fullmatch(p, url) and method in m for p, m in routes), f"{method} {url} is not a route"

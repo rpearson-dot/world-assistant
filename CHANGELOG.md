@@ -4,6 +4,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-11-04
+
+### Fixed
+- Shopping: saving the KitchenOwl token and the retailer emails and passwords on the Shopping page answered "Not Found"
+  (it sent them to /v1/keys instead of /v1/settings/keys). A test now checks that every address the page calls exists.
+
 ## [0.27.0] - 2026-11-04
 
 ### Added

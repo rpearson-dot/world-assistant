@@ -235,7 +235,7 @@ function renderLogins() {
     f.append(em, pw, el('button', 'primary', 'Save'));
     f.onsubmit = e => { e.preventDefault(); guard(async () => {
       if (!em.value || !pw.value) throw new Error('Give both the email and the password.');
-      await api('PUT', '/v1/keys/' + r + '_email', { value: em.value }); await api('PUT', '/v1/keys/' + r + '_password', { value: pw.value });
+      await api('PUT', '/v1/settings/keys/' + r + '_email', { value: em.value }); await api('PUT', '/v1/settings/keys/' + r + '_password', { value: pw.value });
       await refresh();
     }, out); };
     c.append(f);
@@ -290,7 +290,7 @@ async function refresh() {
 $('auth').onsubmit = e => { e.preventDefault(); try { sessionStorage.setItem('wa_token', tok.value); } catch (x) {} guard(refresh, msg); };
 $('price').onclick = () => price($('fresh').checked);
 $('tokform').onsubmit = e => { e.preventDefault(); guard(async () => {
-  await api('PUT', '/v1/keys/kitchenowl_token', { value: $('kotok').value }); $('kotok').value = ''; await refresh();
+  await api('PUT', '/v1/settings/keys/kitchenowl_token', { value: $('kotok').value }); $('kotok').value = ''; await refresh();
 }, $('lmsg')); };
 $('listform').onsubmit = e => { e.preventDefault(); guard(async () => {
   const [h, l] = $('listsel').value.split(':').map(Number);
