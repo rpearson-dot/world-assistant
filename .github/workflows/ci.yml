@@ -114,7 +114,7 @@ jobs:
           python-version: "3.14"
       - name: Install the browser for the page check
         run: |
-          pip install "playwright==1.49.1"
+          pip install "playwright==1.64.1"
           python -m playwright install --with-deps chromium
       - name: Whole-stack check
         run: bash scripts/ci-stack.sh
