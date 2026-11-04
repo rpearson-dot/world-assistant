@@ -1,11 +1,15 @@
 # Optional: run OpenBao (the open-source Vault fork) next to the app as its key vault.
 # Set up and manage it with scripts/openbao.sh; see docs/openbao.md.
 #
-# Data lives in ${WA_DATA_DIR}/openbao/file. It is encrypted, but copy it somewhere safe too, and keep
-# the unseal key and root token OFF this server (a password manager is ideal).
+# Data lives in ${WA_DATA_DIR}/openbao/raft (vaults set up before 0.26.0: openbao/file, until
+# `bash scripts/openbao.sh upgrade` moves them; OpenBao 2.7 can no longer read file storage). It is encrypted,
+# but copy it somewhere safe too, and keep the unseal key and root token OFF this server (a password manager).
+#
+# OPENBAO_VERSION and OPENBAO_CONFIG in .env choose the version and the settings file. Without them it is 2.6 on
+# file storage, as before; the upgrade (and setup, for a new vault) sets 2.7.2 and openbao-raft.hcl.
 services:
   openbao:
-    image: openbao/openbao:${OPENBAO_VERSION:-2.6.4}
+    image: openbao/openbao:${OPENBAO_VERSION:-2.6.5}
     restart: unless-stopped
     labels:
       net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/vault.png"
@@ -13,13 +17,14 @@ services:
     # Run as Unraid's "nobody:users" (99:100) instead; scripts/openbao.sh gives that user the data folder.
     user: "${OPENBAO_UID:-99}:${OPENBAO_GID:-100}"
     entrypoint: ["bao"]
-    command: ["server", "-config=/openbao/config"]
+    command: ["server", "-config=/openbao/config/${OPENBAO_CONFIG:-openbao.hcl}"]
     environment:
       BAO_ADDR: http://127.0.0.1:8200
       TZ: ${TZ:-Europe/London}
     volumes:
       - ./deploy/openbao:/openbao/config:ro
       - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/openbao/file:/openbao/file
+      - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/openbao/raft:/openbao/raft
     networks: [internal]
     healthcheck:
       # "bao status" exits 0 when unsealed and 2 when sealed; only 1 (cannot connect) is a failure.
@@ -32,7 +37,7 @@ services:
   # Unseals OpenBao by itself after a restart, using the key in secrets/openbao_unseal_key.txt.
   # Does nothing while that file is empty. Turn it on with: bash scripts/openbao.sh store-key
   openbao-unseal:
-    image: openbao/openbao:${OPENBAO_VERSION:-2.6.4}
+    image: openbao/openbao:${OPENBAO_VERSION:-2.6.5}
     restart: unless-stopped
     labels:
       net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/vault.png"

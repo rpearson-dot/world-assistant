@@ -42,6 +42,6 @@ to its version by starting it on an empty database, then restore. The runbook ha
 
 ## OpenBao is not in these backups
 
-If you run the bundled OpenBao (docs/openbao.md), its data lives in `${WA_DATA_DIR}/openbao/file` and is
+If you run the bundled OpenBao (docs/openbao.md), its data lives in `${WA_DATA_DIR}/openbao/raft` (`openbao/file` for a vault not yet upgraded) and is
 encrypted with the unseal key. App backups do not include it, and secrets are deliberately never written into
 them. Keep your secret files, or a copy of that folder together with the unseal key, somewhere safe.

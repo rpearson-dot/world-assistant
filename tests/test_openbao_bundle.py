@@ -66,3 +66,18 @@ def test_openbao_compose_is_valid_and_private() -> None:
 @pytest.mark.parametrize("script", ["scripts/openbao.sh", "scripts/deploy.sh"])
 def test_scripts_parse(script: str) -> None:
     subprocess.run(["bash", "-n", str(ROOT / script)], check=True)
+
+
+def test_the_vault_stays_on_file_storage_until_it_is_upgraded() -> None:
+    doc = yaml.safe_load((ROOT / "docker-compose.openbao.yml").read_text())
+    svc = doc["services"]["openbao"]
+    assert svc["image"] == "openbao/openbao:${OPENBAO_VERSION:-2.6.5}"  # 2.7 cannot read file storage
+    assert svc["command"] == ["server", "-config=/openbao/config/${OPENBAO_CONFIG:-openbao.hcl}"]  # one file, not the folder
+    assert 'storage "file"' in (ROOT / "deploy/openbao/openbao.hcl").read_text()
+    raft = (ROOT / "deploy/openbao/openbao-raft.hcl").read_text()
+    migrate = (ROOT / "deploy/openbao/migrate-file-to-raft.hcl").read_text()
+    assert 'storage "raft"' in raft and 'path    = "/openbao/raft"' in raft
+    assert 'storage_source "file"' in migrate and 'storage_destination "raft"' in migrate
+    script = (ROOT / "scripts/openbao.sh").read_text()
+    assert "NEW_VERSION=2.7.2" in script and "RAFT_CONFIG=openbao-raft.hcl" in script
+    assert "bash scripts/ci-openbao-upgrade.sh" in (ROOT / ".github/workflows/ci.yml").read_text()

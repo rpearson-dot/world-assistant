@@ -4,6 +4,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-04
+
+### Added
+- **Bundled OpenBao vault: `bash scripts/openbao.sh upgrade`**, once, if you run it. OpenBao 2.6 stopped getting fixes on 1 October, and 2.7 can no longer read the "file" storage the vault was set up with, so this copies the vault folder into the backups folder, moves the data to raft storage (`WA_DATA_DIR/openbao/raft`) and starts OpenBao 2.7.2 on it. It comes back sealed and unseals by itself when the key is stored on the server; the unseal key and root token do not change. If anything fails it goes back to file storage as it was. See docs/openbao.md.
+- New vaults start on OpenBao 2.7.2 with raft storage. A new check runs the move on a real vault, including a failure that goes back.
+
+### Changed
+- The vault's version and settings file come from `.env` (`OPENBAO_VERSION`, `OPENBAO_CONFIG`). Without them it is OpenBao 2.6.5 (the last 2.6) on file storage, so updating World Assistant alone does not touch the vault.
+
 ## [0.25.0] - 2026-11-04
 
 ### Changed
