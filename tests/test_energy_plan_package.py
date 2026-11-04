@@ -549,7 +549,11 @@ def test_after_a_full_charge_it_rests_instead_of_bouncing() -> None:
     assert go(on_idle)["stop"] is True  # first time: the stop is sent
     again = on_idle | {"input_datetime.wa_ev_stopped_at#timestamp": at.timestamp() - 5 * 60}
     assert go(again)["stop"] is False  # not sent again every 5 minutes
-    assert go(again | {"sensor.wa_charger_status": "Charging"})["stop"] is True  # but always while it charges
+    assert go(again | {"sensor.wa_charger_status": "Charging"})["stop"] is True  # while it charges, every 5 minutes
+    burst = again | {"sensor.wa_charger_status": "Charging", "input_datetime.wa_ev_stopped_at#timestamp": at.timestamp() - 2}
+    assert go(burst)["stop"] is False  # not once per change in a burst (4 Nov: dozens of stops logged in one second)
+    trigger = next(t for t in a["triggers"] if t["trigger"] == "state")
+    assert "to" in trigger and trigger["to"] is None  # state changes only, not every attribute update
     marks = a["actions"][1]["then"]
     assert marks[0]["target"]["entity_id"] == "input_datetime.wa_ev_stopped_at"
     assert marks[1]["if"][0]["value_template"] == "{{ plan == 'full' and charging }}"  # only a real full stop rests

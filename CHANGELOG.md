@@ -4,6 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.23.7] - 2026-11-04
+
+### Fixed
+- **The car charging automation could loop, sending stop after stop to the charger and filling the logbook (dozens a second).** Since 0.23.4, a stop at the target marks when the car was full, which changes the plan sensor's "rests until" time; the automation ran on any change to the plan sensor, including that one, so each stop set off the next. It now runs only when the plan, the charger's status or the switch actually changes (not their details), and sends a stop at most every 5 minutes while the charger says it is charging (every 30 when it is not). A flood of stops may be why the charger did not stop at the target. Copy `wa_ev_plan.yaml` to Home Assistant again (Settings page, Copy to Home Assistant), then turn the "WA car charging: start and stop the charger" automation back on.
+
 ## [0.23.6] - 2026-11-03
 
 ### Added
