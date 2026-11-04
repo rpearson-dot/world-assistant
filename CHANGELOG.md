@@ -4,6 +4,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-04
+
+### Changed
+- **Up-to-date components**, installed by the usual update:
+  - **Python 3.14** in World Assistant's image (was 3.12, which now gets security fixes only).
+  - **Redis 8** (was 7). It holds only the job queue and short-lived caches, nothing on disk, so nothing carries over.
+  - **Mosquitto 2.1.2** for the bundled Home Assistant broker (was 2.0.20). Its settings and the stored sensors carry on as they are.
+  - **Neo4j 2026.10** for the graph (was 5.26). The graph is rebuilt from the database, so the new version starts on a new folder (`WA_DATA_DIR/neo4j/data-2026`) and fills at the next build (:08 and :38 past the hour, or `POST /v1/graph/rebuild`); the old `neo4j/data` folder can be deleted.
+- The tests run on Python 3.14.
+
 ## [0.24.0] - 2026-11-04
 
 ### Added

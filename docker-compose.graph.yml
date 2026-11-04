@@ -13,7 +13,7 @@
 
 services:
   wa-graph:
-    image: neo4j:5.26-community
+    image: neo4j:2026.10-community
     restart: unless-stopped
     labels:
       net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/graph.png"
@@ -26,7 +26,9 @@ services:
     secrets:
       - neo4j_auth
     volumes:
-      - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/neo4j/data:/data
+      # A folder per major version: the graph is rebuilt from Postgres, so a new version starts empty rather than
+      # converting the old store (5.26's neo4j/data can be deleted).
+      - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/neo4j/data-2026:/data
     networks: [internal]
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:7474/ >/dev/null 2>&1 || exit 1"]

@@ -42,7 +42,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "3.14"
       - name: Drop the tiger geocoder
         # The image installs postgis_tiger_geocoder, whose `tiger` schema holds its own `place`
         # table and sits on the search path, shadowing ours. Migration 0019 drops it for real
@@ -111,7 +111,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "3.14"
       - name: Install the browser for the page check
         run: |
           pip install "playwright==1.49.1"

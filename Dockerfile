@@ -6,7 +6,7 @@
 #
 # CI passes BASE_IMAGE as python@sha256:<digest> so each release is built on one exact
 # base image (recorded in the build provenance). The default tag is for local builds.
-ARG BASE_IMAGE=python:3.12-slim
+ARG BASE_IMAGE=python:3.14-slim
 
 FROM ${BASE_IMAGE} AS build
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
