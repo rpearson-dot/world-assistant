@@ -260,11 +260,12 @@ automation:
     triggers:
       - trigger: time_pattern
         minutes: "/5"
-      - trigger: state
+      - trigger: state  # the state only: the plan's reasons and times change far more often than what to do
         entity_id:
           - sensor.wa_car_charging_plan
           - sensor.wa_charger_status
           - input_boolean.wa_ev_apply
+        to: ~
     variables:
       switch: >-
         {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else 'switch.charger_charge_control' }}
@@ -274,11 +275,13 @@ automation:
       switch_on: "{{ is_state(switch, 'on') }}"
       apply: "{{ is_state('input_boolean.wa_ev_apply', 'on') }}"
       start: "{{ plan == 'charge' and not charging and not switch_on }}"
-      # a stop is sent while it charges; with the switch still showing on but not charging, at most every 30 minutes
+      # a stop is sent at most every 5 minutes while it charges (the charger can take a while to say it has stopped,
+      # and a burst of changes, such as Home Assistant starting, must not send and log one each); with the switch
+      # still showing on but not charging, at most every 30 minutes
       stopped_recently: >-
         {% set t = state_attr('input_datetime.wa_ev_stopped_at', 'timestamp') %}
-        {{ t is number and now().timestamp() < t + 1800 }}
-      stop: "{{ plan in ['wait', 'full'] and (charging or (switch_on and not stopped_recently)) }}"
+        {{ t is number and now().timestamp() < t + (300 if charging else 1800) }}
+      stop: "{{ plan in ['wait', 'full'] and (charging or switch_on) and not stopped_recently }}"
       soc: "{{ states('sensor.wa_car_charge_level') }}"
       next: >-
         {% set t = as_datetime(state_attr('sensor.wa_car_charging_plan', 'next_start'), none) %}

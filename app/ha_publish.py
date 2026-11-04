@@ -103,12 +103,13 @@ def pollen_point_key(lat: float, lon: float) -> str:
 
 
 def _pollen_point(p: dict[str, Any]) -> Sensor:
-    """One forecast point as a sensor with latitude/longitude, so Home Assistant's map card shows it
-    and opening it lists the allergy risk and each allergen for the coming days."""
+    """One forecast point as a sensor: opening it lists the allergy risk and each allergen for the coming days.
+    Its position is `lat`/`lon`, not latitude/longitude: with those, Home Assistant's Map page showed every point
+    (about 55 "PP5" markers across Britain), since it shows every entity that has a position."""
     dates = p.get("dates") or []
     risk = p.get("allergy_risk") or []
     labels = p.get("allergy_risk_label") or []
-    attrs: dict[str, Any] = {"latitude": p["lat"], "longitude": p["lon"], "friendly_name": f"Pollen {p['lat']}, {p['lon']}",
+    attrs: dict[str, Any] = {"lat": p["lat"], "lon": p["lon"], "friendly_name": f"Pollen {p['lat']}, {p['lon']}",
                              "allergy_risk": (labels[0] if labels else None), "dates": ", ".join(str(d) for d in dates),
                              "risk_by_day": ", ".join(str(r) for r in risk), "changed_at": p.get("changed_at")}  # fmt: skip
     for a in sorted(p.get("allergens") or [], key=lambda a: -(((a.get("levels") or [0])[0]) or 0)):

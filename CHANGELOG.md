@@ -4,6 +4,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.23.7] - 2026-11-04
+
+### Fixed
+- **The car charging automation could loop, sending stop after stop to the charger and filling the logbook (dozens a second).** Since 0.23.4, a stop at the target marks when the car was full, which changes the plan sensor's "rests until" time; the automation ran on any change to the plan sensor, including that one, so each stop set off the next. It now runs only when the plan, the charger's status or the switch actually changes (not their details), and sends a stop at most every 5 minutes while the charger says it is charging (every 30 when it is not). A flood of stops may be why the charger did not stop at the target. Copy `wa_ev_plan.yaml` to Home Assistant again (Settings page, Copy to Home Assistant), then turn the "WA car charging: start and stop the charger" automation back on.
+- **Home Assistant's Map page is no longer covered in "PP5" markers.** Each pollen forecast point carried a map position, and the Map page shows every entity that has one, so about 55 of them sat across Britain. The points now keep their position as `lat`/`lon`, which no map picks up, and the Pollen dashboard's map of points is gone: its forecast map is the image above it, and the "Pollen this week" card still finds the point nearest you. Copy the dashboards to Home Assistant again (Copy to Home Assistant).
+
 ## [0.23.6] - 2026-11-03
 
 ### Added

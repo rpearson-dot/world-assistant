@@ -254,7 +254,7 @@ def test_home_pollen_sensors_read_the_nearest_point_to_the_home_zone() -> None:
 
 
 def test_pollen_card_shows_each_viewer_the_forecast_nearest_them() -> None:
-    card = _card("pollen", 2)
+    card = _card("pollen", 1)
     alex = _env(POLLEN_ENTS, user="Alex").from_string(card).render()
     sam = _env(POLLEN_ENTS, user="Sam").from_string(card).render()
     assert "very high" in alex and "your location" in alex and "low" not in alex.split("**")[1]
@@ -262,20 +262,14 @@ def test_pollen_card_shows_each_viewer_the_forecast_nearest_them() -> None:
     assert "Birch" in sam and "🟩" in sam
 
 
-def test_pollen_map_card_lists_every_lattice_point() -> None:
+def test_pollen_dashboard_has_no_map_of_points() -> None:
     from pathlib import Path
 
     import yaml
 
-    from app.ha_publish import pollen_point_key
-    from app.pollen_grid import grid_points
-
     cfg = yaml.safe_load(Path("homeassistant/dashboards/pollen.yaml").read_text())
-    card = next(c for v in cfg["views"] for c in v["cards"] if c["type"] == "map")
-    want = {f"sensor.wa_pollen_{pollen_point_key(a, b)}" for a, b in grid_points(1.0)}
-    assert {e["entity"] for e in card["entities"]} == want  # regenerate the list if the lattice changes
-    # each marker shows its allergy risk, not the initials of its name, and none are grouped away
-    assert all(e["label_mode"] == "state" for e in card["entities"]) and card["cluster"] is False
+    kinds = [c["type"] for v in cfg["views"] for c in v["cards"]]
+    assert "map" not in kinds and "picture-entity" in kinds  # the forecast map is the image
 
 
 def test_events_card_lists_whatever_places_exist() -> None:
