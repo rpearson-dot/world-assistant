@@ -7,6 +7,7 @@
 #   bash scripts/openbao.sh status
 #   bash scripts/openbao.sh store-key  # optional: keep ONE unseal key on this server for automatic unsealing
 #   bash scripts/openbao.sh forget-key
+#   bash scripts/openbao.sh upgrade    # once: move a vault set up before 0.26.0 to raft storage and OpenBao 2.7
 #
 # The unseal keys and root token are shown ONCE by `setup` and never written to disk. Save them
 # somewhere other than this server.
@@ -68,11 +69,26 @@ write_env() { # add or set KEY=VALUE in .env
   fi
 }
 
+NEW_VERSION=2.7.2   # the OpenBao for raft storage; 2.6 (file storage) stopped getting fixes on 1 October 2026
+RAFT_CONFIG=openbao-raft.hcl
+
+own_dirs() {  # the data folders, owned by the user OpenBao runs as
+  local d
+  for d in file raft; do
+    mkdir -p "$DATA/openbao/$d"
+    chown -R "${OPENBAO_UID:-99}:${OPENBAO_GID:-100}" "$DATA/openbao/$d" 2>/dev/null || chmod -R 777 "$DATA/openbao/$d"
+  done
+}
+
 start_container() {
   write_env COMPOSE_FILE "$COMPOSE_FILE"   # so plain "docker compose" commands see the openbao service too
-  mkdir -p "$DATA/openbao/file"
-  chown -R "${OPENBAO_UID:-99}:${OPENBAO_GID:-100}" "$DATA/openbao/file" 2>/dev/null \
-    || chmod -R 777 "$DATA/openbao/file"
+  # A new vault starts on raft storage and the current OpenBao; one with data in openbao/file stays as it is
+  # until `upgrade` moves it (OpenBao 2.7 cannot read file storage).
+  if [ -z "${OPENBAO_CONFIG:-}" ] && [ -z "$(ls -A "$DATA/openbao/file" 2>/dev/null)" ]; then
+    write_env OPENBAO_CONFIG "$RAFT_CONFIG"; write_env OPENBAO_VERSION "$NEW_VERSION"
+    export OPENBAO_CONFIG="$RAFT_CONFIG" OPENBAO_VERSION="$NEW_VERSION"
+  fi
+  own_dirs
   docker compose rm -sf openbao >/dev/null 2>&1 || true   # clear any crash-looping earlier attempt
   docker compose up -d openbao
   say "Waiting for OpenBao to answer..."
@@ -233,6 +249,88 @@ cmd_forget_key() {
   say "Removed. You will unseal by hand after restarts."
 }
 
+storage_type() { docker compose exec -T openbao bao status 2>/dev/null | awk '$1=="Storage"&&$2=="Type"{print $3}'; }
+server_version() { docker compose exec -T openbao bao status 2>/dev/null | awk '$1=="Version"{print $2}'; }
+
+wait_answer() {
+  for _ in $(seq 1 30); do
+    if [ -n "$(docker compose exec -T openbao bao status 2>/dev/null || true)" ]; then return 0; fi
+    sleep 2
+  done
+  return 1
+}
+
+cmd_upgrade() {
+  local yes=0 a
+  for a in "$@"; do case "$a" in --yes | -y) yes=1 ;; esac; done
+  if [ "${OPENBAO_CONFIG:-openbao.hcl}" = "$RAFT_CONFIG" ]; then
+    if [ "${OPENBAO_VERSION:-}" = "$NEW_VERSION" ]; then say "Already on OpenBao $NEW_VERSION with raft storage. Nothing to do."; return 0; fi
+    write_env OPENBAO_VERSION "$NEW_VERSION"; export OPENBAO_VERSION="$NEW_VERSION"
+    docker compose up -d openbao openbao-unseal
+    wait_answer || die "OpenBao $NEW_VERSION did not start: docker compose logs --tail 30 openbao"
+    cmd_unseal --quiet --if-sealed
+    say "OpenBao is now $(server_version)."
+    return 0
+  fi
+  [ -n "$(ls -A "$DATA/openbao/file" 2>/dev/null)" ] \
+    || die "there is no vault in $DATA/openbao/file to move. For a new vault: bash scripts/openbao.sh setup"
+  [ -z "$(ls -A "$DATA/openbao/raft" 2>/dev/null)" ] \
+    || die "$DATA/openbao/raft already has files in it (an earlier attempt?). Move or delete it, then run this again."
+  say "This moves the vault to OpenBao $NEW_VERSION. OpenBao 2.7 can no longer read the 'file' storage it uses now, so:"
+  say "  - its data is copied to raft storage ($DATA/openbao/raft); $DATA/openbao/file is only read, and kept"
+  say "  - the vault is down for a minute and comes back sealed: it unseals by itself if the key is stored here,"
+  say "    otherwise this asks for the unseal key. The unseal key and root token do not change."
+  say "  - if anything fails, it goes back to the file storage as it was."
+  if [ "$yes" != 1 ]; then
+    local reply; read -r -p "Go ahead? [y/N] " reply
+    case "$reply" in y | Y | yes | YES) ;; *) say "Nothing was changed."; return 1 ;; esac
+  fi
+  local stamp saved tarball
+  stamp="$(date +%Y%m%d-%H%M%S)"; saved=".env.before-openbao27"
+  mkdir -p "$DATA/backups"
+  tarball="$DATA/backups/openbao-file-$stamp.tar.gz"
+  docker compose stop openbao-unseal openbao
+  tar -czf "$tarball" -C "$DATA/openbao" file || { docker compose up -d openbao openbao-unseal; die "could not copy the vault folder; nothing was changed"; }
+  chmod 600 "$tarball"
+  say "Copied the vault folder to $tarball"
+  own_dirs
+  say "Moving the data to raft storage..."
+  if ! docker compose run --rm --no-deps openbao operator migrate -config=/openbao/config/migrate-file-to-raft.hcl; then
+    rm -rf "${DATA:?}/openbao/raft"/* 2>/dev/null || true
+    docker compose up -d openbao openbao-unseal; cmd_unseal --quiet --if-sealed
+    die "the move to raft storage failed; the vault is back on file storage, unchanged"
+  fi
+  cp .env "$saved"
+  back() {
+    say "The upgrade did not finish ($1). Going back to file storage; nothing is lost."
+    docker compose stop openbao-unseal openbao || true
+    cp "$saved" .env; unset OPENBAO_CONFIG OPENBAO_VERSION
+    docker compose up -d openbao openbao-unseal || true
+    wait_answer && cmd_unseal --quiet --if-sealed
+    say "$DATA/openbao/raft is left for a look; delete it before trying again."
+    exit 1
+  }
+  write_env OPENBAO_CONFIG "$RAFT_CONFIG"; write_env OPENBAO_VERSION "$NEW_VERSION"
+  export OPENBAO_CONFIG="$RAFT_CONFIG" OPENBAO_VERSION="$NEW_VERSION"
+  docker compose pull openbao || say "Could not pull openbao/openbao:$NEW_VERSION; using it if it is already here."
+  docker compose up -d openbao openbao-unseal || back "OpenBao $NEW_VERSION would not start"
+  wait_answer || back "OpenBao $NEW_VERSION did not answer"
+  [ "${WA_OPENBAO_FAIL_AT:-}" = started ] && back "a failure asked for by the test (WA_OPENBAO_FAIL_AT)"
+  local init sealed
+  read -r init sealed <<<"$(state)"
+  [ "$init" = "true" ] || back "the moved vault does not show as set up"
+  [ "$(storage_type)" = raft ] || back "OpenBao is not using raft storage"
+  cmd_unseal --if-sealed
+  read -r _ sealed <<<"$(state)"
+  if [ "$sealed" = "false" ] && docker compose ps --status running -q api 2>/dev/null | grep -q .; then
+    docker compose exec -T api python -m app.secretsctl check || say "World Assistant could not read the vault yet: run bash scripts/deploy.sh --skip-backup"
+  fi
+  rm -f "$saved"
+  say ""
+  say "Done: OpenBao $(server_version) on raft storage$([ "$sealed" = "false" ] && echo ", unsealed" || echo "; unseal it with: bash scripts/openbao.sh unseal")."
+  say "  The old folder, $DATA/openbao/file, and the copy $tarball are kept. Delete them when you are happy."
+}
+
 case "${1:-}" in
   setup) shift; cmd_setup "$@" ;;
   unseal) shift; cmd_unseal "$@" ;;
@@ -240,5 +338,6 @@ case "${1:-}" in
   status) cmd_status ;;
   store-key) cmd_store_key ;;
   forget-key) cmd_forget_key ;;
+  upgrade) shift; cmd_upgrade "$@" ;;
   *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

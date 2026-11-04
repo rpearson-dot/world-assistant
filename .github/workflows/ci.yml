@@ -139,6 +139,17 @@ jobs:
       - name: PostgreSQL 16 to 18
         run: bash scripts/ci-pg-upgrade.sh
 
+  openbao-upgrade:
+    # The bundled vault's move from file storage (OpenBao 2.6) to raft (2.7): `scripts/openbao.sh upgrade`.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: OpenBao file storage to raft, 2.6 to 2.7
+        run: bash scripts/ci-openbao-upgrade.sh
+
   secrets:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

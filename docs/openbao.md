@@ -7,7 +7,7 @@ It is off unless you run the setup below.
 ## What you get
 
 * An `openbao` container on the private Docker network only (no port is published, no TLS is needed inside it).
-  Its data is in `${WA_DATA_DIR}/openbao/file`.
+  Its data is in `${WA_DATA_DIR}/openbao/raft` (a vault set up before 0.26.0: `openbao/file` until you upgrade it, below).
 * A KV store at `secret/world-assistant` holding every key and password the app uses.
 * An AppRole that can only **read** that one path. The app signs in with it (`vault_role_id.txt` and
   `vault_secret_id.txt`).
@@ -26,8 +26,8 @@ them before any vault can be read.
 4. Setup finishes by telling you to restart the app: `bash scripts/deploy.sh --skip-backup`. Do that.
 5. Check: `docker compose exec api python -m app.secretsctl check` should say `from vault`.
 
-If the log complains of permission denied on `/openbao/file`, run `chmod -R 777 <data dir>/openbao/file`
-and run setup again. The image tag defaults to 2.6.4; set `OPENBAO_VERSION` in `.env` for another.
+If the log complains of permission denied on `/openbao/raft`, run `chmod -R 777 <data dir>/openbao/raft`
+and run setup again. A new vault runs OpenBao 2.7.2 on raft storage (`OPENBAO_VERSION` and `OPENBAO_CONFIG` in `.env`).
 
 ## After a restart: unsealing
 
@@ -63,3 +63,17 @@ Use `setup --shares=5 --threshold=3` for a split key (then `store-key` is not su
 * One node, file storage, no TLS inside the Docker network. Fine for a home server; do not publish port 8200.
 * Not in the app backups (docs/backup.md). Losing the unseal key means losing the vault contents; your
   secret files remain the way back.
+
+## Upgrading a vault set up before 0.26.0 (once)
+
+Vaults set up before World Assistant 0.26.0 run OpenBao 2.6 on "file" storage. OpenBao 2.6 stopped getting fixes on
+1 October 2026, and 2.7 can no longer read file storage, so the data has to move to raft storage first. One command
+does both:
+
+    bash scripts/openbao.sh upgrade
+
+It copies `openbao/file` into the backups folder, moves the data to `openbao/raft` (`bao operator migrate`), and
+starts OpenBao 2.7.2 on it. The vault is down for about a minute and comes back sealed: it unseals by itself if the
+key is stored on the server (`store-key`), otherwise it asks for the unseal key. The unseal key and root token do
+not change. If anything fails it goes back to file storage as it was. `openbao/file` is only read, and kept: delete
+it, and the copy in the backups folder, once you are happy.
