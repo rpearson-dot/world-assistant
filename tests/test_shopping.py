@@ -220,7 +220,7 @@ def test_the_shopping_page_script_compiles(tmp_path: Any) -> None:
     node = shutil.which("node")
     if not node:
         pytest.skip("node is not installed")
-    scripts = _re.findall(r"<script>(.*?)</script>", PAGE, _re.S)
+    scripts = _re.findall(r"<script>(.*?)</script>", PAGE, _re.DOTALL)
     assert scripts
     f = tmp_path / "page.js"
     f.write_text("\n".join(scripts))
