@@ -34,7 +34,7 @@ cleanup() {
   local status=$?
   docker compose down -v --remove-orphans >/dev/null 2>&1 || true
   rm -f .env .env.before-pg18
-  rm -rf "$WORK" 2>/dev/null || true
+  rm -rf "$WORK" 2>/dev/null || sudo -n rm -rf "$WORK" 2>/dev/null || true
   exit "$status"
 }
 trap cleanup EXIT
@@ -64,7 +64,8 @@ grep -q '^WA_PG_TAG=' .env && fail ".env was not put back"
 for _ in $(seq 1 60); do curl -fsS "$API/healthz" >/dev/null 2>&1 && break; sleep 3; done
 has_place before || fail "the data is not there after going back"
 docker compose stop >/dev/null
-rm -rf "$DATA/pg18"  # as the message says: delete it before trying again
+# as the message says: delete it before trying again (its files belong to the database's user)
+rm -rf "$DATA/pg18" 2>/dev/null || sudo rm -rf "$DATA/pg18"
 docker compose up -d >/dev/null
 for _ in $(seq 1 60); do curl -fsS "$API/healthz" >/dev/null 2>&1 && break; sleep 3; done
 
