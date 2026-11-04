@@ -73,7 +73,7 @@ step "the upgrade"
 bash scripts/pg-upgrade.sh --yes || fail "the upgrade failed"
 [ "$(major)" = 18 ] || fail "not on 18 after the upgrade"
 grep -qx 'WA_PG_TAG=18-3.6' .env || fail ".env does not say 18"
-[ -n "$(ls -A "$DATA/pgdata")" ] || fail "the old folder should be untouched"
+[ -n "$(sudo ls -A "$DATA/pgdata")" ] || fail "the old folder should be untouched"
 has_place before || fail "the place did not come across"
 docker compose exec -T wa-db psql -U worldassistant -d worldassistant -tAc "select postgis_lib_version()"
 curl -fsS -X PUT "${auth[@]}" -d '{"name":"After","kind":"other","lat":51.6,"lon":-0.2}' "$API/v1/places/after" >/dev/null \
