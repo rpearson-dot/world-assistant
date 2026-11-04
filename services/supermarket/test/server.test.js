@@ -129,23 +129,52 @@ test('cookies exported from a browser become the session', async (t) => {
   assert.equal((await call('GET', '/health')).body.providers.sainsburys.session.saved, false);
 });
 
-// A browser that behaves like Sainsbury's: after the password it is on /mfa; after the code, on the account.
-function fakeBrowser({ afterLogin = 'https://www.sainsburys.co.uk/gol-ui/mfa', afterCode = 'https://www.sainsburys.co.uk/gol-ui/groceries' } = {}) {
+// A browser that behaves like a retailer's sign-in. `buttons`: the selectors that exist on the page (none: only Enter
+// works). `twoStep`: the password box appears only after the email is submitted. After the password it goes to
+// `afterLogin` (Sainsbury's: its /mfa page); after the code, to `afterCode`.
+function fakeBrowser({
+  afterLogin = 'https://www.sainsburys.co.uk/gol-ui/mfa', afterCode = 'https://www.sainsburys.co.uk/gol-ui/groceries',
+  buttons = ['button[type="submit"]', 'button[data-testid="log-in"]', 'button[data-testid="submit-code"]'], twoStep = false,
+} = {}) {
   const log = [];
   let url = 'about:blank';
+  let passwordShown = !twoStep;
+  const isEmail = (sel) => sel.includes('input[type="email"]');
+  const isPassword = (sel) => sel.includes('input[type="password"]');
+  const isCode = (sel) => sel.includes('#code');
+  const submitted = (how) => {
+    log.push(['submit', how]);
+    if (url.includes('/mfa')) url = afterCode;
+    else if (!passwordShown) passwordShown = true;
+    else url = afterLogin;
+  };
+  const visible = (sel) => isEmail(sel) || (isPassword(sel) && passwordShown) || (isCode(sel) && url.includes('/mfa')) || buttons.includes(sel);
+  const locator = (sel) => {
+    const l = {
+      first: () => l,
+      isVisible: async () => visible(sel),
+      click: async () => { if (!visible(sel)) throw new Error(`no ${sel}`); submitted(sel); },
+      fill: async (v) => { if (!visible(sel)) throw new Error(`Timeout waiting for ${sel}`); log.push(['fill', sel, v]); },
+      evaluate: async () => false,
+    };
+    return l;
+  };
   const page = {
     goto: async (u) => { url = u; log.push(['goto', u]); },
     waitForTimeout: async () => {},
-    waitForSelector: async () => {},
-    locator: () => ({ isVisible: async () => false, click: async () => {} }),
+    waitForSelector: async (sel) => { if (!visible(sel)) throw new Error(`Timeout waiting for ${sel}`); },
+    locator,
+    getByRole: () => ({ first() { return this; }, isVisible: async () => false, click: async () => {} }),
     evaluate: async () => {},
-    fill: async (sel, v) => log.push(['fill', sel, v]),
-    click: async (sel) => { log.push(['click', sel]); url = sel.includes('submit-code') ? afterCode : afterLogin; },
+    press: async (sel) => { if (!visible(sel)) throw new Error(`no ${sel}`); submitted('Enter'); },
+    screenshot: async ({ path: p }) => { fs.writeFileSync(p, 'png'); log.push(['screenshot', p]); },
     url: () => url,
   };
+  const context = { newPage: async () => page, pages: () => [page], cookies: async () => [{ name: 'WC_AUTHENTICATION_9', value: 'x', domain: '.sainsburys.co.uk' }] };
   const browser = {
     closed: false,
-    newContext: async () => ({ newPage: async () => page, cookies: async () => [{ name: 'WC_AUTHENTICATION_9', value: 'x', domain: '.sainsburys.co.uk' }] }),
+    newContext: async () => context,
+    contexts: () => [context],
     close: async () => { browser.closed = true; },
   };
   return { browser, log };
@@ -208,4 +237,34 @@ test('summary marks an expired Sainsbury\'s session', () => {
 
 test('product keeps a missing price as null', () => {
   assert.equal(product({ product_uid: 1, name: 'x', retail_price: {} }).price, null);
+});
+
+test('Ocado with no submit button: Enter in the password box signs in', async (t) => {
+  const fake = fakeBrowser({ afterLogin: 'https://www.ocado.com/', buttons: [] });
+  const logins = new Logins({ launch: async () => fake.browser, now: () => NOW });
+  const { call } = await serve(t, { logins });
+  const r = await call('POST', '/login/start', { provider: 'ocado', email: 'me@x', password: 'pw' });
+  assert.equal(r.body.status, 'logged_in');
+  assert.deepEqual(fake.log.filter(([op]) => op === 'submit'), [['submit', 'Enter']]);
+});
+
+test('a sign-in that asks for the email first, then the password', async (t) => {
+  const fake = fakeBrowser({ afterLogin: 'https://www.ocado.com/', twoStep: true });
+  const logins = new Logins({ launch: async () => fake.browser, now: () => NOW });
+  const { call } = await serve(t, { logins });
+  const r = await call('POST', '/login/start', { provider: 'ocado', email: 'me@x', password: 'pw' });
+  assert.equal(r.body.status, 'logged_in');
+  assert.equal(fake.log.filter(([op]) => op === 'submit').length, 2);
+  assert.ok(fake.log.some(([op, sel, v]) => op === 'fill' && sel.includes('password') && v === 'pw'));
+});
+
+test('a failed login keeps a screenshot and says where it is', async (t) => {
+  const fake = fakeBrowser({ afterLogin: 'https://www.ocado.com/login?error=1' });
+  const logins = new Logins({ launch: async () => fake.browser, now: () => NOW });
+  const { call } = await serve(t, { logins });
+  const r = await call('POST', '/login/start', { provider: 'ocado', email: 'me@x', password: 'wrong' });
+  assert.equal(r.status, 401);
+  assert.match(r.body.error, /Still on the login page.*screenshot.*login-debug\/ocado-2026-11-04T15-00-00-000Z\.png/);
+  assert.ok(fs.existsSync(path.join(HOME, 'login-debug', 'ocado-2026-11-04T15-00-00-000Z.png')));
+  assert.equal(fake.browser.closed, true);
 });

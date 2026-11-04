@@ -4,6 +4,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.27.2] - 2026-11-04
+
+### Fixed
+- Shopping, retailer logins: the Ocado login stopped at "waiting for button[type=submit]" (its sign-in button is not
+  one). Logins now try the retailer's button, then any button that says Sign in, Log in or Continue, then Enter in the
+  box, then submit the form directly; they also cope with a sign-in that asks for the email before the password. The
+  Sainsbury's code is sent the same way.
+- A login that fails keeps a screenshot of the page in `WA_DATA_DIR/supermarket/login-debug` (the last five) and the
+  error says which file, so it shows what the retailer put on the screen.
+
 ## [0.27.1] - 2026-11-04
 
 ### Fixed

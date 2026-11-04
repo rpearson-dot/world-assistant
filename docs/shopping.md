@@ -112,6 +112,7 @@ deletes them.
 | No KitchenOwl token yet / KitchenOwl refused the token | Make a new long-lived token in KitchenOwl and save it |
 | KitchenOwl did not answer | `docker compose ps kitchenowl`, `docker compose logs --tail 40 kitchenowl` |
 | The supermarket service is not set up / did not answer | Add `docker-compose.supermarket.yml`; `docker compose logs --tail 40 wa-supermarket` |
+| A login fails | The error names a screenshot in `WA_DATA_DIR/supermarket/login-debug`: it shows what the retailer's page said (a captcha, a changed form, a wrong password). **Paste cookies instead** works whatever the form does |
 | An item shows an error at one retailer | That search failed (often bot protection, briefly). Try again later with **fresh prices** |
 | The phones cannot reach KitchenOwl | Tailscale on and connected; the device shared with them; `docker compose logs kitchenowl-tailscale` |
 
