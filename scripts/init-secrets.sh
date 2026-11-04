@@ -62,6 +62,12 @@ make_secret gridserve_api_key ""
 make_secret octopus_api_key ""
 make_secret ticketmaster_api_key ""
 make_secret pollen_api_key ""
+# Shopping (docs/shopping.md): KitchenOwl's long-lived token and the retailer logins. Usually saved from the Shopping page.
+make_secret kitchenowl_token ""
+make_secret sainsburys_email ""
+make_secret sainsburys_password ""
+make_secret ocado_email ""
+make_secret ocado_password ""
 make_secret redis_password "$(gen)"
 # Only needed with docker-compose.graph.yml (the knowledge graph); harmless otherwise.
 # Neo4j's image wants "user/password" in one file, so it is written from the same password.
@@ -75,6 +81,12 @@ else
 fi
 # Only needed with docker-compose.tailscale.yml: an auth key from the Tailscale admin console (first start only).
 make_secret tailscale_authkey ""
+# Only needed with docker-compose.kitchenowl.yml (the family shopping list) and docker-compose.supermarket.yml
+# (pricing it): KitchenOwl's signing key, a Tailscale auth key for KitchenOwl's own device (first start only), and the
+# token World Assistant uses to call the supermarket service.
+make_secret kitchenowl_jwt_secret "$(gen)"
+make_secret kitchenowl_tailscale_authkey ""
+make_secret supermarket_api_token "$(gen)"
 # Only needed if you use a Vault / OpenBao key vault (docs/secrets.md); leave empty otherwise.
 make_secret vault_token ""
 make_secret vault_role_id ""

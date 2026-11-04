@@ -40,7 +40,7 @@ def env(project: Path) -> dict[str, str]:
 def test_a_new_install_with_the_bundled_broker(project: Path) -> None:
     keys = [""] * KEYS
     keys[4] = "my-tfl-key"
-    text = run(project, ["", "", "", "2", "", "n", "n", "n", "", *keys])
+    text = run(project, ["", "", "", "2", "", "n", "n", "n", "n", "n", "", *keys])
     e = env(project)
     assert e["WA_DATA_DIR"] == "./data" and e["WA_SECRETS_DIR"] == "./secrets" and e["WA_API_PORT"] == "8010"
     assert e["WA_MQTT_HOST"] == "wa-mqtt" and e["WA_MQTT_USER"] == "wa"
@@ -56,9 +56,9 @@ def test_a_new_install_with_the_bundled_broker(project: Path) -> None:
 def test_running_it_again_keeps_everything(project: Path) -> None:
     keys = [""] * KEYS
     keys[0] = "nh-key"
-    run(project, ["", "", "9000", "2", "", "y", "y", "y", "", "ts-key", *keys])
+    run(project, ["", "", "9000", "2", "", "y", "y", "y", "n", "n", "", "ts-key", *keys])
     before, token = env(project), (project / "secrets" / "api_token.txt").read_text()
-    run(project, ["", "", "", "", "", "", "", "", "", "", *([""] * KEYS)])
+    run(project, ["", "", "", "", "", "", "", "", "", "", "", "", *([""] * KEYS)])
     assert env(project) == before and before["WA_API_PORT"] == "9000"
     assert before["COMPOSE_FILE"] == (
         "docker-compose.yml:docker-compose.mqtt.yml:docker-compose.routing.yml:docker-compose.graph.yml"
@@ -71,12 +71,12 @@ def test_running_it_again_keeps_everything(project: Path) -> None:
 
 
 def test_your_own_broker_or_none(project: Path) -> None:
-    run(project, ["", "", "", "1", "192.168.1.10", "", "mqttuser", "n", "n", "n", "", "broker-pw", *([""] * KEYS)])
+    run(project, ["", "", "", "1", "192.168.1.10", "", "mqttuser", "n", "n", "n", "n", "n", "", "broker-pw", *([""] * KEYS)])
     e = env(project)
     assert (e["WA_MQTT_HOST"], e["WA_MQTT_PORT"], e["WA_MQTT_USER"]) == ("192.168.1.10", "1883", "mqttuser")
     assert e["COMPOSE_FILE"] == "docker-compose.yml"
     assert (project / "secrets" / "mqtt_password.txt").read_text() == "broker-pw"
-    run(project, ["", "", "", "3", "n", "n", "n", "", *([""] * KEYS)])
+    run(project, ["", "", "", "3", "n", "n", "n", "n", "n", "", *([""] * KEYS)])
     assert env(project)["WA_MQTT_HOST"] == ""
 
 
@@ -84,22 +84,36 @@ def test_other_overlays_are_kept(project: Path) -> None:
     shutil.copy(project / ".env.example", project / ".env")
     with (project / ".env").open("a") as f:
         f.write("COMPOSE_FILE=docker-compose.yml:docker-compose.vault.yml:docker-compose.mqtt.yml\n")
-    run(project, ["", "", "", "3", "n", "n", "n", "", *([""] * KEYS)])
+    run(project, ["", "", "", "3", "n", "n", "n", "n", "n", "", *([""] * KEYS)])
     assert env(project)["COMPOSE_FILE"] == "docker-compose.yml:docker-compose.vault.yml"
 
 
 def test_keys_can_live_in_your_own_vault_or_key_manager(project: Path) -> None:
-    run(project, ["", "", "", "3", "n", "n", "n", "3", "https://vault.lan:8200", *([""] * KEYS)])
+    run(project, ["", "", "", "3", "n", "n", "n", "n", "n", "3", "https://vault.lan:8200", *([""] * KEYS)])
     e = env(project)
     assert e["WA_SECRETS_BACKEND"] == "vault" and e["WA_VAULT_ADDR"] == "https://vault.lan:8200"
     assert e["COMPOSE_FILE"] == "docker-compose.yml:docker-compose.vault.yml"
-    run(project, ["", "", "", "3", "n", "n", "n", "4", "op read op://Home/{name}/credential", *([""] * KEYS)])
+    run(project, ["", "", "", "3", "n", "n", "n", "n", "n", "4", "op read op://Home/{name}/credential", *([""] * KEYS)])
     e = env(project)
-    again = run(project, ["", "", "", "3", "n", "n", "n", "4", "", *([""] * KEYS)])  # Enter keeps it, quotes and all
+    again = run(project, ["", "", "", "3", "n", "n", "n", "n", "n", "4", "", *([""] * KEYS)])  # Enter keeps it, quotes and all
     assert "single quote" not in again and env(project)["WA_SECRETS_COMMAND"] == e["WA_SECRETS_COMMAND"]
     assert e["WA_SECRETS_BACKEND"] == "command" and e["WA_SECRETS_COMMAND"] == "'op read op://Home/{name}/credential'"
 
 
 def test_the_bundled_openbao_is_set_up_after_the_stack_starts(project: Path) -> None:
-    text = run(project, ["", "", "", "3", "n", "n", "n", "2", *([""] * KEYS)])
+    text = run(project, ["", "", "", "3", "n", "n", "n", "n", "n", "2", *([""] * KEYS)])
     assert "scripts/openbao.sh setup" in text and env(project)["WA_SECRETS_BACKEND"] == "files"
+
+
+def test_shopping_adds_kitchenowl_with_its_own_tailscale_key_and_the_supermarket_service(project: Path) -> None:
+    # broker: none; routing, graph, tailscale: no; KitchenOwl: yes, the tailnet; supermarket: yes; key files; KitchenOwl's key
+    run(project, ["", "", "", "3", "n", "n", "n", "y", "tail1234.ts.net", "y", "", "ko-key", *([""] * KEYS)])
+    e = env(project)
+    assert e["COMPOSE_FILE"] == "docker-compose.yml:docker-compose.kitchenowl.yml:docker-compose.supermarket.yml"
+    assert e["WA_TAILNET"] == "tail1234.ts.net"
+    s = project / "secrets"
+    assert (s / "kitchenowl_tailscale_authkey.txt").read_text() == "ko-key"
+    assert len((s / "kitchenowl_jwt_secret.txt").read_text()) >= 32 and len((s / "supermarket_api_token.txt").read_text()) >= 32
+    assert (project / "data" / "supermarket").is_dir()
+    run(project, ["", "", "", "", "", "", "", "", "", "", "", "", *([""] * KEYS)])  # again: kept
+    assert env(project)["COMPOSE_FILE"] == e["COMPOSE_FILE"]

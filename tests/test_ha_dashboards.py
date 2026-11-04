@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import re
 import types
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +82,9 @@ def test_no_secrets_in_the_repo_files() -> None:
         assert "bearer " not in low.replace('"bearer <contents', "").replace("bearer <", "")
 
 
+NOW = datetime(2026, 11, 4, 13, 0, tzinfo=UTC)
+
+
 class _Attrs(dict):  # type: ignore[type-arg]
     def __getattr__(self, name: str) -> Any:
         if name in self:
@@ -92,8 +96,11 @@ class _States:
     """Just enough of Home Assistant's template namespace."""
 
     def __init__(self, entities: dict[str, tuple[str, dict[str, Any]]]) -> None:
+        # "_heard" in the attributes sets last_reported (when Home Assistant last got a report); else 2 minutes ago
         self.e = {
-            k: types.SimpleNamespace(entity_id=k, state=v[0], attributes=_Attrs(v[1]), name=v[1].get("friendly_name", k))
+            k: types.SimpleNamespace(entity_id=k, state=v[0], name=v[1].get("friendly_name", k),
+                                     attributes=_Attrs({a: b for a, b in v[1].items() if a != "_heard"}),
+                                     last_reported=v[1].get("_heard", NOW - timedelta(minutes=2)), last_updated=None)
             for k, v in entities.items()
         }
 
@@ -115,6 +122,14 @@ class _States:
     def sensor(self) -> list[Any]:
         return [v for k, v in self.e.items() if k.startswith("sensor.")]
 
+    @property
+    def binary_sensor(self) -> list[Any]:
+        return [v for k, v in self.e.items() if k.startswith("binary_sensor.")]
+
+    @property
+    def device_tracker(self) -> list[Any]:
+        return [v for k, v in self.e.items() if k.startswith("device_tracker.")]
+
     def attr(self, entity_id: str, name: str) -> Any:
         e = self.e.get(entity_id)
         return e.attributes.get(name) if e else None
@@ -130,7 +145,7 @@ def _env(ents: dict[str, tuple[str, dict[str, Any]]], **ctx: Any) -> Any:
     jinja2 = _jinja()
     st = _States(ents)
     env = jinja2.Environment()
-    env.globals.update(states=st, state_attr=st.attr, distance=_km,
+    env.globals.update(states=st, state_attr=st.attr, distance=_km, now=lambda: NOW,
                        is_state=lambda e, v: st(e) == v, as_datetime=__import__("datetime").datetime.fromisoformat, **ctx)
     env.tests["search"] = lambda v, p: re.search(p, v) is not None
     env.tests["in"] = lambda v, c: v in c
@@ -448,6 +463,26 @@ def test_leaf_says_nothing_to_do_when_all_is_well() -> None:
     out = _leaf()
     assert "Nothing to do." in out and "81%" in out and "111.7 miles" in out
     assert "🔌" not in out and "⚠️" not in out and "🛞" not in out
+
+
+def _heard(ago: timedelta, where: str, **newer: timedelta) -> str:
+    """The Leaf card with every car entity last reported `ago`, the car `where`, and some entities reported later."""
+    ents = {k: (v[0], {"_heard": NOW - ago}) for k, v in LEAF_OK.items() if "hv66bzd" in k}
+    ents["device_tracker.hv66bzd_location"] = (where, {"_heard": NOW - newer.pop("tracker", ago)})
+    return _leaf(**ents)
+
+
+def test_leaf_says_when_it_last_heard_from_the_car() -> None:
+    assert "_Last heard from the car 2 min ago._" in _leaf()  # fresh: a quiet line under the summary
+    away = _heard(timedelta(minutes=40), "not_home")
+    assert "📡 Nothing from the car for 40 min, so these are its last values" in away
+    assert "Last heard" not in away and "Nothing to do." not in away
+    home = _heard(timedelta(minutes=40), "home")  # parked at home on Wi-Fi: only odd after an hour
+    assert "📡" not in home and "Last heard from the car 40 min ago" in home
+    gone = _heard(timedelta(days=3), "home")
+    assert "📡 Nothing from the car for 3 days: is its Wi-Fi or the OVMS module down?" in gone
+    one_fresh = _heard(timedelta(minutes=40), "not_home", tracker=timedelta(minutes=3))
+    assert "📡" not in one_fresh and "3 min ago" in one_fresh  # the newest report is what counts
 
 
 def test_leaf_reports_charging_when_it_is() -> None:

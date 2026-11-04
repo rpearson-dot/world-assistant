@@ -59,8 +59,21 @@ views:
           {% set p = states('sensor.leaf_tyre_pressure_' ~ t[0] ~ '_psi') | float(-1) %}
           {% if p >= 0 and (p < 33 or p > 40) %}{% set ns.items = ns.items + ['🛞 ' ~ t[1] ~ ' tyre ' ~ p ~ ' psi (36 recommended)'] %}{% endif %}
           {% endfor %}
+          {#- Last heard: the newest report from any of the car's entities. last_reported moves on every message from
+              OVMS, even one that repeats the value, so a parked car with nothing changing still counts as heard. -#}
+          {% set heard = namespace(t=none) %}
+          {% for s in (states.sensor | list) + (states.binary_sensor | list) + (states.device_tracker | list) %}
+          {% if 'hv66bzd' in s.entity_id %}{% set t = s.last_reported | default(s.last_updated, true) %}{% if t is not none and (heard.t is none or t > heard.t) %}{% set heard.t = t %}{% endif %}{% endif %}
+          {% endfor %}
+          {% set away = not is_state('device_tracker.hv66bzd_location', 'home') %}
+          {% if heard.t is not none %}{% set mins = ((now() - heard.t).total_seconds() / 60) | int %}{% set ago = (mins | string ~ ' min') if mins < 60 else ((mins // 60) | string ~ ' h') if mins < 2880 else ((mins // 1440) | string ~ ' days') %}{% set stale = mins >= (15 if away else 60) %}
+          {% if stale %}{% set ns.items = ns.items + ['📡 Nothing from the car for ' ~ ago ~ (', so these are its last values: no mobile signal where it is, or its SIM' if away else ': is its Wi-Fi or the OVMS module down?')] %}{% endif %}
+          {% else %}{% set stale = false %}{% endif %}
           {% if ns.items %}{% for i in ns.items %}- {{ i }}
           {% endfor %}{% else %}Nothing to do.{% if charging %} Charging, {{ states('sensor.nissan_leaf_hv66bzd_time_to_full_charge') }} to full.{% else %} {{ soc | round(0) | int }}%, about {{ miles }} miles.{% endif %}{% endif %}
+          {% if heard.t is not none and not stale %}
+
+          _Last heard from the car {{ 'just now' if mins < 1 else ago ~ ' ago' }}._{% endif %}
 
       - type: conditional
         conditions:
@@ -93,6 +106,8 @@ views:
           - entity: sensor.nissan_leaf_hv66bzd_ambient_temperature
             name: Outside
 
+      # The trail is where the car has been over the last 24 hours, in the colour Home Assistant gives this
+      # car: the route driven, not a road condition. For just the current position, delete hours_to_show.
       - type: map
         title: Where it is
         entities:
@@ -100,11 +115,6 @@ views:
         default_zoom: 14
         theme_mode: auto
         hours_to_show: 24
-      - type: markdown
-        content: |
-          The coloured trail is where the car has been over the last 24 hours, in the colour Home
-          Assistant gives this car. It is the route driven, not a road condition. For just the
-          current position and no trail, delete `hours_to_show` from the map card above.
 
       # Chargers near whoever is looking: their phone's location while away, else zone.home (as the Fuel dashboard).
       # Needs World Assistant's GRIDSERVE module; the connector picker comes with the EV chargers package.

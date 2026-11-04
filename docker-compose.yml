@@ -109,6 +109,11 @@ x-app: &app
     - octopus_api_key
     - ticketmaster_api_key
     - pollen_api_key
+    - kitchenowl_token
+    - sainsburys_email
+    - sainsburys_password
+    - ocado_email
+    - ocado_password
     - redis_password
 
 services:
@@ -254,3 +259,13 @@ secrets:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/redis_password.txt
   pollen_api_key:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/pollen_api_key.txt
+  kitchenowl_token:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/kitchenowl_token.txt
+  sainsburys_email:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/sainsburys_email.txt
+  sainsburys_password:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/sainsburys_password.txt
+  ocado_email:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/ocado_email.txt
+  ocado_password:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/ocado_password.txt

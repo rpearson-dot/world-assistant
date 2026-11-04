@@ -4,6 +4,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-11-04
+
+### Added
+- **Shopping** (`/shopping`, docs/shopping.md): the family's list in **KitchenOwl**, priced at **Sainsbury's and Ocado**.
+  - `docker-compose.kitchenowl.yml`: KitchenOwl v0.7.10 (iPhone, Android and web apps, shared households), with its
+    own Tailscale device and `tailscale serve` at `https://kitchenowl.<tailnet>.ts.net`, no LAN port and Funnel off.
+    Share that device with the family in the Tailscale admin console.
+  - `docker-compose.supermarket.yml`: a small supermarket service on open-supermarkets 3.0.0 (unofficial; personal
+    use), published by the release as its own signed image. It only searches, reads slots and logs in: it never books,
+    fills a basket or buys.
+  - **Price this list**: each item at each retailer (counts like "2" or "3 tins" in the description multiply the
+    price), the total at each, which is cheaper on the items both have and by how much. **Change** picks the product
+    you mean; it is remembered per KitchenOwl item. Searches are kept six hours.
+  - **Delivery slots**, read only, and the retailer logins: Sainsbury's sends an SMS code, typed in on the page;
+    pasting cookies from your own browser is the fallback. Passwords stay with World Assistant's keys.
+  - `scripts/setup.sh` asks about both; new secrets are created by `scripts/init-secrets.sh` (run by every deploy).
+- **Leaf: "Last heard from the car"** under Before you go, and a 📡 warning when nothing has come from OVMS for
+  15 minutes while the car is away (or an hour at home), so a page of last-known values no longer looks live.
+
+### Changed
+- Leaf: the map's trail note is a comment in the dashboard file instead of a card (it landed away from the map).
+- Releases build and scan both images before pushing anything, so a scan finding no longer leaves an unscanned
+  `:latest` behind. CI runs the supermarket service's tests, builds and scans its image, and checks the overlays.
+
 ## [0.26.0] - 2026-11-04
 
 ### Added
