@@ -13,6 +13,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   - **Mosquitto 2.1.2** for the bundled Home Assistant broker (was 2.0.20). Its settings and the stored sensors carry on as they are.
   - **Neo4j 2026.10** for the graph (was 5.26). The graph is rebuilt from the database, so the new version starts on a new folder (`WA_DATA_DIR/neo4j/data-2026`) and fills at the next build (:08 and :38 past the hour, or `POST /v1/graph/rebuild`); the old `neo4j/data` folder can be deleted.
 - The tests run on Python 3.14; the GitHub workflow actions are on their current versions (CodeQL, docker login, setup-python).
+- The image no longer contains pip: nothing in it uses pip, and the copy in the Python 3.14 base image bundles older msgpack, urllib3 and setuptools that the release's security scan flags. CI now runs the same scan on every change, so a finding stops a pull request rather than a release.
 
 ## [0.24.0] - 2026-11-04
 
