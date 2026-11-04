@@ -1,0 +1,20 @@
+{
+  "name": "world-assistant-supermarket",
+  "version": "1.0.0",
+  "private": true,
+  "description": "World Assistant's supermarket service: prices a shopping list at Sainsbury's and Ocado with open-supermarkets.",
+  "license": "MIT",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "open-supermarkets": "3.0.0",
+    "playwright": "1.64.1"
+  },
+  "overrides": {
+    "playwright": "1.64.1"
+  }
+}

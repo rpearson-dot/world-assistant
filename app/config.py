@@ -90,6 +90,12 @@ class Settings(BaseSettings):
     graph_near_km: float = 3.0  # how close a station or location must be to a place to be "near" it
     graph_along_km: float = 2.0  # how close a station must be to a corridor to be "along" it
 
+    # Shopping (docs/shopping.md). Set by docker-compose.kitchenowl.yml and docker-compose.supermarket.yml; empty means
+    # that part is not installed. The public URL is the address the family's KitchenOwl apps use (on the tailnet).
+    kitchenowl_url: str = ""
+    kitchenowl_public_url: str = ""
+    supermarket_url: str = ""
+
     # National Highways allows 10 calls per subscription key per minute.
     # Stay under it so retries and clock skew never trip the upstream limit.
     nh_rate_limit_per_minute: int = 8

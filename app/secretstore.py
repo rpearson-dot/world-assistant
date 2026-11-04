@@ -69,6 +69,11 @@ KNOWN: tuple[Known, ...] = (
     Known("ukpn_api_key", False, "UK Power Networks open data portal API key (power cuts, street works)"),
     Known("gridserve_api_key", False, "GRIDSERVE open data API key (their EV chargers and whether they work)"),
     Known("pollen_api_key", False, "Polleninformation (Austrian Pollen Information Service) API key"),
+    Known("kitchenowl_token", False, "KitchenOwl long-lived token (reads the family shopping list)"),
+    Known("sainsburys_email", False, "Sainsbury's login email (delivery slots on the Shopping page)"),
+    Known("sainsburys_password", False, "Sainsbury's login password"),
+    Known("ocado_email", False, "Ocado login email (delivery slots on the Shopping page)"),
+    Known("ocado_password", False, "Ocado login password"),
     Known("redis_password", False, "Password of the stack's own Redis"),
     Known("mqtt_password", False, "MQTT broker password"),
 )
@@ -273,6 +278,7 @@ WEB_KEYS = frozenset({
     "tfl_app_key", "nr_access_token", "ticketmaster_api_key", "skiddle_api_key", "octopus_api_key", "bods_api_key",
     "tfwm_app_id", "tfwm_app_key", "pollen_api_key", "ukpn_api_key",
     "gridserve_api_key",
+    "kitchenowl_token", "sainsburys_email", "sainsburys_password", "ocado_email", "ocado_password",
 })  # fmt: skip
 
 

@@ -43,6 +43,7 @@ EXCLUDE = frozenset(
         "alembic_version", "raw_capture", "job_run", "adapter_state",
         "fuel_station", "fuel_price", "fuel_price_change",
         "nh_event", "nh_event_corridor", "nh_sign", "nh_sign_message",
+        "shopping_search",
     }
 )  # fmt: skip
 NAME_RE = re.compile(r"^wa-\d{8}-\d{6}(?:-[A-Za-z0-9._]+)?\.tar\.gz$")

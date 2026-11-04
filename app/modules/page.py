@@ -45,7 +45,7 @@ async function api(path, opts) {
   if (!r.ok) throw new Error((d && d.detail) || r.status);
   return d;
 }
-const CATS = { transport: 'Getting around', place: 'Places and what is near them', energy: 'Energy and vehicles', data: 'Other data', service: 'Services' };
+const CATS = { transport: 'Getting around', place: 'Places and what is near them', energy: 'Energy and vehicles', data: 'Other data', home: 'At home', service: 'Services' };
 const STATE = { ready: ['ready', 'ok'], limited: ['works, better with a key', 'warn'], waiting: ['set up, no run yet', ''], off: ['poll switched off', 'warn'], missing: ['needs a key', 'bad'], failing: ['last run failed', 'bad'] };
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function render(d) {

@@ -41,6 +41,13 @@ chmod 770 "$BACKUPS" 2>/dev/null || true
 mkdir -p "$DATA/keys"
 chown 10001:10001 "$DATA/keys" 2>/dev/null || chmod 777 "$DATA/keys"
 chmod 700 "$DATA/keys" 2>/dev/null || true
+# The supermarket service (docker-compose.supermarket.yml) runs as uid 10001 too and keeps retailer logins here.
+case ":${COMPOSE_FILE:-}:" in
+  *:docker-compose.supermarket.yml:*)
+    mkdir -p "$DATA/supermarket"
+    chown 10001:10001 "$DATA/supermarket" 2>/dev/null || chmod 777 "$DATA/supermarket"
+    chmod 700 "$DATA/supermarket" 2>/dev/null || true ;;
+esac
 
 running() { [ -n "$(docker compose ps --status running -q api 2>/dev/null)" ]; }
 

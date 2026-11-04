@@ -1,0 +1,39 @@
+# Adds the supermarket service: prices the shopping list at Sainsbury's and Ocado (docs/shopping.md).
+#
+#   add docker-compose.supermarket.yml to COMPOSE_FILE in .env (scripts/setup.sh asks), then docker compose up -d
+#
+# Built from services/supermarket (open-supermarkets, unofficial: it can break when a retailer changes its site, and
+# automated access may be against their terms; personal use only). A release publishes the image next to World
+# Assistant's; a build from this folder builds it here. Reachable only by World Assistant, as http://wa-supermarket:7876,
+# with the supermarket_api_token secret (scripts/init-secrets.sh makes one). No port is published.
+#
+# Retailer logins are saved in WA_DATA_DIR/supermarket. The retailer passwords are not given to this container: World
+# Assistant keeps them with its other keys and passes them only when you log in from the Shopping page.
+
+services:
+  wa-supermarket:
+    image: ${WA_SUPERMARKET_IMAGE:-ghcr.io/rpearson-dot/world-assistant-supermarket:latest}
+    build: ./services/supermarket
+    restart: unless-stopped
+    labels:
+      net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/shopping.png"
+    networks: [internal]
+    environment:
+      TZ: ${TZ:-Europe/London}
+      SUPERMARKET_API_TOKEN_FILE: /run/secrets/supermarket_api_token
+    secrets:
+      - supermarket_api_token
+    volumes:
+      - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/supermarket:/data
+    # Chromium needs room for its shared memory when it runs (logins and Sainsbury's slots)
+    shm_size: 512mb
+
+  api:
+    environment:
+      WA_SUPERMARKET_URL: ${WA_SUPERMARKET_URL:-http://wa-supermarket:7876}
+    secrets:
+      - supermarket_api_token
+
+secrets:
+  supermarket_api_token:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/supermarket_api_token.txt

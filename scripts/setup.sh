@@ -87,6 +87,10 @@ chmod 770 "$data/backups" 2>/dev/null || true
 mkdir -p "$data/keys"
 chown 10001:10001 "$data/keys" 2>/dev/null || chmod 777 "$data/keys"
 chmod 700 "$data/keys" 2>/dev/null || true
+# The supermarket service's retailer logins (docker-compose.supermarket.yml); it runs as uid 10001 too.
+mkdir -p "$data/supermarket"
+chown 10001:10001 "$data/supermarket" 2>/dev/null || chmod 777 "$data/supermarket"
+chmod 700 "$data/supermarket" 2>/dev/null || true
 
 hr "Home Assistant"
 host_now="$(env_get WA_MQTT_HOST)"
@@ -103,7 +107,8 @@ mq="$(ask "Choose 1, 2 or 3" "$choice_now")"
 files="$(env_or COMPOSE_FILE docker-compose.yml)"
 # keep any other overlays (vault, graph, traefik); the broker and routing ones are decided below
 files="$(printf '%s' "$files" | tr ':' '\n' | grep -v -e '^docker-compose.mqtt.yml$' -e '^docker-compose.routing.yml$' \
-  -e '^docker-compose.graph.yml$' -e '^docker-compose.tailscale.yml$' | paste -sd: - || true)"
+  -e '^docker-compose.graph.yml$' -e '^docker-compose.tailscale.yml$' -e '^docker-compose.kitchenowl.yml$' \
+  -e '^docker-compose.supermarket.yml$' | paste -sd: - || true)"
 files="${files:-docker-compose.yml}"
 case "$mq" in
   1)
@@ -149,6 +154,22 @@ say "Puts World Assistant on your tailnet with HTTPS, for your phone, Siri Short
 say "First, in the Tailscale admin console: turn on MagicDNS and HTTPS certificates, and create an auth key."
 tsq="$(ask "Add it? (y/n)" "$has_ts")"
 case "$tsq" in y|Y|yes) files="$files:docker-compose.tailscale.yml" ;; esac
+
+hr "Shopping (optional)"
+has_ko=n; has_sm=n
+case ":$(env_get COMPOSE_FILE):" in *:docker-compose.kitchenowl.yml:*) has_ko=y ;; esac
+case ":$(env_get COMPOSE_FILE):" in *:docker-compose.supermarket.yml:*) has_sm=y ;; esac
+say "KitchenOwl: the family's shopping list, in its own app, on your tailnet (docs/shopping.md)."
+say "It gets its own Tailscale device, so it needs a second auth key and your tailnet's name."
+koq="$(ask "Add KitchenOwl? (y/n)" "$has_ko")"
+case "$koq" in
+  y|Y|yes)
+    files="$files:docker-compose.kitchenowl.yml"
+    env_set WA_TAILNET "$(ask "Your tailnet's DNS name (Tailscale admin console > DNS), e.g. tail1234.ts.net" "$(env_get WA_TAILNET)")" ;;
+esac
+say "Pricing the list at Sainsbury's and Ocado (unofficial, personal use; it can break when they change their sites)."
+smq="$(ask "Add the supermarket service? (y/n)" "$has_sm")"
+case "$smq" in y|Y|yes) files="$files:docker-compose.supermarket.yml" ;; esac
 hr "Where to keep your keys"
 sb_now="$(env_or WA_SECRETS_BACKEND files)"
 say "World Assistant reads every key through one place. You can change this later in .env."
@@ -183,6 +204,12 @@ case "$tsq" in
   y|Y|yes)
     k="$(secret_ask "Tailscale auth key (Enter to keep the one you have)")"
     [ -n "$k" ] && { printf '%s' "$k" > "$dir/tailscale_authkey.txt"; chmod 644 "$dir/tailscale_authkey.txt"; }
+    ;;
+esac
+case "$koq" in
+  y|Y|yes)
+    k="$(secret_ask "Tailscale auth key for KitchenOwl's own device (Enter to keep the one you have)")"
+    [ -n "$k" ] && { printf '%s' "$k" > "$dir/kitchenowl_tailscale_authkey.txt"; chmod 644 "$dir/kitchenowl_tailscale_authkey.txt"; }
     ;;
 esac
 if [ "$mq" = 1 ]; then
