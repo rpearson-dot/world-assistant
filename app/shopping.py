@@ -28,7 +28,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
@@ -248,6 +248,21 @@ async def service(method: str, path: str, body: Any = None, timeout: float = 60,
     return data
 
 
+async def service_image(path: str, transport: httpx.AsyncBaseTransport | None = None) -> tuple[bytes, str]:
+    """A picture from the service (a login screenshot) and the name it was kept under."""
+    base = get_settings().supermarket_url.rstrip("/")
+    if not base:
+        raise HTTPException(409, "The supermarket service is not set up: add docker-compose.supermarket.yml (docs/shopping.md)")
+    try:
+        async with httpx.AsyncClient(timeout=20, transport=transport) as c:
+            r = await c.get(base + path, headers={"Authorization": f"Bearer {read_secret('supermarket_api_token')}"})
+    except httpx.HTTPError as exc:
+        raise HTTPException(503, f"The supermarket service did not answer ({type(exc).__name__})") from exc
+    if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image/png"):
+        raise HTTPException(404 if r.status_code in (200, 404) else 502, "No screenshot kept for that retailer")
+    return r.content, r.headers.get("x-screenshot-name", "")
+
+
 async def search_all(request: Request, wanted: dict[str, set[str]], refresh: bool) -> dict[tuple[str, str], dict[str, Any]]:
     """Every (retailer, query) result, from the six-hour store where it is fresh, else from the service."""
     found: dict[tuple[str, str], dict[str, Any]] = {}
@@ -438,7 +453,7 @@ async def slots(retailer: str = "", refresh: bool = False) -> dict[str, Any]:
 
 
 class CodeIn(BaseModel):
-    code: str = Field(pattern=r"^\s*\d{6}\s*$")
+    code: str = Field(pattern=r"^\s*[A-Za-z0-9]{4,10}\s*$")
 
 
 class CookiesIn(BaseModel):
@@ -455,10 +470,28 @@ async def login_start(retailer: str) -> dict[str, Any]:
     return await service("POST", "/login/start", {"provider": retailer, "email": email, "password": password}, timeout=120)  # type: ignore[no-any-return]
 
 
-@router.post("/login/sainsburys/code")
-async def login_code(body: CodeIn) -> dict[str, Any]:
-    _slots_cache.pop("sainsburys", None)
-    return await service("POST", "/login/code", {"code": body.code.strip()}, timeout=60)  # type: ignore[no-any-return]
+@router.post("/login/{retailer}/code")
+async def login_code(retailer: str, body: CodeIn) -> dict[str, Any]:
+    """The code the retailer texted (Sainsbury's) or emailed, while its login waits."""
+    _retailer(retailer)
+    _slots_cache.pop(retailer, None)
+    return await service("POST", "/login/code", {"code": body.code.strip(), "provider": retailer}, timeout=60)  # type: ignore[no-any-return]
+
+
+@router.post("/login/{retailer}/continue")
+async def login_continue(retailer: str) -> dict[str, Any]:
+    """After clicking the link the retailer emailed: look again, and finish the login if it is confirmed."""
+    _retailer(retailer)
+    _slots_cache.pop(retailer, None)
+    return await service("POST", "/login/continue", {"provider": retailer}, timeout=90)  # type: ignore[no-any-return]
+
+
+@router.get("/login/{retailer}/screenshot", response_class=Response)
+async def login_screenshot(retailer: str) -> Response:
+    """The newest screenshot of the retailer's sign-in page: what it showed when a login failed or waited."""
+    _retailer(retailer)
+    data, name = await service_image(f"/login/screenshot?provider={retailer}")
+    return Response(data, media_type="image/png", headers={"Cache-Control": "no-store", "X-Screenshot-Name": name})
 
 
 @router.post("/session/{retailer}")

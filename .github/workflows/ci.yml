@@ -143,6 +143,8 @@ jobs:
           docker run -d --name sm -e SUPERMARKET_API_TOKEN=t world-assistant-supermarket:ci
           for i in $(seq 1 20); do docker exec sm node -e "fetch('http://127.0.0.1:7876/health',{headers:{authorization:'Bearer t'}}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))" && break; sleep 1; done
           docker exec sm node -e "fetch('http://127.0.0.1:7876/health',{headers:{authorization:'Bearer t'}}).then(r=>r.json()).then(d=>{console.log(JSON.stringify(d));process.exit(d.ok?0:1)})"
+          # Chromium starts in the image with a remembered profile in /data, as the logins use it
+          docker exec sm node -e "require('playwright').chromium.launchPersistentContext('/data/browser/ci',{headless:true}).then(async c=>{const p=await c.newPage();await p.setContent('<p>ok</p>');console.log(await p.textContent('p'));await c.close()})"
           docker rm -f sm
       - name: Scan the image as the release does (fixable high or critical findings fail)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0

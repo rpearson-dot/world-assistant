@@ -4,6 +4,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- Shopping, retailer logins: a login the retailer wants confirmed now waits for you (five minutes) instead of
+  failing. A code texted or emailed is typed in on the page; for a link in an email (as Ocado sends for a new
+  device), click it and press **Continue**.
+- The service signs in with a browser it remembers between logins (`WA_DATA_DIR/supermarket/browser`), so once a
+  retailer has confirmed it, it is a known device and the retailer stops asking. A profile still signed in needs
+  no form at all.
+- The Shopping page shows the screenshot of the retailer's sign-in page while a login waits and when one fails
+  (**Last screenshot** shows it again), instead of only naming a file on the server.
+
 ## [0.27.2] - 2026-11-04
 
 ### Fixed

@@ -52,7 +52,7 @@ async function serve(t, { providers = {}, secrets = {}, logins } = {}) {
     });
     return { status: r.status, body: await r.json() };
   };
-  return { call, made };
+  return { call, made, base };
 }
 
 test('every request needs the token', async (t) => {
@@ -131,24 +131,29 @@ test('cookies exported from a browser become the session', async (t) => {
 
 // A browser that behaves like a retailer's sign-in. `buttons`: the selectors that exist on the page (none: only Enter
 // works). `twoStep`: the password box appears only after the email is submitted. After the password it goes to
-// `afterLogin` (Sainsbury's: its /mfa page); after the code, to `afterCode`.
+// `afterLogin` (Sainsbury's: its /mfa page; Ocado: maybe a page asking to confirm by email, with `verifyText` on it and,
+// if `codeBox`, a box for an emailed code); after the code, to `afterCode`. `fake.confirm()` is clicking the email link.
 function fakeBrowser({
   afterLogin = 'https://www.sainsburys.co.uk/gol-ui/mfa', afterCode = 'https://www.sainsburys.co.uk/gol-ui/groceries',
   buttons = ['button[type="submit"]', 'button[data-testid="log-in"]', 'button[data-testid="submit-code"]'], twoStep = false,
+  verifyText = '', codeBox = false,
 } = {}) {
   const log = [];
   let url = 'about:blank';
   let passwordShown = !twoStep;
+  let onForm = true;
+  let confirmed = false;
+  const verifying = () => url.includes('/mfa') || url.includes('verify');
   const isEmail = (sel) => sel.includes('input[type="email"]');
   const isPassword = (sel) => sel.includes('input[type="password"]');
   const isCode = (sel) => sel.includes('#code');
   const submitted = (how) => {
     log.push(['submit', how]);
-    if (url.includes('/mfa')) url = afterCode;
-    else if (!passwordShown) passwordShown = true;
-    else url = afterLogin;
+    if (verifying()) { url = afterCode; onForm = false; } else if (!passwordShown) passwordShown = true; else { url = afterLogin; onForm = url.includes('/login'); }
   };
-  const visible = (sel) => isEmail(sel) || (isPassword(sel) && passwordShown) || (isCode(sel) && url.includes('/mfa')) || buttons.includes(sel);
+  const visible = (sel) => (onForm && (isEmail(sel) || (isPassword(sel) && passwordShown))) ||
+    (isCode(sel) && verifying() && (url.includes('/mfa') || codeBox)) || (onForm && buttons.includes(sel)) ||
+    (verifying() && buttons.includes(sel));
   const locator = (sel) => {
     const l = {
       first: () => l,
@@ -156,18 +161,23 @@ function fakeBrowser({
       click: async () => { if (!visible(sel)) throw new Error(`no ${sel}`); submitted(sel); },
       fill: async (v) => { if (!visible(sel)) throw new Error(`Timeout waiting for ${sel}`); log.push(['fill', sel, v]); },
       evaluate: async () => false,
+      innerText: async () => (sel === 'body' ? (verifying() ? verifyText || 'Enter the code we have texted you' : 'Welcome') : ''),
     };
     return l;
   };
   const page = {
-    goto: async (u) => { url = u; log.push(['goto', u]); },
+    goto: async (u) => {
+      log.push(['goto', u]);
+      if (url.includes('verify') && !confirmed) return; // still waiting for the email link
+      url = u; onForm = u.includes('login');
+    },
     waitForTimeout: async () => {},
     waitForSelector: async (sel) => { if (!visible(sel)) throw new Error(`Timeout waiting for ${sel}`); },
     locator,
     getByRole: () => ({ first() { return this; }, isVisible: async () => false, click: async () => {} }),
     evaluate: async () => {},
     press: async (sel) => { if (!visible(sel)) throw new Error(`no ${sel}`); submitted('Enter'); },
-    screenshot: async ({ path: p }) => { fs.writeFileSync(p, 'png'); log.push(['screenshot', p]); },
+    screenshot: async ({ path: p }) => { fs.writeFileSync(p, 'PNGDATA'); log.push(['screenshot', p]); },
     url: () => url,
   };
   const context = { newPage: async () => page, pages: () => [page], cookies: async () => [{ name: 'WC_AUTHENTICATION_9', value: 'x', domain: '.sainsburys.co.uk' }] };
@@ -177,7 +187,7 @@ function fakeBrowser({
     contexts: () => [context],
     close: async () => { browser.closed = true; },
   };
-  return { browser, log };
+  return { browser, log, confirm: () => { confirmed = true; } };
 }
 
 test('the Sainsbury\'s login stops for the SMS code, then saves the session', async (t) => {
@@ -185,10 +195,11 @@ test('the Sainsbury\'s login stops for the SMS code, then saves the session', as
   const logins = new Logins({ launch: async () => fake.browser, now: () => NOW });
   const { call } = await serve(t, { logins, secrets: { sainsburys_email: 'me@x', sainsburys_password: 'pw' } });
   const started = await call('POST', '/login/start', { provider: 'sainsburys' });
-  assert.equal(started.body.status, 'code_needed');
+  assert.equal(started.body.status, 'verify_needed');
+  assert.equal(started.body.kind, 'sms');
   assert.equal((await call('GET', '/health')).body.login.waiting_for_code, 'sainsburys');
   assert.equal(fake.browser.closed, false); // held open for the code
-  assert.equal((await call('POST', '/login/code', { code: '12ab' })).status, 400);
+  assert.equal((await call('POST', '/login/code', { code: '1!' })).status, 400);
   const done = await call('POST', '/login/code', { code: '123456' });
   assert.equal(done.body.status, 'logged_in');
   assert.equal(done.body.session.saved, true);
@@ -264,7 +275,58 @@ test('a failed login keeps a screenshot and says where it is', async (t) => {
   const { call } = await serve(t, { logins });
   const r = await call('POST', '/login/start', { provider: 'ocado', email: 'me@x', password: 'wrong' });
   assert.equal(r.status, 401);
-  assert.match(r.body.error, /Still on the login page.*screenshot.*login-debug\/ocado-2026-11-04T15-00-00-000Z\.png/);
+  assert.match(r.body.error, /Still on the login page.*screenshot/);
+  assert.equal(r.body.screenshot, 'login-debug/ocado-2026-11-04T15-00-00-000Z.png');
   assert.ok(fs.existsSync(path.join(HOME, 'login-debug', 'ocado-2026-11-04T15-00-00-000Z.png')));
   assert.equal(fake.browser.closed, true);
+});
+
+test('Ocado asks to confirm by an email link: the login waits, Continue finishes it once the link is clicked', async (t) => {
+  const fake = fakeBrowser({ afterLogin: 'https://www.ocado.com/verify-device', verifyText: "We've sent you an email. Click the link to verify it's you." });
+  const logins = new Logins({ launch: async () => fake.browser, now: () => NOW });
+  const { call, base } = await serve(t, { logins });
+  const r = await call('POST', '/login/start', { provider: 'ocado', email: 'me@x', password: 'pw' });
+  assert.equal(r.body.status, 'verify_needed');
+  assert.equal(r.body.kind, 'email_link');
+  assert.match(r.body.message, /emailed a link.*Continue/);
+  assert.ok(r.body.screenshot, 'what Ocado shows is kept');
+  const h = (await call('GET', '/health')).body.login;
+  assert.equal(h.provider, 'ocado'); assert.equal(h.kind, 'email_link'); assert.equal(h.waiting_for_code, undefined);
+  assert.equal((await call('POST', '/login/code', { code: '123456', provider: 'ocado' })).status, 400); // a link, not a code
+  const early = await call('POST', '/login/continue', { provider: 'ocado' });
+  assert.equal(early.status, 409);
+  assert.match(early.body.error, /not confirmed it yet/);
+  assert.equal(fake.browser.closed, false); // still waiting
+  fake.confirm();
+  const done = await call('POST', '/login/continue', { provider: 'ocado' });
+  assert.equal(done.body.status, 'logged_in');
+  assert.equal(fake.browser.closed, true);
+  const png = await fetch(base + '/login/screenshot?provider=ocado', { headers: { authorization: `Bearer ${TOKEN}` } });
+  assert.equal(png.headers.get('content-type'), 'image/png');
+  assert.equal(await png.text(), 'PNGDATA');
+  assert.equal((await call('GET', '/login/screenshot?provider=tesco')).status, 400);
+});
+
+test('a code sent by email is typed in like the Sainsbury\'s one', async (t) => {
+  const fake = fakeBrowser({ afterLogin: 'https://www.ocado.com/verify', afterCode: 'https://www.ocado.com/', codeBox: true,
+    verifyText: 'We have emailed you a security code' });
+  const logins = new Logins({ launch: async () => fake.browser, now: () => NOW });
+  const { call } = await serve(t, { logins });
+  const r = await call('POST', '/login/start', { provider: 'ocado', email: 'me@x', password: 'pw' });
+  assert.equal(r.body.kind, 'email_code');
+  assert.equal((await call('POST', '/login/code', { code: 'AB12CD', provider: 'sainsburys' })).status, 409); // not that one
+  const done = await call('POST', '/login/code', { code: 'AB12CD', provider: 'ocado' });
+  assert.equal(done.body.status, 'logged_in');
+});
+
+test('a remembered browser that is still signed in needs no form at all', async (t) => {
+  const fake = fakeBrowser();
+  const page = await (await fake.browser.newContext()).newPage();
+  const realGoto = page.goto;
+  page.goto = async (u) => { await realGoto(u.replace('/login', '/account').replace('oauth/login', 'groceries')); };
+  const logins = new Logins({ launch: async () => fake.browser, now: () => NOW });
+  const { call } = await serve(t, { logins });
+  const r = await call('POST', '/login/start', { provider: 'ocado', email: 'me@x', password: 'pw' });
+  assert.equal(r.body.status, 'logged_in');
+  assert.ok(!fake.log.some(([op]) => op === 'fill'));
 });

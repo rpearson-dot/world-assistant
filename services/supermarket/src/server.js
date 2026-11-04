@@ -5,7 +5,9 @@
 //   POST /compare                     {items: [{key, query}], providers?, limit?}: search every item at each retailer
 //   GET  /slots?provider=             next delivery slots (read only)
 //   POST /login/start                 {provider, email, password}: log in (Sainsbury's stops for the SMS code)
-//   POST /login/code                  {code}: the Sainsbury's SMS code
+//   POST /login/code                  {code, provider}: the code the retailer texted or emailed
+//   POST /login/continue              {provider}: after clicking the link the retailer emailed
+//   GET  /login/screenshot?provider=  the newest screenshot of a login page (a failure, or the confirmation step)
 //   POST /session/import              {provider, cookies}: cookies exported from a real browser instead of a login
 //   POST /logout                      {provider}
 //
@@ -14,7 +16,7 @@
 
 const http = require('node:http');
 const fs = require('node:fs');
-const { Logins, readSession, writeSession, normaliseCookies, summary, sessionFile } = require('./login');
+const { Logins, readSession, writeSession, normaliseCookies, summary, sessionFile, latestScreenshot } = require('./login');
 
 const PROVIDERS = ['sainsburys', 'ocado'];
 const LABEL = { sainsburys: "Sainsbury's", ocado: 'Ocado' };
@@ -176,9 +178,21 @@ function makeServer({ token, createProvider, logins = new Logins(), secret = rea
       return out;
     }
     if (req.method === 'POST' && p === '/login/code') {
-      const out = await logins.code(body?.code);
-      cache.delete('sainsburys');
+      const out = await logins.code(body?.code, body?.provider);
+      cache.clear();
       return out;
+    }
+    if (req.method === 'POST' && p === '/login/continue') {
+      const out = await logins.continue(body?.provider);
+      cache.clear();
+      return out;
+    }
+    if (req.method === 'GET' && p === '/login/screenshot') {
+      const id = url.searchParams.get('provider') || '';
+      if (!PROVIDERS.includes(id)) throw fail(400, `provider must be one of ${PROVIDERS.join(', ')}`);
+      const file = latestScreenshot(id);
+      if (!file) throw fail(404, 'No screenshot kept for that retailer');
+      return { __file: file, __type: 'image/png', __name: require('node:path').basename(file) };
     }
     if (req.method === 'POST' && p === '/session/import') {
       const id = body?.provider;
@@ -194,7 +208,7 @@ function makeServer({ token, createProvider, logins = new Logins(), secret = rea
       cache.delete(id);
       return { status: 'logged_out' };
     }
-    if (['/', '/health', '/compare', '/slots', '/login/start', '/login/code', '/session/import', '/logout'].includes(p)) {
+    if (['/', '/health', '/compare', '/slots', '/login/start', '/login/code', '/login/continue', '/login/screenshot', '/session/import', '/logout'].includes(p)) {
       throw fail(405, 'Method not allowed');
     }
     throw fail(404, 'Not found');
@@ -220,9 +234,17 @@ function makeServer({ token, createProvider, logins = new Logins(), secret = rea
           try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw fail(400, 'The body is not JSON'); }
         }
         const url = new URL(req.url || '/', 'http://supermarket');
-        send(200, await route(req, url, body));
+        const out = await route(req, url, body);
+        if (out && out.__file) {
+          res.writeHead(200, { 'content-type': out.__type, 'cache-control': 'no-store', 'x-screenshot-name': out.__name || '' });
+          res.end(fs.readFileSync(out.__file));
+          return;
+        }
+        send(200, out);
       } catch (e) {
-        send(Number.isInteger(e?.statusCode) ? e.statusCode : 502, { error: e?.message || 'Failed' });
+        const err = { error: e?.message || 'Failed' };
+        if (e?.screenshot) err.screenshot = e.screenshot;
+        send(Number.isInteger(e?.statusCode) ? e.statusCode : 502, err);
       }
     });
   });
