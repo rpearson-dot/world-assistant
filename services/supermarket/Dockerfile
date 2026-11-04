@@ -24,7 +24,10 @@ ENV NODE_ENV=production \
 WORKDIR /srv
 COPY package.json package-lock.json ./
 # --ignore-scripts: nothing runs at install; the browsers come with the base image
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+# then npm itself goes: the service never runs it, and the copy in the base image bundles its own libraries (undici,
+# brace-expansion) that the image scan reports.
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force \
+ && rm -rf /usr/lib/node_modules/npm /usr/lib/node_modules/corepack /usr/bin/npm /usr/bin/npx /usr/bin/corepack /root/.npm
 COPY src ./src
 
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin wa \

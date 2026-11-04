@@ -137,6 +137,7 @@ jobs:
       - name: Image starts, runs as 10001 and refuses to run without a token
         run: |
           docker run --rm --entrypoint id world-assistant-supermarket:ci -u | grep -qx 10001
+          ! docker run --rm --entrypoint sh world-assistant-supermarket:ci -c "command -v npm" >/dev/null
           docker run --rm --entrypoint node world-assistant-supermarket:ci -e "require('open-supermarkets/dist/providers/registry'); require('playwright'); console.log('imports ok')"
           ! docker run --rm world-assistant-supermarket:ci 2>/dev/null
           docker run -d --name sm -e SUPERMARKET_API_TOKEN=t world-assistant-supermarket:ci
