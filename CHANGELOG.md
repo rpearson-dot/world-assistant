@@ -4,7 +4,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-11-04
+
 ### Added
+- **Send to basket**, under each retailer's total in *Price this list*: puts the products chosen there in that
+  retailer's basket, each up to the quantity on the list. Anything already in the basket is topped up, never doubled,
+  so sending twice is safe. It asks first, says what was added, topped up, already there or failed, and the basket's
+  new total. It needs that retailer's login, and nothing is ordered: you check out on their site or app.
 - Shopping, retailer logins: a login the retailer wants confirmed now waits for you (five minutes) instead of
   failing. A code texted or emailed is typed in on the page; for a link in an email (as Ocado sends for a new
   device), click it and press **Continue**.

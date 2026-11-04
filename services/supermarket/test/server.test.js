@@ -330,3 +330,49 @@ test('a remembered browser that is still signed in needs no form at all', async 
   assert.equal(r.body.status, 'logged_in');
   assert.ok(!fake.log.some(([op]) => op === 'fill'));
 });
+
+function basketProvider(start = []) {
+  const items = start.map((i) => ({ ...i }));
+  const calls = [];
+  return {
+    name: 'ocado', calls, items,
+    async search() { return []; },
+    async getBasket() {
+      return { items: items.map((i) => ({ item_id: i.item_id, product_uid: i.product_uid, name: i.name, quantity: i.quantity, total_price: i.quantity * 2 })),
+        total_cost: items.reduce((s, i) => s + i.quantity * 2, 0), total_quantity: items.reduce((s, i) => s + i.quantity, 0) };
+    },
+    async addToBasket(id, q) {
+      calls.push(['add', id, q]);
+      if (id === 'gone') throw new Error('Ocado basket write failed (HTTP 400)');
+      items.push({ item_id: id, product_uid: id, name: `product ${id}`, quantity: q });
+    },
+    async updateBasketItem(itemId, q) { calls.push(['update', itemId, q]); items.find((i) => i.item_id === itemId).quantity = q; },
+  };
+}
+
+test('send to basket: adds what is missing, raises what is short, leaves what is there, and never doubles', async (t) => {
+  const prov = basketProvider([
+    { item_id: 'line-1', product_uid: 'milk', name: 'Milk', quantity: 1 },
+    { item_id: 'line-2', product_uid: 'x-bread', name: 'Hovis Wholemeal 800g', quantity: 2 },
+  ]);
+  const { call } = await serve(t, { providers: { ocado: prov } });
+  const items = [
+    { id: 'milk', name: 'Milk', quantity: 2 },
+    { id: 'bread', name: 'Hovis wholemeal 800g', quantity: 1 }, // another id, same product by name
+    { id: 'eggs', name: 'Eggs', quantity: 1 },
+    { id: 'gone', name: 'Saffron', quantity: 1 },
+  ];
+  const r = await call('POST', '/basket/add', { provider: 'ocado', items });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.results.map((x) => [x.id, x.status]), [['milk', 'raised'], ['bread', 'already'], ['eggs', 'added'], ['gone', 'failed']]);
+  assert.match(r.body.results[3].error, /HTTP 400/);
+  assert.deepEqual(prov.calls, [['update', 'line-1', 2], ['add', 'eggs', 1], ['add', 'gone', 1]]);
+  assert.equal(r.body.basket.count, 5); // milk 2, bread 2, eggs 1
+  const again = await call('POST', '/basket/add', { provider: 'ocado', items: items.slice(0, 3) });
+  assert.deepEqual(again.body.results.map((x) => x.status), ['already', 'already', 'already']);
+  assert.equal(prov.calls.length, 3); // nothing more was written
+  const b = await call('GET', '/basket?provider=ocado');
+  assert.equal(b.body.items.length, 3);
+  assert.equal((await call('POST', '/basket/add', { provider: 'ocado', items: [] })).status, 400);
+  assert.equal((await call('POST', '/basket/add', { provider: 'tesco', items })).status, 400);
+});

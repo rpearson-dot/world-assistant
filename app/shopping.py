@@ -4,8 +4,8 @@ KitchenOwl (docker-compose.kitchenowl.yml) holds the list; everyone edits it in 
 only reads it, with a long-lived token (key ``kitchenowl_token``). The supermarket service
 (docker-compose.supermarket.yml, services/supermarket) searches the retailers; World Assistant picks a product per
 item and retailer, lets you confirm or change it, and remembers the choice per KitchenOwl item, so "Milk" means the
-same pint every week. Searches are kept for six hours; delivery slots for an hour. Nothing is ever booked, put in a
-basket or bought from here.
+same pint every week. Searches are kept for six hours; delivery slots for an hour. Send to basket puts the chosen
+products in a retailer's basket when asked (topped up, never doubled). Nothing is ever booked or bought from here.
 
 Routes (all /v1/shopping):
   GET  /status         what is set up and reachable, the chosen list, each retailer's login
@@ -17,6 +17,7 @@ Routes (all /v1/shopping):
   PUT  /match          {item_key, retailer, product}: "this is what I mean"
   DELETE /match        {item_key, retailer}: forget it, go back to the best match
   GET  /slots          ?retailer=: next delivery slots (read only)
+  GET  /basket/{retailer}, POST /basket/{retailer}: the basket, and sending the last priced list to it
   POST /login/{retailer}/start, POST /login/sainsburys/code, POST /session/{retailer}, POST /logout/{retailer}
 """
 
@@ -450,6 +451,59 @@ async def slots(retailer: str = "", refresh: bool = False) -> dict[str, Any]:
     now = datetime.now(UTC)
     _slots_cache[retailer] = (now, data)
     return {**data, "cached": False, "fetched_at": now.isoformat()}
+
+
+def basket_items(last: dict[str, Any] | None, retailer: str) -> list[dict[str, Any]]:
+    """What the last pricing chose at one retailer, as basket lines: the product id, its name and how many."""
+    if not last or retailer not in (last.get("retailers") or []):
+        return []
+    out = []
+    for it in last.get("items") or []:
+        x = (it.get("retailers") or {}).get(retailer) or {}
+        c = x.get("choice")
+        if c and c.get("id"):
+            out.append({"id": str(c["id"]), "name": c.get("name") or it.get("name", ""), "quantity": int(it.get("quantity") or 1),
+                        "item": it.get("name", "")})  # fmt: skip
+    return out
+
+
+def _login_first(retailer: str, exc: HTTPException) -> HTTPException:
+    """The retailer turning the basket away because nobody is logged in reads as that, not as an HTTP code."""
+    words = str(exc.detail)
+    if any(w in words for w in ("401", "403", "logged out", "session expired", "No CSRF token")):
+        return HTTPException(409, f"Log in to {LABEL[retailer]} first (Retailer logins, below), then send again")
+    return exc
+
+
+@router.get("/basket/{retailer}")
+async def get_basket(retailer: str) -> dict[str, Any]:
+    """What is in the retailer's basket now (needs that retailer's login)."""
+    _retailer(retailer)
+    try:
+        return await service("GET", f"/basket?provider={retailer}", timeout=90)  # type: ignore[no-any-return]
+    except HTTPException as exc:
+        raise _login_first(retailer, exc) from exc
+
+
+@router.post("/basket/{retailer}")
+async def send_to_basket(retailer: str, request: Request) -> dict[str, Any]:
+    """Put the last priced list's products for this retailer in its basket, each up to the quantity on the list. Items
+    already there are topped up, never doubled. It never books a slot or checks out: you finish on their site."""
+    _retailer(retailer)
+    items = basket_items(await _get(request, LAST_KEY), retailer)
+    if not items:
+        raise HTTPException(409, f"Price the list first: there is nothing chosen at {LABEL[retailer]} to send")
+    try:
+        out = await service("POST", "/basket/add", {"provider": retailer, "items": items}, timeout=600)
+    except HTTPException as exc:
+        raise _login_first(retailer, exc) from exc
+    names = {i["id"]: i["item"] for i in items}
+    for r in out.get("results", []):
+        r["item"] = names.get(r.get("id"), "")
+    failed = [r for r in out.get("results", []) if r.get("status") == "failed"]
+    if failed and len(failed) == len(items) and any("401" in str(r.get("error")) or "403" in str(r.get("error")) for r in failed):
+        raise HTTPException(409, f"Log in to {LABEL[retailer]} first (Retailer logins, below), then send again")
+    return out  # type: ignore[no-any-return]
 
 
 class CodeIn(BaseModel):

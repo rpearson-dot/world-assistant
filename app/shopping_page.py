@@ -116,11 +116,33 @@ function renderTotals(d) {
     c.append(el('h2', null, x.label), el('p', 'big', money(x.total)),
       el('p', 'dim', x.items + ' items priced' + (x.missing ? ', ' + x.missing + ' not found' : '')));
     if (d.retailers.length > 1) c.append(el('p', 'dim', money(x.like_for_like) + ' for the ' + t.compared_items + ' items both have'));
+    if (x.items) {
+      const out = el('div', 'sent');
+      c.append(button('Send to ' + x.label + ' basket', () => sendBasket(r, x, out), 'primary'), out);
+    }
     box.append(c);
   }
   $('verdict').textContent = t.cheaper
     ? LABEL[t.cheaper] + ' is cheaper by ' + money(t.saving) + ' on the ' + t.compared_items + ' items both have.'
     : (d.retailers.length > 1 ? (t.compared_items ? 'They come to the same.' : 'No item was found at both, so there is nothing to compare.') : '');
+}
+
+// Put this retailer's chosen products in its basket, each up to the list's quantity (topped up, never doubled).
+async function sendBasket(r, x, out) {
+  if (!confirm('Put the ' + x.items + ' priced items (' + money(x.total) + ') in your ' + x.label + ' basket?\\n\\n'
+    + 'Anything already in it is topped up to the quantity on the list, never doubled. Nothing is ordered: you check out on '
+    + x.label + "'s site or app.")) return;
+  out.replaceChildren(el('p', 'dim', 'Adding to the ' + x.label + ' basket, one item at a time...'));
+  try {
+    const d = await api('POST', '/v1/shopping/basket/' + r);
+    const n = s => d.results.filter(i => i.status === s);
+    const parts = [[n('added'), 'added'], [n('raised'), 'topped up'], [n('already'), 'already there'], [n('failed'), 'failed']]
+      .filter(([l]) => l.length).map(([l, w]) => l.length + ' ' + w);
+    out.replaceChildren(el('p', null, parts.join(', ') + '.'));
+    for (const f of n('failed')) out.append(el('p', 'err', (f.item || f.name) + ': ' + f.error));
+    if (d.basket) out.append(el('p', 'dim', 'The ' + x.label + ' basket now has ' + d.basket.count + ' items, ' + money(d.basket.total)
+      + '. Check out on their site or app.'));
+  } catch (e) { out.replaceChildren(el('p', 'err', e.message)); }
 }
 
 function renderItems(d) {

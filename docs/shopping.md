@@ -2,8 +2,9 @@
 
 The family keeps one shopping list in **KitchenOwl**, an open-source shopping list app (iPhone, Android and web)
 that runs on your server. World Assistant reads that list, searches each item at Sainsbury's and Ocado, and shows
-what the list costs at each, which is cheaper and by how much. It also shows the next delivery slots. It never books
-a slot, fills a basket or buys anything: you order on the retailer's own site or app as usual.
+what the list costs at each, which is cheaper and by how much, and can put the list in either retailer's basket. It
+also shows the next delivery slots. It never books a slot or buys anything: you check out on the retailer's own site
+or app as usual.
 
 Two optional parts, each a compose overlay:
 
@@ -87,6 +88,17 @@ The first pricing of a long list takes a minute or two (two searches at a time a
 reused for six hours; **fresh prices** searches again.
 
 Neither retailer needs a login to search, so prices work without one.
+
+### Send to basket
+
+Under each retailer's total, **Send to <retailer> basket** puts the products chosen there in your basket at that
+retailer, each up to the quantity on the list. Anything already in the basket is topped up to that quantity, never
+doubled, so pressing it twice is safe. It asks first, then says what was added, topped up, already there or failed,
+and what the basket now comes to. It needs that retailer's login (below). Nothing is ordered: you choose a slot and
+check out on the retailer's site or app as usual.
+
+Check the basket on the retailer's site before checking out: a product the list chose may have changed, and offers
+the search did not show are applied there.
 
 ## 4. Delivery slots and logins
 

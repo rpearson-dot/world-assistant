@@ -190,3 +190,39 @@ def test_every_address_the_shopping_page_calls_is_a_real_route() -> None:
     for method, path, tail in calls:
         url = path.split("?")[0] + ("x" + tail if path.endswith("/") else "")
         assert any(_re.fullmatch(p, url) and method in m for p, m in routes), f"{method} {url} is not a route"
+
+
+def test_basket_items_are_the_chosen_products_and_quantities_at_that_retailer() -> None:
+    last = {"retailers": ["sainsburys", "ocado"], "items": [
+        {"name": "Milk", "quantity": 2, "retailers": {"ocado": {"choice": P("o-milk", 1.4)}, "sainsburys": {"choice": None}}},
+        {"name": "Eggs", "quantity": 1, "retailers": {"ocado": {"choice": None}, "sainsburys": {"choice": P("s-eggs", 2.0)}}},
+    ]}  # fmt: skip
+    assert S.basket_items(last, "ocado") == [{"id": "o-milk", "name": "name o-milk", "quantity": 2, "item": "Milk"}]
+    assert S.basket_items(last, "sainsburys") == [{"id": "s-eggs", "name": "name s-eggs", "quantity": 1, "item": "Eggs"}]
+    assert S.basket_items(None, "ocado") == [] and S.basket_items({"retailers": ["ocado"], "items": []}, "sainsburys") == []
+
+
+def test_a_retailer_refusing_the_basket_reads_as_log_in_first() -> None:
+    e = S._login_first("sainsburys", HTTPException(502, "Request failed with status code 401"))
+    assert e.status_code == 409 and "Log in to Sainsbury's first" in e.detail
+    other = HTTPException(504, "Ocado basket took longer than 60 s")
+    assert S._login_first("ocado", other) is other
+
+
+def test_the_shopping_page_script_compiles(tmp_path: Any) -> None:
+    """A stray escape in the Python string becomes a JavaScript syntax error that blanks the whole page."""
+    import re as _re
+    import shutil
+    import subprocess
+
+    from app.shopping_page import PAGE
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    scripts = _re.findall(r"<script>(.*?)</script>", PAGE, _re.S)
+    assert scripts
+    f = tmp_path / "page.js"
+    f.write_text("\n".join(scripts))
+    r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True, check=False)
+    assert r.returncode == 0, r.stderr
