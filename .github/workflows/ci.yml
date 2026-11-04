@@ -99,6 +99,14 @@ jobs:
         run: |
           docker run --rm --entrypoint python world-assistant:ci -c "import app.main, app.worker; print('imports ok')"
           docker run --rm --entrypoint id world-assistant:ci -u | grep -qx 10001
+          ! docker run --rm --entrypoint python world-assistant:ci -c "import pip" 2>/dev/null
+      - name: Scan the image as the release does (fixable high or critical findings fail)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: world-assistant:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
 
   stack:
     # The whole thing, as it runs on the NAS: real compose stack on PostGIS, migrations, every page and
