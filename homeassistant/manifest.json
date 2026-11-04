@@ -22,8 +22,8 @@
       "sha256": "2100338da5fea34fa82669407ed94496c87b5f4d33e7593fa8793e77480899f8"
     },
     "dashboards/pollen.yaml": {
-      "changed_in": "0.15.0",
-      "sha256": "5a63fe74d497625fa024cba7738f8617ec820b1f9904fbdaf17ca87812c2f8d7"
+      "changed_in": "0.23.7",
+      "sha256": "b026919c815b9a7abfe1125234d20d60aa3d5bd695cd2b6ea6c26f6508221719"
     },
     "dashboards/roads.yaml": {
       "changed_in": "0.7.3",
