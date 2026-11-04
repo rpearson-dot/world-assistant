@@ -70,6 +70,64 @@ async function dropCookieBanner(page) {
   }).catch(() => {});
 }
 
+const EMAIL = 'input[type="email"], input[name="email"], input[autocomplete="username"], #username, #email';
+const PASSWORD = 'input[type="password"], input[name="password"], #password';
+const DEBUG_KEEP = 5;
+
+/**
+ * Submit the form the page is on. Each retailer's own button first, then any visible button that says what a sign-in
+ * button says, then Enter in `field` (which submits nearly any form). Returns how it was submitted. Short waits each:
+ * a selector that matches nothing must not use up the whole login.
+ */
+async function submit(page, preferred, field, words = /^\s*(sign in|log in|login|continue|next|submit|verify)\b/i) {
+  for (const sel of preferred) {
+    try {
+      const b = page.locator(sel).first();
+      if (await b.isVisible({ timeout: 1500 })) {
+        await b.click({ timeout: 5000 });
+        return sel;
+      }
+    } catch { /* try the next one */ }
+  }
+  try {
+    const b = page.getByRole('button', { name: words }).first();
+    if (await b.isVisible({ timeout: 1500 })) {
+      await b.click({ timeout: 5000 });
+      return 'a button by its words';
+    }
+  } catch { /* no such button */ }
+  const before = page.url();
+  await page.press(field, 'Enter', { timeout: 5000 });
+  await page.waitForTimeout(3000);
+  // A form with no submit button ignores Enter: submit it directly when nothing happened.
+  if (page.url() === before) {
+    const done = await page.locator(field).first()
+      .evaluate((el) => { if (el.form) { el.form.requestSubmit(); return true; } return false; }).catch(() => false);
+    if (done) return 'the form';
+  }
+  return 'Enter';
+}
+
+/** A screenshot of a failed login, in ~/login-debug (WA_DATA_DIR/supermarket/login-debug), the last few kept. */
+async function keepScreenshot(page, provider, now) {
+  try {
+    const dir = path.join(os.homedir(), 'login-debug');
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const name = `${provider}-${now.toISOString().replace(/[:.]/g, '-')}.png`;
+    await page.screenshot({ path: path.join(dir, name), fullPage: true, timeout: 10000 });
+    const old = fs.readdirSync(dir).filter((f) => f.endsWith('.png')).sort();
+    for (const f of old.slice(0, Math.max(0, old.length - DEBUG_KEEP))) fs.rmSync(path.join(dir, f), { force: true });
+    return `login-debug/${name}`;
+  } catch {
+    return null;
+  }
+}
+
+function withShot(err, shot) {
+  if (shot) err.message = `${err.message} (a screenshot of the page is in the supermarket folder: ${shot})`;
+  return err;
+}
+
 /**
  * One login at a time. `launch` opens a browser (playwright's chromium.launch, or a fake in the tests).
  * State: idle, or waiting for a code (Sainsbury's) with the page held open until HOLD_MS passes.
@@ -108,12 +166,22 @@ class Logins {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await page.waitForTimeout(3000);
       await dropCookieBanner(page);
-      const email_ = 'input[type="email"], input[name="email"], #username';
-      await page.waitForSelector(email_, { timeout: 15000 });
-      await page.fill(email_, email);
-      await page.fill('input[type="password"], input[name="password"], #password', password);
+      await page.waitForSelector(EMAIL, { timeout: 20000 });
+      await page.locator(EMAIL).first().fill(email);
+      const buttons = provider === 'ocado'
+        ? ['button[type="submit"]', 'button[data-test="login-button"]', 'input[type="submit"]']
+        : ['button[data-testid="log-in"]', 'button[type="submit"]', 'input[type="submit"]'];
+      // Some sign-ins ask for the email first and show the password on the next screen.
+      let pw = page.locator(PASSWORD).first();
+      if (!(await pw.isVisible({ timeout: 2000 }).catch(() => false))) {
+        await dropCookieBanner(page);
+        await submit(page, buttons, EMAIL);
+        await page.waitForSelector(PASSWORD, { state: 'visible', timeout: 20000 });
+        pw = page.locator(PASSWORD).first();
+      }
+      await pw.fill(password);
       await dropCookieBanner(page);
-      await page.click(provider === 'ocado' ? 'button[type="submit"]' : 'button[type="submit"], button[data-testid="log-in"]');
+      await submit(page, buttons, PASSWORD);
       await page.waitForTimeout(6000);
       const at = page.url();
       if (provider === 'sainsburys' && at.includes('/mfa')) {
@@ -128,7 +196,12 @@ class Logins {
       await browser.close();
       return { status: 'logged_in', session: summary(provider, saved, this.now()) };
     } catch (e) {
-      if (!this.pending) await browser.close().catch(() => {});
+      if (!this.pending) {
+        const pages = (await Promise.resolve(browser.contexts?.() || []).catch(() => [])).flatMap((c) => c.pages?.() || []);
+        const shot = pages.length ? await keepScreenshot(pages[pages.length - 1], provider, this.now()) : null;
+        await browser.close().catch(() => {});
+        throw withShot(e, shot);
+      }
       throw e;
     }
   }
@@ -138,9 +211,10 @@ class Logins {
     if (!p) throw Object.assign(new Error('No login is waiting for a code. Start the login again.'), { statusCode: 409 });
     if (!/^\d{6}$/.test(String(code || '').trim())) throw Object.assign(new Error('The code is 6 digits.'), { statusCode: 400 });
     try {
-      await p.page.fill('#code, input[name="code"]', String(code).trim());
+      const box = '#code, input[name="code"], input[autocomplete="one-time-code"], input[inputmode="numeric"]';
+      await p.page.locator(box).first().fill(String(code).trim());
       await dropCookieBanner(p.page);
-      await p.page.click('button[data-testid="submit-code"], button[type="submit"]:has-text("Continue")');
+      await submit(p.page, ['button[data-testid="submit-code"]', 'button[type="submit"]'], box);
       await p.page.waitForTimeout(6000);
       const at = p.page.url();
       if (at.includes('login') || at.includes('mfa')) {
@@ -148,6 +222,8 @@ class Logins {
       }
       const saved = writeSession(p.provider, await p.context.cookies(), this.now());
       return { status: 'logged_in', session: summary(p.provider, saved, this.now()) };
+    } catch (e) {
+      throw withShot(e, await keepScreenshot(p.page, p.provider, this.now()));
     } finally {
       await this.close();
     }
