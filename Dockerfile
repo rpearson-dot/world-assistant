@@ -37,8 +37,8 @@ COPY --from=build /opt/venv /opt/venv
 
 # Nothing runs pip in the running image, so it goes: the base image's pip (and the copy ensurepip keeps)
 # bundles its own msgpack, urllib3 and setuptools, which the image scan reports and which nothing here uses.
-RUN python -m pip uninstall -y -q pip \
- && rm -rf "$(python -c 'import ensurepip, os; print(os.path.dirname(ensurepip.__file__))')/_bundled"
+RUN /usr/local/bin/python -m pip uninstall -y -q pip \
+ && rm -rf "$(/usr/local/bin/python -c 'import ensurepip, os; print(os.path.dirname(ensurepip.__file__))')/_bundled"
 
 # Unprivileged user with no home and no shell
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin wa
