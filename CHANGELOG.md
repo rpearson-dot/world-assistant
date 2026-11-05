@@ -4,6 +4,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-11-05
+
+### Added
+- **Every feature is now reachable by an assistant** (MCP at `/mcp`, and Siri or scripts at `/v1/ask`). New tools:
+  - answers: `shopping` (the list, or what it came to), `floods_near`, `road_disruptions_near` (TfL),
+    `live_buses_near`, `bus_disruptions`, `stops_near`, `postcode`, and `connections` (the knowledge graph: how a
+    place joins up and what is disrupting its trips);
+  - acts: `add_to_list` (several at once: "milk, eggs and bread"), `price_list`, `send_to_basket` (fills a basket,
+    topped up, never doubled; never orders or pays), `add_place` and `add_trip`.
+- `POST /v1/shopping/list` adds an item to the KitchenOwl list.
+- A test fails if a feature module has an API but no assistant tool, or a tool belongs to no module.
+
+### Fixed
+- The MCP server and the API description reported version 0.23.5 whatever was running; they report the real one.
+
 ## [0.28.0] - 2026-11-04
 
 ### Added

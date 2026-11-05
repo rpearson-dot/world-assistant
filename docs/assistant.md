@@ -3,15 +3,46 @@
 One set of tools answers short questions with a sentence that reads well aloud, plus the data
 behind it. It is served two ways, with the same bearer token as the rest of the API.
 
+Every feature with an API has a tool (a test makes sure a new one cannot be added without). A module that is
+switched off hides its tools.
+
+**Answers**
+
 | Tool | Answers |
 | --- | --- |
 | `list_options` | which places, vehicles, trips, train boards and bus trackers exist (their ids) |
-| `fuel_cheapest` | cheapest fuel near a saved place (`place`, optional `fuel`, `radius_km`, `brands`, `supermarkets`; says how much more the chosen brands cost than the absolute cheapest) |
+| `fuel_cheapest` | cheapest fuel near a saved place (`place`, optional `fuel`, `radius_km`, `brands`, `supermarkets`) |
 | `events_near` | what is on near a saved place (`place`, optional `days`, `type` such as LIVE, COMEDY) |
-| `pollen` | pollen levels and allergy risk near a saved place, today and the next three days (`place`, optional) |
+| `pollen` | pollen levels and allergy risk near a saved place, today and the next three days |
+| `electricity` | the price now and next, the next cheap and peak times, the cheapest block, Saving Sessions |
+| `road_conditions` | works, closures, incidents and flood warnings on a saved trip's route |
 | `trip_cost` | fuel or energy and cost for a saved routed trip in a saved vehicle (`trip`, `vehicle`) |
 | `trains` | next trains on a saved board (`board`, optional `count`) |
+| `station` | a TfL station's facilities and what is closed (lifts), or the stations near a place |
+| `power` | UK Power Networks: power cuts near a place, past cuts, street works, what supplies it |
+| `ev_chargers` | GRIDSERVE chargers near a place, along a trip or by name: working, free, speed, price |
 | `bus` | whether a bus made the target stop before the deadline, and next buses (`tracker` optional if only one) |
+| `floods_near` | flood warnings and alerts covering a place (`km` to look around it) |
+| `road_disruptions_near` | TfL road works, closures and incidents near a place (`km`, default 0.5) |
+| `live_buses_near` | buses reporting their position near a place now (`km`, `line`) |
+| `bus_disruptions` | published bus disruptions near your places (`place`, `line`, `km`) |
+| `stops_near` | the nearest stops and stations to a place (`km`, `kind`: bus_stop, rail, metro and so on) |
+| `postcode` | where a postcode is (`postcode`), or the nearest postcode to a place |
+| `connections` | how a place joins up in the knowledge graph, and what is disrupting the trips from it |
+| `shopping` | what is on the family shopping list, or (`about: prices`) what it came to when last priced |
+
+**Acts.** These change something. None spends money.
+
+| Tool | Does |
+| --- | --- |
+| `add_to_list` | adds items to the KitchenOwl list (`item`; "milk, eggs and bread" adds three; `note` for one item). What is already on it is left alone |
+| `price_list` | prices the list now at Sainsbury's and Ocado and says which is cheaper (`fresh` to search again) |
+| `send_to_basket` | puts the last priced list's products in a shop's basket (`retailer`), each up to the quantity on the list: topped up, never doubled. Nothing is ordered or paid; you check out on their site or app |
+| `add_place` | saves a place by `postcode` (or `lat` and `lon`); refuses to overwrite one unless `replace` |
+| `add_trip` | saves a trip between two saved places and routes it |
+
+Anyone with the API token can use these, through MCP or `/v1/ask`, so keep the token to people and assistants
+you would let do them.
 
 ## Siri Shortcuts or any script
 
