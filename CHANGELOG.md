@@ -4,6 +4,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-11-05
+
+### Added
+- Shopping: **Ordered? Tick it off.** Reads your recent orders at Sainsbury's (upcoming ones too) or Ocado (delivered
+  ones; that is all it can read there) and finds what on the list each covers, by the product chosen for that item or
+  the same name. Untick what should stay, then take the rest off the KitchenOwl list in one go.
+- Shopping: **Clear the list**, after asking. Items taken off stay in KitchenOwl's recent items.
+- Assistant tools `orders`, `tick_off_order` and `clear_list` (which needs `confirm: true`); `/v1/shopping/orders/{retailer}`,
+  `/v1/shopping/tick` and `/v1/shopping/clear`. The supermarket service has `GET /orders`.
+
 ## [0.29.0] - 2026-11-05
 
 ### Added

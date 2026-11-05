@@ -376,3 +376,23 @@ test('send to basket: adds what is missing, raises what is short, leaves what is
   assert.equal((await call('POST', '/basket/add', { provider: 'ocado', items: [] })).status, 400);
   assert.equal((await call('POST', '/basket/add', { provider: 'tesco', items })).status, 400);
 });
+
+test('orders come back newest first with their items', async (t) => {
+  const prov = {
+    name: 'sainsburys', async search() { return []; },
+    async getOrders() {
+      return [
+        { order_id: 1, status: 'DELIVERED', total: '50.10', delivery_slot: { start_time: '2026-10-28T09:00:00Z', end_time: '2026-10-28T10:00:00Z' },
+          items: [{ item_id: 'x', product_uid: '111', name: 'Milk', quantity: 2 }] },
+        { order_id: 2, status: 'PLACED', total: 61, delivery_slot: { start_time: '2026-11-06T18:00:00Z' }, items: [] },
+      ];
+    },
+  };
+  const { call } = await serve(t, { providers: { sainsburys: prov } });
+  const r = await call('GET', '/orders?provider=sainsburys');
+  assert.deepEqual(r.body.orders.map((o) => o.id), ['2', '1']);
+  assert.deepEqual(r.body.orders[1].items, [{ product_id: '111', name: 'Milk', quantity: 2 }]);
+  assert.equal(r.body.orders[1].total, 50.1);
+  assert.equal(r.body.upcoming_included, true);
+  assert.equal((await call('GET', '/orders?provider=tesco')).status, 400);
+});

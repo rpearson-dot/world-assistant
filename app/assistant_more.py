@@ -1,7 +1,7 @@
 """More assistant tools: shopping, floods, London roads, live buses and bus disruptions, stops, the graph, and adding
 places and trips. They join the tools in app/assistant.py (served over MCP at /mcp and to Siri at /v1/ask).
 
-Some act, not just answer: add_to_list, price_list, send_to_basket, add_place and add_trip. None of them spends money:
+Some act, not just answer: add_to_list, price_list, send_to_basket, tick_off_order, clear_list, add_place and add_trip. None of them spends money:
 the basket is filled, never checked out; places and trips are World Assistant's own records.
 """
 
@@ -112,6 +112,54 @@ async def send_to_basket_tool(request: Request, args: dict[str, Any]) -> dict[st
     failed = [x.get("item") or x.get("name") for x in res if x.get("status") == "failed"]
     fail = (" Not added: " + ", ".join(failed) + ".") if failed else ""
     return {"text": f"{LABEL[r]} basket: {said}.{fail}{tail} Nothing is ordered: check out on their site or app.", "data": out}
+
+
+def _order_line(o: dict[str, Any]) -> str:
+    when = (o.get("slot_start") or "")[:10] or "no date"
+    return f"{when}, {(o.get('status') or '').lower().replace('_', ' ')}, {_money(o.get('total') or 0)}"
+
+
+async def orders_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.shopping import orders
+
+    r = _retailer(args)
+    d = await _wrap(orders(r, request))
+    os_ = d.get("orders") or []
+    if not os_:
+        return {"text": f"No recent {LABEL[r]} orders" + (" delivered yet." if r == "ocado" else "."), "data": d}
+    bits = []
+    for o in os_[:3]:
+        on = o.get("on_list") or []
+        bits.append(_order_line(o) + (f", covers {len(on)} item(s) on the list ({', '.join(i['name'] for i in on[:6])})" if on else ""))
+    return {"text": f"Recent {LABEL[r]} orders: " + "; ".join(bits) + ".", "data": d}
+
+
+async def tick_off_order_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.shopping import KeysIn, orders, tick_off
+
+    r = _retailer(args)
+    d = await _wrap(orders(r, request))
+    os_ = d.get("orders") or []
+    want = str(args.get("order") or "")
+    o = next((x for x in os_ if x["id"] == want), None) if want else (os_[0] if os_ else None)
+    if o is None:
+        raise ToolError(f"No {LABEL[r]} order " + (f"{want!r}" if want else "to tick off") + ". Try orders first.")
+    keys = [i["key"] for i in o.get("on_list") or [] if args.get("include_name_matches", True) or i["how"] == "product"]
+    if not keys:
+        return {"text": f"Nothing on the list is in the {LABEL[r]} order of {_order_line(o)}.", "data": {"order": o}}
+    res = await _wrap(tick_off(KeysIn(item_keys=keys), request))
+    return {"text": f"Took {res['removed']} item(s) off the list, from the {LABEL[r]} order of {_order_line(o)}: "
+                    + ", ".join(res["items"]) + ".", "data": {"order": o, **res}}  # fmt: skip
+
+
+async def clear_list_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.shopping import ClearIn, clear_list
+
+    if args.get("confirm") is not True:
+        raise ToolError("Clearing the whole list needs confirm: true. Check with the person first.")
+    res = await _wrap(clear_list(ClearIn(confirm=True), request))
+    return {"text": f"Cleared the shopping list: {res['removed']} item(s) taken off. They stay in KitchenOwl's recent items.",
+            "data": res}
 
 
 # --- around a place ----------------------------------------------------------------------------------------------
@@ -276,6 +324,15 @@ MORE: list[Tool] = [
          "(topped up, never doubled). Nothing is ordered or paid: you check out on their site or app.",
          {"type": "object", "properties": _props(retailer=("string", "sainsburys or ocado")), "required": ["retailer"]},
          send_to_basket_tool),
+    Tool("orders", "Recent orders at a shop (Sainsbury's: upcoming ones too; Ocado: delivered ones only) and which items "
+         "on the shopping list each covers.",
+         {"type": "object", "properties": _props(retailer=("string", "sainsburys or ocado")), "required": ["retailer"]}, orders_tool),
+    Tool("tick_off_order", "Take the items an order covers off the shopping list (the newest order, or the one given).",
+         {"type": "object", "properties": _props(retailer=("string", "sainsburys or ocado"), order=("string", "order id; default: the newest"),
+                                                 include_name_matches=("boolean", "also items matched only by name, default true")),
+          "required": ["retailer"]}, tick_off_order_tool),
+    Tool("clear_list", "Empty the whole shopping list. Only with confirm: true, after checking with the person.",
+         {"type": "object", "properties": _props(confirm=("boolean", "must be true")), "required": ["confirm"]}, clear_list_tool),
     Tool("floods_near", "Environment Agency flood warnings and alerts covering a saved place (or within some km of it).",
          {"type": "object", "properties": _props(place=PLACE, km=("number", "0 (default): the place must be inside the warned area"))},
          floods_tool),

@@ -226,3 +226,33 @@ def test_the_shopping_page_script_compiles(tmp_path: Any) -> None:
     f.write_text("\n".join(scripts))
     r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True, check=False)
     assert r.returncode == 0, r.stderr
+
+
+def test_an_order_covers_items_by_the_product_chosen_or_by_the_same_name() -> None:
+    items = [{"key": "ko:1", "name": "Milk"}, {"key": "ko:2", "name": "Free range eggs"}, {"key": "ko:3", "name": "Saffron"}]
+    order = {"items": [{"product_id": "s-milk", "name": "Sainsbury's Semi Skimmed 4 pints"},
+                       {"product_id": "x", "name": "Free-range eggs"}]}  # fmt: skip
+    products = {"ko:1": {"s-milk"}, "ko:3": {"s-saff"}}
+    assert S.match_order(order, items, products) == [
+        {"key": "ko:1", "name": "Milk", "how": "product"},
+        {"key": "ko:2", "name": "Free range eggs", "how": "name"},  # punctuation and case do not matter
+    ]
+    assert S.match_order({"items": []}, items, products) == []
+
+
+async def test_removing_items_asks_kitchenowl_once_for_all_of_them(wired: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    async def settings(request: Any) -> dict[str, Any]:
+        return {"household_id": 1, "list_id": 7, "retailers": ["ocado"]}
+
+    monkeypatch.setattr(S, "load_settings", settings)
+    seen = []
+
+    def answer(req: httpx.Request) -> httpx.Response:
+        seen.append((req.method, req.url.path, json.loads(req.content)))
+        return httpx.Response(200, json={"msg": "DONE"})
+
+    n = await S.remove_items(object(), ["ko:12", "ko:3", "ko:12", "bad", "ko:x"], transport=httpx.MockTransport(answer))  # type: ignore[arg-type]
+    assert n == 2
+    assert seen == [("DELETE", "/api/shoppinglist/7/items", {"items": [{"item_id": 3}, {"item_id": 12}]})]
+    assert await S.remove_items(object(), [], transport=httpx.MockTransport(answer)) == 0  # type: ignore[arg-type]
+    assert len(seen) == 1  # nothing to remove: nothing sent

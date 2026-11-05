@@ -19,6 +19,8 @@ Routes (all /v1/shopping):
   DELETE /match        {item_key, retailer}: forget it, go back to the best match
   GET  /slots          ?retailer=: next delivery slots (read only)
   GET  /basket/{retailer}, POST /basket/{retailer}: the basket, and sending the last priced list to it
+  GET  /orders/{retailer}: recent orders and the list items each covers; POST /tick {item_keys}: take those off
+  POST /clear {confirm: true}: empty the list
   POST /login/{retailer}/start, POST /login/sainsburys/code, POST /session/{retailer}, POST /logout/{retailer}
 """
 
@@ -246,6 +248,65 @@ async def add_item(request: Request, name: str, description: str = "",
     got = await kitchenowl_post(f"/api/shoppinglist/{st['list_id']}/add-item-by-name", body, transport)
     return {"added": True, "already": False, "item": {"key": f"ko:{got.get('id')}", "name": got.get("name", name),
                                                        "description": body.get("description", "")}}  # fmt: skip
+
+
+async def remove_items(request: Request, keys: list[str], transport: httpx.AsyncBaseTransport | None = None) -> int:
+    """Take items off the chosen KitchenOwl list, as ticking them in the app does (they stay in its recent items, so
+    they are quick to add back). Keys are World Assistant's "ko:<item id>". Returns how many were asked for."""
+    ids = sorted({int(k.split(":", 1)[1]) for k in keys if k.startswith("ko:") and k.split(":", 1)[1].isdigit()})
+    if not ids:
+        return 0
+    st = await load_settings(request)
+    if not st["list_id"]:
+        raise HTTPException(409, "Choose the KitchenOwl list first (Shopping page)")
+    base, token = _kitchenowl()
+    if not base or not token:
+        raise HTTPException(409, "KitchenOwl is not set up, or has no token yet")
+    try:
+        async with httpx.AsyncClient(timeout=20, transport=transport) as c:
+            r = await c.request("DELETE", f"{base}/api/shoppinglist/{st['list_id']}/items",
+                                json={"items": [{"item_id": i} for i in ids]}, headers={"Authorization": f"Bearer {token}"})  # fmt: skip
+    except httpx.HTTPError as exc:
+        raise HTTPException(503, f"KitchenOwl did not answer ({type(exc).__name__}); is its container running?") from exc
+    if r.status_code in (401, 403, 422):
+        raise HTTPException(409, "KitchenOwl refused the token: make a new long-lived token and save it here")
+    if r.status_code >= 400:
+        raise HTTPException(502, f"KitchenOwl answered HTTP {r.status_code}")
+    return len(ids)
+
+
+def _norm(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (name or "").lower()).strip()
+
+
+def match_order(order: dict[str, Any], items: list[dict[str, Any]], products: dict[str, set[str]]) -> list[dict[str, Any]]:
+    """The list items an order covers. products[item key] = the retailer product ids that item means (the one last
+    priced, and your usual). An item matches by one of those ids, or else by having the same name as a line of the
+    order (what was bought by hand, say)."""
+    ids = {str(i.get("product_id")) for i in order.get("items") or [] if i.get("product_id")}
+    names = {_norm(i.get("name", "")) for i in order.get("items") or []}
+    out = []
+    for it in items:
+        mine = products.get(it["key"], set())
+        if mine & ids:
+            out.append({"key": it["key"], "name": it["name"], "how": "product"})
+        elif _norm(it["name"]) in names:
+            out.append({"key": it["key"], "name": it["name"], "how": "name"})
+    return out
+
+
+async def item_products(request: Request, retailer: str) -> dict[str, set[str]]:
+    """Per list item, the product ids at this retailer it means: the last priced choice and your usual."""
+    out: dict[str, set[str]] = {}
+    last = await _get(request, LAST_KEY)
+    for it in (last or {}).get("items") or []:
+        c = ((it.get("retailers") or {}).get(retailer) or {}).get("choice")
+        if c and c.get("id"):
+            out.setdefault(it["key"], set()).add(str(c["id"]))
+    for (key, r), p in (await usual_matches(request)).items():
+        if r == retailer and p.get("id"):
+            out.setdefault(key, set()).add(str(p["id"]))
+    return out
 
 
 def list_items(lists: list[dict[str, Any]], list_id: int) -> list[dict[str, Any]]:
@@ -556,6 +617,49 @@ async def send_to_basket(retailer: str, request: Request) -> dict[str, Any]:
     if failed and len(failed) == len(items) and any("401" in str(r.get("error")) or "403" in str(r.get("error")) for r in failed):
         raise HTTPException(409, f"Log in to {LABEL[retailer]} first (Retailer logins, below), then send again")
     return out  # type: ignore[no-any-return]
+
+
+@router.get("/orders/{retailer}")
+async def orders(retailer: str, request: Request) -> dict[str, Any]:
+    """Recent orders at a retailer (Sainsbury's: upcoming ones too; Ocado: delivered ones only), each with the list
+    items it covers, ready to tick off. Needs that retailer's login."""
+    _retailer(retailer)
+    try:
+        data = await service("GET", f"/orders?provider={retailer}", timeout=150)
+    except HTTPException as exc:
+        raise _login_first(retailer, exc) from exc
+    items = await current_items(request)
+    products = await item_products(request, retailer)
+    for o in data.get("orders", []):
+        o["on_list"] = match_order(o, items, products)
+    return data  # type: ignore[no-any-return]
+
+
+class KeysIn(BaseModel):
+    item_keys: list[str] = Field(min_length=1, max_length=200)
+
+
+@router.post("/tick")
+async def tick_off(body: KeysIn, request: Request) -> dict[str, Any]:
+    """Take these items off the list (they have been ordered, say). They stay in KitchenOwl's recent items."""
+    on = {i["key"]: i["name"] for i in await current_items(request)}
+    keys = [k for k in dict.fromkeys(body.item_keys) if k in on]
+    n = await remove_items(request, keys)
+    return {"removed": n, "items": [on[k] for k in keys]}
+
+
+class ClearIn(BaseModel):
+    confirm: bool = False
+
+
+@router.post("/clear")
+async def clear_list(body: ClearIn, request: Request) -> dict[str, Any]:
+    """Empty the whole list ({confirm: true}). The items stay in KitchenOwl's recent items, quick to add back."""
+    if not body.confirm:
+        raise HTTPException(422, "Clearing the whole list needs confirm: true")
+    items = await current_items(request)
+    n = await remove_items(request, [i["key"] for i in items])
+    return {"removed": n, "items": [i["name"] for i in items]}
 
 
 class CodeIn(BaseModel):

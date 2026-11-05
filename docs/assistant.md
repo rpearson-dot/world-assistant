@@ -30,6 +30,7 @@ switched off hides its tools.
 | `postcode` | where a postcode is (`postcode`), or the nearest postcode to a place |
 | `connections` | how a place joins up in the knowledge graph, and what is disrupting the trips from it |
 | `shopping` | what is on the family shopping list, or (`about: prices`) what it came to when last priced |
+| `orders` | recent orders at a shop and which list items each covers (Sainsbury's: upcoming too; Ocado: delivered) |
 
 **Acts.** These change something. None spends money.
 
@@ -38,6 +39,8 @@ switched off hides its tools.
 | `add_to_list` | adds items to the KitchenOwl list (`item`; "milk, eggs and bread" adds three; `note` for one item). What is already on it is left alone |
 | `price_list` | prices the list now at Sainsbury's and Ocado and says which is cheaper (`fresh` to search again) |
 | `send_to_basket` | puts the last priced list's products in a shop's basket (`retailer`), each up to the quantity on the list: topped up, never doubled. Nothing is ordered or paid; you check out on their site or app |
+| `tick_off_order` | takes the items a shop's order covers off the list (`retailer`; the newest order, or `order`) |
+| `clear_list` | empties the list; only with `confirm: true` |
 | `add_place` | saves a place by `postcode` (or `lat` and `lon`); refuses to overwrite one unless `replace` |
 | `add_trip` | saves a trip between two saved places and routes it |
 

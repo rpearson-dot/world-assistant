@@ -190,3 +190,35 @@ async def test_add_item_reuses_the_list_and_posts_new_ones_by_name(kitchenowl: l
     post = kitchenowl[-1]
     assert post.url.path == "/api/shoppinglist/7/add-item-by-name" and post.headers["authorization"] == "Bearer ko-token"
     assert json.loads(post.content) == {"name": "Bread", "description": "wholemeal"}
+
+
+async def test_tick_off_takes_the_newest_orders_items_off_and_clear_needs_confirming(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def orders(retailer: str, request: Any) -> dict[str, Any]:
+        return {"orders": [
+            {"id": "2", "status": "PLACED", "total": 61, "slot_start": "2026-11-06T18:00:00Z",
+             "on_list": [{"key": "ko:1", "name": "Milk", "how": "product"}, {"key": "ko:2", "name": "Eggs", "how": "name"}]},
+            {"id": "1", "status": "DELIVERED", "total": 50, "slot_start": "2026-10-28T09:00:00Z", "on_list": []}]}  # fmt: skip
+
+    ticked: list[list[str]] = []
+
+    async def tick(body: Any, request: Any) -> dict[str, Any]:
+        ticked.append(body.item_keys)
+        return {"removed": len(body.item_keys), "items": ["Milk", "Eggs"][: len(body.item_keys)]}
+
+    async def clear(body: Any, request: Any) -> dict[str, Any]:
+        return {"removed": 7, "items": []}
+
+    monkeypatch.setattr(S, "orders", orders)
+    monkeypatch.setattr(S, "tick_off", tick)
+    monkeypatch.setattr(S, "clear_list", clear)
+    said = (await M.orders_tool(REQ, {"retailer": "sainsburys"}))["text"]
+    assert said.startswith("Recent Sainsbury's orders: 2026-11-06, placed, £61.00, covers 2 item(s) on the list (Milk, Eggs)")
+    out = await M.tick_off_order_tool(REQ, {"retailer": "sainsburys"})
+    assert ticked == [["ko:1", "ko:2"]] and out["text"].startswith("Took 2 item(s) off the list, from the Sainsbury's order")
+    await M.tick_off_order_tool(REQ, {"retailer": "sainsburys", "include_name_matches": False})
+    assert ticked[-1] == ["ko:1"]
+    nothing = await M.tick_off_order_tool(REQ, {"retailer": "sainsburys", "order": "1"})
+    assert nothing["text"].startswith("Nothing on the list is in the Sainsbury's order")
+    with pytest.raises(ToolError, match="confirm"):
+        await M.clear_list_tool(REQ, {})
+    assert "7 item(s) taken off" in (await M.clear_list_tool(REQ, {"confirm": True}))["text"]

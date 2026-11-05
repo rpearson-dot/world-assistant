@@ -498,7 +498,7 @@ async def handle_rpc(request: Request, msg: Any) -> dict[str, Any] | None:
             "instructions": "Personal assistant for getting around (fuel, trains, buses, roads, floods, EV chargers), "
                             "energy, pollen, events, power cuts and the family shopping list. Call list_options first "
                             "to see saved ids. Some tools act: add_to_list, price_list, send_to_basket (fills a "
-                            "basket, never orders or pays), add_place and add_trip.",
+                            "basket, never orders or pays), tick_off_order, clear_list, add_place and add_trip.",
         }}  # fmt: skip
     if method == "ping":
         return {"jsonrpc": "2.0", "id": rid, "result": {}}
