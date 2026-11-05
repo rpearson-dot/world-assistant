@@ -14,6 +14,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - Assistant tools `orders`, `tick_off_order` and `clear_list` (which needs `confirm: true`); `/v1/shopping/orders/{retailer}`,
   `/v1/shopping/tick` and `/v1/shopping/clear`. The supermarket service has `GET /orders`.
 
+### Security
+- Both images install the distribution's pending security updates when built (a new `apt` fix had made both images
+  fail the scan).
+
 ## [0.29.0] - 2026-11-05
 
 ### Added

@@ -30,6 +30,9 @@ RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force \
  && rm -rf /usr/lib/node_modules/npm /usr/lib/node_modules/corepack /usr/bin/npm /usr/bin/npx /usr/bin/corepack /root/.npm
 COPY src ./src
 
+# Security fixes published since the base image was built (a fixable finding fails the release scan)
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin wa \
  && mkdir -p /data && chown 10001:10001 /data
 USER 10001:10001
