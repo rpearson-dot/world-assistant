@@ -12,6 +12,7 @@ Routes (all /v1/shopping):
   GET  /lists          KitchenOwl's households and their lists, to choose from
   PUT  /settings       {household_id, list_id, retailers}
   GET  /list           the chosen list's items
+  POST /list           {name, description}: add an item to it
   POST /price          price the list now ({refresh: true} ignores the six-hour cache)
   GET  /price          the last result
   PUT  /match          {item_key, retailer, product}: "this is what I mean"
@@ -207,6 +208,46 @@ async def kitchenowl_get(path: str, transport: httpx.AsyncBaseTransport | None =
     return r.json()
 
 
+async def kitchenowl_post(path: str, body: Any, transport: httpx.AsyncBaseTransport | None = None) -> Any:
+    base, token = _kitchenowl()
+    if not base:
+        raise HTTPException(409, "KitchenOwl is not set up: add docker-compose.kitchenowl.yml (docs/shopping.md)")
+    if not token:
+        raise HTTPException(409, "No KitchenOwl token yet: make a long-lived token in the KitchenOwl app and save it here")
+    try:
+        async with httpx.AsyncClient(timeout=15, transport=transport) as c:
+            r = await c.post(base + path, json=body, headers={"Authorization": f"Bearer {token}"})
+    except httpx.HTTPError as exc:
+        raise HTTPException(503, f"KitchenOwl did not answer ({type(exc).__name__}); is its container running?") from exc
+    if r.status_code in (401, 403, 422):
+        raise HTTPException(409, "KitchenOwl refused the token: make a new long-lived token and save it here")
+    if r.status_code >= 400:
+        raise HTTPException(502, f"KitchenOwl answered HTTP {r.status_code}")
+    return r.json()
+
+
+async def add_item(request: Request, name: str, description: str = "",
+                   transport: httpx.AsyncBaseTransport | None = None) -> dict[str, Any]:  # fmt: skip
+    """Put an item on the chosen KitchenOwl list, as the KitchenOwl app does (it reuses the household's item of that
+    name, so your usual product for it still applies). Already on the list: left as it is."""
+    name = re.sub(r"\s+", " ", name).strip()[:120]
+    if not name:
+        raise HTTPException(422, "Say what to add")
+    st = await load_settings(request)
+    if not st["household_id"] or not st["list_id"]:
+        raise HTTPException(409, "Choose the KitchenOwl list first (Shopping page)")
+    lists = await kitchenowl_get(f"/api/household/{st['household_id']}/shoppinglist", transport)
+    have = next((i for i in list_items(lists, st["list_id"]) if i["name"].lower() == name.lower()), None)
+    if have:
+        return {"added": False, "already": True, "item": have}
+    body: dict[str, Any] = {"name": name}
+    if description.strip():
+        body["description"] = description.strip()[:120]
+    got = await kitchenowl_post(f"/api/shoppinglist/{st['list_id']}/add-item-by-name", body, transport)
+    return {"added": True, "already": False, "item": {"key": f"ko:{got.get('id')}", "name": got.get("name", name),
+                                                       "description": body.get("description", "")}}  # fmt: skip
+
+
 def list_items(lists: list[dict[str, Any]], list_id: int) -> list[dict[str, Any]]:
     """The items of one list from KitchenOwl's /household/{id}/shoppinglist answer, keyed by KitchenOwl item id."""
     for sl in lists:
@@ -359,6 +400,17 @@ async def get_list(request: Request) -> dict[str, Any]:
 
 class PriceIn(BaseModel):
     refresh: bool = False
+
+
+class AddIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=120)
+
+
+@router.post("/list")
+async def add_to_list(body: AddIn, request: Request) -> dict[str, Any]:
+    """Add an item to the KitchenOwl list (as the assistant's add_to_list does)."""
+    return await add_item(request, body.name, body.description)
 
 
 @router.post("/price")

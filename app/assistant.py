@@ -9,8 +9,6 @@ needed. Authentication is the same bearer token as the rest of the API.
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo
@@ -32,46 +30,20 @@ from app.fuel import near as fuel_near
 from app.pollen import near as pollen_near
 from app.tfl import departures as board_departures
 from app.vehicles import trip_cost
+from app.version import VERSION
 
 log = logging.getLogger("wa.assistant")
 router = APIRouter(dependencies=[Depends(require_token)])
 
-KM_PER_MILE = 1.609344
-
-
-class ToolError(Exception):
-    pass
-
-
-@dataclass(frozen=True)
-class Tool:
-    name: str
-    description: str
-    schema: dict[str, Any]
-    run: Callable[[Request, dict[str, Any]], Awaitable[dict[str, Any]]]
-
-
-def _props(**fields: tuple[str, str]) -> dict[str, Any]:
-    return {k: {"type": t, "description": d} for k, (t, d) in fields.items()}
-
-
-def _need(args: dict[str, Any], key: str) -> str:
-    v = args.get(key)
-    if not isinstance(v, str) or not v.strip():
-        raise ToolError(f"Missing {key!r}. Try list_options to see what is set up.")
-    return v.strip()
-
-
-async def _wrap(coro: Awaitable[Any]) -> Any:
-    try:
-        return await coro
-    except HTTPException as exc:
-        raise ToolError(str(exc.detail)) from exc
-
-
-def _miles(km: float) -> str:
-    m = km / KM_PER_MILE
-    return f"{m:.1f} mile{'s' if round(m, 1) != 1 else ''}"
+from app.assistant_base import (
+    KM_PER_MILE,
+    Tool,
+    ToolError,
+    _miles,
+    _need,
+    _props,
+    _wrap,
+)
 
 
 def _ids(rows: Any) -> list[str]:
@@ -438,6 +410,11 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
                                                  stop=("string", "only this stop key; optional"))}, bus),
 ]}  # fmt: skip
 
+# The tools in app/assistant_more.py (shopping, floods, roads, buses, stops, the graph, adding places and trips).
+from app.assistant_more import MORE
+
+TOOLS.update({t.name: t for t in MORE})
+
 
 async def _available(request: Request) -> set[str]:
     """Tool names whose module is on. A tool no module claims is always available."""
@@ -517,9 +494,11 @@ async def handle_rpc(request: Request, msg: Any) -> dict[str, Any] | None:
         return {"jsonrpc": "2.0", "id": rid, "result": {
             "protocolVersion": asked if asked in PROTOCOLS else PROTOCOLS[0],
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": "world-assistant", "version": "0.23.5"},
-            "instructions": "Personal assistant for fuel prices, trips, trains and buses. "
-                            "Call list_options first to see saved ids.",
+            "serverInfo": {"name": "world-assistant", "version": VERSION},
+            "instructions": "Personal assistant for getting around (fuel, trains, buses, roads, floods, EV chargers), "
+                            "energy, pollen, events, power cuts and the family shopping list. Call list_options first "
+                            "to see saved ids. Some tools act: add_to_list, price_list, send_to_basket (fills a "
+                            "basket, never orders or pays), add_place and add_trip.",
         }}  # fmt: skip
     if method == "ping":
         return {"jsonrpc": "2.0", "id": rid, "result": {}}

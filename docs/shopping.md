@@ -100,6 +100,12 @@ check out on the retailer's site or app as usual.
 Check the basket on the retailer's site before checking out: a product the list chose may have changed, and offers
 the search did not show are applied there.
 
+### From an assistant or Siri
+
+The assistant tools do the same: `shopping`, `add_to_list`, `price_list` and `send_to_basket` (docs/assistant.md).
+A Siri Shortcut can add to the list through World Assistant (`POST /v1/ask/add_to_list?format=text` with
+`{"item": "<what you said>"}` and the API token), or straight to KitchenOwl with a KitchenOwl token.
+
 ## 4. Delivery slots and logins
 
 **Delivery slots** show the next free slots at each retailer, read only. Both need you logged in.

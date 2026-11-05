@@ -19,6 +19,7 @@ from app.graph import store as graph_store
 from app.logging import configure_logging
 from app.modules import registry
 from app.modules.gate import ModuleGate
+from app.version import VERSION
 
 log = logging.getLogger("wa.api")
 
@@ -42,7 +43,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await app.state.engine.dispose()
 
 
-app = FastAPI(title="World Assistant", version="0.23.5", lifespan=lifespan)
+app = FastAPI(title="World Assistant", version=VERSION, lifespan=lifespan)
 # Files shipped with the app (Leaflet), so the pages load no third-party script. Read-only and
 # unauthenticated: it holds nothing private, and StaticFiles refuses paths outside the directory.
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
