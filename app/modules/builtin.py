@@ -208,7 +208,7 @@ BUILTIN: tuple[Module, ...] = (
            category="home", keys=("kitchenowl_token",), link="https://github.com/TomBursch/kitchenowl",
            note="Needs docker-compose.kitchenowl.yml, and docker-compose.supermarket.yml for prices (docs/shopping.md)",
            services=("docker-compose.kitchenowl.yml", "docker-compose.supermarket.yml"),
-           routers=("app.shopping:router", "app.shopping_page:page_router"), prefixes=("/v1/shopping", "/shopping"), tools=("shopping", "add_to_list", "price_list", "send_to_basket")),
+           routers=("app.shopping:router", "app.shopping_page:page_router"), prefixes=("/v1/shopping", "/shopping"), tools=("shopping", "add_to_list", "price_list", "send_to_basket", "orders", "tick_off_order", "clear_list")),
     Module("graph", "Knowledge graph (Neo4j)", "The Graph page: how your places, trips, roads and stations connect",
            category="service", listed=False, switch="graph_enabled", services=("docker-compose.graph.yml",),
            routers=("app.graph_routes:router", "app.graph_routes:page_router"), prefixes=("/v1/graph", "/graph"),

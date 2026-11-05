@@ -45,7 +45,8 @@ label.inline input { width: auto; margin: 0; }
 <div class="card" id="pricecard"><h2>Price this list</h2>
 <p class="dim" id="listline">Loading the list...</p>
 <div class="row"><button id="price" class="primary">Price this list</button>
-<label class="inline"><input type="checkbox" id="fresh"> fresh prices (otherwise searches up to 6 hours old are reused)</label></div>
+<label class="inline"><input type="checkbox" id="fresh"> fresh prices (otherwise searches up to 6 hours old are reused)</label>
+<button id="clear" type="button">Clear the list</button></div>
 <p id="pmsg" class="err"></p>
 <div id="result" hidden>
   <p id="pricedat" class="dim"></p>
@@ -56,6 +57,15 @@ label.inline input { width: auto; margin: 0; }
   <span class="why">best match</span> is the retailer's own top result; <span class="why missing">usual not found</span> means
   your usual did not turn up, so the best match stands in. <b>Change</b> to choose: it is remembered for that item.</p>
 </div>
+</div>
+
+<div class="card"><h2>Ordered? Tick it off</h2>
+<p class="dim">Looks at your recent orders and finds what on the list they cover, by the product you chose or the same name,
+so you can take those off the list. Sainsbury's shows upcoming orders too; Ocado only shows an order once it has been
+delivered. Both need the retailer's login.</p>
+<div class="row" id="orderbtns"></div>
+<div id="orders"></div>
+<p id="omsg" class="err"></p>
 </div>
 
 <div class="card"><h2>Delivery slots</h2>
@@ -199,9 +209,11 @@ async function price(fresh) {
   finally { $('price').disabled = false; }
 }
 
+let listCount = 0;
 async function loadList() {
   try {
     const l = await api('GET', '/v1/shopping/list');
+    listCount = l.count; $('clear').disabled = !l.count;
     $('listline').textContent = l.count + ' item' + (l.count === 1 ? '' : 's') + ' on the list: '
       + l.items.slice(0, 12).map(i => i.name).join(', ') + (l.count > 12 ? ', ...' : '');
     $('price').disabled = !l.count;
@@ -240,6 +252,45 @@ function renderSlots() {
       out.replaceChildren(el('h3', null, LABEL[r] + (d.cached ? ' (from ' + new Date(d.fetched_at).toLocaleTimeString('en-GB') + ')' : '')), slotList(d));
     }).catch(e => out.replaceChildren(el('p', 'err', e.message)));
   }));
+}
+
+const when = iso => iso ? new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'no slot';
+
+function renderOrders() {
+  const box = $('orderbtns'); box.replaceChildren();
+  for (const r of ['sainsburys', 'ocado']) box.append(button(LABEL[r] + ' orders', () => showOrders(r)));
+}
+
+async function showOrders(r) {
+  const out = $('orders'); $('omsg').textContent = '';
+  out.replaceChildren(el('p', 'dim', 'Reading your ' + LABEL[r] + ' orders...'));
+  let d;
+  try { d = await api('GET', '/v1/shopping/orders/' + r); } catch (e) { out.replaceChildren(); $('omsg').textContent = e.message; return; }
+  out.replaceChildren(el('h3', null, LABEL[r]));
+  if (!d.orders.length) { out.append(el('p', 'dim', 'No recent orders' + (r === 'ocado' ? ' delivered yet.' : '.'))); return; }
+  for (const o of d.orders.slice(0, 5)) {
+    const c = el('div', 'card');
+    c.append(el('p', null, when(o.slot_start) + ' \u00b7 ' + (o.status || '').toLowerCase().replace(/_/g, ' ') + ' \u00b7 '
+      + money(o.total) + ' \u00b7 ' + o.items.length + (o.items.length === 1 ? ' line' : ' lines')));
+    if (!o.on_list.length) { c.append(el('p', 'dim', 'Nothing on the list is in this order.')); out.append(c); continue; }
+    const f = el('form');
+    for (const it of o.on_list) {
+      const cb = el('input'); cb.type = 'checkbox'; cb.checked = true; cb.value = it.key;
+      const lab = el('label', 'inline'); lab.append(cb, it.name + (it.how === 'name' ? ' (same name)' : ''));
+      f.append(lab, el('br'));
+    }
+    const msg = el('p');
+    f.append(el('button', 'primary', 'Tick these off the list'), msg);
+    f.onsubmit = e => { e.preventDefault(); guard(async () => {
+      const keys = [...f.querySelectorAll('input:checked')].map(x => x.value);
+      if (!keys.length) throw new Error('Nothing is ticked.');
+      const res = await api('POST', '/v1/shopping/tick', { item_keys: keys });
+      msg.textContent = 'Took ' + res.removed + ' item' + (res.removed === 1 ? '' : 's') + ' off the list.';
+      await loadList();
+    }, msg); };
+    c.append(el('p', null, o.on_list.length + ' on the list:'), f);
+    out.append(c);
+  }
 }
 
 function renderLogins() {
@@ -346,13 +397,21 @@ async function refresh() {
     : ko.problem;
   $('tokform').hidden = ko.ok;
   await loadLists();
-  renderLogins(); renderSlots();
+  renderLogins(); renderSlots(); renderOrders();
   await loadList();
   try { show(await api('GET', '/v1/shopping/price')); } catch (e) { $('result').hidden = true; }
 }
 
 $('auth').onsubmit = e => { e.preventDefault(); try { sessionStorage.setItem('wa_token', tok.value); } catch (x) {} guard(refresh, msg); };
 $('price').onclick = () => price($('fresh').checked);
+$('clear').onclick = () => {
+  if (!confirm('Take all ' + listCount + ' items off the KitchenOwl list?\\n\\nThey stay in KitchenOwl\\'s recent items, so they are quick to add back.')) return;
+  guard(async () => {
+    const r = await api('POST', '/v1/shopping/clear', { confirm: true });
+    $('pmsg').textContent = 'Cleared ' + r.removed + ' item' + (r.removed === 1 ? '' : 's') + ' off the list.';
+    await loadList();
+  }, $('pmsg'));
+};
 $('tokform').onsubmit = e => { e.preventDefault(); guard(async () => {
   await api('PUT', '/v1/settings/keys/kitchenowl_token', { value: $('kotok').value }); $('kotok').value = ''; await refresh();
 }, $('lmsg')); };

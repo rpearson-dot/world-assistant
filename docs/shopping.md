@@ -100,9 +100,20 @@ check out on the retailer's site or app as usual.
 Check the basket on the retailer's site before checking out: a product the list chose may have changed, and offers
 the search did not show are applied there.
 
+### After ordering: tick it off, or clear the list
+
+**Ordered? Tick it off** reads your recent orders at a shop and finds what on the list each covers: by the product
+priced or remembered for that item, or else by the same name. Untick anything that should stay, then **Tick these off
+the list**. Sainsbury's shows upcoming orders, so you can tick off as soon as you've checked out. Ocado only shows an
+order once it has been delivered (that is all open-supermarkets can read there). Both need the shop's login.
+
+**Clear the list** (next to Price this list) takes everything off after asking. Either way the items stay in
+KitchenOwl's recent items, so they are quick to add back.
+
 ### From an assistant or Siri
 
-The assistant tools do the same: `shopping`, `add_to_list`, `price_list` and `send_to_basket` (docs/assistant.md).
+The assistant tools do the same: `shopping`, `add_to_list`, `price_list`, `send_to_basket`, `orders`, `tick_off_order`
+and `clear_list` (docs/assistant.md).
 A Siri Shortcut can add to the list through World Assistant (`POST /v1/ask/add_to_list?format=text` with
 `{"item": "<what you said>"}` and the API token), or straight to KitchenOwl with a KitchenOwl token.
 

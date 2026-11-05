@@ -6,6 +6,7 @@
 //   GET  /slots?provider=             next delivery slots (read only)
 //   GET  /basket?provider=            what is in the basket now
 //   POST /basket/add                  {provider, items: [{id, name, quantity}]}: each item up to that quantity
+//   GET  /orders?provider=            recent orders and their items (read only)
 //   POST /login/start                 {provider, email, password}: log in (Sainsbury's stops for the SMS code)
 //   POST /login/code                  {code, provider}: the code the retailer texted or emailed
 //   POST /login/continue              {provider}: after clicking the link the retailer emailed
@@ -218,12 +219,27 @@ function makeServer({ token, createProvider, logins = new Logins(), secret = rea
     return { provider: id, results, basket: after };
   }
 
+  /** Recent orders with their items, newest first (Ocado: delivered ones only; Sainsbury's: upcoming ones too). */
+  async function orders(id) {
+    const p = await provider(id);
+    if (typeof p.getOrders !== 'function') throw fail(501, `${LABEL[id]} has no order history here`);
+    const list = await withTimeout(p.getOrders(), 120000, `${LABEL[id]} orders`);
+    const out = (list || []).map((o) => ({
+      id: String(o.order_id), status: String(o.status || ''), total: Number(o.total) || 0,
+      slot_start: o.delivery_slot?.start_time || null, slot_end: o.delivery_slot?.end_time || null,
+      items: (o.items || []).map((i) => ({ product_id: String(i.product_uid ?? i.item_id ?? ''), name: i.name || '', quantity: Number(i.quantity) || 0 })),
+    }));
+    out.sort((a, b) => String(b.slot_start || '').localeCompare(String(a.slot_start || '')));
+    return { provider: id, orders: out, upcoming_included: id === 'sainsburys' };
+  }
+
   async function route(req, url, body) {
     const p = url.pathname;
     if (req.method === 'GET' && (p === '/' || p === '/health')) return health();
     if (req.method === 'POST' && p === '/compare') return compare(body);
     if (req.method === 'GET' && p === '/slots') return slots(url.searchParams.get('provider') || '');
     if (req.method === 'GET' && p === '/basket') return basket(url.searchParams.get('provider') || '');
+    if (req.method === 'GET' && p === '/orders') return orders(url.searchParams.get('provider') || '');
     if (req.method === 'POST' && p === '/basket/add') {
       if (!PROVIDERS.includes(body?.provider)) throw fail(400, `provider must be one of ${PROVIDERS.join(', ')}`);
       return addAll(body.provider, body.items);
@@ -269,7 +285,7 @@ function makeServer({ token, createProvider, logins = new Logins(), secret = rea
       cache.delete(id);
       return { status: 'logged_out' };
     }
-    if (['/', '/health', '/compare', '/slots', '/basket', '/basket/add', '/login/start', '/login/code', '/login/continue', '/login/screenshot', '/session/import', '/logout'].includes(p)) {
+    if (['/', '/health', '/compare', '/slots', '/basket', '/basket/add', '/orders', '/login/start', '/login/code', '/login/continue', '/login/screenshot', '/session/import', '/logout'].includes(p)) {
       throw fail(405, 'Method not allowed');
     }
     throw fail(404, 'Not found');

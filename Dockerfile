@@ -41,6 +41,9 @@ RUN /usr/local/bin/python -m pip uninstall -y -q pip \
  && rm -rf "$(/usr/local/bin/python -c 'import ensurepip, os; print(os.path.dirname(ensurepip.__file__))')/_bundled"
 
 # Unprivileged user with no home and no shell
+# Security fixes published since the base image was built (a fixable finding fails the release scan)
+RUN apt-get update && apt-get -y upgrade && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin wa
 
 WORKDIR /srv
