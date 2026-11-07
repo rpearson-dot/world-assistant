@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - Wishlist and Outdoors are parts of Shopping: no longer in the menu themselves, but tabs (List, Wishlist, Outdoors)
   along the top of each, with Shopping shown as the current page.
 
+### Fixed
+- Wishlist: Aldi and Lidl are asked for an item's distinctive words ("kamado", not "kamado bbq", which brought back
+  177 BBQ sauces and snacks ahead of any Kamado). Whether a product is the thing still goes by every word.
+- Wishlist: things Aldi sells only in its shops are no longer shown as sold out.
+
 ## [0.36.1] - 2026-11-07
 
 ### Fixed
