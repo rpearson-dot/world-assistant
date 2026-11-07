@@ -4,10 +4,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-11-07
+
 ### Added
+- **Wishlist** (docs/wishlist.md): a KitchenOwl list ("Wishlist") the whole family adds to, searched at Aldi
+  (Specialbuys) and Lidl (Middle of Lidl) on Wednesday and Saturday evenings or on demand. It remembers every match,
+  so it says what is coming or on sale now (price, date, link) and when the rest were last seen and last on sale. A
+  description such as `under £300` or `must: kamado` narrows an item. Wishlist page, a Home Assistant sensor, and the
+  `wishlist`, `wish_add`, `wish_remove` and `wishlist_check` tools. Reads the retailers' own website searches
+  (unofficial); `python -m app.wishlist <words>` shows what each sends.
 - Assistant tool `bus_setup`: set up a bus tracker by saying it, e.g. "track the 406 from Epsom station to Kingston,
   arrive by 8:30". Stops can be named loosely and the direction is worked out; with only a line it lists the stops.
   It never replaces an existing tracker unless told to.
+
+## [0.31.0] - 2026-11-07
 
 ### Added
 - **Air and water** (docs/environment.md): air quality near each place as Defra's Daily Air Quality Index (1-10) with

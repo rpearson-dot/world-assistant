@@ -229,13 +229,16 @@ async def kitchenowl_post(path: str, body: Any, transport: httpx.AsyncBaseTransp
 
 
 async def add_item(request: Request, name: str, description: str = "",
-                   transport: httpx.AsyncBaseTransport | None = None) -> dict[str, Any]:  # fmt: skip
-    """Put an item on the chosen KitchenOwl list, as the KitchenOwl app does (it reuses the household's item of that
-    name, so your usual product for it still applies). Already on the list: left as it is."""
+                   transport: httpx.AsyncBaseTransport | None = None, list_id: int | None = None) -> dict[str, Any]:  # fmt: skip
+    """Put an item on the chosen KitchenOwl list (or `list_id`, another list of the same household), as the
+    KitchenOwl app does (it reuses the household's item of that name, so your usual product for it still applies).
+    Already on the list: left as it is."""
     name = re.sub(r"\s+", " ", name).strip()[:120]
     if not name:
         raise HTTPException(422, "Say what to add")
     st = await load_settings(request)
+    if list_id:
+        st["list_id"] = list_id
     if not st["household_id"] or not st["list_id"]:
         raise HTTPException(409, "Choose the KitchenOwl list first (Shopping page)")
     lists = await kitchenowl_get(f"/api/household/{st['household_id']}/shoppinglist", transport)
@@ -250,13 +253,16 @@ async def add_item(request: Request, name: str, description: str = "",
                                                        "description": body.get("description", "")}}  # fmt: skip
 
 
-async def remove_items(request: Request, keys: list[str], transport: httpx.AsyncBaseTransport | None = None) -> int:
+async def remove_items(request: Request, keys: list[str], transport: httpx.AsyncBaseTransport | None = None,
+                       list_id: int | None = None) -> int:  # fmt: skip
     """Take items off the chosen KitchenOwl list, as ticking them in the app does (they stay in its recent items, so
     they are quick to add back). Keys are World Assistant's "ko:<item id>". Returns how many were asked for."""
     ids = sorted({int(k.split(":", 1)[1]) for k in keys if k.startswith("ko:") and k.split(":", 1)[1].isdigit()})
     if not ids:
         return 0
     st = await load_settings(request)
+    if list_id:
+        st["list_id"] = list_id
     if not st["list_id"]:
         raise HTTPException(409, "Choose the KitchenOwl list first (Shopping page)")
     base, token = _kitchenowl()
