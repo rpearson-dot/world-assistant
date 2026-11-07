@@ -66,6 +66,10 @@ BASE_CSS = """
   nav.tabs svg { width: 18px; height: 18px; }
   nav.tabs a:hover { background: var(--chip); } nav.tabs a.here { background: var(--chip); color: var(--ink); }
   nav.tabs .more { display: none; }
+  nav.subtabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 12px; }
+  nav.subtabs a { padding: 6px 14px; border-radius: 999px; color: var(--dim); text-decoration: none; background: var(--card);
+    border: 1px solid var(--chip); font-size: 14px; }
+  nav.subtabs a.here { background: var(--chip); color: var(--ink); font-weight: 600; }
   .sheet { position: fixed; inset: 0; z-index: 30; background: rgb(0 0 0 / .35); display: flex; align-items: flex-end; }
   .sheet-grid { width: 100%; background: var(--card); border-radius: 18px 18px 0 0; padding: 14px 12px calc(84px + env(safe-area-inset-bottom));
     display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -138,12 +142,26 @@ PAGES = (  # (id, path, label, icon, on the phone's tab bar)
     ("places", "/places", "Places", "places", False),
     ("vehicles", "/vehicles", "Vehicles", "vehicles", False),
     ("shopping", "/shopping", "Shopping", "shopping", False),
-    ("wishlist", "/wishlist", "Wishlist", "wishlist", False),
-    ("outdoors", "/outdoors", "Outdoors", "outdoors", False),
     ("graph", "/graph", "Graph", "graph", False),
     ("ha", "/ha", "Home Assistant", "ha", False),
     ("settings", "/settings", "Settings", "settings", False),
 )
+
+
+# Pages that are parts of another: not in the menu themselves, but tabs along the top of their section, which the menu
+# shows as current while one of them is open.
+SECTIONS = {"shopping": (("shopping", "/shopping", "List"), ("wishlist", "/wishlist", "Wishlist"),
+                         ("outdoors", "/outdoors", "Outdoors"))}  # fmt: skip
+SECTION_OF = {pid: sec for sec, parts in SECTIONS.items() for pid, _, _ in parts}
+
+
+def _subnav(here: str) -> str:
+    sec = SECTION_OF.get(here)
+    if not sec:
+        return ""
+    return '<nav class="subtabs" aria-label="Shopping">' + "".join(
+        f'<a href="{path}"{' class="here" aria-current="page"' if pid == here else ""}>{label}</a>'
+        for pid, path, label in SECTIONS[sec]) + "</nav>"
 
 
 def _icon(name: str) -> str:
@@ -182,7 +200,8 @@ HEAD = (
 
 def themed(page: str, here: str, request: HTTPConnection | None = None) -> str:
     """Fill the style, head and nav placeholders of a page. From the local network, the token box goes away."""
-    nav = NAV.replace(f'data-p="{here}"', f'class="here" aria-current="page" data-p="{here}"')
+    top = SECTION_OF.get(here, here)
+    nav = NAV.replace(f'data-p="{top}"', f'class="here" aria-current="page" data-p="{top}"') + _subnav(here)
     if request is not None and page_without_token(request):
         nav += PAGE_SNIPPET
     page = page.replace("</head>", HEAD + "</head>", 1).replace("<body>", '<body class="app">', 1)

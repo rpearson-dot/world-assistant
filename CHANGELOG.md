@@ -2,6 +2,12 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- Wishlist and Outdoors are parts of Shopping: no longer in the menu themselves, but tabs (List, Wishlist, Outdoors)
+  along the top of each, with Shopping shown as the current page.
+
 ## [0.36.1] - 2026-11-07
 
 ### Fixed
