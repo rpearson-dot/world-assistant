@@ -410,6 +410,22 @@ def trips_device(trips: list[dict[str, Any]]) -> Device:
     return Device("trips", "Trips", sensors)
 
 
+def wishlist_device(data: dict[str, Any]) -> Device:
+    """The wishlist: how many wishes are coming or on sale now, with which, where, for how much and when."""
+    items = data.get("items") or []
+    if not items:
+        raise ValueError("the wishlist is empty")
+    now = [{"wish": it["name"], "retailer": s["retailer"], "product": s["name"], "price": s.get("price"),
+            "status": s["status"], "on_sale": s.get("on_sale"), "url": s.get("url")}
+           for it in items for s in it.get("now") or []]  # fmt: skip
+    last = data.get("last_check") or {}
+    return Device("wishlist", "World Assistant wishlist", [
+        Sensor("found", "Wishlist items coming or on sale", len({x["wish"] for x in now}), icon="mdi:cart-heart",
+               state_class="measurement", attributes={"items": now, "wishes": [it["name"] for it in items],
+                                                      "last_check": last.get("at"), "errors": last.get("errors")}),
+    ])  # fmt: skip
+
+
 def environment_device(summary: dict[str, Any]) -> Device:
     """Air and water: the air quality index at each place, home's river level and rain, tides where there are."""
     sensors: list[Sensor] = []
@@ -560,7 +576,10 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
     async def environment() -> Device:
         return environment_device(await _get(c, "/v1/environment/summary"))
 
-    for name, build in (("environment", environment), ("ev", ev), ("trips", trips), ("energy", energy), ("power", power), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
+    async def wishlist() -> Device:
+        return wishlist_device(await _get(c, "/v1/wishlist"))
+
+    for name, build in (("environment", environment), ("wishlist", wishlist), ("ev", ev), ("trips", trips), ("energy", energy), ("power", power), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
         await attempt(name, build)
     return devices
 

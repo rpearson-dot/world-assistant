@@ -24,6 +24,10 @@ switched off hides its tools.
 | `bus` | whether a bus made the target stop before the deadline, and next buses (`tracker` optional if only one) |
 | `floods_near` | flood warnings and alerts covering a place (`km` to look around it) |
 | `road_disruptions_near` | TfL road works, closures and incidents near a place (`km`, default 0.5) |
+| `wishlist` | the family's KitchenOwl wishlist: what is coming or on sale at Aldi or Lidl, and when the rest were last seen |
+| `wish_add` | add a wish to the KitchenOwl wishlist and check Aldi and Lidl for it (acts: adds it in KitchenOwl) |
+| `wish_remove` | tick a wish off the KitchenOwl wishlist (acts: ticks it; its history is kept) |
+| `wishlist_check` | search Aldi and Lidl now for everything on the wishlist |
 | `bus_setup` | set up a bus tracker from loose stop names and an arrive-by time (acts: saves it; lists a line's stops when given only the line) |
 | `live_buses_near` | buses reporting their position near a place now (`km`, `line`) |
 | `bus_disruptions` | published bus disruptions near your places (`place`, `line`, `km`) |
