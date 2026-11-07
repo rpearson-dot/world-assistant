@@ -2,6 +2,15 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.36.1] - 2026-11-07
+
+### Fixed
+- The version in `pyproject.toml` had stayed at 0.30.0 since 0.30.0, so updates kept servers on the 0.30.0 image:
+  `deploy.sh` reads it to choose the release. It now says 0.36.1, and three checks stop it happening again: the
+  release refuses to run unless `pyproject.toml` and the changelog both name the version, a test keeps
+  `pyproject.toml` level with the changelog, and `deploy.sh` says which release is running and stops with a warning
+  when it is not the one the files are.
+
 ## [0.36.0] - 2026-11-07
 
 ### Added
