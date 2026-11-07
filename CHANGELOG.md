@@ -4,6 +4,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-11-07
+
+### Added
+- **Tradeinn** in Outdoors (Trekkinn and Bikeinn by default, `WA_OUTDOORS_TRADEINN_SHOPS` for others): its own search,
+  priced for delivery to the UK. Prices in another currency are shown in it and not compared with pound prices.
+
+### Changed
+- Outdoors handles failed shops: one that refuses, times out or answers unexpectedly is skipped for the rest of the
+  check and named on the page; a followed product that cannot be read keeps its last price and says since when.
+
+### Fixed
+- Here no longer waits on a slow source: each part has 15 seconds, and one that takes longer says so while the rest
+  are shown.
+
 ## [0.34.1] - 2026-11-07
 
 ### Added

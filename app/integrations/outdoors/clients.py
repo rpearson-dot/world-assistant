@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import httpx
 
@@ -192,3 +192,83 @@ async def bikesy_search(client: httpx.AsyncClient, query: str, raw: bool = False
     """Bikesy's deals for some words, from its tag page (its search pages are closed to automated readers)."""
     html = await _get(client, "bikesy", f"{BIKESY}/tag/{_tag(query)}/", json_=False)
     return html[:3000] if raw else bikesy_deals(html)
+
+
+# --- Tradeinn (Trekkinn, Bikeinn and their sister shops) -------------------------------------------------------------
+# No public API: this is the search its own pages call (index.php?action=get_info_elastic_listado), a form of
+# "vars[]=" query parts plus texto_search, in the shop given by id_tienda, with the delivery country in the id_pais
+# cookie (the United Kingdom is 209), which is what makes it answer with a price. Unofficial, so every field is looked
+# for under the names seen in use, and the currency is read from the answer when it says (else taken as euros).
+TRADEINN = "https://www.tradeinn.com"
+TRADEINN_SHOPS = {"diveinn": 1, "snowinn": 2, "trekkinn": 3, "bikeinn": 4, "swiminn": 6, "waveinn": 7, "runnerinn": 10,
+                  "traininn": 13, "xtremeinn": 14}  # fmt: skip
+TRADEINN_UK = 209
+NAMES["tradeinn"] = "Tradeinn"
+
+
+def _first_num(*vals: Any) -> float | None:
+    for v in vals:
+        n = _pounds(v)
+        if n:
+            return n
+    return None
+
+
+def tradeinn_products(data: Any, shop: str) -> list[dict[str, Any]]:
+    """Products from Tradeinn's search answer (id_modelos), with the price, the full price ("rec") and stock."""
+    if not isinstance(data, dict):
+        raise ShopError("Tradeinn sent something other than its search answer (it may have changed its site)")
+    found = data.get("id_modelos")
+    if found is None and isinstance(data.get("hits"), dict):  # an Elasticsearch-shaped answer
+        found = [h.get("_source") for h in data["hits"].get("hits") or [] if isinstance(h, dict)]
+    out = []
+    currency = str(data.get("moneda") or data.get("currency") or "EUR").upper()[:3]
+    for m in found or []:
+        if not isinstance(m, dict):
+            continue
+        name = m.get("nombre_modelo_eng") or m.get("nombre_modelo") or m.get("name")
+        pid = m.get("id_modelo") or m.get("id")
+        if not name or not pid:
+            continue
+        prods = [x for x in m.get("productes") or [] if isinstance(x, dict)]
+        live = [x for x in prods if not x.get("baja")] or prods
+        seller = next((s for x in live for s in x.get("sellers") or [] if isinstance(s, dict) and s.get("id_seller") == 1), None) \
+            or next((s for x in live for s in x.get("sellers") or [] if isinstance(s, dict)), {})  # fmt: skip
+        price = _first_num(m.get("precio_win"), seller.get("precio_producte"))
+        full = _first_num(*(x.get("rec") for x in live))
+        stock = any((x.get("exist") or 0) > (x.get("stock_reservat") or 0) for x in live) if any("exist" in x for x in live) else True
+        slug = re.sub(r"[^a-z0-9]+", "-", str(name).lower()).strip("-")
+        brand = str(m.get("marca") or "").strip()
+        full_name = f"{brand} {name}".strip() if brand and brand.lower() not in str(name).lower() else str(name).strip()
+        out.append({"retailer": "tradeinn", "id": f"{shop}:{pid}", "name": full_name,
+                    "brand": m.get("marca") or None, "price": price, "was": full if full and price and full > price else None,
+                    "available": bool(stock), "url": f"{TRADEINN}/{shop}/en/{slug}/{pid}/p", "currency": currency})  # fmt: skip
+    return out
+
+
+async def tradeinn_search(client: httpx.AsyncClient, query: str, shop: str = "trekkinn", raw: bool = False) -> Any:
+    """Tradeinn's products in one of its shops for some words, priced for delivery to the UK."""
+    sid = TRADEINN_SHOPS.get(shop)
+    if sid is None:
+        raise ShopError(f"Tradeinn has no shop called {shop!r} here (choose from {', '.join(TRADEINN_SHOPS)})")
+    parts = [f"id_tienda={sid}@fecha_descatalogado=[now/d-*]", "precio_win_54;asc", "48", "productos", "search", "0"]
+    body = "&".join(["vars%5B%5D=" + p for p in parts] + ["texto_search=" + quote(query)])  # as its own page sends it
+    try:
+        r = await client.post(f"{TRADEINN}/index.php", params={"action": "get_info_elastic_listado", "id_tienda": sid, "idioma": "eng"},
+                              content=body, headers={**HEADERS, "Accept": "application/json, text/javascript, */*; q=0.01",
+                                                     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                                                     "Cookie": f"id_pais={TRADEINN_UK};"})  # fmt: skip
+    except httpx.HTTPError as exc:
+        raise ShopError(f"Tradeinn could not be reached ({type(exc).__name__})") from exc
+    if r.status_code in (401, 403, 429, 503):
+        raise ShopError(f"Tradeinn refused the request (HTTP {r.status_code}): it may be blocking automated requests")
+    if r.status_code >= 400:
+        raise ShopError(f"Tradeinn answered HTTP {r.status_code}")
+    try:
+        data = r.json()
+    except ValueError as exc:
+        page = r.text[:200].lower()
+        why = "a challenge page (it is blocking automated requests)" if "captcha" in page or "challenge" in page or "cloudflare" in page \
+            else "something other than JSON (it may have changed its site)"  # fmt: skip
+        raise ShopError(f"Tradeinn sent {why}") from exc
+    return data if raw else tradeinn_products(data, shop)

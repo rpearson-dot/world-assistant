@@ -72,11 +72,11 @@ async def test_go_outdoors_and_decathlon_are_read() -> None:
 async def test_a_search_follows_the_three_cheapest_real_matches(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(OD.asyncio, "sleep", _now)
     async with httpx.AsyncClient(transport=shops([])) as c:
-        got, errs = await OD.read(c, {"name": "Tent", "links": [], "must": []})
+        got, errs, _ = await OD.read(c, {"name": "Tent", "links": [], "must": []})
     # the footprint counts (it has "tent"); the spares kit is an accessory, so it does not
     assert [p["id"] for p in got] == ["footprint", "eurohike-avon-2-tent", "vango-soul-200"] and errs == []
     async with httpx.AsyncClient(transport=shops([])) as c:
-        got, _ = await OD.read(c, {"name": "Tent", "links": [], "must": ["vango"]})
+        got, _, _ = await OD.read(c, {"name": "Tent", "links": [], "must": ["vango"]})
     assert [p["id"] for p in got] == ["vango-soul-200"]
 
 
@@ -130,9 +130,12 @@ def test_prices_are_remembered_and_a_fall_is_a_drop(monkeypatch: pytest.MonkeyPa
     import importlib.util
     from pathlib import Path
 
-    spec = importlib.util.spec_from_file_location("m0039", Path("migrations/versions/0039_outdoors.py"))
-    mig = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
-    spec.loader.exec_module(mig)  # type: ignore[union-attr]
+    migs = []
+    for f in ("0039_outdoors.py", "0041_outdoors_currency.py"):
+        spec = importlib.util.spec_from_file_location(f[:5], Path("migrations/versions") / f)
+        m = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+        spec.loader.exec_module(m)  # type: ignore[union-attr]
+        migs.append(m)
     with sync.begin() as conn:
         for t in ("outdoors_price", "outdoors_product", "app_setting"):
             conn.execute(text(f"DROP TABLE IF EXISTS {t}"))
@@ -141,8 +144,10 @@ def test_prices_are_remembered_and_a_fall_is_a_drop(monkeypatch: pytest.MonkeyPa
         conn.execute(text("INSERT INTO app_setting (key, value) VALUES (:k, CAST(:v AS jsonb))"),
                      {"k": S.SETTINGS_KEY, "v": json.dumps({"household_id": 9, "list_id": 1})})
         with Operations.context(MigrationContext.configure(conn)):
-            mig.upgrade()
+            for m in migs:
+                m.upgrade()
     price = {"now": 11000}
+    status = {"code": 200}
 
     async def ko_get(path: str, transport: Any = None) -> Any:
         return LISTS
@@ -150,6 +155,8 @@ def test_prices_are_remembered_and_a_fall_is_a_drop(monkeypatch: pytest.MonkeyPa
     real = httpx.AsyncClient
 
     def client(*a: Any, **kw: Any) -> httpx.AsyncClient:
+        if status["code"] != 200:
+            return real(transport=httpx.MockTransport(lambda r: httpx.Response(status["code"])))
         return real(transport=shops([], go={**PRODUCT_JS, "price": price["now"]}))
 
     monkeypatch.setattr(S, "kitchenowl_get", ko_get)
@@ -181,6 +188,16 @@ def test_prices_are_remembered_and_a_fall_is_a_drop(monkeypatch: pytest.MonkeyPa
         assert [x["price"] for x in hist] == [105.0, 99.0, 110.0]
         same = c.post("/v1/outdoors/check", headers=h).json()  # no change: no new history
         assert same["drops"] == 0 and len(c.get("/v1/outdoors/ko:50/history", headers=h).json()["prices"]) == 3
+        assert same["items"][0]["products"][0]["currency"] == "GBP" and same["last_check"]["sources"] == {"gooutdoors": "ok"}
+
+        status["code"] = 503  # GO Outdoors is down: the product keeps its last price, and says why
+        down = c.post("/v1/outdoors/check", headers=h).json()
+        p = down["items"][0]["products"][0]
+        assert p["price"] == 105.0 and "HTTP 503" in p["error"] and p["error_at"] and down["items"][0]["failing"]
+        assert down["last_check"]["sources"]["gooutdoors"].startswith("failed: ")
+        status["code"] = 200  # back: the error clears
+        back = c.post("/v1/outdoors/check", headers=h).json()
+        assert back["items"][0]["products"][0]["error"] is None and back["last_check"]["sources"] == {"gooutdoors": "ok"}
     finally:
         with sync.begin() as conn:
             for t in ("outdoors_price", "outdoors_product", "app_setting"):
@@ -220,6 +237,79 @@ async def test_a_search_also_asks_bikesy(monkeypatch: pytest.MonkeyPatch) -> Non
         return httpx.Response(200, json={"resources": {"results": {"products": []}}})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(answer)) as c:
-        got, errs = await OD.read(c, {"name": "105 cassette", "links": [], "must": []})
+        got, errs, _ = await OD.read(c, {"name": "105 cassette", "links": [], "must": []})
     assert seen[1] == "https://bikesy.co.uk/tag/105+cassette/"  # the tag page: its /s/ search is closed to robots
     assert [p["id"] for p in got] == ["5300528", "5300601"] and errs == []  # the chain tool is not a cassette
+
+
+TRADEINN = {"total": {"value": 2}, "id_modelos": [
+    {"id_modelo": 137201, "marca": "Shimano", "nombre_modelo_eng": "105 R7100 12s Cassette", "precio_win": "54.99",
+     "productes": [{"baja": 0, "rec": "89.99", "exist": 4, "stock_reservat": 0, "sellers": [{"id_seller": 1, "precio_producte": "54.99"}]}]},
+    {"id_modelo": 137300, "marca": "Sram", "nombre_modelo_eng": "Sram PG-1130 Cassette", "precio_win": None,
+     "productes": [{"baja": 0, "rec": "60", "exist": 0, "stock_reservat": 0, "sellers": [{"id_seller": 2, "precio_producte": "41.50"}]}]},
+]}  # fmt: skip
+
+
+def test_tradeinn_products_are_read() -> None:
+    got = O.tradeinn_products(TRADEINN, "bikeinn")
+    a, b = got
+    assert (a["id"], a["name"], a["price"], a["was"], a["available"], a["currency"]) == (
+        "bikeinn:137201", "Shimano 105 R7100 12s Cassette", 54.99, 89.99, True, "EUR")  # no currency said: euros
+    assert a["url"] == "https://www.tradeinn.com/bikeinn/en/105-r7100-12s-cassette/137201/p"
+    assert (b["name"], b["price"], b["available"]) == ("Sram PG-1130 Cassette", 41.5, False)  # the seller's price; none in stock
+    assert O.tradeinn_products({**TRADEINN, "moneda": "gbp"}, "bikeinn")[0]["currency"] == "GBP"
+    with pytest.raises(ShopError, match="something other than its search answer"):
+        O.tradeinn_products([1, 2], "bikeinn")
+
+
+async def test_tradeinn_is_asked_as_its_page_asks_and_failures_are_words() -> None:
+    seen: list[httpx.Request] = []
+
+    def answer(req: httpx.Request) -> httpx.Response:
+        seen.append(req)
+        return httpx.Response(200, json=TRADEINN)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(answer)) as c:
+        got = await O.tradeinn_search(c, "105 cassette", shop="bikeinn")
+    r = seen[0]
+    assert r.method == "POST" and r.url.params["action"] == "get_info_elastic_listado" and r.url.params["id_tienda"] == "4"
+    assert r.headers["Cookie"] == "id_pais=209;"  # delivered to the UK
+    body = r.content.decode()
+    assert body.startswith("vars%5B%5D=id_tienda=4@fecha_descatalogado=[now/d-*]") and body.endswith("texto_search=105%20cassette")
+    assert len(got) == 2
+    for resp, words in ((httpx.Response(403), "refused"), (httpx.Response(200, text="<html>Just a moment... cloudflare challenge"), "challenge page"),
+                        (httpx.Response(200, text="<html>oops"), "other than JSON"), (httpx.Response(500), "HTTP 500")):  # fmt: skip
+        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda q, x=resp: x)) as c:
+            with pytest.raises(ShopError, match=words):
+                await O.tradeinn_search(c, "x", shop="trekkinn")
+    async with httpx.AsyncClient() as c:
+        with pytest.raises(ShopError, match="no shop called"):
+            await O.tradeinn_search(c, "x", shop="nowhereinn")
+
+
+async def test_a_shop_that_fails_is_asked_once_a_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(OD.asyncio, "sleep", _now)
+    asked: list[str] = []
+
+    def answer(req: httpx.Request) -> httpx.Response:
+        asked.append(req.url.host)
+        if req.url.host == "www.tradeinn.com":
+            return httpx.Response(403)
+        if req.url.host == "bikesy.co.uk":
+            return httpx.Response(200, text="<html>no deals</html>")
+        return httpx.Response(200, json={"resources": {"results": {"products": []}}})
+
+    down: dict[str, str] = {}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(answer)) as c:
+        _, errs1, _ = await OD.read(c, {"name": "tent", "links": [], "must": []}, down)
+        _, errs2, _ = await OD.read(c, {"name": "stove", "links": [], "must": []}, down)
+    assert asked.count("www.tradeinn.com") == 2  # trekkinn and bikeinn once each, for the first item only
+    assert set(down) == {"tradeinn:trekkinn", "tradeinn:bikeinn"} and len(errs1) == 2 and errs2 == []
+    # a followed link that fails is reported for that product; a dead link does not take the shop down
+    def dead(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)
+
+    down = {}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(dead)) as c:
+        got, errs, failed = await OD.read(c, {"name": "tent", "links": [("gooutdoors", "https://www.gooutdoors.co.uk/products/x")], "must": []}, down)
+    assert got == [] and failed == [("https://www.gooutdoors.co.uk/products/x", errs[0])] and down == {}

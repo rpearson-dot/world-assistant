@@ -60,9 +60,10 @@ falls shows as a drop for a week. Nothing is ever bought.</p>
 const $ = id => document.getElementById(id), tok = $('t'), msg = $('msg');
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function button(text, onclick) { const b = el('button', null, text); b.type = 'button'; b.onclick = onclick; return b; }
-const money = v => v == null ? '' : '£' + Number(v).toFixed(2);
+const SYM = { GBP: '£', EUR: '€', USD: '$' };
+const money = (v, cur) => v == null ? '' : (SYM[cur || 'GBP'] || (cur + ' ')) + Number(v).toFixed(2);
 const day = s => s ? new Date(s).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
-const shop = r => ({ gooutdoors: 'GO Outdoors', decathlon: 'Decathlon', bikesy: 'Bikesy' }[r] || r);
+const shop = r => ({ gooutdoors: 'GO Outdoors', decathlon: 'Decathlon', bikesy: 'Bikesy', tradeinn: 'Tradeinn' }[r] || r);
 try { tok.value = sessionStorage.getItem('wa_token') || ''; } catch (e) {}
 async function api(method, path, body) {
   const r = await fetch(path, { method, headers: { Authorization: 'Bearer ' + tok.value, 'Content-Type': 'application/json' },
@@ -77,13 +78,16 @@ async function guard(fn, out) { out.textContent = ''; try { await fn(); } catch 
 function product(p) {
   const li = el('li');
   const name = p.url ? Object.assign(el('a', null, p.name), { href: p.url, target: '_blank', rel: 'noopener noreferrer' }) : el('span', null, p.name);
-  li.append(el('b', null, shop(p.retailer) + ': '), name, ' ' + money(p.price));
+  const c = p.currency;
+  li.append(el('b', null, shop(p.retailer) + ': '), name, ' ' + money(p.price, c));
   const bits = [];
-  if (p.dropped && p.previous_price != null) bits.push('down from ' + money(p.previous_price) + ' on ' + day(p.dropped_at));
-  if (p.was_price) bits.push('was ' + money(p.was_price));
-  if (p.lowest_price != null && p.price != null && p.lowest_price < p.price) bits.push('lowest ' + money(p.lowest_price) + ' on ' + day(p.lowest_at));
+  if (p.dropped && p.previous_price != null) bits.push('down from ' + money(p.previous_price, c) + ' on ' + day(p.dropped_at));
+  if (p.was_price) bits.push('was ' + money(p.was_price, c));
+  if (p.lowest_price != null && p.price != null && p.lowest_price < p.price) bits.push('lowest ' + money(p.lowest_price, c) + ' on ' + day(p.lowest_at));
   if (p.available === false) bits.push('out of stock');
+  if (c && c !== 'GBP') bits.push('in ' + c + ', so not compared with the £ prices');
   if (bits.length) li.append(el('span', 'dim', ' · ' + bits.join(' · ')));
+  if (p.error) li.append(el('span', 'err', ' · could not check it since ' + day(p.error_at) + ': ' + p.error + ' (the price shown is the last one read)'));
   return li;
 }
 function thing(it) {
@@ -108,7 +112,8 @@ function show(data) {
   if (!data.items.length) list.append(el('p', 'dim', 'Nothing on the list yet.'));
   data.items.forEach(it => list.append(thing(it)));
   const l = data.last_check;
-  $('last').textContent = l ? ' Last checked ' + day(l.at) + (l.errors ? ' (some could not be read: ' + Object.values(l.errors).flat().join('; ') + ')' : '') : ' Not checked yet.';
+  const downs = l && l.sources ? Object.entries(l.sources).filter(([, v]) => v !== 'ok').map(([k, v]) => shop(k.split(':')[0]) + (k.includes(':') ? ' (' + k.split(':')[1] + ')' : '') + ' ' + v) : [];
+  $('last').textContent = l ? ' Last checked ' + day(l.at) + (downs.length ? '. Not reached: ' + downs.join('; ') : (l.errors ? ' (some could not be read: ' + Object.values(l.errors).flat().join('; ') + ')' : '')) : ' Not checked yet.';
 }
 async function lists() {
   const st = await api('GET', '/v1/outdoors/settings'), sel = $('listsel'); sel.replaceChildren();

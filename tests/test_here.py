@@ -36,13 +36,17 @@ ANSWERS: dict[str, Any] = {
 }
 
 
-def fake_app(seen: list[tuple[str, dict[str, str]]]) -> FastAPI:
+def fake_app(seen: list[tuple[str, dict[str, str]]], hang: str = "") -> FastAPI:
     app = FastAPI()
 
     @app.get("/{path:path}")
     async def anything(request: Request, path: str) -> Any:
         p = "/" + path
         seen.append((p, dict(request.query_params)))
+        if p == hang:
+            import asyncio
+
+            await asyncio.sleep(60)
         if p == "/v1/power/cuts":
             raise HTTPException(404, "Power cuts is switched off. Turn it on at /modules.")
         if p == "/v1/environment/tides":
@@ -112,3 +116,16 @@ def test_the_page_script_compiles_and_calls_real_routes(tmp_path: Any) -> None:
     paths = set(app.openapi()["paths"])
     for p in set(re.findall(r"'(/v1/here[^'?]*)", PAGE)):
         assert p.rstrip("/") in paths, p
+
+
+async def test_a_part_that_never_answers_does_not_hold_up_the_rest(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    seen: list[tuple[str, dict[str, str]]] = []
+    slow = fake_app(seen, hang="/v1/fuel/near")
+    monkeypatch.setattr(H, "PART_S", 0.2)
+    req: Any = SimpleNamespace(app=slow)
+    d = await asyncio.wait_for(H.gather(req, 51.3343, -0.2678), 5)
+    by = {p["part"]: p for p in d["parts"]}
+    assert by["fuel"]["slow"] and not by["fuel"]["ok"] and "ask again" in by["fuel"]["text"]
+    assert by["air"]["ok"] and d["area"]["postcode"] == "KT17 1AA"
