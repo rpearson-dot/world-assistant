@@ -53,10 +53,13 @@ def _read(r: httpx.Response) -> dict[str, Any]:
     if r.status_code >= 400 or err:
         code = str((err or {}).get("code") or "")
         why = str((err or {}).get("message") or f"HTTP {r.status_code}")
+        said = f" (it said HTTP {r.status_code}" + (f", {code}" if code else "") + f": {why})"
         if r.status_code == 401 or code in ("InvalidKey", "MissingKey"):
-            raise What3WordsError("what3words refused the key (check what3words_api_key on the Keys page)")
-        if r.status_code in (402, 429) or code == "QuotaExceeded":
-            raise What3WordsError("what3words' allowance for this month is used")
+            raise What3WordsError("what3words refused the key (check what3words_api_key on the Keys page)" + said)
+        if code == "QuotaExceeded" or r.status_code == 429:
+            raise What3WordsError("what3words says this key's allowance is used" + said)
+        if r.status_code == 402 or code in ("PlanNotAllowed", "NotAllowed", "Forbidden") or r.status_code == 403:
+            raise What3WordsError("what3words' plan for this key does not allow this" + said)
         if code in ("BadWords", "BadCoordinates"):
             raise What3WordsError(f"what3words does not know that ({why})")
         raise What3WordsError(f"what3words answered: {why}")

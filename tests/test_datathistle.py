@@ -205,3 +205,19 @@ async def test_the_token_is_renewed_and_both_new_ones_saved(tmp_path: Any, monke
             conn.execute(text("DROP TABLE IF EXISTS app_setting"))
         sync.dispose()
         secretstore.clear_cache()
+
+
+def test_the_live_apis_shape_is_read_too() -> None:
+    """As the live API sent it on 7 November 2026: lat, lon and lng on the place, properties as lists, and a _distance
+    in miles (not used: distances are worked out here)."""
+    live = {"event_id": "3abff1a8", "name": "Harry Hill at Outside the Box Comedy Club", "tags": ["comedy"],
+            "properties": [], "descriptions": [{"type": "third-party", "description": "Harry Hill, as seen on TV Burp."}],
+            "schedules": [{"place_id": "55b6", "_distance": 0.48, "properties": [],
+                           "place": {"name": "The Station", "town": "Epsom", "postal_code": "KT17 2JA",
+                                     "lat": 51.36302, "lon": -0.24782, "lng": -0.24782, "_distance": 0.48},
+                           "performances": [{"ts": "2026-11-10T18:45:00+00:00", "properties": ["performance.sold-out"],
+                                             "tickets": [{"type": "Standard", "currency": "GBP", "min_price": 16}],
+                                             "links": [{"url": "https://www.datathistle.com/details/x", "type": "booking"}]}]}]}  # fmt: skip
+    (row,) = DT.events_of(live, date(2026, 11, 7), date(2026, 11, 14), (51.37, -0.247))
+    assert (row["lat"], row["lon"], row["venue"], row["price"]) == (51.36302, -0.24782, "The Station", "£16.00")
+    assert 0.7 < row["distance_km"] < 0.9 and row["availability"] == "Sold out"
