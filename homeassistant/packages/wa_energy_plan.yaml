@@ -35,10 +35,12 @@
 # session a notification is sent if the battery gets low. Nothing here switches the grid off: the inverter takes any
 # shortfall from the grid itself, so the cost is a smaller reward, never a loss of supply.
 #
-# FREE ELECTRICITY: one minute before a Free Electricity hour you have joined, the slot it falls in charges from the
-# grid to "WA target during free electricity" (never above the health max), so the house runs from the grid and the
-# battery fills for free; the slot is put back when the hour ends. A charging slot before a joined free hour only
-# covers the time up to it.
+# FREE ELECTRICITY: a Free Electricity hour you have joined, in the next 24 hours, gets its own slot in World
+# Assistant's schedule when there is room (a slot marked "free"): it charges from the grid to "WA target during free
+# electricity" (never above the health max), so the house runs from the grid and the battery fills for free. When
+# there is no room (Cosy's three windows use all six slots), one minute before the hour the slot it falls in is
+# borrowed instead, and put back when the hour ends. A charging slot before a joined free hour only covers the time
+# up to it, and is never raised to help the free hour along.
 #
 # OUTCOMES: whether the plan worked, written to the logbook under "WA energy plan: outcomes" (shown on the Home
 # charging dashboard), from the inverter's own battery level, grid import, battery charge and solar counters:
@@ -312,7 +314,9 @@ template:
               {% set net = [use - sun, 0] | max / cap * 100 %}
               {# room to leave for solar: what it brings beyond the house's own use in that stretch (no margin) #}
               {% set room = [sun - use / m, 0] | max / cap * 100 %}
-              {% set ns.win = ns.win + [{'w': s.window, 'net': net, 'extra': extra, 'add': rate * s.window_hours / cap * 100,
+              {# a free window fills to its own target whatever it starts at: nothing before it is raised to help it #}
+              {% set ns.win = ns.win + [{'w': s.window, 'net': net, 'extra': extra,
+                                         'add': 100 if s.free else rate * s.window_hours / cap * 100,
                                          'use': use | round(1), 'sun': sun | round(1), 'room': room}] %}
               {% set ns.want = ns.want + [floor + extra + net] %}
             {% endfor %}
@@ -334,9 +338,10 @@ template:
                 {% set fill = not is_state('input_select.wa_charge_mode', 'Just enough') %}
                 {% set full = [((hi - w.room) / 5) | round(0, 'floor') * 5, lo] | max | int %}
                 {% set wanted = [needed, full] | max if fill else needed %}
+                {% set wanted = [wanted, states('input_number.wa_free_target_pct') | int(100)] | max if s.free else wanted %}
                 {% set ns.out = ns.out + [{'n': s.n, 'start': s.start, 'end': s.end, 'charge': true,
                                            'covers': s.cover_from ~ '-' ~ s.cover_to, 'use_kwh': w.use, 'solar_kwh': w.sun,
-                                           'adds_up_to': w.add | round(0) | int, 'session': s.session,
+                                           'adds_up_to': w.add | round(0) | int, 'session': s.session, 'free': s.free == true,
                                            'carried': ns.want[i] > floor + w.extra + w.net + 0.5,
                                            'needed': needed, 'solar_room': (w.room | round(0) | int) if fill else 0,
                                            'wanted': wanted, 'target': [wanted, hi] | min, 'over': needed > hi}] %}
@@ -575,9 +580,14 @@ automation:
         {{ r | from_json if r.startswith('{') else {} }}
       apply: >-
         {{ is_state('input_boolean.wa_energy_plan_apply', 'on') and is_state('switch.office_inverter_allow_remote_control', 'on') }}
+      # the hour already has its own slot on the inverter: nothing to borrow
+      scheduled: >-
+        {% set t = (as_datetime(start) | as_local).strftime('%H:%M') %}
+        {{ is_state('sensor.wa_inverter_slot_check', 'ok') and (state_attr('sensor.wa_energy_charge_schedule', 'slots') or [])
+           | selectattr('free', 'defined') | selectattr('free') | selectattr('start', 'eq', t) | list | length > 0 }}
     conditions:
       - condition: template
-        value_template: "{{ joined and end not in [none, ''] and on_now in ['on', 'off'] }}"
+        value_template: "{{ joined and end not in [none, ''] and on_now in ['on', 'off'] and not scheduled }}"
     actions:
       - action: logbook.log
         data:

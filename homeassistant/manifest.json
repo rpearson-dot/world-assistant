@@ -34,8 +34,8 @@
       "sha256": "20945a2c3a1d253aa65a7a95baa88b6bd81713ea82db819e68530c00c952ffe2"
     },
     "packages/wa_energy_plan.yaml": {
-      "changed_in": "0.22.2",
-      "sha256": "a30f18f26a7e1fd9d9bcc9d9db2972a1b60413cd03e5cc1bbe4841f7074e765f"
+      "changed_in": "0.31.0",
+      "sha256": "7366e744dd9e52593782f0ec313062bd66f2cd9a43dab056bf182393b82b1ad6"
     },
     "packages/wa_ev_plan.yaml": {
       "changed_in": "0.31.0",

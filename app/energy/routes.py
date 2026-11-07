@@ -54,7 +54,7 @@ async def schedule(request: Request) -> dict[str, Any]:
     summed = sess.summarise(await store.load_sessions(request.app.state.engine), now_)
     return {"tariff": tariff, "computed_at": now_.isoformat(),
             **S.build(periods, now_, ZoneInfo(get_settings().local_tz), summed["saving"].get("upcoming") or [],
-                      summed["free"].get("upcoming") or [])}  # fmt: skip
+                      [x for x in [summed["free"].get("current")] if x] + (summed["free"].get("upcoming") or []))}  # fmt: skip
 
 
 @router.get("/windows")

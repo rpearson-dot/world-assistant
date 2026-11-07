@@ -120,8 +120,12 @@ Deye/Sunsynk-style inverter with six daily time slots. It works with any Octopus
 * A window can only add the inverter's grid charge rate times its hours (read from the inverter; a setting if it
   cannot be). When a window cannot put back what the next stretch needs, the window before it charges higher.
 * A joined Saving Session raises the target of the slot that covers it; one inside a charging window is warned
-  about. In a joined Free Electricity hour the slot it falls in charges from the grid (to the health max), and is put
-  back when the hour ends; a charging slot before a joined free hour only covers the time up to it.
+  about. A joined Free Electricity hour in the next 24 hours gets **slots of its own** in the schedule when there is
+  room (one more slot when it is next to or inside a cheap window, two elsewhere), marked `free` and charging to "WA
+  target during free electricity" (never above the health max). That suits Agile and Go, whose cheap times leave
+  slots spare. When there is no room (Cosy's three windows use all six), the slot it falls in is borrowed for the
+  hour and put back afterwards, as before; the schedule's `free_left_out` says when. A charging slot before a joined
+  free hour only covers the time up to it, and is not raised to help it along.
 * With "WA energy plan: set slot times from the tariff" on, the plan also writes the slot start times and grid-charge
   switches; off, it only applies when they already match ("WA inverter slot check").
 * Outcomes go to the logbook too ("Outcomes" on the dashboard): at the end of each charging window, the target and

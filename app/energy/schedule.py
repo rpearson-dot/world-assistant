@@ -11,6 +11,11 @@ charge level. This turns the real rates into that shape for any tariff (Cosy, Go
 4. Slots start at each window's start (grid charge on) and end (off); a slot at midnight is added when there is
    room, and the longest slots are split until there are six.
 
+A Free Electricity hour you joined, in the next 24 hours, gets slots of its own (grid charge on, "free": true) when
+they fit in the six: inside or next to a cheap window it is split off it (one more slot), elsewhere it needs two.
+When they do not fit (Cosy's three windows fill all six), it is left out, and Home Assistant borrows the slot it falls
+in for the hour, as before.
+
 Each charging slot also says what it must cover: the time from the end of its window to the start of the next
 one, as hours of night (00:00-07:00), day (07:00-16:00) and evening (16:00-24:00) load, and the share of a day's
 solar that falls in it, today and tomorrow. Home Assistant turns that into a target with the house's own numbers.
@@ -53,6 +58,7 @@ class Run:
     start: int  # cell
     length: int  # cells
     pence: float
+    free: bool = False  # a joined Free Electricity hour
 
     @property
     def end(self) -> int:
@@ -97,6 +103,36 @@ def _runs(cheap: list[bool], prices: list[float]) -> list[Run]:
         cells = [(r.start + i) % CELLS for i in range(r.length)]
         r.pence = round(sum(prices[c] for c in cells) / len(cells), 3)
     return runs
+
+
+def _with_free(runs: list[Run], free: list[bool], prices: list[float]) -> list[Run]:
+    """The windows with the free half hours split out as runs of their own (cheap windows lose those cells)."""
+    label = [0] * CELLS
+    for r in runs:
+        for i in range(r.length):
+            label[(r.start + i) % CELLS] = 1
+    for c in range(CELLS):
+        if free[c]:
+            label[c] = 2
+    if all(label) and len(set(label)) == 1:
+        return runs
+    first = next((c for c in range(CELLS) if label[c] != label[(c - 1) % CELLS]), 0)
+    out: list[Run] = []
+    for k in range(CELLS):
+        c = (first + k) % CELLS
+        if not label[c]:
+            continue
+        if not out or label[(c - 1) % CELLS] != label[c] or k == 0:
+            out.append(Run(c, 0, 0.0, free=label[c] == 2))
+        out[-1].length += 1
+    for r in out:
+        cells = [(r.start + i) % CELLS for i in range(r.length)]
+        r.pence = round(sum(prices[c] for c in cells) / len(cells), 3)
+    return sorted(out, key=lambda r: r.start)
+
+
+def _edges(runs: list[Run]) -> int:
+    return len({r.start for r in runs} | {r.end for r in runs})
 
 
 def _boundaries(runs: list[Run]) -> dict[int, bool]:
@@ -145,12 +181,25 @@ def build(periods: list[R.Period], now: datetime, tz: ZoneInfo, sessions: list[d
     cheap = [band(p) == R.CHEAP for p in prices]
     runs = sorted(_runs(cheap, prices), key=lambda r: (r.pence, -r.length))[:MAX_WINDOWS]
     runs.sort(key=lambda r: r.start)
+    free_at = _joined(free)
+    spans = [(datetime.fromisoformat(f["start"]), datetime.fromisoformat(f["end"])) for f in free or []
+             if f.get("joined") and f.get("start") and f.get("end")]  # fmt: skip
+    free_cells = [any(a <= when[c] < b for a, b in spans) for c in range(CELLS)]
+    left_out: list[str] = []
+    if any(free_cells):
+        split = _with_free(runs, free_cells, [0.0 if f else p for f, p in zip(free_cells, prices, strict=True)])
+        if _edges(split) <= SLOTS:
+            runs = split
+            prices = [0.0 if f else p for f, p in zip(free_cells, prices, strict=True)]
+        else:
+            left_out = sorted({a.astimezone(tz).strftime("%a %H:%M") for a, b in spans
+                               if any(a <= when[c] < b for c in range(CELLS))})  # fmt: skip
     bounds = _boundaries(runs)
     starts = sorted(bounds)
     first = 0 if 0 in bounds else starts[0]
     starts = sorted(starts, key=lambda s: (s - first) % CELLS)
 
-    joined, free_at = _joined(sessions), _joined(free)
+    joined = _joined(sessions)
     warnings: list[str] = []
     slots: list[dict[str, Any]] = []
     today = now.astimezone(tz).date()
@@ -163,7 +212,7 @@ def build(periods: list[R.Period], now: datetime, tz: ZoneInfo, sessions: list[d
                                 "next_start": when[s].isoformat()}  # fmt: skip
         if bounds[s]:
             run = next(r for r in runs if (s - r.start) % CELLS < r.length)
-            nxt = min(runs, key=lambda r: ((r.start - run.end) % CELLS) or CELLS)
+            nxt = min(runs, key=lambda r: ((r.start - run.end) % CELLS) or CELLS)  # the next window (a free one too)
             cover = ((nxt.start - run.end) % CELLS) or CELLS
             if nxt is run:
                 cover = CELLS - run.length
@@ -193,8 +242,10 @@ def build(periods: list[R.Period], now: datetime, tz: ZoneInfo, sessions: list[d
                          "cover_from": _clock(run.end), "cover_to": _clock(run.end + cover), "cover_hours": cover / 2,
                          "until_free": until_free.isoformat() if until_free else None,
                          "load_hours": load, "solar_share": {k: round(v, 4) for k, v in solar.items()},
-                         "session": session, "window_pence": run.pence})  # fmt: skip
+                         "session": session, "window_pence": run.pence, "free": run.free})  # fmt: skip
         slots.append(slot)
-    wins = [{"start": _clock(r.start), "end": _clock(r.end), "pence": r.pence, "hours": r.length / 2} for r in runs]
+    wins = [{"start": _clock(r.start), "end": _clock(r.end), "pence": r.pence, "hours": r.length / 2, "free": r.free}
+            for r in runs]  # fmt: skip
     return {"available": True, "slots": slots, "windows": wins, "warnings": list(dict.fromkeys(warnings)),
+            "free_left_out": left_out,
             "summary": ", ".join(f"{w['start']}-{w['end']}" for w in wins) or "no cheap window"}  # fmt: skip

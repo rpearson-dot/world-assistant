@@ -4,10 +4,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
-### Fixed
-- UK Power Networks: planned roadworks failed every run since the portal renamed the dataset ("associated with"
-  became "connected to"). Both titles are known, and a title that differs only in such filler words still counts.
-- A test that passed only because an earlier one left a database engine behind; a lint warning in the UKPN code.
 ### Added
 - **Air and water** (docs/environment.md): air quality near each place as Defra's Daily Air Quality Index (1-10) with
   the NO2, ozone, PM2.5 and PM10 readings behind it (Defra UK-AIR); river levels near home with their usual range and
@@ -18,21 +14,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   you watch (`PUT /v1/environment/overflows/rivers`, or the `watch_rivers` tool), within 15 km to catch spills upstream:
   which are discharging now and for how long, which did in the last 48 hours, which monitors are offline. HA sensor
   `storm_overflows_<home>` counts the spills, for an automation to alert on; assistant tool `storm_overflows`.
-### Added
 - Find my setup fills in the address Home Assistant uses for World Assistant from the `wa_*` lines in `secrets.yaml`
   (address only), so lines it writes match even when the page is opened at another address.
 - Find my setup lists sensors World Assistant **no longer provides** (removed places, retired sensors) that sit in Home
   Assistant as unavailable, and **Remove leftovers** deletes them. They are no longer mixed in with "World Assistant
   sensors unavailable".
-
-### Fixed
-- Sensors that went while World Assistant was restarting stayed in Home Assistant for good: what was published is
-  now remembered across restarts, so they are removed.
-### Added
 - Car charging plan (`wa_ev_plan.yaml`, Home charging dashboard): **charge current**, set before each start where the
   charger offers it (OCPP Smart Charging's maximum current), and **charging from the house battery**: outside cheap
   times, while the house battery is above a level you set, at a lower current (10 A is about 2.3 kW) the battery can
   cover. Off by default; it does not start if the current cannot be set. Copy both files again.
+
+### Changed
+- Energy plan: a joined **Free Electricity hour gets its own slots** in the inverter schedule when there is room
+  (Agile, Go), instead of borrowing the slot it falls in, so it charges for exactly that hour to the free target and
+  nothing has to be put back. With no room (Cosy), it is borrowed as before. A free hour already under way counts.
+  Copy `wa_energy_plan.yaml` again.
+
+### Fixed
+- UK Power Networks: planned roadworks failed every run since the portal renamed the dataset ("associated with"
+  became "connected to"). Both titles are known, and a title that differs only in such filler words still counts.
+- A test that passed only because an earlier one left a database engine behind; a lint warning in the UKPN code.
+- Sensors that went while World Assistant was restarting stayed in Home Assistant for good: what was published is
+  now remembered across restarts, so they are removed.
 
 ## [0.30.0] - 2026-11-05
 
