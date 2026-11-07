@@ -348,3 +348,13 @@ async def test_hourly_until_a_cut_is_at_home_and_every_cut_is_kept(schema: None,
         await engine.dispose()
         get_settings.cache_clear()
         uc.forget()
+
+
+def test_a_reworded_title_still_finds_its_dataset() -> None:
+    """In 2026 the portal renamed "... associated with UK Power Networks' activities" to "... connected to ..."; the
+    job then failed every run. The same distinctive words, give or take filler, still count."""
+    new = "Proposed Street and Roadworks connected to UK Power Networks' activities"
+    assert new in uc.TITLES["works_proposed"]
+    assert uc._close(new, "Proposed Street and Roadworks associated with UK Power Networks' activities")
+    assert not uc._close("Open Street and Roadworks connected to UK Power Networks' activities", new)
+    assert not uc._close("Proposed Street Lighting", new)

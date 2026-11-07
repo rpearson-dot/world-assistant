@@ -4,6 +4,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Fixed
+- UK Power Networks: planned roadworks failed every run since the portal renamed the dataset ("associated with"
+  became "connected to"). Both titles are known, and a title that differs only in such filler words still counts.
+- A test that passed only because an earlier one left a database engine behind; a lint warning in the UKPN code.
+
 ## [0.30.0] - 2026-11-05
 
 ### Added

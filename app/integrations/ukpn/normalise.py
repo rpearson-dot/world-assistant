@@ -41,7 +41,8 @@ def when(v: Any) -> datetime | None:
     s = str(v).strip()
     for fmt in (None, "%d/%m/%Y %H:%M", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y"):
         try:
-            t = datetime.fromisoformat(s) if fmt is None else datetime.strptime(s, fmt)
+            # the portal's day/month forms carry no zone: they are UTC
+            t = datetime.fromisoformat(s) if fmt is None else datetime.strptime(s, fmt).replace(tzinfo=UTC)
         except ValueError:
             continue
         return t if t.tzinfo else t.replace(tzinfo=UTC)
