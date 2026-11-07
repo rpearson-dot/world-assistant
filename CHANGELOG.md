@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.38.0] - 2026-11-07
 
 ### Changed
 - The graph has event **venues** (`Venue`, from Skiddle and Ticketmaster), kept for a year after an event there was
