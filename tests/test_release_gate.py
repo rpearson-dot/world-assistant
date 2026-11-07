@@ -25,6 +25,8 @@ case "$path" in
   repos/*/git/ref/heads/main) emit "$S/tip.json" ;;
   repos/*/git/ref/tags/*) [ -e "$S/tag_exists" ] || exit 1; echo '{}' ;;
   repos/*/releases/tags/*) [ -e "$S/release_exists" ] || exit 1; echo '{}' ;;
+  repos/*/contents/pyproject.toml*) cat "$S/pyproject.toml" ;;
+  repos/*/contents/CHANGELOG.md*) cat "$S/CHANGELOG.md" ;;
   repos/*/commits/*/check-runs*)
     n=$(( $(cat "$S/calls" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$S/calls"
     f="$S/checks.$n.json"; [ -e "$f" ] || f="$(ls "$S"/checks.*.json | sort -V | tail -1)"
@@ -59,10 +61,13 @@ def gate(tmp_path: Path):  # type: ignore[no-untyped-def]
     sc.mkdir()
 
     def run(*sequence: dict, tip: str = SHA, tag: bool = False, release: bool = False,
-            event: str = "dispatch", wait: int = 3) -> subprocess.CompletedProcess[str]:  # fmt: skip
+            event: str = "dispatch", wait: int = 3, files_version: str = "1.2.3",
+            changelog: str = "## [1.2.3] - 2026-10-21\n") -> subprocess.CompletedProcess[str]:  # fmt: skip
         for old in sc.iterdir():  # every call starts from a clean scenario
             old.unlink()
         (sc / "tip.json").write_text(json.dumps({"object": {"sha": tip}}))
+        (sc / "pyproject.toml").write_text(f'[project]\nname = "x"\nversion = "{files_version}"\n')
+        (sc / "CHANGELOG.md").write_text("# Changelog\n\n" + changelog)
         for i, seq in enumerate(sequence or (runs(**GREEN),), start=1):
             (sc / f"checks.{i}.json").write_text(json.dumps(seq))
         if tag:
@@ -139,3 +144,10 @@ def test_workflow_makes_release_depend_on_the_gate() -> None:
     assert wf["jobs"]["gate"]["permissions"] == {"contents": "read", "checks": "read"}
     steps = " ".join(str(s.get("run", "")) for s in wf["jobs"]["gate"]["steps"])
     assert "scripts/release-gate.sh" in steps
+
+
+def test_refuses_files_that_do_not_say_this_version(gate) -> None:  # type: ignore[no-untyped-def]
+    r = gate(files_version="1.2.2")  # the stale number that kept servers on 0.30.0
+    assert r.returncode == 1 and "pyproject.toml says version 1.2.2, not 1.2.3" in r.stderr
+    r = gate(changelog="## [Unreleased]\n")
+    assert r.returncode == 1 and "no '## [1.2.3]' heading" in r.stderr

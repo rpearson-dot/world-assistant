@@ -102,6 +102,15 @@ for _ in $(seq 1 40); do
     "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)" \
     >/dev/null 2>&1; then
     echo "The api is up."
+    # The release running must be the one the files are: a stale pin would otherwise go unnoticed.
+    running="$(docker compose exec -T api python -c 'from app.version import VERSION; print(VERSION)' 2>/dev/null | tr -d '\r')"
+    files="$(sed -n 's/^version = "\([^"]*\)".*/\1/p' pyproject.toml 2>/dev/null | head -1)"
+    echo "Running World Assistant ${running:-unknown} (these files are ${files:-unknown})."
+    if [ -n "${WA_IMAGE:-}" ] && [ -n "$running" ] && [ -n "$files" ] && [ "$running" != "$files" ]; then
+      echo "WARNING: the running release is $running but these files are $files. The pinned image (WA_IMAGE in .env)"
+      echo "was not moved on. Look at the messages above, or run: bash scripts/sync.sh  then this again."
+      exit 1
+    fi
     docker compose exec -T api python -m app.secretsctl check || true
     # Read-only comfort check: every page and endpoint answers, nothing returns a 500.
     echo "Checking every page and endpoint..."

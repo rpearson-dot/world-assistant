@@ -8,7 +8,10 @@
 # Rules, all of which must hold:
 #   1. the commit is the current tip of main
 #   2. the release v$VERSION does not exist yet (and, for a manual run, neither does the tag)
-#   3. the CI checks "test", "secrets", "image" and "stack" have all succeeded on the commit; if they are
+#   3. the files say they are this version: pyproject.toml's version is $VERSION and CHANGELOG.md has its heading
+#      (deploy.sh reads pyproject.toml to choose the release image, so a stale number there leaves a server on the
+#      old release without a word)
+#   4. the CI checks "test", "secrets", "image" and "stack" have all succeeded on the commit; if they are
 #      still running or have not started, wait up to WAIT_SECONDS; if any has failed, stop at once
 set -euo pipefail
 
@@ -28,6 +31,13 @@ fi
 if gh api "repos/$REPO/releases/tags/v$VERSION" >/dev/null 2>&1; then
   fail "the release v$VERSION already exists"
 fi
+
+# The files must say they are this release.
+file_at() { gh api "repos/$REPO/contents/$1?ref=$SHA" -H "Accept: application/vnd.github.raw"; }
+files_version="$(file_at pyproject.toml | sed -n 's/^version = "\([^"]*\)".*/\1/p' | head -1)" \
+  || fail "could not read pyproject.toml at ${SHA:0:7}"
+[ "$files_version" = "$VERSION" ] || fail "pyproject.toml says version $files_version, not $VERSION: bump it in the release PR"
+file_at CHANGELOG.md | grep -q "^## \[$VERSION\]" || fail "CHANGELOG.md has no '## [$VERSION]' heading"
 
 # Newest run of each required check on this commit: "name status conclusion"
 latest() {
