@@ -29,6 +29,9 @@ from typing import Any
 PAGES = ("/settings", "/bus", "/trains", "/fuel", "/events", "/pollen", "/places", "/energy", "/ha", "/graph", "/map", "/shopping")
 SEED = "smoke-test-place"
 SKIP_SWEEP = {"/mcp", "/healthz", "/readyz", "/v1/backups/{name}"}  # checked on their own, or a download
+# Read live from someone else's service on every call (no stored data): a slow or down source there must not fail a
+# deploy here. `python -m app.environment` checks them.
+SKIP_PREFIXES = ("/v1/environment/",)
 TIMEOUT = 30.0
 HEARTBEAT_WAIT = int(os.environ.get("WA_SMOKE_HEARTBEAT_WAIT", "60"))
 
@@ -151,7 +154,7 @@ def run(base: str, token: str, *, seed: bool = False, out: Callable[[str], None]
     known = {"place": place, "lat": "51.5074", "lon": "-0.1278"}
     swept = 0
     for path, ops in sorted(spec["paths"].items()):
-        if "get" not in ops or path in SKIP_SWEEP:
+        if "get" not in ops or path in SKIP_SWEEP or path.startswith(SKIP_PREFIXES):
             continue
         query = {}
         for p in ops["get"].get("parameters", []):

@@ -27,6 +27,11 @@ switched off hides its tools.
 | `live_buses_near` | buses reporting their position near a place now (`km`, `line`) |
 | `bus_disruptions` | published bus disruptions near your places (`place`, `line`, `km`) |
 | `stops_near` | the nearest stops and stations to a place (`km`, `kind`: bus_stop, rail, metro and so on) |
+| `air_quality` | Defra's 1-10 air quality index near a place and the readings behind it |
+| `river_levels` | river levels near a place (low, normal or high for there; rising or falling) and the rain |
+| `storm_overflows` | storm overflows near a place and on the watched rivers: spilling now, in the last 48 hours, offline |
+| `watch_rivers` | set the rivers whose storm overflows to watch (acts: saves a setting) |
+| `tides` | the nearest tide gauge's measured level and trend (not a forecast) |
 | `postcode` | where a postcode is (`postcode`), or the nearest postcode to a place |
 | `connections` | how a place joins up in the knowledge graph, and what is disrupting the trips from it |
 | `shopping` | what is on the family shopping list, or (`about: prices`) what it came to when last priced |
