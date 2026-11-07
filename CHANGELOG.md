@@ -4,8 +4,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [0.36.0] - 2026-11-07
 
-## [0.36.0] - 2026-11-07
-
 ### Added
 - **Sigma Sports** in Outdoors: its product links are followed, and it is searched for items without a link (only at
   addresses its robots.txt allows). `WA_OUTDOORS_SIGMA`, `WA_OUTDOORS_SIGMA_SEARCH`.
