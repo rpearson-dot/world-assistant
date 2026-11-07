@@ -35,10 +35,13 @@ def test_kept_when_a_stop_or_place_is_near_a_saved_place() -> None:
     coords = {"2600A": (52.686, -1.536), "3800FAR": (53.48, -2.24)}
     rows = select(found, [HOME, ("work", 51.37, -0.25)], coords, NOW, 25.0, 90)
     by = {r["id"]: r for r in rows}
-    assert set(by) == {"Leics:near-stop", "Leics:near-place"}
+    # every current one with a point is kept (Here can be anywhere); unplaced and ended ones are not
+    assert set(by) == {"Leics:near-stop", "Leics:near-place", "Leics:far"}
     assert by["Leics:near-stop"]["near_place"] == "home" and by["Leics:near-stop"]["distance_km"] < 1
     assert by["Leics:near-stop"]["lines"] == ["19A"] and (by["Leics:near-stop"]["lat"], by["Leics:near-stop"]["lon"]) == (52.686, -1.536)
-    assert select(found, [("work", 51.37, -0.25)], coords, NOW, 25.0, 90) == []
+    assert by["Leics:far"]["near_place"] is None and by["Leics:far"]["distance_km"] is None  # kept, but not "near you"
+    assert by["Leics:far"]["points"] == [(53.48, -2.24)]
+    assert {r["near_place"] for r in select(found, [("work", 51.37, -0.25)], coords, NOW, 25.0, 90)} == {None}
 
 
 def test_the_module_is_declared_and_off_by_default() -> None:
@@ -93,6 +96,10 @@ def schema() -> Iterator[None]:
     assert spec and spec.loader
     mig = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mig)
+    spec2 = importlib.util.spec_from_file_location("m0040", Path(__file__).parent.parent / "migrations/versions/0040_bus_disruption_points.py")
+    assert spec2 is not None and spec2.loader is not None
+    points = importlib.util.module_from_spec(spec2)
+    spec2.loader.exec_module(points)
     with sync_engine.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
         for t in ("bus_disruption", "naptan_stop", "place"):
@@ -102,9 +109,10 @@ def schema() -> Iterator[None]:
         conn.execute(text("CREATE TABLE naptan_stop (atco text primary key, lat float8, lon float8)"))
         with Operations.context(MigrationContext.configure(conn)):
             mig.upgrade()
+            points.upgrade()
     yield
     with sync_engine.begin() as conn:
-        for t in ("bus_disruption", "naptan_stop", "place"):
+        for t in ("bus_disruption_point", "bus_disruption", "naptan_stop", "place"):
             conn.execute(text(f"DROP TABLE IF EXISTS {t} CASCADE"))
     sync_engine.dispose()
 
@@ -125,8 +133,9 @@ async def test_read_stored_and_listed(schema: None, monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(disruptions_sync, "fetch", fake_fetch)
     engine = create_async_engine(URL, poolclass=NullPool)  # type: ignore[arg-type]
-    assert await disruptions_sync.sync(engine, "k", now) == {"read": 2, "kept": 1, "publishers": 2}
-    assert await disruptions_sync.sync(engine, "k", now) == {"read": 2, "kept": 1, "publishers": 2}  # replaced, not doubled
+    want = {"read": 2, "kept": 2, "near_places": 1, "publishers": 2}  # both kept; one near a saved place
+    assert await disruptions_sync.sync(engine, "k", now) == want
+    assert await disruptions_sync.sync(engine, "k", now) == want  # replaced, not doubled
     app.state.engine = engine
     c = TestClient(app)
     h = {"Authorization": "Bearer tok"}
@@ -135,5 +144,8 @@ async def test_read_stored_and_listed(schema: None, monkeypatch: pytest.MonkeyPa
     assert got["disruptions"][0]["near_place"] == "appleby" and got["disruptions"][0]["lines"] == ["19A"]
     assert c.get("/v1/bus-disruptions?line=19a", headers=h).json()["count"] == 1
     assert c.get("/v1/bus-disruptions?line=7", headers=h).json()["count"] == 0
+    here = c.get("/v1/bus-disruptions?lat=52.684&lon=-1.540&within_km=2", headers=h).json()  # by a point, for Here
+    assert [d["summary"] for d in here["disruptions"]] == ["Measham Road closed"] and here["disruptions"][0]["km"] < 2
+    assert c.get("/v1/bus-disruptions?lat=51.5&lon=-0.1&within_km=2", headers=h).json()["count"] == 0
     await engine.dispose()
     get_settings.cache_clear()

@@ -14,8 +14,13 @@ from app import here as H
 
 ANSWERS: dict[str, Any] = {
     "/v1/postcodes/near": {"postcodes": [{"postcode": "KT17 1AA", "district": "Epsom and Ewell", "ward": "Town"}]},
-    "/v1/stops/near": {"stops": [{"name": "Epsom Station", "indicator": "Stop C", "km": 0.12}]},
-    "/v1/live-buses": {"buses": [{"line": "406"}, {"line": "293"}, {"line": "406"}]},
+    "/v1/live-buses/departures": {"stops": [
+        {"id": "4000EP1", "name": "Epsom Station", "indicator": "Stop C", "km": 0.12, "buses": [
+            {"line": "406", "towards": "Kingston", "minutes": 4, "live": True},
+            {"line": "293", "towards": "Morden", "at": ["17:40", "18:10"], "live": False}]},
+        {"id": "4000EP2", "name": "High Street", "indicator": None, "km": 0.3, "buses": []}],
+        "loading": ["E16"], "no_timetable": []},
+    "/v1/bus-disruptions": {"disruptions": [{"summary": "Ashley Road closed", "lines": ["406", "E10"]}]},
     "/v1/stations/near": {"stations": []},
     "/v1/floods/at": {"warnings": []},
     "/v1/environment/air": {"index": 3, "band": "Low", "worst": "PM2.5"},
@@ -53,8 +58,10 @@ async def test_every_part_for_a_point(monkeypatch: pytest.MonkeyPatch) -> None:
     d = await H.gather(req, 51.3343, -0.2678)
     by = {p["part"]: p for p in d["parts"]}
     assert d["area"]["postcode"] == "KT17 1AA" and len(d["parts"]) == len(H.PARTS)
-    assert by["stops"]["text"] == "Nearest: Epsom Station (Stop C), 120 m."
-    assert by["buses"]["text"] == "3 buses reporting within a mile, on 293, 406."
+    assert by["buses"]["text"] == ("Epsom Station (Stop C), 120 m: 406 to Kingston in 4 min; 293 to Morden at 17:40, 18:10 "
+                                   "(timetable). High Street, 300 m: nothing due. Still looking up the timetable for E16; "
+                                   "ask again in a minute.")  # fmt: skip
+    assert by["bus_disruptions"]["text"] == "Ashley Road closed (406, E10)."
     assert by["air"]["text"] == "Index 3 (low), worst PM2.5."
     assert by["rivers"]["text"] == "Hogsmill: normal, steady."
     assert by["rain"]["text"].startswith("0.2 mm in the last hour, 4.1 mm in 24 hours (Epsom")
@@ -67,6 +74,7 @@ async def test_every_part_for_a_point(monkeypatch: pytest.MonkeyPatch) -> None:
     assert not by["tides"]["ok"] and "503" in by["tides"]["text"]  # a failing source, in words
     q = dict(seen)
     assert q["/v1/power/cuts"]["postcode"] == "KT17 1AA" and q["/v1/fuel/near"]["lat"] == "51.3343"
+    assert q["/v1/live-buses/departures"]["radius_m"] == "400" and q["/v1/bus-disruptions"]["within_km"] == "2"
     assert q["/v1/environment/air"]["lon"] == "-0.2678"
 
 

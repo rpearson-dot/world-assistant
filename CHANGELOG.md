@@ -4,6 +4,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-11-07
+
+### Added
+- **Next buses** at the stops nearest a point (`GET /v1/live-buses/departures`, and Here's "Next buses"): TfL's
+  countdowns at London stops; elsewhere, BODS's live positions along each nearby line's timetable (as the bus tracker
+  works them out), with the weekday timetable's next times where no bus is on its way. Timetables are fetched in the
+  background and kept twelve hours, so an answer never waits long for one.
+- **Bus disruptions near a point** (`GET /v1/bus-disruptions?lat=&lon=`, and on Here). Every current disruption is now
+  kept with the points it names (`bus_disruption_point`), not only those near a saved place; the plain listing still
+  shows only those near your places.
+
+### Fixed
+- Here's bus stops part asked NaPTAN for stops of kind "bus" (they are "bus_stop"), so it showed an error; it is now
+  the next buses part.
+
 ## [0.33.0] - 2026-11-07
 
 ### Added
