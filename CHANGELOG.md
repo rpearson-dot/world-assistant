@@ -2,9 +2,9 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.36.0] - 2026-11-07
 
-## [Unreleased]
+## [0.36.0] - 2026-11-07
 
 ### Added
 - **Sigma Sports** in Outdoors: its product links are followed, and it is searched for items without a link (only at
