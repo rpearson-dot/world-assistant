@@ -11,6 +11,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   even when dearer, with how much more.
 - Bikesy deals name the shop they are at (from the deal's logo or text), as "Sigma Sports (via Bikesy)".
 
+### Fixed
+- Outdoors reads product links only from the shops' own sites, not from look-alike addresses.
+
 ## [0.35.0] - 2026-11-07
 
 ### Added
