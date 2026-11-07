@@ -2,6 +2,18 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.37.2] - 2026-11-07
+
+### Fixed
+- Data Thistle events had no location (so no distance, and could be left out of "near"): the live API puts `lat` and
+  `lon` on the venue, not in the feed format's `loc`. Its performance properties come as a list, which is read too
+  (a non-empty one would have failed). Its own `_distance` is in miles and is not used.
+- what3words errors say what what3words said (its HTTP status, code and message), and a plan that does not allow a
+  request is no longer reported as the month's allowance used.
+
+### Changed
+- The live check skips the checks of modules switched off at /modules: they show as OFF and are not failures.
+
 ## [0.37.1] - 2026-11-07
 
 ### Fixed

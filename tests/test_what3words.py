@@ -61,7 +61,8 @@ async def test_both_ways_with_the_key_in_a_header_and_only_one_way_counted() -> 
 
 async def test_errors_in_words() -> None:
     cases = ((401, {"error": {"code": "InvalidKey", "message": "Authentication failed"}}, "refused the key"),
-             (402, {"error": {"code": "QuotaExceeded", "message": "Quota exceeded"}}, "allowance for this month"),
+             (429, {"error": {"code": "QuotaExceeded", "message": "Quota exceeded"}}, "allowance is used \\(it said HTTP 429, QuotaExceeded"),
+             (402, {"error": {"code": "PlanNotAllowed", "message": "upgrade"}}, "plan for this key does not allow"),
              (400, {"error": {"code": "BadWords", "message": "words must be three words"}}, "does not know that"),
              (500, {}, "HTTP 500"))  # fmt: skip
     for status, body, words in cases:

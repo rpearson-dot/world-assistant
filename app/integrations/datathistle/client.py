@@ -73,8 +73,11 @@ def events_of(raw: dict[str, Any], first: date, last: date, origin: tuple[float,
     image = raw.get("image") if isinstance(raw.get("image"), dict) else next(iter(raw.get("images") or []), None)
     for sch in raw.get("schedules") or []:
         place = sch.get("place") if isinstance(sch.get("place"), dict) else {}
-        loc = place.get("loc") or {}
-        lat, lon = _num(loc.get("latitude")), _num(loc.get("longitude"))
+        loc = place.get("loc") if isinstance(place.get("loc"), dict) else {}
+        # the live API puts lat and lon (or lng) on the place; the feed format nests them in loc
+        lat = _num(place.get("lat")) if place.get("lat") is not None else _num(loc.get("latitude"))
+        lon = next((_num(place[k]) for k in ("lon", "lng") if place.get(k) is not None), None)
+        lon = lon if lon is not None else _num(loc.get("longitude"))
         dist = round(haversine_km(origin, (lat, lon)), 2) if origin and lat is not None and lon is not None else None
         seen: set[str] = set()
         for perf in sch.get("performances") or []:
@@ -87,7 +90,8 @@ def events_of(raw: dict[str, Any], first: date, last: date, origin: tuple[float,
             if not first <= d <= last or day in seen:
                 continue
             seen.add(day)
-            props = perf.get("properties") or {}
+            raw_props = perf.get("properties") or {}  # a dict in the feed format, a list (of names) in the live API
+            props = raw_props if isinstance(raw_props, dict) else {str(p): True for p in raw_props if isinstance(p, str)}
             booking = next((x.get("url") for x in perf.get("links") or [] if x.get("type") == "booking" and x.get("url")), None)
             url = booking or raw.get("website")
             gone = "Cancelled" if props.get("performance.cancelled") else "Sold out" if props.get("performance.sold-out") else None
