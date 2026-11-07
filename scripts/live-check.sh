@@ -107,6 +107,8 @@ if not QUICK:
     run("Wishlist probe (Aldi, Lidl)", "app.wishlist", "kamado", "bbq")
     run("Outdoors probe (GO Outdoors, Bikesy)", "app.outdoors", "105", "cassette")
     run("Outdoors probe (GO Outdoors, Bikesy) 2", "app.outdoors", "two", "man", "tent")
+    run("Sigma Sports product page probe", "app.outdoors",
+        "https://www.sigmasports.com/item/Shimano/105-HG700-11-speed-Cassette-11-34T/IST8")
 get("Wishlist list", "/v1/wishlist", show=2000)
 get("Outdoors list", "/v1/outdoors", show=2000)
 

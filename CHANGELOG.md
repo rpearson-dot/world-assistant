@@ -4,6 +4,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [Unreleased]
+
+### Added
+- **Sigma Sports** in Outdoors: its product links are followed, and it is searched for items without a link (only at
+  addresses its robots.txt allows). `WA_OUTDOORS_SIGMA`, `WA_OUTDOORS_SIGMA_SEARCH`.
+- **Preferred shops** (`WA_OUTDOORS_PREFERRED_SHOPS`, Sigma Sports by default): their price is shown beside the cheapest
+  even when dearer, with how much more.
+- Bikesy deals name the shop they are at (from the deal's logo or text), as "Sigma Sports (via Bikesy)".
+
 ## [0.35.0] - 2026-11-07
 
 ### Added

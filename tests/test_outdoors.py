@@ -131,7 +131,7 @@ def test_prices_are_remembered_and_a_fall_is_a_drop(monkeypatch: pytest.MonkeyPa
     from pathlib import Path
 
     migs = []
-    for f in ("0039_outdoors.py", "0041_outdoors_currency.py"):
+    for f in ("0039_outdoors.py", "0041_outdoors_currency.py", "0042_outdoors_shop.py"):
         spec = importlib.util.spec_from_file_location(f[:5], Path("migrations/versions") / f)
         m = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
         spec.loader.exec_module(m)  # type: ignore[union-attr]
@@ -313,3 +313,84 @@ async def test_a_shop_that_fails_is_asked_once_a_check(monkeypatch: pytest.Monke
     async with httpx.AsyncClient(transport=httpx.MockTransport(dead)) as c:
         got, errs, failed = await OD.read(c, {"name": "tent", "links": [("gooutdoors", "https://www.gooutdoors.co.uk/products/x")], "must": []}, down)
     assert got == [] and failed == [("https://www.gooutdoors.co.uk/products/x", errs[0])] and down == {}
+
+
+# --- Sigma Sports --------------------------------------------------------------------------------------------------
+SIGMA_PAGE = """<html><head><title>Shimano 105 11-Speed Cassette R7000/HG700</title></head><body>
+<h1 class="t">Shimano 105 11-Speed <span>Bike Cassette</span> R7000/HG700</h1>
+<div class="price"><span>&pound;37.00</span> <s>&pound;64.99</s> <em>Save 43%</em></div>
+<p>In stock, available for delivery</p><p>Collect in Store: select a store to check availability.</p>
+<div>Customers also bought: <a href="/item/Shimano/Chain/ABC1">Chain</a> £19.99</div></body></html>"""
+SIGMA_LD = ('<script type="application/ld+json">{"@type": "Product", "name": "Rapha Core Jersey", "brand": {"name": "Rapha"},'
+            ' "offers": {"price": "60.00", "priceCurrency": "GBP", "availability": "https://schema.org/OutOfStock"}}</script>'
+            "<h1>Rapha Core Jersey</h1>")  # fmt: skip
+SIGMA_LIST = """<ul>
+<li><a href="/item/Shimano/105-HG700-11-speed-Cassette-11-34T/IST8"><img alt="Shimano 105 HG700 11-Speed Cassette" src="x.jpg"></a>
+  <a href="/item/Shimano/105-HG700-11-speed-Cassette-11-34T/IST8">Shimano 105 HG700</a> <span>£37.00</span> <s>£64.99</s> Save £27.99</li>
+<li><a href="https://www.sigmasports.com/item/SRAM/PG-1130-Cassette/Z8DD?colour=x">SRAM PG-1130</a> <span>£41.50</span></li>
+<li><a href="/item/Shimano/L05A-RF-Disc-Brake-Pads-Resin/XWYG">Pads</a> no price shown</li>
+</ul>"""
+
+
+def test_sigma_links_pages_and_listings() -> None:
+    assert O.links("collect from Hampton Wick https://www.sigmasports.com/item/Shimano/105-HG700/IST8?size=11-34 ok") == [
+        ("sigma", "https://www.sigmasports.com/item/Shimano/105-HG700/IST8")]
+    assert O.links("https://www.sigmasports.com/components/brakes") == []  # a category page is not one product
+    p = O.sigma_page(SIGMA_PAGE, "https://www.sigmasports.com/item/Shimano/105-HG700/IST8")
+    assert (p["id"], p["name"], p["price"], p["was"], p["available"], p["brand"]) == (
+        "IST8", "Shimano 105 11-Speed Bike Cassette R7000/HG700", 37.0, 64.99, True, "Shimano")
+    ld = O.sigma_page(SIGMA_LD, "https://www.sigmasports.com/item/Rapha/Core-Jersey/R1")
+    assert (ld["name"], ld["price"], ld["brand"], ld["available"]) == ("Rapha Core Jersey", 60.0, "Rapha", False)
+    assert O.sigma_page("<html>nothing</html>", "https://www.sigmasports.com/item/a/b/C") is None
+    got = O.sigma_listing(SIGMA_LIST)
+    assert [(g["id"], g["name"], g["price"], g["was"]) for g in got] == [
+        ("IST8", "Shimano 105 HG700 11-Speed Cassette", 37.0, 64.99),  # the Save figure left out
+        ("Z8DD", "SRAM PG 1130 Cassette", 41.5, None)]  # named from its address; the pads have no price  # fmt: skip
+    assert got[1]["url"] == "https://www.sigmasports.com/item/SRAM/PG-1130-Cassette/Z8DD"
+
+
+async def test_sigma_search_is_found_kept_and_follows_robots(monkeypatch: pytest.MonkeyPatch) -> None:
+    def site(robots: str, works: str) -> httpx.MockTransport:
+        def answer(req: httpx.Request) -> httpx.Response:
+            asked.append(str(req.url).replace(O.SIGMA, ""))
+            if req.url.path == "/robots.txt":
+                return httpx.Response(200, text=robots)
+            if str(req.url).startswith(O.SIGMA + works):
+                return httpx.Response(200, text=SIGMA_LIST)
+            return httpx.Response(404) if req.url.path.startswith("/search/") else httpx.Response(200, text="<html>home</html>")
+        return httpx.MockTransport(answer)
+
+    for robots, works, first in (("", "/search?query=", "/search?q=105+cassette"),
+                                 ("User-agent: *\nDisallow: /search?q=", "/search/", "/search?query=105+cassette")):  # fmt: skip
+        monkeypatch.setattr(O, "_robots", {})
+        monkeypatch.setattr(O, "_sigma_search", {})
+        asked: list[str] = []
+        async with httpx.AsyncClient(transport=site(robots, works)) as c:
+            got = await O.sigma_search(c, "105 cassette")
+            assert [g["id"] for g in got] == ["IST8", "Z8DD"] and asked[:2] == ["/robots.txt", first]
+            asked.clear()
+            await O.sigma_search(c, "cassette")  # the address that worked is kept: one request
+            assert len(asked) == 1 and asked[0].startswith(works)
+    monkeypatch.setattr(O, "_robots", {})
+    monkeypatch.setattr(O, "_sigma_search", {})
+    async with httpx.AsyncClient(transport=site("User-agent: *\nDisallow: /search", "/none")) as c:
+        with pytest.raises(ShopError, match="robots.txt closes its search"):
+            await O.sigma_search(c, "105 cassette")
+    monkeypatch.setattr(O, "_robots", {})
+    async with httpx.AsyncClient(transport=site("", "/none")) as c:
+        assert await O.sigma_search(c, "105 cassette") == []  # pages came back without it: nothing found, not a failure
+
+
+def test_bikesy_deals_name_their_shop_and_the_preferred_shop_is_shown() -> None:
+    from app.assistant_more import _outdoor_text
+
+    html = BIKESY_CARDS.replace("outbound.php?pid=5300601", 'outbound.php?pid=5300601"><img src="/logos/sigma-sports.png"')
+    got = {d["id"]: d.get("shop") for d in O.bikesy_deals(html)}
+    assert got["5300601"] == "Sigma Sports" and got["5300528"] != "Sigma Sports"
+    assert O.shop_in("<img alt='Merlin Cycles'>") == "Merlin Cycles" and O.shop_in("nothing") is None
+    cheap = {"name": "Cassette A", "retailer": "gooutdoors", "price": 30.0, "currency": "GBP"}
+    others = [{"name": f"Cassette {x}", "retailer": "bikesy", "price": 31.0 + i, "currency": "GBP"} for i, x in enumerate("BC")]
+    sigma = {"name": "Cassette S", "retailer": "bikesy", "shop": "Sigma Sports", "price": 37.0, "currency": "GBP"}
+    text = _outdoor_text({"name": "105 cassette", "products": [cheap, *others, sigma], "preferred": [sigma]})
+    assert text.endswith("Cassette S at Sigma Sports (via Bikesy), £37.00.")  # fourth by price, but shown
+    assert OD.shop_of(sigma) == "Sigma Sports" and OD.shop_of({"retailer": "sigma"}) == "Sigma Sports"

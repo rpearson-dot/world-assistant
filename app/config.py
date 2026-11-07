@@ -154,6 +154,13 @@ class Settings(BaseSettings):
     bus_disruptions_stale_days: int = 90  # an open-ended one that started longer ago than this is dropped
     # Tradeinn's shops the Outdoors list searches (trekkinn, bikeinn, snowinn, runnerinn, waveinn...); empty: none
     outdoors_tradeinn_shops: str = "trekkinn,bikeinn"
+    # Sigma Sports: searched for items without a link (False: only its pasted product links are read). Its search
+    # address is found by trying the likely ones; this sets it instead, with {q} where the words go.
+    outdoors_sigma: bool = True
+    outdoors_sigma_search: str = ""
+    # Shops whose price is shown beside the cheapest even when it is not the cheapest (a local shop to collect from),
+    # by name as the page shows it; Bikesy deals at the shop count too.
+    outdoors_preferred_shops: str = "Sigma Sports"
     # Data Thistle's free tier allows 1,000 requests a month: stop at this many, leaving room for checks by hand
     datathistle_monthly_limit: int = 900
     # Which bank holidays count (GOV.UK's feed): england-and-wales, scotland or northern-ireland
