@@ -37,8 +37,8 @@ def _mi(km: Any) -> str:
 
 # (part, title, path, extra query) in the order shown. {pc} is the point's postcode, found first.
 PARTS: tuple[tuple[str, str, str, dict[str, Any]], ...] = (
-    ("stops", "Bus stops", "/v1/stops/near", {"radius_km": 0.5, "limit": 6, "kind": "bus"}),
-    ("buses", "Buses about now", "/v1/live-buses", {"radius_km": 1.0, "limit": 30}),
+    ("buses", "Next buses", "/v1/live-buses/departures", {"radius_m": 400, "stops": 3}),
+    ("bus_disruptions", "Bus disruptions", "/v1/bus-disruptions", {"within_km": 2, "limit": 5}),
     ("stations", "Stations (London)", "/v1/stations/near", {"km": 2, "limit": 4}),
     ("floods", "Flood warnings", "/v1/floods/at", {"within_km": 3}),
     ("air", "Air quality", "/v1/environment/air", {"km": 20}),
@@ -57,14 +57,28 @@ PARTS: tuple[tuple[str, str, str, dict[str, Any]], ...] = (
 
 def words(part: str, d: dict[str, Any]) -> str:
     """One or two sentences for a part's answer."""
-    if part == "stops":
-        s = d.get("stops") or []
-        return ("Nearest: " + "; ".join(f"{x['name']}{' (' + x['indicator'] + ')' if x.get('indicator') else ''}, "
-                f"{round(x['km'] * 1000)} m" for x in s[:4]) + ".") if s else "No bus stops within 500 m."  # fmt: skip
     if part == "buses":
-        b = d.get("buses") or []
-        lines = sorted({str(x.get("line") or x.get("line_name") or "") for x in b} - {""})
-        return f"{len(b)} buses reporting within a mile" + (f", on {', '.join(lines[:10])}" if lines else "") + "." if b else "No buses reporting within a mile just now."
+        stops = d.get("stops") or []
+        if not stops:
+            return d.get("note") or "No bus stops within 400 m."
+
+        def bus(b: dict[str, Any]) -> str:
+            to = f" to {b['towards']}" if b.get("towards") else ""
+            if b.get("live"):
+                return f"{b['line']}{to} {'due' if b['minutes'] <= 1 else 'in ' + str(b['minutes']) + ' min'}"
+            return f"{b['line']}{to} at {', '.join(b['at'])} (timetable)"
+
+        parts = []
+        for s in stops:
+            name = s["name"] + (f" ({s['indicator']})" if s.get("indicator") else "")
+            buses = s.get("buses") or []
+            parts.append(f"{name}, {round(s['km'] * 1000)} m: " + ("; ".join(bus(b) for b in buses[:4]) if buses else "nothing due"))
+        tail = f" Still looking up the timetable for {', '.join(d['loading'])}; ask again in a minute." if d.get("loading") else ""
+        return ". ".join(parts) + "." + tail
+    if part == "bus_disruptions":
+        x = d.get("disruptions") or []
+        return " ".join(f"{i.get('summary') or 'Disruption'}" + (f" ({', '.join(i['lines'][:4])})" if i.get("lines") else "") + "."
+                        for i in x[:3]) if x else "No bus disruptions published within 2 km."  # fmt: skip
     if part == "stations":
         s = d.get("stations") or []
         return "; ".join(f"{x['name']} ({_mi(x.get('km'))})" + (", closures reported" if x.get("closures") else "") for x in s) + "." if s else "No London stations within 2 km."
@@ -104,7 +118,8 @@ def words(part: str, d: dict[str, Any]) -> str:
     if part == "events":
         e = d.get("events") or []
         return ("; ".join(f"{x.get('name')}" + (f" at {x['venue']}" if x.get("venue") else "") + (f", {x['date']}" if x.get("date") else "") for x in e[:4])
-                + (f", and {d['total'] - 4} more" if (d.get("total") or 0) > 4 else "") + ".") if e else "Nothing listed nearby in the next 3 days."  # fmt: skip
+                + (f", and {d['total'] - 4} more" if (d.get("total") or 0) > 4 else "") + "."
+                + (" Listings include Data Thistle's." if d.get("attribution") else "")) if e else "Nothing listed nearby in the next 3 days."  # fmt: skip
     if part == "roads":
         r = d.get("disruptions") or []
         return "; ".join(f"{x.get('severity')}: {x.get('location') or x.get('category')}" for x in r[:3]) + "." if r else "No TfL road disruption within 2 km."

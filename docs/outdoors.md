@@ -14,7 +14,7 @@ a thing off once it is bought.
 | --- | --- |
 | a GO Outdoors product link | that product exactly |
 | a Decathlon product link | that product exactly: Decathlon is only ever read this way (it does not allow its search to be read automatically) |
-| nothing | GO Outdoors' search for the item's name; its three cheapest matches are followed |
+| nothing | GO Outdoors' search, and Bikesy's deals from 30-odd UK bike shops, for the item's name; the three cheapest matches at each are followed |
 | `under £300` | the most you would pay: the page marks what is under it |
 | `must: gore-tex` | words a product's name has to have, instead of every word of the item's name |
 
@@ -33,6 +33,10 @@ Every price change is kept, so each product's history is there too (`GET /v1/out
 ## How it works, and its limits
 
 GO Outdoors runs on Shopify, which publishes every shop's products as JSON at standard addresses; that is what is read.
+**Bikesy** (bikesy.co.uk) compares 30-odd UK bike shops, which makes it good for bike parts. Its search pages are closed
+to automated readers (robots.txt), so its tag pages are read instead (`/tag/<the item's words>/`, which are open): one
+page per item a morning. Each deal links through Bikesy's "View Deal", which goes on to the shop; the listing does not say
+which shop.
 For a Decathlon link, the product page is read for the product data it publishes for search engines. Both are read
 once a morning (about 07:25), one request a second. GO Outdoors' member prices are not in what it publishes, so the
 prices are the ones anyone pays. Nothing is ever bought.

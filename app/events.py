@@ -16,6 +16,10 @@ from sqlalchemy import text
 
 from app.auth import require_token
 from app.config import get_settings
+from app.integrations.datathistle.client import ATTRIBUTION as DT_ATTRIBUTION
+from app.integrations.datathistle.client import DataThistleClient, DataThistleError
+from app.integrations.datathistle.client import _state as dt_state
+from app.integrations.datathistle.client import keep_alive as dt_keep_alive
 from app.integrations.skiddle.client import DEFAULT_BASE, EVENT_CODES, SkiddleClient, SkiddleError
 from app.integrations.ticketmaster.client import (
     DEFAULT_BASE as TM_BASE,
@@ -39,6 +43,48 @@ def _tm_client(request: Request) -> TicketmasterClient:
     s = get_settings()
     limiter = SlidingWindowLimiter(request.app.state.redis, "ticketmaster", 240)
     return TicketmasterClient(s.ticketmaster_api_key, s.ticketmaster_base_url or TM_BASE, limiter=limiter)
+
+
+DT_DAYS = 14  # one Data Thistle search covers the next two weeks; narrower asks are filtered from it
+DT_KEEP_S = 12 * 3600  # its terms allow up to 24 hours
+
+
+async def datathistle_window(redis: Any, lat: float, lon: float, radius_km: float, today: Any,
+                             engine: Any = None) -> list[dict[str, Any]]:  # fmt: skip
+    """Data Thistle's events for the next two weeks near a point, shared by every search there for 12 hours, and kept
+    within the monthly allowance (`datathistle_monthly_limit`)."""
+    s = get_settings()
+    rk = 5 if radius_km <= 5 else 10 if radius_km <= 10 else 25
+    key = f"wa:datathistle:{lat:.2f}:{lon:.2f}:{rk}:{today.isoformat()}"
+    month = f"wa:datathistle:used:{today.strftime('%Y-%m')}"
+    try:
+        hit = await redis.get(key)
+        if hit:
+            return list(json.loads(hit))
+        used = int(await redis.get(month) or 0)
+    except Exception:  # noqa: BLE001 - without the cache there is no count either: ask, but only once a call
+        used = 0
+    if used >= s.datathistle_monthly_limit:
+        raise DataThistleError(f"this month's Data Thistle allowance is used ({used} of {s.datathistle_monthly_limit}); "
+                               "it comes back on the 1st")  # fmt: skip
+    got: dict[str, Any] = {}
+    for attempt in (1, 2):  # a refused token is renewed once, then asked again
+        async with DataThistleClient(get_settings().datathistle_token) as c:
+            try:
+                got = await c.search(lat, lon, radius_km=rk, first=today, last=today + timedelta(days=DT_DAYS), limit=200)
+                break
+            except DataThistleError as exc:
+                if attempt == 2 or engine is None or "refused the token" not in str(exc):
+                    raise
+                if not (await dt_keep_alive(engine, refused=True)).get("renewed"):
+                    raise
+            finally:
+                with contextlib.suppress(Exception):
+                    await redis.incrby(month, c.requests)
+                    await redis.expire(month, 40 * 86400)
+    with contextlib.suppress(Exception):
+        await redis.set(key, json.dumps(got["events"]), ex=DT_KEEP_S)
+    return list(got["events"])
 
 
 def _sort_key(e: dict[str, Any]) -> tuple[str, str]:
@@ -66,7 +112,7 @@ async def near(
     type: str | None = Query(None, description=f"one of {', '.join(EVENT_CODES)}"),
     keyword: str | None = Query(None, max_length=80),
     limit: int = Query(20, ge=1, le=100),
-    source: str = Query("all", pattern="^(all|skiddle|ticketmaster)$"),
+    source: str = Query("all", pattern="^(all|skiddle|ticketmaster|datathistle)$"),
 ) -> dict[str, Any]:
     """Events from every configured source (Skiddle, Ticketmaster), merged and sorted by date."""
     if (lat is None) != (lon is None):
@@ -84,16 +130,19 @@ async def near(
 async def search(
     request: Request, name: str, lat: float, lon: float, *, radius_km: float, days: int, type: str | None,
     keyword: str | None, limit: int, source: str = "all", cache_seconds: int = CACHE_SECONDS,
+    datathistle: bool = True,
 ) -> dict[str, Any]:
-    """Events from every configured source (Skiddle, Ticketmaster), merged and sorted by date, cached for
-    cache_seconds. Shared by /near and the Home Assistant locations."""
+    """Events from every configured source (Skiddle, Ticketmaster, Data Thistle), merged and sorted by date, cached
+    for cache_seconds (Data Thistle's terms allow up to a day). Shared by /near and the Home Assistant locations."""
     s = get_settings()
-    wanted = [n for n in ("skiddle", "ticketmaster") if source in ("all", n)]
-    have = {"skiddle": bool(s.skiddle_api_key), "ticketmaster": bool(s.ticketmaster_api_key)}
+    wanted = [n for n in ("skiddle", "ticketmaster", "datathistle") if source in ("all", n)
+              and (datathistle or n != "datathistle")]  # Home Assistant's repeating refreshes leave Data Thistle out
+    have = {"skiddle": bool(s.skiddle_api_key), "ticketmaster": bool(s.ticketmaster_api_key),
+            "datathistle": bool(s.datathistle_token)}  # fmt: skip
     active = [n for n in wanted if have[n]]
     if not active:
         raise HTTPException(
-            503, "no events source is set up: add skiddle_api_key and/or ticketmaster_api_key"
+            503, "no events source is set up: add skiddle_api_key, ticketmaster_api_key or datathistle_token"
         )
     zone = ZoneInfo(s.local_tz)
     today = datetime.now(zone).date()
@@ -125,13 +174,20 @@ async def search(
                 keyword=keyword, limit=limit,
             )  # fmt: skip
 
-    jobs = {"skiddle": from_skiddle, "ticketmaster": from_ticketmaster}
+    async def from_datathistle() -> dict[str, Any]:
+        found = await datathistle_window(redis, lat, lon, radius_km, today, getattr(request.app.state, "engine", None))
+        found = [e for e in found if e["date"] <= last.isoformat() and (not type or e["type"] == type)
+                 and (e["distance_km"] is None or e["distance_km"] <= radius_km)
+                 and (not keyword or keyword.lower() in f"{e['name']} {e['description'] or ''}".lower())]  # fmt: skip
+        return {"total": len(found), "events": found[:limit]}
+
+    jobs = {"skiddle": from_skiddle, "ticketmaster": from_ticketmaster, "datathistle": from_datathistle}
     results = await asyncio.gather(*(jobs[n]() for n in active), return_exceptions=True)
     events: list[dict[str, Any]] = []
     total = 0
     errors: list[str] = []
     for src, res in zip(active, results, strict=True):
-        if isinstance(res, (SkiddleError, TicketmasterError)):
+        if isinstance(res, (SkiddleError, TicketmasterError, DataThistleError)):
             errors.append(f"{src}: {res}")
         elif isinstance(res, BaseException):
             raise res
@@ -145,6 +201,14 @@ async def search(
         "place": name, "radius_km": radius_km, "days": days, "type": type, "count": len(events[:limit]),
         "total": total, "events": events[:limit], "sources": active, "errors": errors,
     }  # fmt: skip
+    if "datathistle" in active:
+        out["attribution"] = [DT_ATTRIBUTION]
+        with contextlib.suppress(Exception):
+            used = int(await redis.get(f"wa:datathistle:used:{today.strftime('%Y-%m')}") or 0)
+            out["datathistle"] = {"used_this_month": used, "limit": s.datathistle_monthly_limit}
+            auth = await dt_state(request.app.state.engine)
+            if auth.get("error"):
+                out["datathistle"]["warning"] = f"Token renewal failed: {auth['error']}"
     if not errors:
         with contextlib.suppress(Exception):  # the cache is optional
             await redis.set(key, json.dumps(out), ex=cache_seconds)
@@ -200,11 +264,16 @@ async function search() {
   try {
     const d = await get('/v1/events/near?' + p);
     $('note').textContent = d.count + ' of ' + d.total + ' events near ' + d.place + ' in the next ' + d.days + ' days. Sources: ' + d.sources.join(', ') + '.' + (d.errors.length ? ' Problem: ' + d.errors.join('; ') : '');
+    (d.attribution || []).forEach(a => { const p = el('p', 'dim'), l = el('a', null, 'Listings from ' + a.name);
+      l.href = a.url; l.target = '_blank'; l.rel = 'noopener noreferrer';
+      const add = el('a', null, 'add or update an event'); add.href = a.add_event; add.target = '_blank'; add.rel = 'noopener noreferrer';
+      p.append(l, ' · ', add); $('note').append(p); });
+    if (d.datathistle && d.datathistle.warning) $('note').append(el('p', 'err', d.datathistle.warning));
     for (const e of d.events) {
       const c = el('div', 'card');
       c.append(el('h2', null, [e.date, e.doors_open, e.type].filter(Boolean).join('  ·  ')));
       c.append(el('p', 'big', e.name || '(unnamed)'));
-      c.append(el('p', 'dim', [e.venue, e.town, e.distance_km != null ? e.distance_km.toFixed(1) + ' km' : null, e.availability, e.price, e.source === 'ticketmaster' ? 'Ticketmaster' : 'Skiddle'].filter(Boolean).join('  ·  ')));
+      c.append(el('p', 'dim', [e.venue, e.town, e.distance_km != null ? e.distance_km.toFixed(1) + ' km' : null, e.availability, e.price, ({ ticketmaster: 'Ticketmaster', datathistle: 'Data Thistle' }[e.source] || 'Skiddle')].filter(Boolean).join('  ·  ')));
       if (e.url) { const a = el('a', null, 'Details and tickets'); a.href = e.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; c.append(a); }
       $('list').append(c);
     }

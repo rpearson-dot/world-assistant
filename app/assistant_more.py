@@ -560,6 +560,19 @@ async def wishlist_check_tool(request: Request, args: dict[str, Any]) -> dict[st
                      f"Checked {data['wishes']} wishes: none is coming or on sale now.") + errs, "data": data}  # fmt: skip
 
 
+# --- Bank holidays ---------------------------------------------------------------------------------------------------
+async def bank_holidays_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from datetime import date as _date
+
+    from app.bankholidays import upcoming
+
+    r = await _wrap(upcoming(request))
+    nxt = r["next"][: int(args.get("count") or 3)]
+    say = "; ".join(f"{_date.fromisoformat(x['date']).strftime('%A %-d %B %Y')}: {x['title']}" for x in nxt)
+    head = f"Today is {r['today']}. " if r.get("today") else ""
+    return {"text": head + (f"The next bank holidays: {say}." if say else "No bank holidays are listed ahead."), "data": r}
+
+
 # --- Here --------------------------------------------------------------------------------------------------------
 async def here_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
     from app.here import gather
@@ -590,7 +603,7 @@ def _outdoor_text(it: dict[str, Any]) -> str:
     ps = it.get("products") or []
     if not ps:
         return f"{it['name']}: not priced yet."
-    shop = {"gooutdoors": "GO Outdoors", "decathlon": "Decathlon"}
+    shop = {"gooutdoors": "GO Outdoors", "decathlon": "Decathlon", "bikesy": "Bikesy"}
 
     def one(p: dict[str, Any]) -> str:
         price = f"£{p['price']:.2f}" if p.get("price") is not None else "no price"
@@ -688,6 +701,8 @@ MORE: list[Tool] = [
           "required": ["name"]}, outdoors_add_tool),
     Tool("outdoors_check", "Price everything on the Outdoors list now and say what has got cheaper (it is also "
          "checked every morning).", {"type": "object", "properties": {}}, outdoors_check_tool),
+    Tool("bank_holidays", "The next UK bank holidays (from GOV.UK), and whether today is one.",
+         {"type": "object", "properties": _props(count=("integer", "how many, default 3"))}, bank_holidays_tool),
     Tool("here", "Everything about a point that is not a saved place, e.g. where the phone is now: the area, bus stops "
          "and buses, stations, fuel and EV chargers, flood warnings, air quality, rivers, rain, tides, storm overflows, "
          "pollen, events, roads and power cuts. Give lat and lon, or a postcode.",

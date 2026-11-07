@@ -355,6 +355,9 @@ async def target(
     _, cfg = await _load(request, tid)
     if not cfg.target:
         raise HTTPException(409, "this tracker has no target configured")
+    from app.bankholidays import ensure, is_bank_holiday
+
+    await ensure(request.app.state.engine)
     tz = _tz()
     now = datetime.now(tz)
     the_day = day or now.date().isoformat()
@@ -404,7 +407,7 @@ async def target(
     chance = outlook(
         slots=slots, hit_slots=sorted(hit_slots), reliability=reliability,
         now_minutes=now.hour * 60 + now.minute, show_until=cfg.show_until,
-        weekday_ok=not (cfg.weekdays_only and now.weekday() > 4),
+        weekday_ok=not (cfg.weekdays_only and (now.weekday() > 4 or is_bank_holiday(now.date()))),
     )  # fmt: skip
     return {
         "day": the_day, "earliest": cfg.earliest, "deadline": cfg.deadline,

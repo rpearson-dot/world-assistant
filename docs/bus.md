@@ -1,7 +1,7 @@
 # Bus tracker
 
 Follows every bus on one line, times the legs between stops you care about, and records
-which buses reached a target stop before a deadline (weekdays only by default). London lines
+which buses reached a target stop before a deadline (weekdays only by default, and not on bank holidays). London lines
 use TfL; any other line in Britain uses the Bus Open Data Service (BODS).
 
 Nothing about a particular journey is in the code. You supply the stops as configuration.

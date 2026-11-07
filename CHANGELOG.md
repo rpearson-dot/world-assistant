@@ -4,6 +4,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-11-07
+
+### Added
+- **Next buses** at the stops nearest a point (`GET /v1/live-buses/departures`, and Here's "Next buses"): TfL's
+  countdowns at London stops; elsewhere, BODS's live positions along each nearby line's timetable (as the bus tracker
+  works them out), with the weekday timetable's next times where no bus is on its way. Timetables are fetched in the
+  background and kept twelve hours, so an answer never waits long for one.
+- **Bus disruptions near a point** (`GET /v1/bus-disruptions?lat=&lon=`, and on Here). Every current disruption is now
+  kept with the points it names (`bus_disruption_point`), not only those near a saved place; the plain listing still
+  shows only those near your places.
+
+- **Bank holidays** from GOV.UK's feed (`GET /v1/bank-holidays`, the `bank_holidays` tool; `WA_BANK_HOLIDAY_DIVISION`
+  for Scotland or Northern Ireland). A bus tracker set to weekdays only now rests on a bank holiday instead of counting
+  its buses as missed, and next buses gives no weekday-timetable times on one. Fetched weekly and kept; a built-in
+  2026-27 list stands in until the first fetch.
+
+- **Data Thistle** as a third events source (theatre, comedy, gigs, exhibitions, family days out, festivals): secret
+  `datathistle_token` (free tier, 1,000 requests a month; the token lasts 30 days). Asked live, once per area per 12
+  hours for the next fortnight (its terms allow 24), kept under `WA_DATATHISTLE_MONTHLY_LIMIT` (900), left out of Home
+  Assistant's repeating location refreshes, and credited on the Events page and Here. Save the refresh token as
+  `datathistle_refresh_token` too: World Assistant renews the pair every 25 days and when the token is refused, saving
+  both new ones, and the Events page warns if a renewal fails.
+- **Bikesy** in Outdoors: items without a link are also looked for in Bikesy's deals from 30-odd UK bike shops (its tag
+  pages; its search pages are closed to automated readers).
+
+### Fixed
+- Here's bus stops part asked NaPTAN for stops of kind "bus" (they are "bus_stop"), so it showed an error; it is now
+  the next buses part.
+
 ## [0.33.0] - 2026-11-07
 
 ### Added

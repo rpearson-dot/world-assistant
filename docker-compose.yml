@@ -108,6 +108,8 @@ x-app: &app
     - gridserve_api_key
     - octopus_api_key
     - ticketmaster_api_key
+    - datathistle_token
+    - datathistle_refresh_token
     - pollen_api_key
     - kitchenowl_token
     - sainsburys_email
@@ -255,6 +257,10 @@ secrets:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/skiddle_api_key.txt
   ticketmaster_api_key:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/ticketmaster_api_key.txt
+  datathistle_token:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/datathistle_token.txt
+  datathistle_refresh_token:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/datathistle_refresh_token.txt
   redis_password:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/redis_password.txt
   pollen_api_key:

@@ -186,3 +186,40 @@ def test_prices_are_remembered_and_a_fall_is_a_drop(monkeypatch: pytest.MonkeyPa
             for t in ("outdoors_price", "outdoors_product", "app_setting"):
                 conn.execute(text(f"DROP TABLE IF EXISTS {t}"))
         sync.dispose()
+
+
+BIKESY_CARDS = """<div class="grid">
+<div class="product"><a href="https://bikesy.co.uk/outbound.php?pid=5300528"><img src="x.jpg" alt="Shimano 105 R7100 12 Speed Cassette 11-34T"></a>
+  <span class="badge">38% OFF</span><span class="price">&pound;54.99</span><span class="rrp">&pound;89.99</span>
+  <span>SAVE &pound;35.00</span><a href="https://bikesy.co.uk/outbound.php?pid=5300528">View Deal</a></div>
+<div class="product"><a href="https://bikesy.co.uk/outbound.php?pid=5300601"><img src="y.jpg"></a>
+  <h3>Shimano 105 CS-R7100 Cassette 11-30T</h3><span>£59.00</span><a href="https://bikesy.co.uk/outbound.php?pid=5300601">View Deal</a></div>
+<div class="product"><a href="https://bikesy.co.uk/outbound.php?pid=5300777"><img src="z.jpg" alt="Shimano 105 Chain Tool"></a>
+  <span>£1,249.00</span></div>
+</div>"""
+
+
+def test_bikesy_deals_are_read_from_its_listing() -> None:
+    got = O.bikesy_deals(BIKESY_CARDS)
+    assert [(d["id"], d["name"], d["price"], d["was"]) for d in got] == [
+        ("5300528", "Shimano 105 R7100 12 Speed Cassette 11-34T", 54.99, 89.99),  # the SAVE figure is left out
+        ("5300601", "Shimano 105 CS-R7100 Cassette 11-30T", 59.0, None),  # no image text: the deal's own name
+        ("5300777", "Shimano 105 Chain Tool", 1249.0, None)]  # fmt: skip
+    assert got[0]["url"] == "https://bikesy.co.uk/outbound.php?pid=5300528" and got[0]["retailer"] == "bikesy"
+    assert O._tag("Shimano 105 cassette") == "shimano+105+cassette"
+
+
+async def test_a_search_also_asks_bikesy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(OD.asyncio, "sleep", _now)
+    seen: list[str] = []
+
+    def answer(req: httpx.Request) -> httpx.Response:
+        seen.append(str(req.url))
+        if req.url.host == "bikesy.co.uk":
+            return httpx.Response(200, text=BIKESY_CARDS)
+        return httpx.Response(200, json={"resources": {"results": {"products": []}}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(answer)) as c:
+        got, errs = await OD.read(c, {"name": "105 cassette", "links": [], "must": []})
+    assert seen[1] == "https://bikesy.co.uk/tag/105+cassette/"  # the tag page: its /s/ search is closed to robots
+    assert [p["id"] for p in got] == ["5300528", "5300601"] and errs == []  # the chain tool is not a cassette

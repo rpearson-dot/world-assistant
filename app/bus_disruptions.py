@@ -25,6 +25,24 @@ def _row(r: Any) -> dict[str, Any]:
             "near_place": r.near_place, "distance_km": r.distance_km, "lat": r.lat, "lon": r.lon}  # fmt: skip
 
 
+async def _near_point(request: Request, lat: float, lon: float, km: float, line: str | None, limit: int) -> dict[str, Any]:
+    cols = ", ".join(f"d.{c.strip()}" for c in COLUMNS.split(","))
+    pt = "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography"
+    sql = (f"SELECT {cols}, min(ST_Distance(p.geog, {pt})) / 1000.0 AS here_km FROM bus_disruption d "  # fixed SQL
+           f"JOIN bus_disruption_point p ON p.disruption_id = d.id WHERE (d.ends_at IS NULL OR d.ends_at >= now()) "
+           f"AND ST_DWithin(p.geog, {pt}, :m)" + (" AND upper(:line) = ANY(SELECT upper(x) FROM unnest(d.lines) x)" if line else "")
+           + f" GROUP BY {cols} ORDER BY here_km LIMIT :limit")  # fmt: skip
+    async with request.app.state.engine.connect() as conn:
+        rows = (await conn.execute(text(sql), {"lat": lat, "lon": lon, "m": km * 1000, "line": line, "limit": limit})).all()
+        seen = (await conn.execute(text("SELECT max(seen) FROM bus_disruption"))).scalar_one()
+    out = []
+    for r in rows:
+        d = _row(r)
+        d["km"] = round(float(r.here_km), 2)
+        out.append(d)
+    return {"count": len(out), "updated": seen.isoformat() if seen else None, "lat": lat, "lon": lon, "disruptions": out}
+
+
 @router.get("")
 async def near(
     request: Request,
@@ -32,9 +50,15 @@ async def near(
     line: str | None = Query(None, description="only those affecting this line"),
     within_km: float | None = Query(None, gt=0, le=100),
     limit: int = Query(100, ge=1, le=500),
+    lat: float | None = Query(None, ge=49.5, le=61.0, description="with lon: those near this point instead (Here)"),
+    lon: float | None = Query(None, ge=-8.7, le=2.0),
 ) -> dict[str, Any]:
-    """Current disruptions near your places, closest first. Empty where no authority publishes."""
+    """Current disruptions near your places (or near a point), closest first. Empty where no authority publishes."""
     where, args = ["(ends_at IS NULL OR ends_at >= now())"], {"limit": limit}
+    if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+        return await _near_point(request, float(lat), float(lon), within_km if isinstance(within_km, (int, float)) else 2.0,
+                                 line if isinstance(line, str) else None, limit)  # fmt: skip
+    where.append("near_place IS NOT NULL")
     if place:
         where.append("near_place = :place")
         args["place"] = place

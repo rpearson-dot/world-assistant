@@ -79,3 +79,71 @@ async def live(
     except BodsError as exc:
         raise HTTPException(502, str(exc)) from exc
     return {"lat": lat, "lon": lon, "radius_km": radius_km, "count": len(vehicles), "buses": vehicles[:limit]}
+
+
+@router.get("/departures")
+async def departures(
+    request: Request,
+    lat: float = Query(..., ge=49.5, le=61.0),
+    lon: float = Query(..., ge=-8.7, le=2.0),
+    radius_m: float = Query(400.0, ge=50, le=1500),
+    stops: int = Query(4, ge=1, le=10),
+) -> dict[str, Any]:
+    """Next buses at the bus stops nearest a point, outside London as well as in it: each bus on its way, minutes
+    worked out from where it is along its route (at a typical speed, so not seeing traffic), and failing that the
+    timetable's next weekday times. A line whose timetable is still being fetched says so; ask again shortly."""
+    from app.geoquery import distance_km, params, within_sql
+    from app.integrations.bus.departures import departures as next_buses
+    from app.stops import COLUMNS, _stop
+
+    key = get_settings().bods_api_key
+    sql = (f"SELECT {COLUMNS}, {distance_km()} AS km FROM naptan_stop WHERE {within_sql()} AND kind = 'bus_stop' "
+           "ORDER BY km LIMIT :limit")
+    async with request.app.state.engine.connect() as conn:
+        near = [_stop(r, r.km) for r in (await conn.execute(text(sql), params(lat, lon, radius_m / 1000, limit=stops))).all()]
+    if not near:
+        return {"stops": [], "lines": [], "loading": [], "no_timetable": [], "note": f"No bus stops within {radius_m:g} m."}
+    london = [s for s in near if str(s["id"]).startswith("490")]  # TfL's own stop ids: its countdowns are exact
+    rest = [s for s in near if s not in london]
+    out: dict[str, Any] = {"stops": [], "lines": [], "loading": [], "no_timetable": [], "note": ""}
+    if london:
+        out["stops"] += await _tfl_departures(request, london)
+        out["note"] = "London stops: TfL's countdowns. "
+    if rest and not key:
+        out["note"] += "Outside London needs a BODS key: add a free one under Settings > Keys."
+        out["stops"] += [{**s, "buses": []} for s in rest]
+    elif rest:
+        try:
+            vehicles = await vehicles_near(request.app.state.redis, lat, lon, 4.0)
+            got = await next_buses(request.app.state.engine, key, lat, lon, rest, vehicles=vehicles)
+        except BodsError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        out["stops"] += got["stops"]
+        out.update(lines=got["lines"], loading=got["loading"], no_timetable=got["no_timetable"])
+        out["note"] += got["note"]
+    order = {s["id"]: i for i, s in enumerate(near)}
+    out["stops"].sort(key=lambda s: order.get(s["id"], 99))
+    out["note"] = out["note"].strip()
+    return out
+
+
+async def _tfl_departures(request: Request, stops: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """TfL's arrivals at London stops, in the same shape as the BODS estimate."""
+    from app.integrations.tfl.client import TflClient, TflError
+    from app.ratelimit import SlidingWindowLimiter
+
+    key = get_settings().tfl_app_key
+    out = []
+    async with TflClient(key, limiter=SlidingWindowLimiter(request.app.state.redis, "tfl", 250 if key else 30)) as c:
+        for s in stops:
+            try:
+                rows = await c.get(f"/StopPoint/{s['id']}/Arrivals")
+            except TflError as exc:
+                out.append({**s, "buses": [], "error": str(exc)})
+                continue
+            buses = sorted(({"line": r.get("lineName") or r.get("lineId"), "towards": r.get("destinationName"),
+                             "minutes": max(round((r.get("timeToStation") or 0) / 60), 0), "live": True,
+                             "vehicle": r.get("vehicleId")} for r in rows or [] if isinstance(r, dict)),
+                           key=lambda b: b["minutes"])  # fmt: skip
+            out.append({**s, "buses": buses[:8]})
+    return out
