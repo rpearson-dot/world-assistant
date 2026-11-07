@@ -2,6 +2,14 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.37.1] - 2026-11-07
+
+### Fixed
+- The Keys page had no field for the what3words key, Data Thistle's refresh token or National Highways' secondary key:
+  it shows the keys of the sources it lists, and Here was not listed while the other two were not among their
+  source's keys. Here is listed now (it works without a key; better with what3words'), and a source can show keys it
+  does not need (`more_keys`). A test checks that every key the page can save has a field on it.
+
 ## [0.37.0] - 2026-11-07
 
 ### Added

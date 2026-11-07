@@ -48,12 +48,20 @@ def test_keys_are_known_secrets_and_reach_the_containers() -> None:
     known = {k.name for k in secretstore.KNOWN}
     compose = (ROOT / "docker-compose.yml").read_text()
     for m in registry.modules():
-        for key in m.keys:
+        for key in (*m.keys, *m.more_keys):
             assert key in known, f"{m.id}: {key} is not in secretstore.KNOWN"
             assert re.search(rf"^\s+- {key}$", compose, re.MULTILINE), f"{m.id}: {key} is not given to a container"
             assert re.search(rf"^  {key}:$", compose, re.MULTILINE), f"{m.id}: {key} has no secret file entry"
     names = {k.name for k in secretstore.KNOWN}
     assert not [k for m in registry.modules() for k in m.keys if k not in names]
+
+
+def test_every_key_the_keys_page_saves_has_a_field_there() -> None:
+    """The Keys page shows a field for each key of each listed source; a key that can be saved but belongs to no
+    listed source has nowhere to go (the what3words key and Data Thistle's refresh token, in 0.37.0)."""
+    elsewhere = {"kitchenowl_token", "sainsburys_email", "sainsburys_password", "ocado_email", "ocado_password"}  # Shopping
+    shown = {k for m in registry.modules() if m.listed for k in (*m.keys, *m.more_keys)}
+    assert not sorted(secretstore.WEB_KEYS - shown - elsewhere)
 
 
 def test_switches_and_status_names_exist() -> None:

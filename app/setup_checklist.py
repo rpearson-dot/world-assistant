@@ -64,7 +64,7 @@ def judge(src: Source, s: Settings, runs: dict[str, dict[str, Any]]) -> dict[str
     usable, missing = _key_state(src, s)
     out: dict[str, Any] = {"id": src.id, "name": src.name, "unlocks": src.unlocks, "needs_key": bool(src.keys),
                            "link": src.link, "note": src.note, "missing_keys": missing,
-                           "keys": list(src.keys), "any_key": src.any_key, "key_optional": src.key_optional}  # fmt: skip
+                           "keys": list(src.keys) + list(src.more_keys), "any_key": src.any_key, "key_optional": src.key_optional}  # fmt: skip
     mine = [runs[j] for j in src.jobs if j in runs]
     last_ok = max((r["finished_at"] for r in mine if r["status"] == "ok" and r["finished_at"]), default=None)
     out["last_ok"] = last_ok.isoformat() if isinstance(last_ok, datetime) else last_ok
