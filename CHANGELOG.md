@@ -2,6 +2,27 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.37.0] - 2026-11-07
+
+### Added
+- **what3words** on Here (`what3words_api_key`, free plan): the three words for every point Here is asked about, on
+  the page (linked to what3words' map), in `/v1/here`'s data and the assistant's answer; and three words
+  (`///filled.count.soap`) typed into Here's box, sent as `/v1/here?words=` or given to the `here` tool, instead of a
+  postcode. Those look-ups are counted and stop at 90 a month (`WA_WHAT3WORDS_MONTHLY_LIMIT`; the free plan allows
+  100). The key goes in a header, never the address.
+- Here takes a postcode as well as the browser's location (`/v1/here?postcode=`): a box on the page, pointed to when
+  the browser cannot give a location (the plain http address, location not allowed, no fix).
+
+### Changed
+- Wishlist and Outdoors are parts of Shopping: no longer in the menu themselves, but tabs (List, Wishlist, Outdoors)
+  along the top of each, with Shopping shown as the current page.
+  A part switched off at /modules is left out of the tabs (and with both off there are none).
+
+### Fixed
+- Wishlist: Aldi and Lidl are asked for an item's distinctive words ("kamado", not "kamado bbq", which brought back
+  177 BBQ sauces and snacks ahead of any Kamado). Whether a product is the thing still goes by every word.
+- Wishlist: things Aldi sells only in its shops are no longer shown as sold out.
+
 ## [0.36.1] - 2026-11-07
 
 ### Fixed

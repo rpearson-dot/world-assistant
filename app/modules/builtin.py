@@ -221,7 +221,7 @@ BUILTIN: tuple[Module, ...] = (
            category="data", core=True, listed=False, link="https://www.gov.uk/bank-holidays",
            routers=("app.bankholidays:router",), prefixes=("/v1/bank-holidays",), tools=("bank_holidays",)),
     Module("here", "Here", "Everything World Assistant knows about where you are now, without saving a place",
-           category="place", listed=False,
+           category="place", listed=False, keys=("what3words_api_key",), key_optional=True,
            routers=("app.here:router", "app.here_page:page_router"), prefixes=("/v1/here", "/here"), tools=("here",)),
     Module("wishlist", "Wishlist", "A KitchenOwl list of things to look out for in Aldi's Specialbuys and the Middle of Lidl",
            category="home", keys=("kitchenowl_token",), needs=("shopping",), jobs=("wishlist_check",),

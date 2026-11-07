@@ -576,13 +576,21 @@ async def bank_holidays_tool(request: Request, args: dict[str, Any]) -> dict[str
 # --- Here --------------------------------------------------------------------------------------------------------
 async def here_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
     from app.here import gather
+    from app.integrations.what3words import client as W3W
     from app.postcodes import local_postcode
 
     lat, lon = args.get("lat"), args.get("lon")
+    w = str(args.get("words") or "").strip() or (str(args.get("postcode") or "") if W3W.words_in(str(args.get("postcode") or "")) else "")
+    if w and not (isinstance(lat, (int, float)) and isinstance(lon, (int, float))):
+        try:
+            got3 = await W3W.to_place(w, getattr(request.app.state, "redis", None))
+        except W3W.What3WordsError as exc:
+            raise ToolError(str(exc)) from exc
+        lat, lon = got3["lat"], got3["lon"]
     if not (isinstance(lat, (int, float)) and isinstance(lon, (int, float))):
         pc = str(args.get("postcode") or "").strip()
         if not pc:
-            raise ToolError("Give lat and lon (a Siri shortcut can send the phone's location), or a postcode.")
+            raise ToolError("Give lat and lon (a Siri shortcut can send the phone's location), a postcode, or three words.")
         got = await local_postcode(request.app.state.engine, pc)
         if got is None:
             raise ToolError(f"Could not find the postcode {pc!r}.")
@@ -592,6 +600,9 @@ async def here_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
     d = await gather(request, float(lat), float(lon))
     a = d.get("area") or {}
     head = f"Around {a['postcode']}" + (f", {a['district']}" if a.get("district") else "") if a.get("postcode") else f"Around {d['lat']}, {d['lon']}"
+    w3 = d.get("what3words") or {}
+    if w3.get("words"):
+        head += f" (what3words ///{w3['words']})"
     want = {w.strip() for w in str(args.get("about") or "").split(",") if w.strip()}
     parts = [p for p in d["parts"] if p["ok"] and not p.get("blank") and (not want or p["part"] in want)]
     return {"text": head + ". " + " ".join(f"{p['title']}: {p['text']}" for p in parts),
@@ -714,9 +725,11 @@ MORE: list[Tool] = [
          {"type": "object", "properties": _props(count=("integer", "how many, default 3"))}, bank_holidays_tool),
     Tool("here", "Everything about a point that is not a saved place, e.g. where the phone is now: the area, bus stops "
          "and buses, stations, fuel and EV chargers, flood warnings, air quality, rivers, rain, tides, storm overflows, "
-         "pollen, events, roads and power cuts. Give lat and lon, or a postcode.",
+         "pollen, events, roads and power cuts, and its what3words address. Give lat and lon, a postcode, or what3words "
+         "three words.",
          {"type": "object", "properties": _props(lat=("number", "latitude"), lon=("number", "longitude"),
                                                  postcode=("string", "a UK postcode instead of lat and lon"),
+                                                 words=("string", "what3words three words (///filled.count.soap) instead"),
                                                  about=("string", ("only these parts, comma-separated: stops, buses, "
                                                         "stations, floods, air, rivers, rain, tides, overflows, pollen, "
                                                         "fuel, chargers, events, roads, power")))}, here_tool),

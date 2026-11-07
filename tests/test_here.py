@@ -129,3 +129,31 @@ async def test_a_part_that_never_answers_does_not_hold_up_the_rest(monkeypatch: 
     by = {p["part"]: p for p in d["parts"]}
     assert by["fuel"]["slow"] and not by["fuel"]["ok"] and "ask again" in by["fuel"]["text"]
     assert by["air"]["ok"] and d["area"]["postcode"] == "KT17 1AA"
+
+
+async def test_a_postcode_instead_of_a_point(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import postcodes
+    from app.geo import Located
+
+    async def find(engine: Any, value: str) -> Located | None:
+        return Located("KT17 1AA", 51.3343, -0.2678) if value.replace(" ", "").upper() == "KT171AA" else None
+
+    async def gathered(request: Any, lat: float, lon: float) -> dict[str, Any]:
+        return {"lat": lat, "lon": lon, "area": None, "parts": []}
+
+    monkeypatch.setattr(postcodes, "local_postcode", find)
+    monkeypatch.setattr(H, "gather", gathered)
+    from app import geo
+
+    async def nowhere(pc: str, **kw: Any) -> Any:
+        raise geo.PostcodeError(f"{pc} was not found")
+
+    monkeypatch.setattr(geo, "lookup_postcode", nowhere)
+    req: Any = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(engine=None)))
+    d = await H.here(req, lat=None, lon=None, postcode="kt17 1aa", words=None, parts=None)
+    assert (d["lat"], d["lon"]) == (51.3343, -0.2678)
+    with pytest.raises(HTTPException, match="Could not find the postcode 'ZZ1 1ZZ'"):
+        await H.here(req, lat=None, lon=None, postcode="zz1 1zz", words=None, parts=None)
+    with pytest.raises(HTTPException) as e:
+        await H.here(req, lat=None, lon=None, postcode=None, words=None, parts=None)
+    assert e.value.status_code == 422

@@ -36,7 +36,7 @@ form.add { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minm
 <p class="dim" id="listline">The things are a KitchenOwl list, so anyone can add one in the KitchenOwl app, or here.</p>
 <form id="add" class="add">
   <label>What <input id="name" placeholder="Two-man tent" maxlength="120" required></label>
-  <label>Product link <input id="link" placeholder="GO Outdoors or Decathlon (optional)" maxlength="300"></label>
+  <label>Product link <input id="link" placeholder="GO Outdoors, Decathlon or Sigma Sports (optional)" maxlength="300"></label>
   <label>Up to £ <input id="max" type="number" min="1" step="0.01" placeholder="optional"></label>
   <button class="primary">Add</button>
 </form>

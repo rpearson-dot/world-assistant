@@ -306,8 +306,9 @@ async def probe(query: str) -> None:
                 print(f"{len(got)} products read; {sum(C.matches(p['name'], query) for p in got)} have every word")
                 print(json.dumps(got[:6], indent=2, default=str))
                 raw = await C.search(c, r, query, raw=True)
-                print(f"-- raw ({type(raw).__name__}), first 2500 characters:")
-                print(json.dumps(raw, indent=1, default=str)[:2500])
+                print(f"-- asked for {C.search_words(query)!r}; the first product exactly as sent:")
+                first = C.products_in(raw)
+                print(json.dumps(first[0] if first else raw, indent=1, default=str)[:3000])
             except C.ShopError as exc:
                 print(f"FAILED: {exc}")
 

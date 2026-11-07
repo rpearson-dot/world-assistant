@@ -74,7 +74,7 @@ async def test_aldi_and_lidl_are_read_whatever_their_shape() -> None:
         aldi = await C.search(c, "aldi", "kamado bbq", TODAY)
         lidl = await C.search(c, "lidl", "kamado bbq", TODAY)
     a = parse_qs(urlparse(seen[0]).query)
-    assert a["q"] == ["kamado bbq"] and a["serviceType"] == ["walk-in"]
+    assert a["q"] == ["kamado"] and a["serviceType"] == ["walk-in"]
     assert parse_qs(urlparse(seen[1]).query)["assortment"] == ["GB"]
     k = aldi[0]
     assert (k["name"], k["price"], k["on_sale"], k["status"], k["brand"]) == (
@@ -252,3 +252,14 @@ async def test_the_tools_say_it_plainly(monkeypatch: pytest.MonkeyPatch) -> None
     r = await M.wish_remove_tool(object(), {"name": "air"})  # type: ignore[arg-type]
     assert gone == ["ko:79"] and "Ticked Air fryer off" in r["text"]
     json.dumps(r)
+
+
+def test_the_shops_are_asked_for_the_distinctive_words() -> None:
+    from app.integrations.wishlist import clients as W
+
+    assert W.search_words("kamado bbq") == "kamado"
+    assert W.search_words("Large garden grill set") == "garden"
+    assert W.search_words("bbq") == "bbq"  # nothing distinctive: as it is
+    today = W.uk_today()
+    shop_only = W.product("aldi", {"name": "Kamado Grill", "sku": "1", "price": {"amount": 29999}, "notForSale": True}, today)
+    assert shop_only and shop_only["status"] != "sold out"  # in shops only, not sold online: not sold out

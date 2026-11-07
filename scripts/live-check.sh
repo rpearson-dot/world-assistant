@@ -91,7 +91,8 @@ with eng.connect() as c:
 lat, lon = (float(home.lat), float(home.lon)) if home else (51.4027, -0.2560)
 print(f"Home: {home.name if home else '(no places: using New Malden)'} at {lat:.4f}, {lon:.4f}; {places} saved places")
 keys = {k: bool(getattr(s, k, "")) for k in ("bods_api_key", "tfl_app_key", "skiddle_api_key", "ticketmaster_api_key",
-                                              "datathistle_token", "datathistle_refresh_token", "kitchenowl_token")}
+                                              "datathistle_token", "datathistle_refresh_token", "kitchenowl_token",
+                                              "what3words_api_key")}
 print("Keys set (yes/no, never the value): " + ", ".join(f"{k}={'yes' if v else 'no'}" for k, v in keys.items()))
 
 get("API health", "/healthz", show=500)
@@ -123,6 +124,8 @@ get("Bank holidays", "/v1/bank-holidays", show=1500)
 
 # Events, with Data Thistle
 get("Events near home (Skiddle, Ticketmaster, Data Thistle)", "/v1/events/near", show=4000, lat=lat, lon=lon, days=7)
+if keys["what3words_api_key"]:
+    run("what3words probe (the words for home; not counted)", "app.integrations.what3words.client", str(lat), str(lon))
 if keys["datathistle_token"]:
     run("Data Thistle probe (one request)", "app.integrations.datathistle.client", str(lat), str(lon))
 if not QUICK and keys["bods_api_key"]:

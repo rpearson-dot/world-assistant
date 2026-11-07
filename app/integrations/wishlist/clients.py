@@ -153,7 +153,8 @@ def product(retailer: str, raw: dict[str, Any], today: date) -> dict[str, Any] |
     if on is None:
         on = next((x for x in (when(t, today) for t in texts) if x), None)
     say = "; ".join(dict.fromkeys(t.strip() for t in texts if re.search(r"store|sale|stock|sold|avail|from|online|special|only", t, re.IGNORECASE)))[:200]
-    gone = any(g in say.lower() for g in GONE) or raw.get("notForSale") is True or raw.get("soldOut") is True
+    # not "notForSale": Aldi sets it on everything sold only in its shops (not online), which is most Specialbuys
+    gone = any(g in say.lower() for g in GONE) or raw.get("soldOut") is True
     status = ("sold out" if gone else "coming" if on and on > today else "on sale" if on or "in store now" in say.lower()
               or "available" in say.lower() else "listed")  # fmt: skip
     return {"retailer": retailer, "id": str(pid or re.sub(r"\W+", "-", name.lower()).strip("-")), "name": name.strip(),
@@ -200,10 +201,22 @@ async def _get(client: httpx.AsyncClient, retailer: str, url: str, params: dict[
         raise ShopError(f"{NAMES[retailer]} did not send JSON (it may have changed its site)") from exc
 
 
+GENERIC = {w for v in SAME.values() for w in v} | {"set", "large", "small", "new", "the", "and", "with", "for"}
+
+
+def search_words(query: str) -> str:
+    """What to ask the shop for: the item's distinctive words. The shops' searches match any word, so "kamado bbq"
+    asked as it is brings back 177 BBQ sauces and snacks, and the Kamado (if listed) is not in the first page. Whether a
+    product is the thing is still decided on every word of the item (with its synonyms), by matches()."""
+    words = [w for w in re.findall(r"[\w'-]+", query) if w.lower() not in GENERIC]
+    return " ".join(words) or query
+
+
 async def search(client: httpx.AsyncClient, retailer: str, query: str, today: date | None = None,
                  raw: bool = False) -> Any:  # fmt: skip
     """The retailer's products for a search, as read here (or exactly as sent, with raw)."""
     today = today or uk_today()
+    query = search_words(query)
     if retailer == "aldi":
         data = await _get(client, retailer, ALDI, {"currency": "GBP", "serviceType": "walk-in", "q": query,
                                                    "limit": 30, "offset": 0, "sort": "relevance"})  # fmt: skip

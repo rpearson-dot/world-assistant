@@ -1,7 +1,8 @@
-"""The Here page: what World Assistant knows about wherever you are, from the browser's location.
+"""The Here page: what World Assistant knows about wherever you are, from the browser's location or a postcode.
 
 The page holds no data itself; it calls /v1/here. The browser only gives a location to a secure (https) page, so this
-works at the Tailscale address, not the plain address on the home network; the page says so when that is why.
+works at the Tailscale address, not the plain address on the home network; the page says so when that is why, and a
+postcode can be given instead (always, and pointed to whenever the location cannot be had).
 """
 
 from __future__ import annotations
@@ -22,7 +23,10 @@ PAGE = """<!doctype html>
 .parts h3 { margin: 0 0 4px; font-size: 15px; }
 .parts .card.quiet { opacity: .7; }
 .area { font-size: 18px; font-weight: 600; margin: 4px 0; }
-form.save { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+form.save, form.pc { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+form.pc { margin-top: 10px; }
+form.pc input { width: 14em; }
+.w3w { margin: 0 0 4px; } .w3w a { color: #e11f26; font-weight: 600; text-decoration: none; }
 </style></head><body><main>
 <!--NAV-->
 <h1>Here</h1>
@@ -33,8 +37,11 @@ form.save { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
 <div class="card">
 <div class="row"><button id="go" type="button" class="primary">Use my location</button>
 <button id="again" type="button" hidden>Look again</button></div>
+<form id="pc" class="pc"><label>or a postcode or ///three.words <input id="pcode" maxlength="80" placeholder="KT17 1AA" autocomplete="postal-code"></label>
+<button>Look up</button></form>
 <p id="where" class="dim">Everything World Assistant knows about where you are now, without saving it as a place.</p>
 <p id="area" class="area"></p>
+<p id="w3w" class="w3w" hidden></p>
 <p id="hmsg" class="err"></p>
 </div>
 <div id="parts" class="parts"></div>
@@ -64,9 +71,14 @@ function locate() {
   });
 }
 function show(d) {
+  point = { lat: d.lat, lon: d.lon };
   const a = d.area;
   $('area').textContent = a ? a.postcode + (a.ward ? ', ' + a.ward : '') + (a.district ? ', ' + a.district : '') : d.lat + ', ' + d.lon;
   $('where').textContent = 'At ' + d.lat + ', ' + d.lon + '.';
+  const w = d.what3words, wb = $('w3w'); wb.replaceChildren(); wb.hidden = !w;
+  if (w && w.words) wb.append(Object.assign(el('a', null, '///' + w.words), { href: w.map, target: '_blank', rel: 'noopener noreferrer' }),
+    el('span', 'dim', w.nearest ? ' near ' + w.nearest : ''));
+  else if (w && w.error) wb.append(el('span', 'dim', 'what3words: ' + w.error));
   const box = $('parts'); box.replaceChildren();
   d.parts.filter(p => !p.off && !p.blank).forEach(p => {
     const c = el('div', 'card' + (p.ok ? '' : ' quiet')); c.append(el('h3', null, p.title), el('p', p.ok ? null : 'dim', p.text)); box.append(c);
@@ -75,16 +87,33 @@ function show(d) {
   if (off.length) box.append(el('p', 'dim', 'Switched off: ' + off.join(', ') + '.'));
   $('savecard').hidden = false; $('again').hidden = false;
 }
+let last = null;  // how the last look was asked: again repeats it
 async function look() {
+  last = look;
   $('hmsg').textContent = ''; $('go').disabled = true; $('where').textContent = 'Finding you...';
+  let c;
+  try { c = await locate(); }
+  catch (e) {  // no location: say why, and offer the postcode
+    $('hmsg').textContent = e.message + ' Enter a postcode instead.'; $('where').textContent = ''; $('go').disabled = false;
+    $('pcode').focus(); return;
+  }
   try {
-    const c = await locate();
-    point = { lat: Math.round(c.latitude * 1e5) / 1e5, lon: Math.round(c.longitude * 1e5) / 1e5 };
-    $('where').textContent = 'Asking every source about ' + point.lat + ', ' + point.lon + ' (accurate to ' + Math.round(c.accuracy) + ' m)...';
-    show(await api('GET', '/v1/here?lat=' + point.lat + '&lon=' + point.lon));
+    const p = { lat: Math.round(c.latitude * 1e5) / 1e5, lon: Math.round(c.longitude * 1e5) / 1e5 };
+    $('where').textContent = 'Asking every source about ' + p.lat + ', ' + p.lon + ' (accurate to ' + Math.round(c.accuracy) + ' m)...';
+    show(await api('GET', '/v1/here?lat=' + p.lat + '&lon=' + p.lon));
   } catch (e) { $('hmsg').textContent = e.message; $('where').textContent = ''; } finally { $('go').disabled = false; }
 }
-$('go').onclick = look; $('again').onclick = look;
+async function lookPostcode() {
+  const pc = $('pcode').value.trim();
+  if (!pc) { $('pcode').focus(); return; }
+  last = lookPostcode;
+  const bare = pc.split('///').join(''), words = bare.split('.').length === 3 && !/\\s/.test(bare);  // three words: what3words
+  $('hmsg').textContent = ''; $('where').textContent = 'Asking every source about ' + (words ? pc : pc.toUpperCase()) + '...';
+  try { show(await api('GET', '/v1/here?' + (words ? 'words=' : 'postcode=') + encodeURIComponent(pc))); }
+  catch (e) { $('hmsg').textContent = e.message; $('where').textContent = ''; }
+}
+$('go').onclick = look; $('again').onclick = () => (last || look)();
+$('pc').onsubmit = e => { e.preventDefault(); lookPostcode(); };
 $('auth').onsubmit = e => { e.preventDefault(); try { sessionStorage.setItem('wa_token', tok.value); } catch (x) {} msg.textContent = ''; };
 $('save').onsubmit = e => { e.preventDefault(); if (!point) return;
   api('POST', '/v1/here/save', { ...point, name: $('pname').value.trim() })
