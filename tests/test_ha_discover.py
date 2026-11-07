@@ -260,3 +260,102 @@ def test_find_my_setup_says_whether_the_dashboards_update_by_themselves() -> Non
     raw["configuration.yaml"] += "lovelace:\n  dashboards:\n    wa-home-charging:\n      mode: yaml\n"
     by = {c["what"]: c for c in inventory(raw, dict(N.DEFAULTS), {}, rendered, {}, None)["checks"]}
     assert by["Dashboards"]["level"] == "ok"
+
+
+def test_the_address_comes_from_secrets_yaml() -> None:
+    from app.ha_discover import secrets_base
+    from app.ha_setup import SECRET_PATHS
+
+    good = ('wa_events_url: "http://10.0.2.49:8010/v1/events/near"\nwa_authorization: "Bearer tok123"\n'
+            "wa_pollen_url: http://10.0.2.49:8010" + SECRET_PATHS.get("wa_pollen_url", "/v1/pollen") + "\n")  # fmt: skip
+    assert secrets_base(good, SECRET_PATHS) == "http://10.0.2.49:8010"
+    proxied = 'wa_events_url: "https://ha.example.ts.net/wa/v1/events/near"\n'
+    assert secrets_base(proxied, SECRET_PATHS) == "https://ha.example.ts.net/wa"
+    assert secrets_base("wa_authorization: Bearer x\nother: http://y\n", SECRET_PATHS) is None
+    assert secrets_base(None, SECRET_PATHS) is None
+    inv = inventory(dict(RAW, **{"secrets.yaml": good}), dict(N.DEFAULTS), {}, {}, {}, None, [], None, "tok123", SECRET_PATHS)
+    assert inv["base_url"] == "http://10.0.2.49:8010" and "tok123" not in json.dumps(inv)
+
+
+def test_sensors_no_longer_provided() -> None:
+    gone = [_e("sensor.wa_power_carbon_intensity", "mqtt", "wa_power_carbon_intensity"),
+            _e("image.wa_pollen_map", "mqtt", "wa_pollen_map")]  # fmt: skip
+    raw = dict(RAW, **{"core.entity_registry": _store("core.entity_registry", {"entities": ENTITIES + gone})})
+    states = [{"entity_id": "sensor.wa_power_carbon_intensity", "state": "unavailable"},
+              {"entity_id": "sensor.wa_energy_rate", "state": "unavailable"}]  # fmt: skip
+    provided = {"wa_energy_rate", "wa_energy_charge_schedule"}
+    inv = inventory(raw, dict(N.DEFAULTS), {}, {}, {}, None, [], {"states": states}, provided=provided)
+    left = inv["wa_sensors"]["leftover"]
+    assert [x["entity_id"] for x in left] == ["image.wa_pollen_map", "sensor.wa_power_carbon_intensity"]
+    assert left[0]["domain"] == "image" and left[1]["unique_id"] == "wa_power_carbon_intensity"
+    by = {c["what"]: c for c in inv["checks"]}
+    assert by["Sensors no longer provided"]["level"] == "change" and "Remove leftovers" in by["Sensors no longer provided"]["detail"]
+    # a leftover is not also reported as a sensor that should be live
+    assert by["World Assistant sensors unavailable"]["detail"].endswith("sensor.wa_energy_rate")
+    unknown = inventory(raw, dict(N.DEFAULTS), {}, {}, {}, None, [], None)
+    assert unknown["wa_sensors"]["leftover"] == [] and "Sensors no longer provided" not in {c["what"] for c in unknown["checks"]}
+
+
+class FakeRedis:
+    def __init__(self) -> None:
+        self.d: dict[str, str] = {}
+
+    async def get(self, k: str) -> str | None:
+        return self.d.get(k)
+
+    async def set(self, k: str, v: str, **kw: Any) -> None:
+        self.d[k] = v
+
+
+async def test_what_was_published_is_remembered() -> None:
+    from app.ha import Device, Image, Sensor
+    from app.ha_publish import published_keys, save_published
+
+    r = FakeRedis()
+    assert await published_keys(r) is None and await published_keys(None) is None
+    await save_published(r, [Device("energy", "Energy", [Sensor("rate", "Rate")]),
+                             Device("pollen", "Pollen", [Sensor("home", "Home")], [Image("map", "Map", b"<svg/>")])])  # fmt: skip
+    assert await published_keys(r) == {"energy": ["rate"], "pollen": ["home", "map"]}
+    assert (await published_keys(r, marked=True))["pollen"] == ["home", "image:map"]
+    # pollen missing this time (its source failed): it keeps what it had
+    await save_published(r, [Device("energy", "Energy", [Sensor("rate", "Rate"), Sensor("new", "New")])])
+    assert await published_keys(r) == {"energy": ["rate", "new"], "pollen": ["home", "map"]}
+
+
+async def test_leftovers_are_removed_but_never_current_ones(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    import app.ha_smb as smb
+    import app.mqtt_config as mc
+    from app import ha_discover as D
+    from app import mqtt
+    from app.ha_publish import HA_KEYS_KEY
+
+    r = FakeRedis()
+    req = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(engine=None, redis=r)))
+    inv = {"wa_sensors": {"leftover": [
+        {"entity_id": "sensor.wa_power_carbon_intensity", "unique_id": "wa_power_carbon_intensity", "domain": "sensor"},
+        {"entity_id": "sensor.wa_energy_rate", "unique_id": "wa_energy_rate", "domain": "sensor"},  # provided again since
+        {"entity_id": "sensor.other", "unique_id": "other_thing", "domain": "sensor"}]}}  # fmt: skip
+    sent: list[Any] = []
+
+    async def get(engine: Any, key: str) -> dict[str, Any]:
+        return inv
+
+    async def load(engine: Any) -> tuple[Any, str]:
+        return object(), "db"
+
+    async def publish(msgs: list[Any], conf: Any) -> bool:
+        sent.extend(msgs)
+        return True
+
+    monkeypatch.setattr(smb, "_get", get)
+    monkeypatch.setattr(mc, "load", load)
+    monkeypatch.setattr(mqtt, "publish", publish)
+    with pytest.raises(D.HTTPException) as e:
+        await D.remove_leftovers(req)  # type: ignore[arg-type]
+    assert e.value.status_code == 409
+    r.d[HA_KEYS_KEY] = json.dumps({"energy": ["rate"]})
+    out = await D.remove_leftovers(req)  # type: ignore[arg-type]
+    assert out == {"removed": ["sensor.wa_power_carbon_intensity"]}
+    assert [m[0].endswith("/sensor/wa_power_carbon_intensity/config") and m[1] == "" and m[2] for m in sent] == [True]

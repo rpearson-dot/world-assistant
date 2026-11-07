@@ -349,7 +349,14 @@ people and dashboards, plus World Assistant's installed packages and dashboards.
   Assistant renamed after a clash is listed, with the name it should have), and that the installed packages' sensors
   exist;
 - compares Home Assistant's MQTT broker with World Assistant's, and its home with World Assistant's home place;
-- marks each World Assistant file as not installed, current or different.
+- marks each World Assistant file as not installed, current or different;
+- fills in "Address Home Assistant uses for this server" from the `wa_*` lines already in `secrets.yaml` (only the
+  address is taken, never the token), so the lines it writes match, even when the page is opened at another address
+  such as a Tailscale name. Anything you type in the box wins;
+- lists the World Assistant sensors Home Assistant still has but World Assistant **no longer provides** (a place or
+  feature removed, a sensor retired), which otherwise sit there as "unavailable". **Remove leftovers** deletes them
+  from Home Assistant (checked again against what is published at that moment). World Assistant now remembers what
+  it published, so after a restart it also removes sensors that have gone by itself.
 
 It also lists Home Assistant zones that are not World Assistant places (make them places in one click) and World
 Assistant places that are not zones (offered as `packages/wa_zones.yaml`, a package of zones, so Home Assistant's own
