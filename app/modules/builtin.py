@@ -65,7 +65,7 @@ CORE = Module(
 BUILTIN: tuple[Module, ...] = (
     CORE,
     Module("nh", "National Highways", "Closures, speed limits and signs on motorways and major A roads",
-           category="transport", keys=("nh_subscription_key",), jobs=("nh_poll_live",), switch="nh_poll_enabled",
+           category="transport", keys=("nh_subscription_key",), more_keys=("nh_subscription_key_secondary",), jobs=("nh_poll_live",), switch="nh_poll_enabled",
            link="https://developer.data.nationalhighways.co.uk/", coverage=("england",),
            worker=(
                Job("app.integrations.nationalhighways.capture:capture_job",
@@ -100,8 +100,10 @@ BUILTIN: tuple[Module, ...] = (
            coverage=("west midlands",), area=(52.30, -2.25, 52.75, -1.40)),
     Module("events", "Skiddle, Ticketmaster and Data Thistle", "What is on near a place: gigs, comedy, theatre, sport, exhibitions",
            category="place", keys=("skiddle_api_key", "ticketmaster_api_key", "datathistle_token"), any_key=True,
+           more_keys=("datathistle_refresh_token",),
            link="https://developer.ticketmaster.com/",
-           note="Any one key is enough; Skiddle's is at skiddle.com/api, Data Thistle's at api.datathistle.com.",
+           note="Any one key is enough; Skiddle's is at skiddle.com/api, Data Thistle's at api.datathistle.com (save its "
+                "refresh token too: World Assistant renews the 30-day access token with it).",
            routers=("app.events:router", "app.events:page_router"), prefixes=("/v1/events", "/events"),
            tools=("events_near",),
            worker=(Job("app.integrations.localevents.sync:events_sync",
@@ -221,7 +223,10 @@ BUILTIN: tuple[Module, ...] = (
            category="data", core=True, listed=False, link="https://www.gov.uk/bank-holidays",
            routers=("app.bankholidays:router",), prefixes=("/v1/bank-holidays",), tools=("bank_holidays",)),
     Module("here", "Here", "Everything World Assistant knows about where you are now, without saving a place",
-           category="place", listed=False, keys=("what3words_api_key",), key_optional=True,
+           category="place", keys=("what3words_api_key",), key_optional=True,
+           link="https://accounts.what3words.com/select-plan",
+           note="Works without a key; with what3words' (free plan) it shows the three words for a place and takes "
+                "three words instead of a postcode.",
            routers=("app.here:router", "app.here_page:page_router"), prefixes=("/v1/here", "/here"), tools=("here",)),
     Module("wishlist", "Wishlist", "A KitchenOwl list of things to look out for in Aldi's Specialbuys and the Middle of Lidl",
            category="home", keys=("kitchenowl_token",), needs=("shopping",), jobs=("wishlist_check",),

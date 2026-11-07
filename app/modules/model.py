@@ -37,6 +37,7 @@ class Module:
     core: bool = False  # always on, cannot be switched off
     # keys
     keys: tuple[str, ...] = ()  # secret names; empty = needs no key
+    more_keys: tuple[str, ...] = ()  # shown with the keys on the Keys page, but not needed to count as set up
     any_key: bool = False  # one of the keys is enough
     key_optional: bool = False  # works without, better with
     extra_ready: tuple[str, ...] = ()  # settings attributes that count as "set up" too
