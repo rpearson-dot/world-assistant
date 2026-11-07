@@ -193,6 +193,10 @@ When the switch is on, the job (04:00 every night):
    previous version again;
 6. reports the outcome (updated, already up to date, not applied and why, rolled back, needs attention)
    on the status page.
+7. once it is up, starts the **live check** in the background (`scripts/live-check.sh`): every outside source
+   World Assistant uses, and its own endpoints for home, asked live, into `WA_DATA_DIR/live-checks/latest.txt`
+   (the last ten are kept). It is a record to read, never a reason to roll back, since other people's services
+   are down sometimes. `WA_LIVE_CHECK=0` turns it off; `bash scripts/live-check.sh` runs it by hand.
 
 It only installs **released** versions, so a release (yours, or `AUTO_RELEASE`) is still what puts a
 change on your server.

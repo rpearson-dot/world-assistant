@@ -4,6 +4,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.34.1] - 2026-11-07
+
+### Added
+- **Live check** (`scripts/live-check.sh`): asks every outside source World Assistant uses (Defra, the Environment
+  Agency, the overflow Hub, Aldi, Lidl, GO Outdoors, Bikesy, Data Thistle, BODS, TfL...) and its own endpoints for
+  home, and writes one text report with an OK/FAIL summary. `scripts/deploy.sh` runs it after every update in the
+  background, into `WA_DATA_DIR/live-checks` (latest ten kept); it never decides whether an update is kept.
+  `WA_LIVE_CHECK=0` turns that off.
+
 ## [0.34.0] - 2026-11-07
 
 ### Added

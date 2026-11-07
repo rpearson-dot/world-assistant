@@ -106,6 +106,12 @@ for _ in $(seq 1 40); do
     # Read-only comfort check: every page and endpoint answers, nothing returns a 500.
     echo "Checking every page and endpoint..."
     if docker compose exec -T api python -m app.smoke; then
+      # Every outside source, asked live, in the background: a record to read, never a reason to roll back.
+      if [ "${WA_LIVE_CHECK:-1}" != "0" ] && [ -f scripts/live-check.sh ]; then
+        mkdir -p "$DATA/live-checks" 2>/dev/null || true
+        nohup bash scripts/live-check.sh --out "$DATA/live-checks" >"$DATA/live-checks/last-run.log" 2>&1 &
+        echo "Live check started in the background: $DATA/live-checks/latest.txt in a few minutes."
+      fi
       exit 0
     fi
     echo "Some checks failed (above). The stack is running; look at: docker compose logs --tail 60 api"
