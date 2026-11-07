@@ -2,6 +2,13 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.38.1] - 2026-11-07
+
+### Fixed
+- The smoke check after an update failed the Wishlist and Outdoors pages when those modules were switched off at
+  /modules, which stopped the update before its live check. A page of a switched-off module now shows as "off" and
+  is not a failure; a page that is really missing still is.
+
 ## [0.38.0] - 2026-11-07
 
 ### Changed
