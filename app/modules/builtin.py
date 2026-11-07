@@ -199,7 +199,7 @@ BUILTIN: tuple[Module, ...] = (
     # Features that are not a data source of their own: not on the Setup list of keys, but switchable here.
     Module("bus", "Bus tracker", "Has my bus made it, and the next buses at your stops",
            category="transport", listed=False, jobs=("bus_poll",),
-           routers=("app.bus:router", "app.bus_page:page_router"), prefixes=("/v1/bus", "/bus"), tools=("bus",),
+           routers=("app.bus:router", "app.bus_page:page_router"), prefixes=("/v1/bus", "/bus"), tools=("bus", "bus_setup"),
            worker=(Job("app.integrations.bus.poller:poll_bus",
                        {"hour": {*range(5, 11), *range(14, 19)}, "second": {0, 30}, "timeout": 25, "max_tries": 1}),)),
     Module("conditions", "Trip conditions", "Road works, closures and floods on a saved trip's route",
