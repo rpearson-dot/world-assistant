@@ -173,8 +173,10 @@ async def _main(argv: list[str]) -> int:
             raw = await c.raw(lat, lon, 5)
             print("-- raw, first 3000 characters:")
             print(json.dumps(raw, indent=1, default=str)[:3000])
-            today = datetime.now().date()  # noqa: DTZ005 - a probe
-            got = await c.search(lat, lon, radius_km=5, first=today, last=today.replace(day=min(today.day + 6, 28)))
+            from zoneinfo import ZoneInfo
+
+            today = datetime.now(ZoneInfo("Europe/London")).date()
+            got = await c.search(lat, lon, radius_km=5, first=today, last=today + timedelta(days=6))
             print(f"\n-- read here: {got['total']} event-days")
             print(json.dumps(got["events"][:5], indent=2, default=str))
         except DataThistleError as exc:
