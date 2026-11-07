@@ -2,6 +2,15 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- The graph has event **venues** (`Venue`, from Skiddle and Ticketmaster), kept for a year after an event there was
+  last listed, NEAR places and IN areas; and an **event is in the graph only while it is on** (today, from its start
+  until it ends), AT its venue. Before, every event of the next fortnight was in, with no venues. The graph page's
+  "What's on now, and where" and "Event venues near my places" show them. Data Thistle's events are not stored (its
+  terms). Migration 0043: `event_venue`, and `local_event.ends` and `venue_id`.
+
 ## [0.37.2] - 2026-11-07
 
 ### Fixed
@@ -13,15 +22,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Changed
 - The live check skips the checks of modules switched off at /modules: they show as OFF and are not failures.
-## [Unreleased]
-
-### Changed
-- The graph has event **venues** (`Venue`, from Skiddle and Ticketmaster), kept for a year after an event there was
-  last listed, NEAR places and IN areas; and an **event is in the graph only while it is on** (today, from its start
-  until it ends), AT its venue. Before, every event of the next fortnight was in, with no venues. The graph page's
-  "What's on now, and where" and "Event venues near my places" show them. Data Thistle's events are not stored (its
-  terms). Migration 0043: `event_venue`, and `local_event.ends` and `venue_id`.
-
 ## [0.37.1] - 2026-11-07
 
 ### Fixed
