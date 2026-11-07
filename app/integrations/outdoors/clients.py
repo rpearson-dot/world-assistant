@@ -30,17 +30,22 @@ URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 LDJSON = re.compile(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.IGNORECASE | re.DOTALL)
 
 
+def _on(host: str, site: str) -> bool:
+    """The host is the site or one of its subdomains (not a look-alike such as notsigmasports.com)."""
+    return host == site or host.endswith("." + site)
+
+
 def links(text: str) -> list[tuple[str, str]]:
     """(retailer, url) for each GO Outdoors, Decathlon or Sigma Sports product link in an item's description."""
     out = []
     for u in URL.findall(text or ""):
         u = u.rstrip(").,;")
         host = (urlparse(u).hostname or "").lower()
-        if host.endswith("gooutdoors.co.uk") and "/products/" in u:
+        if _on(host, "gooutdoors.co.uk") and "/products/" in u:
             out.append(("gooutdoors", u.split("?")[0].split("#")[0]))
-        elif host.endswith("decathlon.co.uk"):
+        elif _on(host, "decathlon.co.uk"):
             out.append(("decathlon", u.split("#")[0]))
-        elif host.endswith("sigmasports.com") and "/item/" in u:
+        elif _on(host, "sigmasports.com") and "/item/" in u:
             out.append(("sigma", u.split("?")[0].split("#")[0]))
     return out
 

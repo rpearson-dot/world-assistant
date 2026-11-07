@@ -336,6 +336,7 @@ def test_sigma_links_pages_and_listings() -> None:
     assert O.links("collect from Hampton Wick https://www.sigmasports.com/item/Shimano/105-HG700/IST8?size=11-34 ok") == [
         ("sigma", "https://www.sigmasports.com/item/Shimano/105-HG700/IST8")]
     assert O.links("https://www.sigmasports.com/components/brakes") == []  # a category page is not one product
+    assert O.links("https://notsigmasports.com/item/a/b/C https://evil.example/decathlon.co.uk/p/1") == []  # look-alikes
     p = O.sigma_page(SIGMA_PAGE, "https://www.sigmasports.com/item/Shimano/105-HG700/IST8")
     assert (p["id"], p["name"], p["price"], p["was"], p["available"], p["brand"]) == (
         "IST8", "Shimano 105 11-Speed Bike Cassette R7000/HG700", 37.0, 64.99, True, "Shimano")
