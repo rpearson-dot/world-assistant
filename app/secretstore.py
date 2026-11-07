@@ -62,6 +62,7 @@ KNOWN: tuple[Known, ...] = (
     Known("nr_access_token", False, "National Rail (Rail Data Marketplace) consumer key"),
     Known("ticketmaster_api_key", False, "Ticketmaster Discovery API consumer key"),
     Known("skiddle_api_key", False, "Skiddle events API key"),
+    Known("datathistle_token", False, "Data Thistle events access token (expires every 30 days)"),
     Known("octopus_api_key", False, "Octopus Energy API key (finds your tariff from the account number)"),
     Known("bods_api_key", False, "Bus Open Data Service key (live buses outside London)"),
     Known("tfwm_app_id", False, "Transport for West Midlands application ID"),
@@ -275,7 +276,7 @@ def _external(name: str, directory: Path) -> str | None:
 # Keys the Settings page may save: the data sources' own keys. Never the API token, a password or a vault login.
 WEB_KEYS = frozenset({
     "nh_subscription_key", "nh_subscription_key_secondary", "fuel_finder_client_id", "fuel_finder_client_secret",
-    "tfl_app_key", "nr_access_token", "ticketmaster_api_key", "skiddle_api_key", "octopus_api_key", "bods_api_key",
+    "tfl_app_key", "nr_access_token", "ticketmaster_api_key", "skiddle_api_key", "datathistle_token", "octopus_api_key", "bods_api_key",
     "tfwm_app_id", "tfwm_app_key", "pollen_api_key", "ukpn_api_key",
     "gridserve_api_key",
     "kitchenowl_token", "sainsburys_email", "sainsburys_password", "ocado_email", "ocado_password",

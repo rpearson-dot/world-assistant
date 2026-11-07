@@ -152,6 +152,8 @@ class Settings(BaseSettings):
     bus_disruptions_poll_enabled: bool = False
     bus_disruptions_km: float = 25.0  # kept when a stop or place it names is this close to a saved place
     bus_disruptions_stale_days: int = 90  # an open-ended one that started longer ago than this is dropped
+    # Data Thistle's free tier allows 1,000 requests a month: stop at this many, leaving room for checks by hand
+    datathistle_monthly_limit: int = 900
     # Which bank holidays count (GOV.UK's feed): england-and-wales, scotland or northern-ireland
     bank_holiday_division: str = "england-and-wales"
     energy_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
@@ -197,6 +199,10 @@ class Settings(BaseSettings):
     @property
     def ticketmaster_api_key(self) -> str:
         return read_secret("ticketmaster_api_key")
+
+    @property
+    def datathistle_token(self) -> str:
+        return read_secret("datathistle_token")
 
     @property
     def octopus_api_key(self) -> str:

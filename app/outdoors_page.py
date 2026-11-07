@@ -62,7 +62,7 @@ function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.
 function button(text, onclick) { const b = el('button', null, text); b.type = 'button'; b.onclick = onclick; return b; }
 const money = v => v == null ? '' : '£' + Number(v).toFixed(2);
 const day = s => s ? new Date(s).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
-const shop = r => ({ gooutdoors: 'GO Outdoors', decathlon: 'Decathlon' }[r] || r);
+const shop = r => ({ gooutdoors: 'GO Outdoors', decathlon: 'Decathlon', bikesy: 'Bikesy' }[r] || r);
 try { tok.value = sessionStorage.getItem('wa_token') || ''; } catch (e) {}
 async function api(method, path, body) {
   const r = await fetch(path, { method, headers: { Authorization: 'Bearer ' + tok.value, 'Content-Type': 'application/json' },

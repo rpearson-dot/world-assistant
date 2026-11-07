@@ -43,7 +43,7 @@ def limits(count: int) -> dict[str, Any]:
     s = get_settings()
     soft = math.ceil(s.ha_locations_max * 0.75)
     ttl = min(s.ha_location_ttl_days, s.ha_location_pressure_ttl_days) if count >= soft else s.ha_location_ttl_days
-    sources = sum(bool(k) for k in (s.skiddle_api_key, s.ticketmaster_api_key))
+    sources = sum(bool(k) for k in (s.skiddle_api_key, s.ticketmaster_api_key))  # Data Thistle is left out here
     per_day = count * math.ceil(24 / max(1, s.ha_location_refresh_h)) * max(1, sources)
     return {"count": count, "max": s.ha_locations_max, "pressure_at": soft, "ttl_days": ttl,
             "refresh_hours": s.ha_location_refresh_h, "provider_calls_per_day": per_day}  # fmt: skip
@@ -126,7 +126,7 @@ async def location_events(request: Request) -> dict[str, Any]:
             res = await search(
                 request, r["name"], r["lat"], r["lon"], radius_km=r["radius_km"] or s.ha_location_radius_km,
                 days=s.ha_location_days, type=None, keyword=None, limit=20,
-                cache_seconds=max(1, s.ha_location_refresh_h) * 3600)  # fmt: skip
+                cache_seconds=max(1, s.ha_location_refresh_h) * 3600, datathistle=False)  # fmt: skip
             events, errors = res["events"], res["errors"]
         except HTTPException as exc:  # no source set up, or every source failed: keep the place, no events
             events, errors = [], [str(exc.detail)]

@@ -20,6 +20,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   its buses as missed, and next buses gives no weekday-timetable times on one. Fetched weekly and kept; a built-in
   2026-27 list stands in until the first fetch.
 
+- **Data Thistle** as a third events source (theatre, comedy, gigs, exhibitions, family days out, festivals): secret
+  `datathistle_token` (free tier, 1,000 requests a month; the token lasts 30 days). Asked live, once per area per 12
+  hours for the next fortnight (its terms allow 24), kept under `WA_DATATHISTLE_MONTHLY_LIMIT` (900), left out of Home
+  Assistant's repeating location refreshes, and credited on the Events page and Here.
+- **Bikesy** in Outdoors: items without a link are also looked for in Bikesy's deals from 30-odd UK bike shops (its tag
+  pages; its search pages are closed to automated readers).
+
 ### Fixed
 - Here's bus stops part asked NaPTAN for stops of kind "bus" (they are "bus_stop"), so it showed an error; it is now
   the next buses part.

@@ -603,7 +603,7 @@ def _outdoor_text(it: dict[str, Any]) -> str:
     ps = it.get("products") or []
     if not ps:
         return f"{it['name']}: not priced yet."
-    shop = {"gooutdoors": "GO Outdoors", "decathlon": "Decathlon"}
+    shop = {"gooutdoors": "GO Outdoors", "decathlon": "Decathlon", "bikesy": "Bikesy"}
 
     def one(p: dict[str, Any]) -> str:
         price = f"£{p['price']:.2f}" if p.get("price") is not None else "no price"

@@ -1,9 +1,12 @@
-"""GO Outdoors and Decathlon prices, read for the Outdoors list.
+"""GO Outdoors, Decathlon and Bikesy prices, read for the Outdoors list.
 
 GO Outdoors runs on Shopify, which publishes every shop's products as JSON at standard addresses: the search
 (`/search/suggest.json`) and each product (`/products/<handle>.js`, prices in pence). Decathlon does not allow its
 search to be read automatically, so only a product page someone has pasted in is read, for its schema.org Product
-data (the price and stock it shows search engines). `python -m app.outdoors <words or link>` shows what each sends.
+data (the price and stock it shows search engines). Bikesy compares 30-odd UK bike shops; its search pages (/s/) are
+closed to automated readers, so its tag pages (/tag/<words>/, which its robots.txt leaves open) are read instead, for
+each deal's name, price, full price and Bikesy's "View Deal" link (the listing does not say which shop).
+`python -m app.outdoors <words or link>` shows what each sends.
 """
 
 from __future__ import annotations
@@ -19,7 +22,8 @@ from app.integrations.wishlist.clients import ShopError
 from app.version import VERSION
 
 GO = "https://www.gooutdoors.co.uk"
-NAMES = {"gooutdoors": "GO Outdoors", "decathlon": "Decathlon"}
+BIKESY = "https://bikesy.co.uk"
+NAMES = {"gooutdoors": "GO Outdoors", "decathlon": "Decathlon", "bikesy": "Bikesy"}
 HEADERS = {"User-Agent": f"WorldAssistant/{VERSION} (personal price watch, once a day)",
            "Accept-Language": "en-GB,en;q=0.9"}  # fmt: skip
 URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
@@ -135,3 +139,56 @@ async def decathlon_product(client: httpx.AsyncClient, url: str, raw: bool = Fal
             "name": str(p.get("name") or "").strip() or url, "brand": brand.get("name") if isinstance(brand, dict) else brand,
             "price": price, "was": None, "available": "OutOfStock" not in stock and "SoldOut" not in stock,
             "url": url}  # fmt: skip
+
+
+def _tag(query: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "+", query.lower()).strip("+")
+
+
+def _text(html: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " | ", html)).replace("&amp;", "&").replace("&pound;", "£").strip()
+
+
+BADGE = re.compile(r"^(\d+% off|save|view deal|more info|sale|new|rrp|was|from|ex[- ]?demo|£|[\d.,]+$)", re.IGNORECASE)
+
+
+def bikesy_deals(html: str) -> list[dict[str, Any]]:
+    """The deals on a Bikesy listing page: each is the stretch of the page around its View Deal link
+    (outbound.php?pid=N), with the name from the image's alt text or the deal's longest piece of text, the sale price
+    (the lowest pound figure, leaving out the "SAVE" one) and the full price (the highest, when it is higher)."""
+    html = html.replace("&pound;", "£")
+    marks = [(m.start(), m.group(1)) for m in re.finditer(r"outbound\.php\?pid=(\d+)", html)]
+    order: list[str] = []
+    first: dict[str, int] = {}
+    last: dict[str, int] = {}
+    for at, pid in marks:
+        if pid not in first:
+            order.append(pid)
+            first[pid] = at
+        last[pid] = at
+    out = []
+    for i, pid in enumerate(order):
+        start = last[order[i - 1]] + 1 if i else max(0, first[pid] - 3000)
+        end = first[order[i + 1]] if i + 1 < len(order) else last[pid] + 3000
+        chunk = html[start:end]
+        alt = re.search(r'\balt="([^"]{6,200})"', chunk) or re.search(r'\btitle="([^"]{6,200})"', chunk)
+        text = _text(chunk)
+        name = alt.group(1).strip() if alt else ""
+        if not name:
+            bits = [b.strip() for b in text.split("|") if b.strip() and not BADGE.match(b.strip())]
+            name = max(bits, key=len) if bits else ""
+        money = re.sub(r"save\s*(?:\|\s*)?£\s*[\d,.]+", " ", text, flags=re.IGNORECASE)
+        prices = [float(x.replace(",", "")) for x in re.findall(r"£\s*([\d,]+(?:\.\d{1,2})?)", money)]
+        if not name or not prices:
+            continue
+        price, top = min(prices), max(prices)
+        out.append({"retailer": "bikesy", "id": pid, "name": name.replace("&amp;", "&"), "brand": None, "price": price,
+                    "was": top if top > price else None, "available": True,
+                    "url": f"{BIKESY}/outbound.php?pid={pid}"})  # fmt: skip
+    return out
+
+
+async def bikesy_search(client: httpx.AsyncClient, query: str, raw: bool = False) -> Any:
+    """Bikesy's deals for some words, from its tag page (its search pages are closed to automated readers)."""
+    html = await _get(client, "bikesy", f"{BIKESY}/tag/{_tag(query)}/", json_=False)
+    return html[:3000] if raw else bikesy_deals(html)

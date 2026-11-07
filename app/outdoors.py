@@ -5,7 +5,8 @@ in the family adds one in the KitchenOwl app and ticks it off when it is bought.
 follow:
 
     a GO Outdoors or Decathlon product link    that product exactly (Decathlon is only ever read this way)
-    nothing                                     GO Outdoors' search for the item's name: its three cheapest matches
+    nothing                                     GO Outdoors' search and Bikesy's deals (UK bike shops) for the item's
+                                                name: the three cheapest matches at each
     "under £300", "must: gore-tex"             a top price, and words a product's name has to have
 
     GET  /v1/outdoors                    every item with the products it follows: price now, before, lowest, and drops
@@ -127,14 +128,15 @@ async def read(client: httpx.AsyncClient, it: dict[str, Any]) -> tuple[list[dict
         except C.ShopError as exc:
             errors.append(str(exc))
         await asyncio.sleep(1)
-    if not it["links"]:
-        try:
-            found = [p for p in await O.go_search(client, it["name"]) if C.matches(p["name"], it["name"], it["must"])]
-            found.sort(key=lambda p: (p["price"] is None, p["price"] or 0))
-            got += [{**p, "pinned": False} for p in found[:SEARCH_KEEP]]
-        except C.ShopError as exc:
-            errors.append(str(exc))
-        await asyncio.sleep(1)
+    if not it["links"]:  # searched: GO Outdoors' own search, and Bikesy's tag page of bike shops' deals
+        for search in (O.go_search, O.bikesy_search):
+            try:
+                found = [p for p in await search(client, it["name"]) if C.matches(p["name"], it["name"], it["must"])]
+                found.sort(key=lambda p: (p["price"] is None, p["price"] or 0))
+                got += [{**p, "pinned": False} for p in found[:SEARCH_KEEP]]
+            except C.ShopError as exc:
+                errors.append(str(exc))
+            await asyncio.sleep(1)
     return got, errors
 
 
@@ -295,11 +297,16 @@ async def probe(arg: str) -> None:
                     print("-- raw, first 2500 characters:")
                     print(json.dumps(await fn(c, url, raw=True), indent=1, default=str)[:2500])
                 else:
-                    got = await O.go_search(c, arg)
-                    print(f"{len(got)} products; {sum(C.matches(p['name'], arg) for p in got)} have every word")
-                    print(json.dumps(got[:6], indent=2, default=str))
-                    print("-- raw, first 2500 characters:")
-                    print(json.dumps(await O.go_search(c, arg, raw=True), indent=1, default=str)[:2500])
+                    for name, fn in (("GO Outdoors", O.go_search), ("Bikesy", O.bikesy_search)):
+                        print(f"\n-- {name}")
+                        try:
+                            got = await fn(c, arg)
+                            print(f"{len(got)} products; {sum(C.matches(p['name'], arg) for p in got)} have every word")
+                            print(json.dumps(got[:6], indent=2, default=str))
+                            print("-- raw, first 2500 characters:")
+                            print(json.dumps(await fn(c, arg, raw=True), indent=1, default=str)[:2500])
+                        except C.ShopError as exc:
+                            print(f"FAILED: {exc}")
             except C.ShopError as exc:
                 print(f"FAILED: {exc}")
 

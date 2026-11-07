@@ -37,7 +37,7 @@ It started as a personal project on a home Unraid server. Nothing in it is speci
 |------|--------------|
 | **Roads** | National Highways closures, variable speed limits and message signs, polled and stored with history. Each event is tagged with the corridors (your regular routes) it affects. |
 | **Fuel** | Every UK station's current prices from the government Fuel Finder service, refreshed every 30 minutes. Cheapest near a place or along a route, with the saving after the detour. |
-| **Events** | What is on near a place (gigs, comedy, theatre, sport and more) from Skiddle and Ticketmaster, merged by date. |
+| **Events** | What is on near a place (gigs, comedy, theatre, sport, exhibitions and more) from Skiddle, Ticketmaster and Data Thistle, merged by date. |
 | **Pollen** | Pollen by allergen and allergy risk for today and three days ahead, with a 90-day history and graphs. |
 | **Places and trips** | Named places (by postcode or coordinates) and trips between them. Your **home** is the default place everywhere. |
 | **Routing** | Optional self-hosted Valhalla turns a trip into a real road line, which becomes that trip's corridor. |
@@ -190,7 +190,7 @@ From outside the home network, `/v1/*` routes need `Authorization: Bearer <api_t
 ## Data sources and credits
 
 Road data from National Highways, fuel prices from GOV.UK Fuel Finder, bus and rail from Transport for
-London and National Rail (Rail Data Marketplace), events from Skiddle and Ticketmaster, postcodes from
+London and National Rail (Rail Data Marketplace), events from Skiddle, Ticketmaster and Data Thistle, postcodes from
 Ordnance Survey Code-Point Open and postcodes.io, stops from NaPTAN, flood warnings from the Environment Agency, maps © OpenStreetMap contributors, and pollen from the Austrian Pollen Information Service
 (www.polleninformation.at, non-commercial use only). Each stays under its own licence and terms; see
 [docs/data-sources.md](docs/data-sources.md). Raw feed data is never committed to this repository.

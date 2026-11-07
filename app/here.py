@@ -118,7 +118,8 @@ def words(part: str, d: dict[str, Any]) -> str:
     if part == "events":
         e = d.get("events") or []
         return ("; ".join(f"{x.get('name')}" + (f" at {x['venue']}" if x.get("venue") else "") + (f", {x['date']}" if x.get("date") else "") for x in e[:4])
-                + (f", and {d['total'] - 4} more" if (d.get("total") or 0) > 4 else "") + ".") if e else "Nothing listed nearby in the next 3 days."  # fmt: skip
+                + (f", and {d['total'] - 4} more" if (d.get("total") or 0) > 4 else "") + "."
+                + (" Listings include Data Thistle's." if d.get("attribution") else "")) if e else "Nothing listed nearby in the next 3 days."  # fmt: skip
     if part == "roads":
         r = d.get("disruptions") or []
         return "; ".join(f"{x.get('severity')}: {x.get('location') or x.get('category')}" for x in r[:3]) + "." if r else "No TfL road disruption within 2 km."
