@@ -24,6 +24,7 @@ switched off hides its tools.
 | `bus` | whether a bus made the target stop before the deadline, and next buses (`tracker` optional if only one) |
 | `floods_near` | flood warnings and alerts covering a place (`km` to look around it) |
 | `road_disruptions_near` | TfL road works, closures and incidents near a place (`km`, default 0.5) |
+| `bus_setup` | set up a bus tracker from loose stop names and an arrive-by time (acts: saves it; lists a line's stops when given only the line) |
 | `live_buses_near` | buses reporting their position near a place now (`km`, `line`) |
 | `bus_disruptions` | published bus disruptions near your places (`place`, `line`, `km`) |
 | `stops_near` | the nearest stops and stations to a place (`km`, `kind`: bus_stop, rail, metro and so on) |
