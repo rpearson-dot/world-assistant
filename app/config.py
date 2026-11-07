@@ -152,6 +152,8 @@ class Settings(BaseSettings):
     bus_disruptions_poll_enabled: bool = False
     bus_disruptions_km: float = 25.0  # kept when a stop or place it names is this close to a saved place
     bus_disruptions_stale_days: int = 90  # an open-ended one that started longer ago than this is dropped
+    # Tradeinn's shops the Outdoors list searches (trekkinn, bikeinn, snowinn, runnerinn, waveinn...); empty: none
+    outdoors_tradeinn_shops: str = "trekkinn,bikeinn"
     # Data Thistle's free tier allows 1,000 requests a month: stop at this many, leaving room for checks by hand
     datathistle_monthly_limit: int = 900
     # Which bank holidays count (GOV.UK's feed): england-and-wales, scotland or northern-ireland

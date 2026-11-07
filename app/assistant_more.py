@@ -603,10 +603,12 @@ def _outdoor_text(it: dict[str, Any]) -> str:
     ps = it.get("products") or []
     if not ps:
         return f"{it['name']}: not priced yet."
-    shop = {"gooutdoors": "GO Outdoors", "decathlon": "Decathlon", "bikesy": "Bikesy"}
+    shop = {"gooutdoors": "GO Outdoors", "decathlon": "Decathlon", "bikesy": "Bikesy", "tradeinn": "Tradeinn"}
+    sym = {"GBP": "£", "EUR": "€", "USD": "$"}
 
     def one(p: dict[str, Any]) -> str:
-        price = f"£{p['price']:.2f}" if p.get("price") is not None else "no price"
+        s = sym.get(p.get("currency") or "GBP", (p.get("currency") or "") + " ")
+        price = f"{s}{p['price']:.2f}" if p.get("price") is not None else "no price"
         extra = []
         if p.get("dropped") and p.get("previous_price") is not None:
             extra.append(f"down from £{p['previous_price']:.2f}")
@@ -616,6 +618,8 @@ def _outdoor_text(it: dict[str, Any]) -> str:
             extra.append(f"lowest seen £{p['lowest_price']:.2f}")
         if p.get("available") is False:
             extra.append("out of stock")
+        if p.get("error"):
+            extra.append(f"could not check it lately: {p['error']}")
         return f"{p['name']} at {shop.get(p['retailer'], p['retailer'])}, {price}" + (f" ({', '.join(extra)})" if extra else "")
 
     return f"{it['name']}: " + "; ".join(one(p) for p in ps[:3]) + "."

@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app import shopping as S
 from app.auth import require_token
+from app.config import get_settings
 from app.integrations.outdoors import clients as O
 from app.integrations.wishlist import clients as C
 from app.wishlist import _put, _setting, find_list, rules
@@ -96,7 +97,7 @@ async def products(engine: AsyncEngine, key: str) -> list[dict[str, Any]]:
     async with engine.connect() as conn:
         rows = [_row(r) for r in await conn.execute(text(
             "SELECT retailer, product_id, name, brand, url, pinned, price, previous_price, was_price, lowest_price, "
-            "lowest_at, available, dropped_at, error, first_seen, last_seen FROM outdoors_product WHERE item_key = :k "
+            "lowest_at, available, dropped_at, error, error_at, currency, first_seen, last_seen FROM outdoors_product WHERE item_key = :k "
             "ORDER BY pinned DESC, price NULLS LAST"), {"k": key})]  # fmt: skip
     for p in rows:
         p["dropped"] = bool(p["dropped_at"] and datetime.fromisoformat(p["dropped_at"]) >= since)
@@ -110,34 +111,72 @@ async def overview(request: Request) -> dict[str, Any]:
     out = []
     for it in its:
         ps = await products(engine, it["key"])
-        prices = [p["price"] for p in ps if p["price"] is not None]
-        out.append({**it, "products": ps, "cheapest": min(prices) if prices else None,
+        pounds = [p for p in ps if p["price"] is not None and p.get("currency", "GBP") == "GBP"]  # like with like
+        out.append({**it, "products": ps, "cheapest": min(p["price"] for p in pounds) if pounds else None,
                     "dropped": [p for p in ps if p["dropped"]],
-                    "under": [p for p in ps if it["max_price"] and p["price"] is not None and p["price"] <= it["max_price"]]})  # fmt: skip
+                    "under": [p for p in pounds if it["max_price"] and p["price"] <= it["max_price"]],
+                    "failing": [p for p in ps if p.get("error")]})  # fmt: skip
     return {"list": lst, "items": out, "last_check": await _setting(engine, LAST_KEY)}
 
 
-async def read(client: httpx.AsyncClient, it: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
-    """The products an item follows as the shops have them now, and what could not be read."""
+def searches() -> list[tuple[str, Any]]:
+    """(source, search) for an item without a link: GO Outdoors, Bikesy, and each Tradeinn shop chosen."""
+    from functools import partial
+
+    shops = [x.strip().lower() for x in get_settings().outdoors_tradeinn_shops.split(",") if x.strip()]
+    return [("gooutdoors", O.go_search), ("bikesy", O.bikesy_search)] + [
+        (f"tradeinn:{s}", partial(O.tradeinn_search, shop=s)) for s in shops if s in O.TRADEINN_SHOPS]
+
+
+async def read(client: httpx.AsyncClient, it: dict[str, Any], down: dict[str, str] | None = None,
+               ) -> tuple[list[dict[str, Any]], list[str], list[tuple[str, str]]]:  # fmt: skip
+    """The products an item follows as the shops have them now, what could not be read, and the links that failed.
+    A source that fails is put in `down` (source -> why) and not asked again in the same check, so one shop that is
+    down or blocking costs one failed request, not one per item."""
+    down = {} if down is None else down
     got: list[dict[str, Any]] = []
     errors: list[str] = []
+    failed_links: list[tuple[str, str]] = []
     for retailer, url in it["links"]:
+        if retailer in down:
+            failed_links.append((url, down[retailer]))
+            continue
         try:
             p = await (O.go_product(client, url) if retailer == "gooutdoors" else O.decathlon_product(client, url))
             got.append({**p, "pinned": True})
         except C.ShopError as exc:
             errors.append(str(exc))
+            failed_links.append((url, str(exc)))
+            if "no such page" not in str(exc):  # a dead link is that product's problem, not the shop's
+                down[retailer] = str(exc)
         await asyncio.sleep(1)
-    if not it["links"]:  # searched: GO Outdoors' own search, and Bikesy's tag page of bike shops' deals
-        for search in (O.go_search, O.bikesy_search):
+    if not it["links"]:
+        for source, search in searches():
+            if source in down:
+                continue
             try:
                 found = [p for p in await search(client, it["name"]) if C.matches(p["name"], it["name"], it["must"])]
                 found.sort(key=lambda p: (p["price"] is None, p["price"] or 0))
                 got += [{**p, "pinned": False} for p in found[:SEARCH_KEEP]]
             except C.ShopError as exc:
                 errors.append(str(exc))
+                down[source] = str(exc)
+            except Exception as exc:  # noqa: BLE001 - an answer of a shape nobody expected: that shop, this time
+                log.warning("outdoors: %s failed for %r: %s", source, it["name"], exc)
+                errors.append(f"{source}: could not read its answer ({type(exc).__name__})")
+                down[source] = f"could not read its answer ({type(exc).__name__})"
             await asyncio.sleep(1)
-    return got, errors
+    return got, errors, failed_links
+
+
+async def mark_failed(engine: AsyncEngine, it: dict[str, Any], failed: list[tuple[str, str]], now: datetime) -> None:
+    """A followed product that could not be read keeps its last price, and says why and since when."""
+    if not failed:
+        return
+    async with engine.begin() as conn:
+        for url, why in failed:
+            await conn.execute(text("UPDATE outdoors_product SET error = :e, error_at = COALESCE(error_at, :now) "
+                                    "WHERE item_key = :k AND url = :u"), {"e": why[:300], "now": now, "k": it["key"], "u": url})
 
 
 async def record(engine: AsyncEngine, it: dict[str, Any], got: list[dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
@@ -156,20 +195,20 @@ async def record(engine: AsyncEngine, it: dict[str, Any], got: list[dict[str, An
             low = min(lows) if lows else None
             await conn.execute(text(
                 "INSERT INTO outdoors_product (item_key, retailer, product_id, item_name, name, brand, url, pinned, price, "
-                "previous_price, was_price, lowest_price, lowest_at, available, dropped_at, last_seen) VALUES "
+                "previous_price, was_price, lowest_price, lowest_at, available, dropped_at, last_seen, currency) VALUES "
                 "(:k, :r, :p, :iname, :n, :b, :u, :pin, CAST(:price AS numeric), NULL, CAST(:was AS numeric), "
                 "CAST(:price AS numeric), CASE WHEN CAST(:price AS numeric) IS NULL THEN NULL ELSE CAST(:now AS timestamptz) END, "
-                ":avail, NULL, :now) ON CONFLICT (item_key, retailer, product_id) DO UPDATE SET item_name = EXCLUDED.item_name, "
+                ":avail, NULL, :now, :cur) ON CONFLICT (item_key, retailer, product_id) DO UPDATE SET item_name = EXCLUDED.item_name, "
                 "name = EXCLUDED.name, brand = EXCLUDED.brand, url = EXCLUDED.url, pinned = EXCLUDED.pinned, "
                 "previous_price = CASE WHEN CAST(:changed AS boolean) THEN outdoors_product.price ELSE outdoors_product.previous_price END, "
                 "price = COALESCE(EXCLUDED.price, outdoors_product.price), was_price = EXCLUDED.was_price, "
                 "lowest_price = CAST(:low AS numeric), lowest_at = CASE WHEN CAST(:low AS numeric) IS DISTINCT FROM "
                 "outdoors_product.lowest_price THEN CAST(:now AS timestamptz) ELSE outdoors_product.lowest_at END, "
                 "available = EXCLUDED.available, dropped_at = CASE WHEN CAST(:fell AS boolean) THEN CAST(:now AS timestamptz) "
-                "ELSE outdoors_product.dropped_at END, error = NULL, last_seen = :now"),
+                "ELSE outdoors_product.dropped_at END, error = NULL, error_at = NULL, last_seen = :now, currency = EXCLUDED.currency"),
                 {"k": it["key"], "r": p["retailer"], "p": p["id"], "iname": it["name"], "n": p["name"], "b": p["brand"],
                  "u": p["url"], "pin": p["pinned"], "price": price, "was": p["was"], "avail": p["available"],
-                 "changed": changed, "low": low, "fell": fell, "now": now})  # fmt: skip
+                 "changed": changed, "low": low, "fell": fell, "now": now, "cur": p.get("currency") or "GBP"})  # fmt: skip
             if changed:
                 await conn.execute(text("INSERT INTO outdoors_price (item_key, retailer, product_id, price, at) "
                                         "VALUES (:k, :r, :p, :price, :now)"),
@@ -184,12 +223,17 @@ async def check(engine: AsyncEngine, client: httpx.AsyncClient, todo: list[dict[
     now = datetime.now(UTC)
     drops: list[dict[str, Any]] = []
     errors: dict[str, list[str]] = {}
+    down: dict[str, str] = {}  # a shop that failed this time: not asked again until the next check
     for it in todo:
-        got, errs = await read(client, it)
+        got, errs, failed = await read(client, it, down)
         drops += await record(engine, it, got, now)
+        await mark_failed(engine, it, failed, now)
         if errs:
             errors[it["name"]] = errs
-    last = {"at": now.isoformat(), "items": len(todo), "drops": len(drops), "errors": errors or None}
+    searched = any(not it["links"] for it in todo)
+    used = sorted(({s for s, _ in searches()} if searched else set()) | {r for it in todo for r, _ in it["links"]})
+    sources = {s: ("failed: " + down[s]) if s in down else "ok" for s in used}
+    last = {"at": now.isoformat(), "items": len(todo), "drops": len(drops), "errors": errors or None, "sources": sources}
     if record_last:
         await _put(engine, LAST_KEY, last)
     return {**last, "fell": drops}
@@ -297,7 +341,10 @@ async def probe(arg: str) -> None:
                     print("-- raw, first 2500 characters:")
                     print(json.dumps(await fn(c, url, raw=True), indent=1, default=str)[:2500])
                 else:
-                    for name, fn in (("GO Outdoors", O.go_search), ("Bikesy", O.bikesy_search)):
+                    from functools import partial
+
+                    tradeinn = [(f"Tradeinn ({x})", partial(O.tradeinn_search, shop=x)) for x in ("trekkinn", "bikeinn")]
+                    for name, fn in (("GO Outdoors", O.go_search), ("Bikesy", O.bikesy_search), *tradeinn):
                         print(f"\n-- {name}")
                         try:
                             got = await fn(c, arg)
