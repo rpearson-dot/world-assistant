@@ -166,12 +166,21 @@ def _words(s: str) -> list[str]:
     return [w for w in re.sub(r"[^a-z0-9]+", " ", s.lower()).split() if len(w) > 1]
 
 
+# a product with one of these in its name is for the thing, not the thing, unless you asked for one
+ACCESSORY = {"cover", "covers", "case", "bag", "accessory", "accessories", "replacement", "spare", "spares", "refill",
+             "refills", "liner", "skin", "protector", "adapter", "adaptor", "mount", "strap", "parts"}  # fmt: skip
+
+
 def matches(name: str, query: str, must: list[str] | None = None) -> bool:
-    """Every word you asked for is in the product's name (or a word that means the same, e.g. bbq and grill).
-    `must`, if given, replaces the query's words."""
+    """Every word you asked for is in the product's name (or a word that means the same, e.g. bbq and grill), and it
+    is not an accessory for it (a cover, a bag, spares) unless that is what you asked for. `must`, if given, replaces
+    the query's words."""
     have = set(_words(name))
     text = " ".join(_words(name))
     want = [w for m in (must or []) for w in _words(m)] or _words(query)
+    asked = set(_words(query)) | set(want)
+    if (have & ACCESSORY) - asked:
+        return False
     return bool(want) and all(any(s in have or (len(s) > 4 and s in text) for s in SAME.get(w, (w,))) for w in want)
 
 

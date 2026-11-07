@@ -64,6 +64,8 @@ def test_what_counts_as_the_thing_you_want() -> None:
     assert C.matches("Gardenline Kettle BBQ", "Kamado BBQ", must=["bbq"])  # must replaces the name's words
     assert not C.matches("Crivit Ski Gloves", "ski jacket")
     assert C.matches("Crivit Ladies' Ski Jacket", "ski jacket")
+    assert not C.matches("Gardenline Kamado Grill Cover", "Kamado BBQ")  # an accessory for it, not it
+    assert C.matches("Gardenline Kamado Grill Cover", "kamado cover")  # unless that is what you want
 
 
 async def test_aldi_and_lidl_are_read_whatever_their_shape() -> None:
@@ -147,8 +149,8 @@ def test_the_kitchenowl_wishlist_is_checked_and_remembered(monkeypatch: pytest.M
             name text not null, brand text, price numeric(10,2), url text, on_sale date, status text not null, availability text,
             first_seen timestamptz not null default now(), last_seen timestamptz not null default now(),
             PRIMARY KEY (item_key, retailer, product_id))"""))
-        conn.execute(text("INSERT INTO app_setting (key, value) VALUES ('shopping_settings', "
-                          "'{\"household_id\": 9, \"list_id\": 1}')"))  # fmt: skip
+        conn.execute(text("INSERT INTO app_setting (key, value) VALUES (:k, CAST(:v AS jsonb))"),
+                     {"k": S.SETTINGS_KEY, "v": json.dumps({"household_id": 9, "list_id": 1})})
     added: list[Any] = []
 
     async def ko_get(path: str, transport: Any = None) -> Any:

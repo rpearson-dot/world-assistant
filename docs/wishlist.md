@@ -21,7 +21,8 @@ An item's description in KitchenOwl can narrow it:
 | anything else | left alone |
 
 A product counts when its name has every word of the item (or the `must` words). Some words stand in for each other:
-bbq, barbecue and grill; tv and television; hoover and vacuum; jumper, sweater and knit. Tick an item off in KitchenOwl
+bbq, barbecue and grill; tv and television; hoover and vacuum; jumper, sweater and knit. Accessories (a cover, a bag, spares) do not count unless the item asks for one: "Kamado BBQ" skips a
+kamado grill cover, "Kamado cover" finds it. Tick an item off in KitchenOwl
 once it is bought: what was seen is kept, and comes back if the item is added again.
 
 ## When it checks
