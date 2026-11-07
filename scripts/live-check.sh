@@ -81,7 +81,8 @@ def note(name: str, ok: bool, why: str = "") -> None:
     results.append((name, ("OK   " if ok else "FAIL ") + why))
 
 
-def run(name: str, *args: str, timeout: int = 180, module: str | None = None) -> None:
+def run(name: str, *args: str, timeout: int = 180, module: str | None = None, known: str = "") -> None:
+    """known: why this check is expected to fail (shown as INFO, not counted as a failure)."""
     if off(name, module):
         return
     head(f"{name}:  python -m {' '.join(args)}")
@@ -91,6 +92,9 @@ def run(name: str, *args: str, timeout: int = 180, module: str | None = None) ->
         out = (p.stdout + p.stderr).strip()
         print(out[:12000] + ("\n... (cut)" if len(out) > 12000 else ""))
         failed = p.returncode != 0 or "FAILED" in out or "Traceback" in out
+        if failed and known and "Traceback" not in out:
+            results.append((name, f"INFO {time.time() - t:.0f}s: {known}"))
+            return
         note(name, not failed, f"{time.time() - t:.0f}s" + (" (see FAILED or Traceback above)" if failed else ""))
     except subprocess.TimeoutExpired:
         print(f"timed out after {timeout}s")
@@ -165,7 +169,7 @@ if keys["datathistle_token"]:
     run("Data Thistle probe (one request)", "app.integrations.datathistle.client", str(lat), str(lon), module="events")
 if not QUICK and keys["bods_api_key"]:
     run("BODS bus line probe (the 406)", "app.integrations.bus.bods_probe", "406", "51.3343", "-0.2678", timeout=240,
-        module="bods")
+        module="bods", known="TfL's buses publish no timetable to BODS; live times come from TfL")
     run("BODS disruptions probe", "app.integrations.bods.disruptions_probe", str(lat), str(lon), "25", timeout=240,
         module="busdisruptions")
 
@@ -173,8 +177,10 @@ head("Summary")
 for name, res in results:
     print(f"{res:<45} {name}")
 n_off = sum(r.startswith("OFF") for _, r in results)
-checked = len(results) - n_off
-print(f"\n{sum(r.startswith('OK') for _, r in results)} of {checked} OK" + (f"; {n_off} not checked (switched off)" if n_off else ""))
+n_info = sum(r.startswith("INFO") for _, r in results)
+checked = len(results) - n_off - n_info
+print(f"\n{sum(r.startswith('OK') for _, r in results)} of {checked} OK" + (f"; {n_off} not checked (switched off)" if n_off else "")
+      + (f"; {n_info} known gaps (INFO)" if n_info else ""))
 PY
 
 echo "Done: $OUT"

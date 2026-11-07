@@ -17,6 +17,7 @@ import asyncio
 import json
 import re
 import sys
+import time
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -31,7 +32,19 @@ WORDS = re.compile(r"^\s*(?:///|w3w:\s*)?([a-z\u00c0-\u024f]+)[.。｡･・︒�
 
 
 class What3WordsError(Exception):
-    """Something to say in words: no key, the allowance used, words it does not know, or it could not be reached."""
+    """Something to say in words: no key, the allowance used, words it does not know, or it could not be reached.
+    `brief` is a short form for a page; `refused` is what3words declining the key or its plan."""
+
+    def __init__(self, message: str, brief: str = "", refused: bool = False) -> None:
+        super().__init__(message)
+        self.brief = brief or message
+        self.refused = refused
+
+
+# After a refusal (the plan, the allowance, the key), the words for a place are not asked for again for a while: every
+# Here look-up would otherwise be one more refused request. It is still tried again, in case the refusal was a mistake.
+REFUSED_WAIT_S = 6 * 3600
+_refused: dict[str, Any] = {}
 
 
 def words_in(text: str) -> str | None:
@@ -55,11 +68,15 @@ def _read(r: httpx.Response) -> dict[str, Any]:
         why = str((err or {}).get("message") or f"HTTP {r.status_code}")
         said = f" (it said HTTP {r.status_code}" + (f", {code}" if code else "") + f": {why})"
         if r.status_code == 401 or code in ("InvalidKey", "MissingKey"):
-            raise What3WordsError("what3words refused the key (check what3words_api_key on the Keys page)" + said)
-        if code == "QuotaExceeded" or r.status_code == 429:
-            raise What3WordsError("what3words says this key's allowance is used" + said)
-        if r.status_code == 402 or code in ("PlanNotAllowed", "NotAllowed", "Forbidden") or r.status_code == 403:
-            raise What3WordsError("what3words' plan for this key does not allow this" + said)
+            raise What3WordsError("what3words refused the key (check what3words_api_key on the Keys page)" + said,
+                                  "the key was refused", refused=True)  # fmt: skip
+        if r.status_code == 429:
+            raise What3WordsError("what3words says this key's allowance is used" + said, "this key's allowance is used",
+                                  refused=True)  # fmt: skip
+        if code == "QuotaExceeded" or r.status_code in (402, 403) or code in ("PlanNotAllowed", "NotAllowed", "Forbidden"):
+            # what3words says "Quota exceeded or API plan does not have access to this feature" for both
+            raise What3WordsError("what3words declined: its allowance is used, or its plan does not include this" + said,
+                                  "not available on this key's plan", refused=True)  # fmt: skip
         if code in ("BadWords", "BadCoordinates"):
             raise What3WordsError(f"what3words does not know that ({why})")
         raise What3WordsError(f"what3words answered: {why}")
@@ -77,13 +94,22 @@ async def to_words(lat: float, lon: float, key: str = "", transport: httpx.Async
     key = key or get_settings().what3words_api_key
     if not key:
         raise What3WordsError("no what3words_api_key saved")
+    if _refused.get("until", 0) > time.monotonic():
+        raise What3WordsError(_refused["why"], _refused["brief"] + " (checking again later)", refused=True)
     try:
         async with httpx.AsyncClient(timeout=10, transport=transport) as c:
             r = await c.get(f"{API}/convert-to-3wa", params={"coordinates": f"{lat:.6f},{lon:.6f}", "language": "en"},
                             headers={"X-Api-Key": key})  # fmt: skip
     except httpx.HTTPError as exc:
         raise What3WordsError(f"what3words could not be reached ({type(exc).__name__})") from exc
-    return _place(_read(r))
+    try:
+        got = _place(_read(r))
+    except What3WordsError as exc:
+        if exc.refused:
+            _refused.update(until=time.monotonic() + REFUSED_WAIT_S, why=str(exc), brief=exc.brief)
+        raise
+    _refused.clear()
+    return got
 
 
 async def to_place(words: str, redis: Any = None, key: str = "", limit: int | None = None,
