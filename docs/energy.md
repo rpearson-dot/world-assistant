@@ -141,6 +141,16 @@ when low" on, below the level you set; it stops at "WA car: charge to" (80%). Se
 "Car settings" on the Home charging dashboard (empty fields use the defaults named there). Turn the charger's own
 schedule off (in its app, before moving it to Home Assistant). It starts as a dry run ("WA car: control the charger").
 
+**Charge current, and charging from the house battery.** If the charger lets Home Assistant set its maximum current
+(the OCPP integration's `number.<charger>_maximum_current`, which only chargers offering OCPP Smart Charging have),
+the plan sets it before each start: "Charge current" for cheap, free and low charging (0, the default, leaves the
+charger's own), and "At this current" when charging from the house battery. With "Also charge from the house battery"
+on, the car also charges, outside cheap times, while the house battery is at or above the level you set (carrying on
+until 5% below it): at 10 A, about 2.3 kW, the battery covers it without buying from the grid. It never fills room
+kept for a joined free hour, and it does not start if the current cannot be set, since the charger would then run at
+its full rate. The dashboard says when the charger does not offer the current (the Sync EV on firmware 1.6.2 does not:
+the entity is unavailable); a firmware update or another charger may add it.
+
 ### Home charging dashboard
 
 The Home charging dashboard (`home-charging.yaml`, on /ha) is a Home Assistant dashboard for all of this, with built-in cards only:

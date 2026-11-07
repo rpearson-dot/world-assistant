@@ -462,17 +462,17 @@ def test_the_charger_is_started_and_stopped_and_logged() -> None:
                   "sensor.wa_car_charging_plan#next_start": "2026-10-25T13:00:00+00:00"}  # fmt: skip
     v = go(base | {"sensor.wa_car_charging_plan": "charge"})
     assert (v["start"], v["stop"], v["switch"]) == (True, False, "switch.charger_charge_control")
-    assert words(a["actions"][2]["data"]["message"], base, **v) == (
+    assert words(a["actions"][3]["data"]["message"], base, **v) == (
         "Started charging the car: the rate is cheap now (14.27 p/kWh). Car 55.0%, charger SuspendedEVSE.")
     waiting = base | {"sensor.wa_car_charging_plan": "wait", "sensor.wa_charger_status": "Charging", "switch.charger_charge_control": "on",
                       "sensor.wa_car_charging_plan#why": "the rate is not cheap now"}  # fmt: skip
     v = go(waiting)
     assert (v["start"], v["stop"]) == (False, True)
-    assert words(a["actions"][2]["data"]["message"], waiting, **v).startswith(
+    assert words(a["actions"][3]["data"]["message"], waiting, **v).startswith(
         "Stopped charging the car: the rate is not cheap now; next cheap or free time Sun 13:00.")
     v = go(base | {"sensor.wa_car_charging_plan": "full", "sensor.wa_charger_status": "Charging", "input_boolean.wa_ev_apply": "off"})
     assert v["stop"] and not v["apply"]
-    assert words(a["actions"][2]["data"]["message"], base, **v).startswith(
+    assert words(a["actions"][3]["data"]["message"], base, **v).startswith(
         "Stopped charging the car (dry run: nothing changed): it is at 55.0%, the target is 80%.")
     mine = base | {"input_text.wa_ev_entity_switch": "switch.wallbox", "switch.wallbox": "on", "sensor.wa_car_charging_plan": "charge",
                    "sensor.wa_charger_status": "Charging"}  # fmt: skip
@@ -554,6 +554,57 @@ def test_after_a_full_charge_it_rests_instead_of_bouncing() -> None:
     assert go(burst)["stop"] is False  # not once per change in a burst (4 Nov: dozens of stops logged in one second)
     trigger = next(t for t in a["triggers"] if t["trigger"] == "state")
     assert "to" in trigger and trigger["to"] is None  # state changes only, not every attribute update
-    marks = a["actions"][1]["then"]
+    marks = a["actions"][2]["then"]
     assert marks[0]["target"]["entity_id"] == "input_datetime.wa_ev_stopped_at"
     assert marks[1]["if"][0]["value_template"] == "{{ plan == 'full' and charging }}"  # only a real full stop rests
+
+
+def test_the_car_can_charge_from_the_house_battery_at_a_set_current() -> None:
+    at = datetime(2026, 10, 25, 18, 0, tzinfo=LONDON)  # not cheap
+    on = CAR | {"input_boolean.wa_ev_battery_enabled": "on", "input_number.wa_ev_battery_above": "70.0",
+                "input_number.wa_ev_battery_amps": "10.0", "sensor.office_inverter_battery_soc": "85",
+                "number.charger_maximum_current": "16"}  # fmt: skip
+    assert _plan(CAR | {"sensor.office_inverter_battery_soc": "85"}, at) == "wait"  # off unless asked
+    assert _plan(on, at) == "charge"
+    assert _plan(on | {"sensor.office_inverter_battery_soc": "68"}, at) == "wait"  # below the level: not started
+    assert _plan(on | {"sensor.office_inverter_battery_soc": "68", "sensor.wa_charger_status": "Charging"}, at) == "charge"  # 5% slack
+    assert _plan(on | {"sensor.office_inverter_battery_soc": "64", "sensor.wa_charger_status": "Charging"}, at) == "wait"
+    assert _plan(on | {"number.charger_maximum_current": "unavailable"}, at) == "wait"  # the current cannot be held down
+    assert _plan(on | {"sensor.wa_car_charge_level": "80.0"}, at) == "full"
+    # cheap but holding room for a free hour: the battery rule does not fill that room
+    free = [{"start": "2026-10-26T13:00:00+00:00", "end": "2026-10-26T14:00:00+00:00", "joined": True}]
+    room = on | {"sensor.wa_energy_cheap_now": "on", "input_number.wa_ev_free_room_pct": "30.0",
+                 "sensor.wa_energy_free_electricity_next_start#upcoming": free}  # fmt: skip
+    assert _plan(room, at) == "wait"
+
+    source = EV_SENSORS["wa_ev_source"]["state"]
+    assert render(source, on | {"sensor.wa_car_charging_plan": "charge"}, at) == "battery"
+    assert render(source, on | {"sensor.wa_car_charging_plan": "charge", "sensor.wa_energy_cheap_now": "on"}, at) == "grid"
+    assert render(source, on | {"sensor.wa_car_charging_plan": "wait"}, at) == "none"
+    attrs = EV_SENSORS["wa_ev_plan"]["attributes"]
+    assert render(attrs["amps"], on | {"sensor.wa_car_charge_source": "battery"}) == 10
+    assert render(attrs["amps"], on | {"sensor.wa_car_charge_source": "grid"}) == 0  # the charger's own
+    assert render(attrs["amps"], on | {"sensor.wa_car_charge_source": "grid", "input_number.wa_ev_amps": "32.0"}) == 32
+    assert words(attrs["why"], on | {"sensor.wa_car_charge_source": "battery"}) == (
+        "the house battery is at 85%: charging from it at 10 A")
+
+    a = next(x for x in EV["automation"] if x["id"] == "wa_ev_plan")
+    v: dict[str, Any] = {}
+    st = on | {"sensor.wa_car_charging_plan": "charge", "sensor.wa_car_charging_plan#amps": 10,
+               "switch.charger_charge_control": "off", "input_boolean.wa_ev_apply": "on",
+               "sensor.wa_car_charging_plan#why": "the house battery is at 85%: charging from it at 10 A"}  # fmt: skip
+    for k, tpl in a["variables"].items():
+        v[k] = render(tpl, st, at, **v)
+    assert v["start"] and v["amps"] == 10 and v["current"] == "number.charger_maximum_current"
+    first = a["actions"][0]
+    assert render(first["if"][0]["value_template"], st, at, **v) is True  # the current is set before the start
+    assert first["then"][0]["action"] == "number.set_value" and render(first["then"][0]["data"]["value"], st, at, **v) == 10
+    assert words(a["actions"][3]["data"]["message"], st, **v).endswith("charger SuspendedEVSE, 10 A.")
+
+    c = next(x for x in EV["automation"] if x["id"] == "wa_ev_current")
+    w: dict[str, Any] = {}
+    for k, tpl in c["variables"].items():
+        w[k] = render(tpl, st, at, **w)
+    assert render(c["conditions"][2]["value_template"], st, at, **w) is True  # 16 A now, 10 wanted
+    w["now_amps"] = 10.0
+    assert render(c["conditions"][2]["value_template"], st, at, **w) is False  # already right
