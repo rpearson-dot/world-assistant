@@ -4,6 +4,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- Here takes a postcode as well as the browser's location (`/v1/here?postcode=`): a box on the page, pointed to when
+  the browser cannot give a location (the plain http address, location not allowed, no fix).
+
 ### Changed
 - Wishlist and Outdoors are parts of Shopping: no longer in the menu themselves, but tabs (List, Wishlist, Outdoors)
   along the top of each, with Shopping shown as the current page.

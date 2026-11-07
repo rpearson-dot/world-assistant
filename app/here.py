@@ -182,9 +182,27 @@ async def gather(request: Request, lat: float, lon: float) -> dict[str, Any]:
 
 
 @router.get("")
-async def here(request: Request, lat: float = Query(..., ge=49.5, le=61.0), lon: float = Query(..., ge=-8.7, le=2.0),
+async def here(request: Request, lat: float | None = Query(None, ge=49.5, le=61.0),
+               lon: float | None = Query(None, ge=-8.7, le=2.0),
+               postcode: str | None = Query(None, max_length=10, description="instead of lat and lon"),
                parts: str | None = Query(None, description="only these parts, comma-separated")) -> dict[str, Any]:  # fmt: skip
-    """Everything World Assistant knows about a point in Great Britain, each part with a sentence and its data."""
+    """Everything World Assistant knows about a point in Great Britain (or a postcode's centre), each part with a
+    sentence and its data."""
+    if lat is None or lon is None:
+        if not (postcode or "").strip():
+            raise HTTPException(422, "Give lat and lon, or a postcode.")
+        from app.geo import PostcodeError, lookup_postcode
+        from app.postcodes import local_postcode
+
+        got = await local_postcode(request.app.state.engine, postcode.strip())
+        if got is None:  # not in the local table (new, or the table not built): postcodes.io, which says why not
+            try:
+                got = await lookup_postcode(postcode.strip())
+            except PostcodeError as exc:
+                raise HTTPException(404, f"Could not find the postcode {postcode.strip().upper()!r} ({exc}).") from exc
+        lat, lon = got.lat, got.lon
+        if not (49.5 <= lat <= 61.0 and -8.7 <= lon <= 2.0):
+            raise HTTPException(422, "That postcode is outside Great Britain.")
     out = await gather(request, lat, lon)
     if parts:
         want = {p.strip() for p in parts.split(",")}
