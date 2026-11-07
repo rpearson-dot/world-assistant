@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [Unreleased]
 
 ### Added
+- Assistant tool `bus_setup`: set up a bus tracker by saying it, e.g. "track the 406 from Epsom station to Kingston,
+  arrive by 8:30". Stops can be named loosely and the direction is worked out; with only a line it lists the stops.
+  It never replaces an existing tracker unless told to.
+
+### Added
 - **Air and water** (docs/environment.md): air quality near each place as Defra's Daily Air Quality Index (1-10) with
   the NO2, ozone, PM2.5 and PM10 readings behind it (Defra UK-AIR); river levels near home with their usual range and
   trend, rainfall in the last hour and day, and tide gauges near coastal places (Environment Agency). Live, no key.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from typing import Any
 
@@ -222,3 +223,85 @@ async def test_tick_off_takes_the_newest_orders_items_off_and_clear_needs_confir
     with pytest.raises(ToolError, match="confirm"):
         await M.clear_list_tool(REQ, {})
     assert "7 item(s) taken off" in (await M.clear_list_tool(REQ, {"confirm": True}))["text"]
+
+
+STOPS_406 = {
+    "outbound": {"towards": "Epsom, Clock Tower", "stops": [
+        {"id": "K1", "name": "Kingston Cromwell Road Bus Station", "pos": 0},
+        {"id": "T1", "name": "Tolworth Broadway", "pos": 1},
+        {"id": "E1", "name": "Epsom Station", "pos": 2},
+        {"id": "E2", "name": "Epsom Clock Tower", "pos": 3}]},
+    "inbound": {"towards": "Kingston Cromwell Road Bus Station", "stops": [
+        {"id": "E3", "name": "Epsom Clock Tower", "pos": 0},
+        {"id": "E4", "name": "Epsom Station", "pos": 1},
+        {"id": "T2", "name": "Tolworth Broadway", "pos": 2},
+        {"id": "K2", "name": "Kingston Cromwell Road Bus Station", "pos": 3}]},
+    "_source": "tfl", "_operator": None,
+}  # fmt: skip
+
+
+@contextlib.asynccontextmanager
+async def _conn() -> Any:
+    yield None
+
+
+def _bus_mocks(monkeypatch: pytest.MonkeyPatch, existing: list[str]) -> dict[str, Any]:
+    import types
+
+    import app.bus as B
+    from app.integrations.bus import store
+
+    got: dict[str, Any] = {}
+
+    async def line_stops(request: Any, line: str, **kw: Any) -> dict[str, Any]:
+        return STOPS_406
+
+    async def setup(request: Any, body: Any) -> dict[str, Any]:
+        got["body"] = body
+        out: dict[str, Any] = {"id": body.name, "stops_tracked": []}
+        if body.return_earliest:
+            out["return_tracker"] = {"id": f"{body.name}-return", "board": "Kingston Cromwell Road Bus Station",
+                                     "target": "Epsom Station", "earliest": body.return_earliest,
+                                     "deadline": body.return_deadline}  # fmt: skip
+        return out
+
+    async def list_trackers(conn: Any) -> list[dict[str, Any]]:
+        return [{"id": i} for i in existing]
+
+    monkeypatch.setattr(B, "line_stops", line_stops)
+    monkeypatch.setattr(B, "setup", setup)
+    monkeypatch.setattr(store, "list_trackers", list_trackers)
+    got["request"] = types.SimpleNamespace(app=types.SimpleNamespace(state=types.SimpleNamespace(
+        engine=types.SimpleNamespace(connect=_conn))))  # fmt: skip
+    return got
+
+
+async def test_bus_setup_finds_the_direction_from_loose_stop_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    got = _bus_mocks(monkeypatch, ["main"])
+    r = await M.bus_setup_tool(got["request"], {"line": "406", "board": "epsom station", "to": "Kingston",
+                                                "arrive_by": "8.30", "return_earliest": "17:00", "return_arrive_by": "1830"})  # fmt: skip
+    b = got["body"]
+    assert (b.board, b.target, b.earliest, b.deadline, b.name, b.source) == ("E4", "K2", "07:30", "08:30", "bus-406", "tfl")
+    assert (b.return_earliest, b.return_deadline) == ("17:00", "18:30")
+    assert r["text"].startswith("Tracking the 406 from Epsom Station to Kingston Cromwell Road Bus Station "
+                                "(towards Kingston Cromwell Road Bus Station), buses from 07:30, to arrive by 08:30")  # fmt: skip
+    assert "The way back" in r["text"]
+    await M.bus_setup_tool(got["request"], {"line": "406", "board": "Tolworth", "to": "Epsom clock tower", "arrive_by": "09:00"})
+    assert (got["body"].board, got["body"].target) == ("T1", "E2")  # the other way
+
+
+async def test_bus_setup_lists_stops_and_says_what_is_wrong(monkeypatch: pytest.MonkeyPatch) -> None:
+    got = _bus_mocks(monkeypatch, ["bus-406"])
+    r = await M.bus_setup_tool(got["request"], {"line": "406"})
+    assert "Towards Epsom, Clock Tower: Kingston Cromwell Road Bus Station, Tolworth Broadway" in r["text"]
+    r = await M.bus_setup_tool(got["request"], {"line": "406", "board": "Surbiton", "to": "Epsom", "arrive_by": "08:00"})
+    assert r["text"].startswith("No stop on this line matches 'Surbiton'.") and "body" not in got
+    with pytest.raises(ToolError, match="arrive by"):
+        await M.bus_setup_tool(got["request"], {"line": "406", "board": "Epsom Station", "to": "Kingston"})
+    with pytest.raises(ToolError, match="already exists"):  # never replaces one without being told
+        await M.bus_setup_tool(got["request"], {"line": "406", "board": "Epsom Station", "to": "Kingston", "arrive_by": "08:00"})
+    await M.bus_setup_tool(got["request"], {"line": "406", "board": "Epsom Station", "to": "Kingston", "arrive_by": "08:00",
+                                            "replace": True})  # fmt: skip
+    assert got["body"].name == "bus-406"
+    with pytest.raises(ToolError, match="time like"):
+        await M.bus_setup_tool(got["request"], {"line": "406", "board": "Epsom Station", "to": "Kingston", "arrive_by": "soon"})
