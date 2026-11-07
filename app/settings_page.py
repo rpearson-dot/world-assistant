@@ -142,7 +142,7 @@ const STATE = { ready: ['good', 'Working'], limited: ['warn', 'Works, better wit
   off: ['', 'Off'], missing: ['warn', 'Not set up'], failing: ['bad', 'Failing'] };
 const LABELS = { nh_subscription_key: 'Primary key', nh_subscription_key_secondary: 'Secondary key (optional)',
   fuel_finder_client_id: 'Client ID', fuel_finder_client_secret: 'Client secret', skiddle_api_key: 'Skiddle API key',
-  ticketmaster_api_key: 'Ticketmaster consumer key', datathistle_token: 'Data Thistle access token', tfl_app_key: 'App key', nr_access_token: 'Consumer key',
+  ticketmaster_api_key: 'Ticketmaster consumer key', datathistle_token: 'Data Thistle access token', datathistle_refresh_token: 'Data Thistle refresh token', tfl_app_key: 'App key', nr_access_token: 'Consumer key',
   bods_api_key: 'API key', pollen_api_key: 'API key', octopus_api_key: 'API key' };
 let setup = null, keys = null;
 

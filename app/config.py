@@ -205,6 +205,10 @@ class Settings(BaseSettings):
         return read_secret("datathistle_token")
 
     @property
+    def datathistle_refresh_token(self) -> str:
+        return read_secret("datathistle_refresh_token")
+
+    @property
     def octopus_api_key(self) -> str:
         return read_secret("octopus_api_key")
 

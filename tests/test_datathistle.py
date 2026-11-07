@@ -137,3 +137,71 @@ async def test_merged_with_the_others_and_credited(monkeypatch: pytest.MonkeyPat
     with pytest.raises(E.HTTPException, match="allowance is used"):  # the only source: it says why
         await E.search(req, "Home", 51.4027, -0.2560, radius_km=8, days=7, type=None, keyword=None, limit=10, cache_seconds=0)
     assert len(calls) == 1  # and nothing was asked
+
+
+DB = __import__("os").environ.get("WA_TEST_DATABASE_URL")
+
+
+@pytest.mark.skipif(not DB, reason="WA_TEST_DATABASE_URL not set")
+async def test_the_token_is_renewed_and_both_new_ones_saved(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    import json as _json
+    from datetime import UTC, datetime, timedelta
+
+    import sqlalchemy as sa
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from app import secretstore
+
+    keys = tmp_path / "keys"
+    keys.mkdir()
+    (keys / "datathistle_token.txt").write_text("old-access")
+    (keys / "datathistle_refresh_token.txt").write_text("old-refresh")
+    monkeypatch.setenv("WA_KEYS_DIR", str(keys))
+    secretstore.clear_cache()
+    sync = sa.create_engine(DB)  # type: ignore[arg-type]
+    with sync.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS app_setting"))
+        conn.execute(text("CREATE TABLE app_setting (key text primary key, value jsonb not null, updated_at timestamptz)"))
+    engine = create_async_engine(DB, poolclass=NullPool)  # type: ignore[arg-type]
+    asked: list[tuple[str, str]] = []
+
+    def auth(req: httpx.Request) -> httpx.Response:
+        asked.append((str(req.url), req.headers["Authorization"]))
+        return httpx.Response(200, json={"status": 200, "accessToken": f"access-{len(asked)}", "refreshToken": f"refresh-{len(asked)}"})
+
+    t = httpx.MockTransport(auth)
+    try:
+        first = await DT.keep_alive(engine, transport=t)  # a new token: noted, renewed 25 days on
+        assert first["renewed"] is False and first["why"].startswith("renews on") and asked == []
+        st = await DT._state(engine)
+        st["first_seen"] = (datetime.now(UTC) - timedelta(days=26)).isoformat()
+        await DT._put_state(engine, st)
+        done = await DT.keep_alive(engine, transport=t)
+        assert done["renewed"] and asked == [("https://auth.datathistle.com/v1/refresh", "Bearer old-refresh")]
+        assert (keys / "datathistle_token.txt").read_text() == "access-1"
+        assert (keys / "datathistle_refresh_token.txt").read_text() == "refresh-1"
+        assert (await DT.keep_alive(engine, transport=t))["renewed"] is False  # just renewed: not again
+        # refused: renewed at once, with the new refresh token, but not more than hourly
+        st = await DT._state(engine)
+        st["tried_at"] = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+        await DT._put_state(engine, st)
+        assert (await DT.keep_alive(engine, refused=True, transport=t))["renewed"] and asked[-1][1] == "Bearer refresh-1"
+        assert (await DT.keep_alive(engine, refused=True, transport=t))["why"] == "tried within the hour"
+        # a refused refresh token: recorded, the saved tokens kept
+        bad = httpx.MockTransport(lambda r: httpx.Response(401))
+        with pytest.raises(DT.DataThistleError, match="refused the refresh token"):
+            await DT.renew(engine, bad)
+        assert "refused the refresh token" in (await DT._state(engine))["error"]
+        assert (keys / "datathistle_token.txt").read_text() == "access-2"
+        odd = httpx.MockTransport(lambda r: httpx.Response(200, json={"status": 200, "token": "x"}))
+        with pytest.raises(DT.DataThistleError, match=r"did not include both tokens \(it sent \['status', 'token'\]\)"):
+            await DT.renew(engine, odd)
+        _json.dumps(await DT._state(engine))
+    finally:
+        await engine.dispose()
+        with sync.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS app_setting"))
+        sync.dispose()
+        secretstore.clear_cache()

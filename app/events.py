@@ -18,6 +18,8 @@ from app.auth import require_token
 from app.config import get_settings
 from app.integrations.datathistle.client import ATTRIBUTION as DT_ATTRIBUTION
 from app.integrations.datathistle.client import DataThistleClient, DataThistleError
+from app.integrations.datathistle.client import _state as dt_state
+from app.integrations.datathistle.client import keep_alive as dt_keep_alive
 from app.integrations.skiddle.client import DEFAULT_BASE, EVENT_CODES, SkiddleClient, SkiddleError
 from app.integrations.ticketmaster.client import (
     DEFAULT_BASE as TM_BASE,
@@ -47,7 +49,8 @@ DT_DAYS = 14  # one Data Thistle search covers the next two weeks; narrower asks
 DT_KEEP_S = 12 * 3600  # its terms allow up to 24 hours
 
 
-async def datathistle_window(redis: Any, lat: float, lon: float, radius_km: float, today: Any) -> list[dict[str, Any]]:
+async def datathistle_window(redis: Any, lat: float, lon: float, radius_km: float, today: Any,
+                             engine: Any = None) -> list[dict[str, Any]]:  # fmt: skip
     """Data Thistle's events for the next two weeks near a point, shared by every search there for 12 hours, and kept
     within the monthly allowance (`datathistle_monthly_limit`)."""
     s = get_settings()
@@ -64,13 +67,21 @@ async def datathistle_window(redis: Any, lat: float, lon: float, radius_km: floa
     if used >= s.datathistle_monthly_limit:
         raise DataThistleError(f"this month's Data Thistle allowance is used ({used} of {s.datathistle_monthly_limit}); "
                                "it comes back on the 1st")  # fmt: skip
-    async with DataThistleClient(s.datathistle_token) as c:
-        try:
-            got = await c.search(lat, lon, radius_km=rk, first=today, last=today + timedelta(days=DT_DAYS), limit=200)
-        finally:
-            with contextlib.suppress(Exception):
-                await redis.incrby(month, c.requests)
-                await redis.expire(month, 40 * 86400)
+    got: dict[str, Any] = {}
+    for attempt in (1, 2):  # a refused token is renewed once, then asked again
+        async with DataThistleClient(get_settings().datathistle_token) as c:
+            try:
+                got = await c.search(lat, lon, radius_km=rk, first=today, last=today + timedelta(days=DT_DAYS), limit=200)
+                break
+            except DataThistleError as exc:
+                if attempt == 2 or engine is None or "refused the token" not in str(exc):
+                    raise
+                if not (await dt_keep_alive(engine, refused=True)).get("renewed"):
+                    raise
+            finally:
+                with contextlib.suppress(Exception):
+                    await redis.incrby(month, c.requests)
+                    await redis.expire(month, 40 * 86400)
     with contextlib.suppress(Exception):
         await redis.set(key, json.dumps(got["events"]), ex=DT_KEEP_S)
     return list(got["events"])
@@ -164,7 +175,7 @@ async def search(
             )  # fmt: skip
 
     async def from_datathistle() -> dict[str, Any]:
-        found = await datathistle_window(redis, lat, lon, radius_km, today)
+        found = await datathistle_window(redis, lat, lon, radius_km, today, getattr(request.app.state, "engine", None))
         found = [e for e in found if e["date"] <= last.isoformat() and (not type or e["type"] == type)
                  and (e["distance_km"] is None or e["distance_km"] <= radius_km)
                  and (not keyword or keyword.lower() in f"{e['name']} {e['description'] or ''}".lower())]  # fmt: skip
@@ -195,6 +206,9 @@ async def search(
         with contextlib.suppress(Exception):
             used = int(await redis.get(f"wa:datathistle:used:{today.strftime('%Y-%m')}") or 0)
             out["datathistle"] = {"used_this_month": used, "limit": s.datathistle_monthly_limit}
+            auth = await dt_state(request.app.state.engine)
+            if auth.get("error"):
+                out["datathistle"]["warning"] = f"Token renewal failed: {auth['error']}"
     if not errors:
         with contextlib.suppress(Exception):  # the cache is optional
             await redis.set(key, json.dumps(out), ex=cache_seconds)
@@ -254,6 +268,7 @@ async function search() {
       l.href = a.url; l.target = '_blank'; l.rel = 'noopener noreferrer';
       const add = el('a', null, 'add or update an event'); add.href = a.add_event; add.target = '_blank'; add.rel = 'noopener noreferrer';
       p.append(l, ' · ', add); $('note').append(p); });
+    if (d.datathistle && d.datathistle.warning) $('note').append(el('p', 'err', d.datathistle.warning));
     for (const e of d.events) {
       const c = el('div', 'card');
       c.append(el('h2', null, [e.date, e.doors_open, e.type].filter(Boolean).join('  ·  ')));

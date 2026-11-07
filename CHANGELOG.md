@@ -23,7 +23,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - **Data Thistle** as a third events source (theatre, comedy, gigs, exhibitions, family days out, festivals): secret
   `datathistle_token` (free tier, 1,000 requests a month; the token lasts 30 days). Asked live, once per area per 12
   hours for the next fortnight (its terms allow 24), kept under `WA_DATATHISTLE_MONTHLY_LIMIT` (900), left out of Home
-  Assistant's repeating location refreshes, and credited on the Events page and Here.
+  Assistant's repeating location refreshes, and credited on the Events page and Here. Save the refresh token as
+  `datathistle_refresh_token` too: World Assistant renews the pair every 25 days and when the token is refused, saving
+  both new ones, and the Events page warns if a renewal fails.
 - **Bikesy** in Outdoors: items without a link are also looked for in Bikesy's deals from 30-odd UK bike shops (its tag
   pages; its search pages are closed to automated readers).
 

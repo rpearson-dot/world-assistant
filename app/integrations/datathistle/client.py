@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Self
 
 import httpx
@@ -184,3 +184,123 @@ async def _main(argv: list[str]) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(asyncio.run(_main(sys.argv)))
+
+
+# --- Keeping the token alive -------------------------------------------------------------------------------------
+# An access token lasts 30 days; the refresh token renews it for up to a month after that, and each renewal returns a
+# new pair (GET https://auth.datathistle.com/v1/refresh with the refresh token as the Bearer token, answering
+# {"status": 200, "accessToken": ..., "refreshToken": ...}). Both are saved to the keys folder (as the Keys page
+# saves them), which comes before any other copy. Renewed 25 days after the token was first seen or last renewed, and
+# at once (at most hourly) when Data Thistle refuses it.
+AUTH = "https://auth.datathistle.com/v1/refresh"
+AUTH_KEY = "datathistle_auth"
+RENEW_AFTER_DAYS = 25
+RETRY_S = 3600
+
+
+def _save_key(name: str, value: str) -> None:
+    import os
+    import tempfile
+
+    from app import secretstore
+
+    d = secretstore.keys_dir()
+    if not d.is_dir() or not os.access(d, os.W_OK):
+        raise DataThistleError("the new tokens cannot be saved: the keys folder is missing or not writable")
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=f".{name}.")
+    with os.fdopen(fd, "w") as f:
+        f.write(value)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, d / f"{name}.txt")
+    secretstore.clear_cache()
+
+
+async def _state(engine: Any) -> dict[str, Any]:
+    from sqlalchemy import text
+
+    async with engine.connect() as conn:
+        v = (await conn.execute(text("SELECT value FROM app_setting WHERE key = :k"), {"k": AUTH_KEY})).scalar()
+    return (json.loads(v) if isinstance(v, str) else v) or {}
+
+
+async def _put_state(engine: Any, value: dict[str, Any]) -> None:
+    from sqlalchemy import text
+
+    async with engine.begin() as conn:
+        await conn.execute(text("INSERT INTO app_setting (key, value, updated_at) VALUES (:k, CAST(:v AS jsonb), now()) "
+                                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()"),
+                           {"k": AUTH_KEY, "v": json.dumps(value)})  # fmt: skip
+
+
+async def renew(engine: Any, transport: httpx.AsyncBaseTransport | None = None) -> dict[str, Any]:
+    """Swap the refresh token for a new pair and save both. Raises DataThistleError, and records why."""
+    from app.config import get_settings
+
+    now = datetime.now(UTC)
+    st = await _state(engine)
+    st["tried_at"] = now.isoformat()
+    refresh = get_settings().datathistle_refresh_token
+    try:
+        if not refresh:
+            raise DataThistleError("no refresh token saved (datathistle_refresh_token): renew it by hand on your Data Thistle account page")
+        try:
+            async with httpx.AsyncClient(timeout=20, transport=transport) as c:
+                r = await c.get(AUTH, headers={"Authorization": f"Bearer {refresh}", "Accept": "application/json"})
+        except httpx.HTTPError as exc:
+            raise DataThistleError(f"Data Thistle's renewal could not be reached ({type(exc).__name__})") from exc
+        if r.status_code in (401, 403):
+            raise DataThistleError("Data Thistle refused the refresh token (it lasts a month after the access token "
+                                   "expires): make a new pair on your account page")  # fmt: skip
+        if r.status_code >= 400:
+            raise DataThistleError(f"Data Thistle's renewal answered HTTP {r.status_code}")
+        try:
+            body = r.json()
+        except ValueError as exc:
+            raise DataThistleError("Data Thistle's renewal did not send JSON") from exc
+        access, new_refresh = body.get("accessToken"), body.get("refreshToken")
+        if not (isinstance(access, str) and access and isinstance(new_refresh, str) and new_refresh):
+            raise DataThistleError(f"Data Thistle's renewal did not include both tokens (it sent {sorted(body)})")
+        _save_key("datathistle_refresh_token", new_refresh)  # the refresh first: losing it loses the chain
+        _save_key("datathistle_token", access)
+    except DataThistleError as exc:
+        st["error"] = str(exc)
+        await _put_state(engine, st)
+        raise
+    st.update(renewed_at=now.isoformat(), error=None, first_seen=st.get("first_seen") or now.isoformat())
+    await _put_state(engine, st)
+    return {"renewed": True, "at": st["renewed_at"]}
+
+
+async def keep_alive(engine: Any, refused: bool = False, transport: httpx.AsyncBaseTransport | None = None) -> dict[str, Any]:
+    """Renew when the token is 25 days old (from when it was first seen or last renewed), or now if it was refused
+    (not more than hourly). Notes when a token is first seen. Never raises: the outcome is returned and recorded."""
+    from app.config import get_settings
+
+    if not get_settings().datathistle_token:
+        return {"renewed": False, "why": "no token saved"}
+    now = datetime.now(UTC)
+    st = await _state(engine)
+    if not st.get("first_seen"):
+        st["first_seen"] = now.isoformat()
+        await _put_state(engine, st)
+    since = datetime.fromisoformat(st.get("renewed_at") or st["first_seen"])
+    due = now - since >= timedelta(days=RENEW_AFTER_DAYS)
+    tried = st.get("tried_at")
+    if refused and tried and (now - datetime.fromisoformat(tried)).total_seconds() < RETRY_S:
+        return {"renewed": False, "why": "tried within the hour", "error": st.get("error")}
+    if not (due or refused):
+        return {"renewed": False, "why": f"renews on {(since + timedelta(days=RENEW_AFTER_DAYS)).date().isoformat()}"}
+    try:
+        return await renew(engine, transport)
+    except DataThistleError as exc:
+        return {"renewed": False, "error": str(exc)}
+
+
+async def datathistle_renew(ctx: dict[str, Any]) -> Any:
+    """The worker's daily check of the token."""
+    from app.jobs import tracked
+
+    async def run() -> Any:
+        return await keep_alive(ctx["engine"])
+
+    return await tracked(ctx["engine"], "datathistle_renew", run)
