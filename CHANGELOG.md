@@ -4,6 +4,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-11-07
+
+### Added
+- **Here** (`/here`, docs/here.md): everything World Assistant knows about where you are now, from the browser's
+  location (over the https Tailscale address), without saving a place: the area, bus stops and buses, stations, fuel
+  and GRIDSERVE chargers, flood warnings, air quality, rivers, rain, tides, storm overflows, pollen, events, roads and
+  power cuts, each part on its own so one failing does not hide the rest. **Save as a place** keeps it. Assistant tool
+  `here` (lat and lon, or a postcode). EV chargers, stations, power cuts and the air and water endpoints now take a
+  point as well as a saved place.
+- **Outdoors** (`/outdoors`, docs/outdoors.md): a KitchenOwl list ("Outdoors") of outdoor gear, priced every morning
+  at GO Outdoors (searched by name, or a pasted product link) and Decathlon (a pasted product link only): the price
+  now, the shop's sale price, the lowest seen, stock, and price drops, kept for each product's history. Home Assistant
+  sensor `wa_outdoors_price_drops`, and the `outdoors`, `outdoors_add` and `outdoors_check` tools.
+
 ## [0.32.0] - 2026-11-07
 
 ### Added

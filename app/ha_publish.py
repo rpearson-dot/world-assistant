@@ -426,6 +426,22 @@ def wishlist_device(data: dict[str, Any]) -> Device:
     ])  # fmt: skip
 
 
+def outdoors_device(data: dict[str, Any]) -> Device:
+    """The Outdoors list: how many products have dropped in price in the last week, with which and by how much."""
+    items = data.get("items") or []
+    if not items:
+        raise ValueError("the Outdoors list is empty")
+    drops = [{"item": it["name"], "product": p["name"], "retailer": p["retailer"], "price": p.get("price"),
+              "from": p.get("previous_price"), "lowest": p.get("lowest_price"), "when": p.get("dropped_at"),
+              "url": p.get("url")} for it in items for p in it.get("dropped") or []]  # fmt: skip
+    last = data.get("last_check") or {}
+    return Device("outdoors", "World Assistant outdoors", [
+        Sensor("price_drops", "Outdoors price drops this week", len(drops), icon="mdi:tag-arrow-down",
+               state_class="measurement", attributes={"drops": drops, "items": [it["name"] for it in items],
+                                                      "last_check": last.get("at"), "errors": last.get("errors")}),
+    ])  # fmt: skip
+
+
 def environment_device(summary: dict[str, Any]) -> Device:
     """Air and water: the air quality index at each place, home's river level and rain, tides where there are."""
     sensors: list[Sensor] = []
@@ -579,7 +595,10 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
     async def wishlist() -> Device:
         return wishlist_device(await _get(c, "/v1/wishlist"))
 
-    for name, build in (("environment", environment), ("wishlist", wishlist), ("ev", ev), ("trips", trips), ("energy", energy), ("power", power), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
+    async def outdoors() -> Device:
+        return outdoors_device(await _get(c, "/v1/outdoors"))
+
+    for name, build in (("environment", environment), ("wishlist", wishlist), ("outdoors", outdoors), ("ev", ev), ("trips", trips), ("energy", energy), ("power", power), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
         await attempt(name, build)
     return devices
 

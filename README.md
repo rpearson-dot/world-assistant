@@ -50,6 +50,8 @@ It started as a personal project on a home Unraid server. Nothing in it is speci
 | **Energy** | Your Octopus tariff's rates (Cosy, Agile, fixed) banded cheap / standard / peak, the next cheap window and cheapest block, Saving Sessions, on a page at `/energy` and as sensors for Home Assistant to run the battery from ([how](docs/energy.md)). |
 | **Air and water** | Air quality near each place as Defra's 1-10 index, with the readings behind it, and river levels (low, normal or high for there), rainfall, tide gauges and storm overflow spills (on the rivers you watch) near home, live from Defra and the Environment Agency ([how](docs/environment.md)). |
 | **Wishlist** | A KitchenOwl list the whole family adds to, looked for in Aldi's Specialbuys and the Middle of Lidl twice a week: what is coming or on sale, and when each was last seen ([how](docs/wishlist.md)). |
+| **Here** | Everything World Assistant knows about where you are now, from your phone's location, without saving a place: buses, fuel, chargers, floods, air and water, pollen, events, roads and power cuts ([how](docs/here.md)). |
+| **Outdoors** | A KitchenOwl list of outdoor gear, priced every morning at GO Outdoors and Decathlon, with price drops ([how](docs/outdoors.md)). |
 | **Shopping** | The family's shopping list in KitchenOwl (its own app, on your tailnet), priced at Sainsbury's and Ocado: the total at each, which is cheaper, the product it means for each item (yours to change, remembered), the next delivery slots, and sending the list to either basket. Nothing is booked or bought: you check out on their site ([how](docs/shopping.md)). |
 | **EV chargers** | GRIDSERVE's chargers near your places, along a trip or by name: how many work and are free now, by connector (CCS, CHAdeMO, Type 2), how fast and the price, refreshed hourly; on the map and in the graph ([how](docs/ev.md)). |
 | **Trip conditions** | What is on the way for a trip with a route: works, closures and incidents (National Highways and TfL) and flood warnings, now and planned ([how](docs/trip-conditions.md)). |
@@ -146,7 +148,7 @@ releases are signed (Sigstore) with SBOMs, and every push is scanned for secrets
 - [Assistant](docs/assistant.md): Siri Shortcuts, MCP, the default place
 - [Tailscale](docs/tailscale.md): the app on your phone anywhere, Siri and MCP over your tailnet
 - [MQTT over TLS](docs/mqtt-tls.md): certificates from the car's OVMS module to Home Assistant
-- [Bus tracker](docs/bus.md), [Trains](docs/trains.md), [Leaf dashboard](docs/leaf.md), [EV chargers](docs/ev.md), [Shopping](docs/shopping.md), [Wishlist](docs/wishlist.md), [Air and water](docs/environment.md), [Map](docs/map.md), [Knowledge graph](docs/graph.md)
+- [Bus tracker](docs/bus.md), [Trains](docs/trains.md), [Leaf dashboard](docs/leaf.md), [EV chargers](docs/ev.md), [Shopping](docs/shopping.md), [Wishlist](docs/wishlist.md), [Outdoors](docs/outdoors.md), [Here](docs/here.md), [Air and water](docs/environment.md), [Map](docs/map.md), [Knowledge graph](docs/graph.md)
 - [Backups](docs/backup.md): the status-page button, the deploy script and restoring
 - [Secrets and key vaults](docs/secrets.md), [bundled OpenBao](docs/openbao.md)
 - [Security](docs/security.md): what is protected and how; supply chain

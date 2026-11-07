@@ -121,6 +121,8 @@ ICONS = {
     "ha": '<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/>',
     "settings": '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
     "wishlist": '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+    "here": '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/>',
+    "outdoors": '<path d="M3 20 12 4l9 16z"/><path d="M12 4v16M9 20l3-5 3 5"/>',
     "more": '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
 }  # fmt: skip
 
@@ -128,6 +130,7 @@ PAGES = (  # (id, path, label, icon, on the phone's tab bar)
     ("bus", "/bus", "Buses", "bus", True),
     ("trains", "/trains", "Trains", "train", True),
     ("map", "/map", "Map", "map", True),
+    ("here", "/here", "Here", "here", False),
     ("fuel", "/fuel", "Fuel", "fuel", True),
     ("energy", "/energy", "Energy", "energy", False),
     ("events", "/events", "Events", "events", False),
@@ -136,6 +139,7 @@ PAGES = (  # (id, path, label, icon, on the phone's tab bar)
     ("vehicles", "/vehicles", "Vehicles", "vehicles", False),
     ("shopping", "/shopping", "Shopping", "shopping", False),
     ("wishlist", "/wishlist", "Wishlist", "wishlist", False),
+    ("outdoors", "/outdoors", "Outdoors", "outdoors", False),
     ("graph", "/graph", "Graph", "graph", False),
     ("ha", "/ha", "Home Assistant", "ha", False),
     ("settings", "/settings", "Settings", "settings", False),

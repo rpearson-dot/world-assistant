@@ -37,26 +37,36 @@ async def _place(request: Request, place: str | None) -> Any:
         return (await conn.execute(text("SELECT id, name, postcode, lat, lon FROM place WHERE id = :p"), {"p": pid})).first()
 
 
-async def cuts_near(conn: Any, p: Any, km: float) -> list[dict[str, Any]]:
-    """Power cuts within km of a place, or naming its postcode (a cut with no position is matched by postcode)."""
+async def cuts_near(conn: Any, p: Any, km: float, point: tuple[float, float, str | None] | None = None) -> list[dict[str, Any]]:
+    """Power cuts within km of a place (or a point: lat, lon and its postcode if known), or naming its postcode (a cut
+    with no position is matched by postcode)."""
     from app.integrations.ukpn.sync import AT
 
     here = AT.replace(":m", ":here_m")
+    src = ("(SELECT 'here'::text AS id, CAST(:pc AS text) AS postcode, "
+           "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography AS geog)" if point else "(SELECT * FROM place WHERE id = :p)")  # fmt: skip
+    lat, lon, pc = point or (None, None, None)
     rows = await conn.execute(text(
         f"SELECT f.*, ST_Distance(f.geog, p.geog) / 1000.0 AS km, {here} AS here "
-        f"FROM ukpn_fault f JOIN place p ON p.id = :p WHERE {here} OR ST_DWithin(f.geog, p.geog, :m) "
-        "ORDER BY here DESC, km NULLS FIRST"), {"p": p.id, "m": km * 1000, "here_m": NEAR_KM * 1000})  # fmt: skip
+        f"FROM ukpn_fault f CROSS JOIN {src} p WHERE {here} OR ST_DWithin(f.geog, p.geog, :m) "
+        "ORDER BY here DESC, km NULLS FIRST"),
+        {"p": getattr(p, "id", None), "m": km * 1000, "here_m": NEAR_KM * 1000, "lat": lat, "lon": lon, "pc": pc})  # fmt: skip
     return [cut_row(r) for r in rows]
 
 
 @router.get("/cuts")
-async def cuts(request: Request, place: str | None = None, km: float = Query(5.0, gt=0, le=50)) -> dict[str, Any]:
-    """Power cuts now near a saved place (home by default), the ones at the place first."""
-    p = await _place(request, place)
+async def cuts(request: Request, place: str | None = None, km: float = Query(5.0, gt=0, le=50),
+               lat: float | None = Query(None, ge=49.5, le=61.0, description="with lon: near this point, not a place"),
+               lon: float | None = Query(None, ge=-8.7, le=2.0),
+               postcode: str | None = Query(None, max_length=10, description="the point's postcode, to match cuts by it")) -> dict[str, Any]:  # fmt: skip
+    """Power cuts now near a saved place (home by default) or a point, the ones at the place first."""
+    point = ((float(lat), float(lon), postcode if isinstance(postcode, str) else None)
+             if isinstance(lat, (int, float)) and isinstance(lon, (int, float)) else None)
+    p = None if point else await _place(request, place)
     async with request.app.state.engine.connect() as conn:
-        items = await cuts_near(conn, p, km)
+        items = await cuts_near(conn, p, km, point)
         total = (await conn.execute(text("SELECT count(*), max(seen) FROM ukpn_fault"))).first()
-    return {"place": p.id, "count": len(items), "at_place": sum(i["at_place"] for i in items),
+    return {"place": p.id if p else "here", "count": len(items), "at_place": sum(i["at_place"] for i in items),
             "across_network": total[0], "updated": _iso(total[1]), "cuts": items}  # fmt: skip
 
 

@@ -559,6 +559,95 @@ async def wishlist_check_tool(request: Request, args: dict[str, Any]) -> dict[st
     return {"text": (" ".join(_wish_text(i) for i in found) if found else
                      f"Checked {data['wishes']} wishes: none is coming or on sale now.") + errs, "data": data}  # fmt: skip
 
+
+# --- Here --------------------------------------------------------------------------------------------------------
+async def here_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.here import gather
+    from app.postcodes import local_postcode
+
+    lat, lon = args.get("lat"), args.get("lon")
+    if not (isinstance(lat, (int, float)) and isinstance(lon, (int, float))):
+        pc = str(args.get("postcode") or "").strip()
+        if not pc:
+            raise ToolError("Give lat and lon (a Siri shortcut can send the phone's location), or a postcode.")
+        got = await local_postcode(request.app.state.engine, pc)
+        if got is None:
+            raise ToolError(f"Could not find the postcode {pc!r}.")
+        lat, lon = got.lat, got.lon
+    if not (49.5 <= float(lat) <= 61.0 and -8.7 <= float(lon) <= 2.0):
+        raise ToolError("That point is outside Great Britain.")
+    d = await gather(request, float(lat), float(lon))
+    a = d.get("area") or {}
+    head = f"Around {a['postcode']}" + (f", {a['district']}" if a.get("district") else "") if a.get("postcode") else f"Around {d['lat']}, {d['lon']}"
+    want = {w.strip() for w in str(args.get("about") or "").split(",") if w.strip()}
+    parts = [p for p in d["parts"] if p["ok"] and not p.get("blank") and (not want or p["part"] in want)]
+    return {"text": head + ". " + " ".join(f"{p['title']}: {p['text']}" for p in parts),
+            "data": {k: v for k, v in d.items() if k != "parts"} | {"parts": [{k: p[k] for k in ("part", "title", "ok", "text")} for p in d["parts"]]}}  # fmt: skip
+
+
+# --- Outdoors ----------------------------------------------------------------------------------------------------
+def _outdoor_text(it: dict[str, Any]) -> str:
+    ps = it.get("products") or []
+    if not ps:
+        return f"{it['name']}: not priced yet."
+    shop = {"gooutdoors": "GO Outdoors", "decathlon": "Decathlon"}
+
+    def one(p: dict[str, Any]) -> str:
+        price = f"£{p['price']:.2f}" if p.get("price") is not None else "no price"
+        extra = []
+        if p.get("dropped") and p.get("previous_price") is not None:
+            extra.append(f"down from £{p['previous_price']:.2f}")
+        if p.get("was_price"):
+            extra.append(f"was £{p['was_price']:.2f}")
+        if p.get("lowest_price") is not None and p.get("price") is not None and p["lowest_price"] < p["price"]:
+            extra.append(f"lowest seen £{p['lowest_price']:.2f}")
+        if p.get("available") is False:
+            extra.append("out of stock")
+        return f"{p['name']} at {shop.get(p['retailer'], p['retailer'])}, {price}" + (f" ({', '.join(extra)})" if extra else "")
+
+    return f"{it['name']}: " + "; ".join(one(p) for p in ps[:3]) + "."
+
+
+async def outdoors_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.outdoors import overview
+
+    data = await _wrap(overview(request))
+    if not data["items"]:
+        return {"text": f"The {data['list']['name']} list in KitchenOwl is empty.", "data": data}
+    want = str(args.get("name") or "").strip().lower()
+    items = [i for i in data["items"] if not want or want in i["name"].lower()]
+    if not items:
+        return {"text": f"Nothing called {args.get('name')!r} on the Outdoors list.", "data": data}
+    drops = sum(len(i["dropped"]) for i in items)
+    head = f"{drops} price drop{'s' if drops != 1 else ''} this week. " if drops else ""
+    return {"text": head + " ".join(_outdoor_text(i) for i in items), "data": {**data, "items": items}}
+
+
+async def outdoors_add_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.outdoors import ItemIn, add_outdoors
+
+    bits = [str(args["link"]).strip()] if args.get("link") else []
+    if args.get("max_price"):
+        bits.append(f"under £{float(args['max_price']):g}")
+    r = await _wrap(add_outdoors(request, ItemIn(name=_need(args, "name"), description=" ".join(bits))))
+    it = next((i for i in r["items"] if i["key"] == r["item"]["key"]), None)
+    head = (f"{r['item']['name']} was already on the {r['list']['name']} list" if r.get("already")
+            else f"Added {r['item']['name']} to the {r['list']['name']} list in KitchenOwl")  # fmt: skip
+    errs = " Could not read: " + "; ".join(e for v in (r.get("errors") or {}).values() for e in v) + "." if r.get("errors") else ""
+    return {"text": f"{head}. {_outdoor_text(it) if it else ''}{errs}".strip(), "data": r}
+
+
+async def outdoors_check_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.outdoors import check_now
+
+    data = await _wrap(check_now(request, None))
+    fell = data.get("fell") or []
+    errs = " Could not read: " + "; ".join(e for v in (data.get("errors") or {}).values() for e in v) + "." if data.get("errors") else ""
+    if not fell:
+        return {"text": f"Checked {data['items']} items: no prices have fallen since the last check.{errs}", "data": data}
+    return {"text": "Cheaper now: " + "; ".join(f"{p['name']} £{p['price']:.2f} (was £{p['from']:.2f})" for p in fell) + "." + errs,
+            "data": data}  # fmt: skip
+
 MORE: list[Tool] = [
     Tool("shopping", "The family shopping list (KitchenOwl): what is on it, or what it came to at Sainsbury's and Ocado when last priced.",
          {"type": "object", "properties": _props(about=("string", "list (default) or prices"))}, shopping_tool),
@@ -588,6 +677,25 @@ MORE: list[Tool] = [
          floods_tool),
     Tool("road_disruptions_near", "TfL road works, closures and incidents near a saved place in London.",
          {"type": "object", "properties": _props(place=PLACE, km=("number", "how far, default 0.5"))}, road_disruptions_tool),
+    Tool("outdoors", "The family's Outdoors list in KitchenOwl, priced every day at GO Outdoors and Decathlon: each "
+         "thing's price now, the lowest seen, sale prices, stock, and price drops this week.",
+         {"type": "object", "properties": _props(name=("string", "just this item (any part of its name)"))}, outdoors_tool),
+    Tool("outdoors_add", "Add something to the Outdoors list in KitchenOwl (acts: adds it there) and price it now. Give "
+         "a GO Outdoors or Decathlon product link to follow that product exactly; otherwise GO Outdoors is searched.",
+         {"type": "object", "properties": _props(name=("string", "what you want, e.g. Two-man tent"),
+                                                 link=("string", "a GO Outdoors or Decathlon product link"),
+                                                 max_price=("number", "the most you would pay, £")),
+          "required": ["name"]}, outdoors_add_tool),
+    Tool("outdoors_check", "Price everything on the Outdoors list now and say what has got cheaper (it is also "
+         "checked every morning).", {"type": "object", "properties": {}}, outdoors_check_tool),
+    Tool("here", "Everything about a point that is not a saved place, e.g. where the phone is now: the area, bus stops "
+         "and buses, stations, fuel and EV chargers, flood warnings, air quality, rivers, rain, tides, storm overflows, "
+         "pollen, events, roads and power cuts. Give lat and lon, or a postcode.",
+         {"type": "object", "properties": _props(lat=("number", "latitude"), lon=("number", "longitude"),
+                                                 postcode=("string", "a UK postcode instead of lat and lon"),
+                                                 about=("string", ("only these parts, comma-separated: stops, buses, "
+                                                        "stations, floods, air, rivers, rain, tides, overflows, pollen, "
+                                                        "fuel, chargers, events, roads, power")))}, here_tool),
     Tool("wishlist", "The family's Wishlist list in KitchenOwl: things to look out for in Aldi's Specialbuys and the "
          "Middle of Lidl. Says which "
          "are coming or on sale now (price, shop, date) and, for the rest, when each was last seen and last on sale.",

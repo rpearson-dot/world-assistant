@@ -88,19 +88,25 @@ async def _put(engine: AsyncEngine, key: str, value: Any) -> None:
                            {"k": key, "v": json.dumps(value)})  # fmt: skip
 
 
-async def the_list(request: Request) -> tuple[int, int, str]:
-    """(household id, list id, list name) of the wishlist: the chosen list, or the household's list called Wishlist."""
+async def find_list(request: Request, settings_key: str, default: str, page: str) -> tuple[int, int, str]:
+    """(household id, list id, list name) of a KitchenOwl list World Assistant watches: the one chosen (saved under
+    settings_key), or the shopping household's list called `default`."""
     st = await S.load_settings(request)
     if not st["household_id"]:
-        raise HTTPException(409, "Set up the Shopping page first: the wishlist is a list in the same KitchenOwl household")
+        raise HTTPException(409, f"Set up the Shopping page first: the {default} list is in the same KitchenOwl household")
     lists = await S.kitchenowl_get(f"/api/household/{st['household_id']}/shoppinglist")
-    chosen = (await _setting(request.app.state.engine, SETTINGS_KEY) or {}).get("list_id")
+    chosen = (await _setting(request.app.state.engine, settings_key) or {}).get("list_id")
     hit = next((x for x in lists if x.get("id") == chosen), None) if chosen else None
-    hit = hit or next((x for x in lists if str(x.get("name", "")).strip().lower() == DEFAULT_LIST.lower()), None)
+    hit = hit or next((x for x in lists if str(x.get("name", "")).strip().lower() == default.lower()), None)
     if hit is None:
-        raise HTTPException(409, f'No KitchenOwl list called "{DEFAULT_LIST}" yet: add one in the KitchenOwl app, '
-                                 "or choose another list on the Wishlist page")  # fmt: skip
-    return int(st["household_id"]), int(hit["id"]), str(hit.get("name") or DEFAULT_LIST)
+        raise HTTPException(409, f'No KitchenOwl list called "{default}" yet: add one in the KitchenOwl app, '
+                                 f"or choose another list on the {page} page")  # fmt: skip
+    return int(st["household_id"]), int(hit["id"]), str(hit.get("name") or default)
+
+
+async def the_list(request: Request) -> tuple[int, int, str]:
+    """(household id, list id, list name) of the wishlist: the chosen list, or the household's list called Wishlist."""
+    return await find_list(request, SETTINGS_KEY, DEFAULT_LIST, "Wishlist")
 
 
 async def items(request: Request) -> tuple[dict[str, Any], list[dict[str, Any]]]:

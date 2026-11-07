@@ -18,6 +18,7 @@ from app.config import get_settings
 from app.integrations.gridserve import normalise as N
 from app.places import place_or_default
 
+POINT = "(SELECT ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography AS geog)"
 router = APIRouter(prefix="/v1/ev", tags=["ev"], dependencies=[Depends(require_token)])
 
 SITE_COLS = "s.id, s.operator, s.name, s.network, s.address, s.city, s.postcode, s.lat, s.lon, s.facilities, s.open_24h, s.opening, s.seen"
@@ -126,18 +127,23 @@ async def sites(
     vehicle: str | None = Query(None, description="a saved vehicle: its connector, when none is given"),
     q: str | None = Query(None, max_length=80, description="a name to look for (anywhere, not only near the place)"),
     limit: int = Query(20, ge=1, le=200),
+    lat: float | None = Query(None, ge=49.5, le=61.0, description="with lon: near this point, not a place"),
+    lon: float | None = Query(None, ge=-8.7, le=2.0),
 ) -> dict[str, Any]:
-    """Charging sites nearest a saved place (home by default), or whose name matches `q`."""
+    """Charging sites nearest a saved place (home by default) or a point, or whose name matches `q`."""
     want = await _want(request, connector, vehicle)
-    pid = await place_or_default(request, place)
+    point = isinstance(lat, (int, float)) and isinstance(lon, (int, float))
+    lat, lon = (lat, lon) if point else (None, None)
+    pid = "here" if point else await place_or_default(request, place)
+    src = POINT if point else "(SELECT geog FROM place WHERE id = :p)"
     async with request.app.state.engine.connect() as conn:
-        p = (await conn.execute(text("SELECT id, name, geog FROM place WHERE id = :p"), {"p": pid})).first()
-        if p is None:
+        if not point and (await conn.execute(text("SELECT 1 FROM place WHERE id = :p"), {"p": pid})).first() is None:
             raise HTTPException(404, f"no place {pid!r}")
         where = "ST_DWithin(s.geog, pl.geog, :m)" if not q else "(s.name ILIKE :q OR s.city ILIKE :q OR s.postcode ILIKE :q)"
         rows = (await conn.execute(text(
-            f"SELECT {SITE_COLS}, ST_Distance(s.geog, pl.geog) / 1000.0 AS km FROM ev_site s JOIN place pl ON pl.id = :p "
-            f"WHERE {where} ORDER BY km LIMIT :n"), {"p": pid, "m": km * 1000, "q": f"%{q}%", "n": limit * 3})).all()  # fmt: skip
+            f"SELECT {SITE_COLS}, ST_Distance(s.geog, pl.geog) / 1000.0 AS km FROM ev_site s CROSS JOIN {src} pl "
+            f"WHERE {where} ORDER BY km LIMIT :n"),
+            {"p": pid, "m": km * 1000, "q": f"%{q}%", "n": limit * 3, "lat": lat, "lon": lon})).all()  # fmt: skip
         by, prices = await _details(conn, [r.id for r in rows])
         rel = await reliability(conn, [r.id for r in rows])
         total = (await conn.execute(text("SELECT count(*), max(seen) FROM ev_site"))).first()

@@ -24,6 +24,10 @@ switched off hides its tools.
 | `bus` | whether a bus made the target stop before the deadline, and next buses (`tracker` optional if only one) |
 | `floods_near` | flood warnings and alerts covering a place (`km` to look around it) |
 | `road_disruptions_near` | TfL road works, closures and incidents near a place (`km`, default 0.5) |
+| `here` | everything about a point that is not a saved place (lat and lon, or a postcode): buses, fuel, chargers, floods, air and water, pollen, events, roads, power cuts |
+| `outdoors` | the KitchenOwl Outdoors list priced at GO Outdoors and Decathlon: prices, lowest seen, sales, drops this week |
+| `outdoors_add` | add a thing to the Outdoors list, optionally with a product link, and price it (acts: adds it in KitchenOwl) |
+| `outdoors_check` | price the Outdoors list now and say what got cheaper |
 | `wishlist` | the family's KitchenOwl wishlist: what is coming or on sale at Aldi or Lidl, and when the rest were last seen |
 | `wish_add` | add a wish to the KitchenOwl wishlist and check Aldi and Lidl for it (acts: adds it in KitchenOwl) |
 | `wish_remove` | tick a wish off the KitchenOwl wishlist (acts: ticks it; its history is kept) |
