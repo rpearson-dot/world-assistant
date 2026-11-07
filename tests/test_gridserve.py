@@ -198,6 +198,8 @@ async def test_synced_then_asked_near_home_along_a_trip_and_by_name(schema: None
     client = TestClient(app)
     near = client.get("/v1/ev/sites?km=25", headers=h).json()
     assert [s["name"] for s in near["sites"]] == ["MOTO Near", "HU - Priory Fields"]  # Birmingham is too far
+    at = client.get(f"/v1/ev/sites?km=25&lat={HOME[0]}&lon={HOME[1]}", headers=h).json()  # a point, for Here
+    assert [s["name"] for s in at["sites"]] == ["MOTO Near", "HU - Priory Fields"] and at["place"] == "here"
     assert near["sites"][0]["chargers"]["free"] == 1 and near["sites"][0]["chargers"]["pence_per_kwh"]["min"] == 79.0
     cha = client.get("/v1/ev/sites?km=25&connector=chademo", headers=h).json()
     assert [s["name"] for s in cha["sites"]] == ["MOTO Near"]  # the hub has no CHAdeMO

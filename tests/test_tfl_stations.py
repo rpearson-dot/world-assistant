@@ -190,6 +190,8 @@ async def test_stored_and_asked_through_the_api_and_the_assistant(schema: None, 
     assert swr["alerts"] == [] and swr["covered"] == []  # not TfL's: no lift data, and the page says so
     near = c.get("/v1/stations/near?km=1", headers=H).json()
     assert {s["id"] for s in near["stations"]} == {"940GZZLUWIM", "940GZZCRWIM"}
+    at = c.get("/v1/stations/near?km=1&lat=51.4205&lon=-0.2070", headers=H).json()  # a point, for Here
+    assert {s["id"] for s in at["stations"]} == {"940GZZLUWIM", "940GZZCRWIM"} and at["place"] == "here"
     assert c.get("/v1/stations/nope", headers=H).status_code == 404
     lifts = c.get("/v1/stations/alerts?lifts_only=true", headers=H).json()
     assert [a["station_id"] for a in lifts["alerts"]] == ["940GZZLUWLO"]

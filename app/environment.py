@@ -36,7 +36,14 @@ router = APIRouter(prefix="/v1/environment", tags=["environment"], dependencies=
 TIMEOUT = httpx.Timeout(20.0, connect=10.0)
 
 
-async def _where(request: Request, place: str | None) -> tuple[str, str, float, float]:
+LAT = Query(None, ge=49.5, le=61.0, description="with lon: this point, not a place")
+LON = Query(None, ge=-8.7, le=2.0)
+
+
+async def _where(request: Request, place: str | None, lat: float | None = None,
+                 lon: float | None = None) -> tuple[str, str, float, float]:  # fmt: skip
+    if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+        return "here", "here", float(lat), float(lon)
     pid = await place_or_default(request, place)
     async with request.app.state.engine.connect() as conn:
         row = (await conn.execute(text("SELECT name, lat, lon FROM place WHERE id = :p"), {"p": pid})).first()
@@ -55,34 +62,34 @@ async def _call(fn: Any, *args: Any, **kw: Any) -> dict[str, Any]:
 
 @router.get("/air")
 async def air(request: Request, place: str | None = Query(None, description="saved place; default: home"),
-              km: float = Query(20, gt=0, le=60)) -> dict[str, Any]:  # fmt: skip
+              km: float = Query(20, gt=0, le=60), lat: float | None = LAT, lon: float | None = LON) -> dict[str, Any]:  # fmt: skip
     """Air quality: the nearest recent reading of NO2, ozone, PM2.5 and PM10, and Defra's Daily Air Quality Index
     (1-3 low, 4-6 moderate, 7-9 high, 10 very high): the highest of the four."""
-    pid, name, lat, lon = await _where(request, place)
+    pid, name, lat, lon = await _where(request, place, lat, lon)
     return {"place": pid, "name": name, **await _call(C.air_near, lat, lon, km)}
 
 
 @router.get("/rivers")
 async def rivers(request: Request, place: str | None = Query(None, description="saved place; default: home"),
-                 km: float = Query(5, gt=0, le=30)) -> dict[str, Any]:  # fmt: skip
+                 km: float = Query(5, gt=0, le=30), lat: float | None = LAT, lon: float | None = LON) -> dict[str, Any]:  # fmt: skip
     """River level gauges near a place: the level now, its usual range there (low, normal, high) and the trend."""
-    pid, name, lat, lon = await _where(request, place)
+    pid, name, lat, lon = await _where(request, place, lat, lon)
     return {"place": pid, "name": name, **await _call(C.rivers_near, lat, lon, km)}
 
 
 @router.get("/rain")
 async def rain(request: Request, place: str | None = Query(None, description="saved place; default: home"),
-               km: float = Query(10, gt=0, le=30)) -> dict[str, Any]:  # fmt: skip
+               km: float = Query(10, gt=0, le=30), lat: float | None = LAT, lon: float | None = LON) -> dict[str, Any]:  # fmt: skip
     """Rain gauges near a place: millimetres in the last hour and the last 24 hours."""
-    pid, name, lat, lon = await _where(request, place)
+    pid, name, lat, lon = await _where(request, place, lat, lon)
     return {"place": pid, "name": name, **await _call(C.rain_near, lat, lon, km)}
 
 
 @router.get("/tides")
 async def tides(request: Request, place: str | None = Query(None, description="saved place; default: home"),
-                km: float = Query(20, gt=0, le=60)) -> dict[str, Any]:  # fmt: skip
+                km: float = Query(20, gt=0, le=60), lat: float | None = LAT, lon: float | None = LON) -> dict[str, Any]:  # fmt: skip
     """The nearest tide gauge: the measured level and whether it is rising or falling. Not a prediction."""
-    pid, name, lat, lon = await _where(request, place)
+    pid, name, lat, lon = await _where(request, place, lat, lon)
     return {"place": pid, "name": name, **await _call(C.tides_near, lat, lon, km)}
 
 
@@ -125,10 +132,11 @@ async def put_rivers(request: Request, body: Rivers) -> dict[str, Any]:
 async def overflows(request: Request, place: str | None = Query(None, description="saved place; default: home"),
                     km: float = Query(3, gt=0, le=20),
                     rivers: str | None = Query(None, description="comma-separated; default: the watched rivers"),
-                    river_km: float = Query(15, gt=0, le=60)) -> dict[str, Any]:  # fmt: skip
+                    river_km: float = Query(15, gt=0, le=60), lat: float | None = LAT,
+                    lon: float | None = LON) -> dict[str, Any]:  # fmt: skip
     """Storm overflows (Thames Water's, from the National Storm Overflow Hub) within `km`, and those on the watched
     rivers within `river_km`: which are discharging now, which have in the last 48 hours, and which are offline."""
-    pid, name, lat, lon = await _where(request, place)
+    pid, name, lat, lon = await _where(request, place, lat, lon)
     watch = [r for r in rivers.split(",")] if rivers is not None else await watched_rivers(request)
     return {"place": pid, "name": name, **await _call(C.overflows_near, lat, lon, km, watch, river_km)}
 

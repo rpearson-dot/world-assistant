@@ -228,6 +228,8 @@ async def test_synced_and_asked_everywhere(schema: None, monkeypatch: pytest.Mon
         "BEDDINGTON (SPN)", "SPN-S000000008443", "substation 1123458")
     cuts = c.get("/v1/power/cuts?km=5", headers=h).json()
     assert cuts["count"] == 1 and cuts["cuts"][0]["at_place"] and cuts["across_network"] == 2  # Bishop's Stortford is far
+    at = c.get(f"/v1/power/cuts?km=5&lat={HOME[0]}&lon={HOME[1]}&postcode=KT3%204ZZ", headers=h).json()  # for Here
+    assert at["count"] == 1 and at["cuts"][0]["at_place"] and at["place"] == "here"
     works = c.get("/v1/power/works", headers=h).json()
     assert (works["open"], works["proposed"]) == (1, 1)
     assert c.get("/v1/power/carbon", headers=h).status_code == 404  # dropped in 0.21.1

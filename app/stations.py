@@ -76,14 +76,20 @@ async def search(request: Request, q: str = Query(min_length=2, max_length=60), 
 
 @router.get("/near")
 async def near(request: Request, place: str | None = None, km: float = Query(2.0, gt=0, le=20),
-               limit: int = Query(10, ge=1, le=50)) -> dict[str, Any]:  # fmt: skip
-    """The stations closest to a saved place (home by default)."""
-    pid = await place_or_default(request, place)
+               limit: int = Query(10, ge=1, le=50),
+               lat: float | None = Query(None, ge=49.5, le=61.0, description="with lon: near this point, not a place"),
+               lon: float | None = Query(None, ge=-8.7, le=2.0)) -> dict[str, Any]:  # fmt: skip
+    """The stations closest to a saved place (home by default) or a point."""
+    point = isinstance(lat, (int, float)) and isinstance(lon, (int, float))
+    lat, lon = (lat, lon) if point else (None, None)
+    pid = "here" if point else await place_or_default(request, place)
+    src = ("(SELECT ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography AS geog)" if point
+           else "(SELECT geog FROM place WHERE id = :p)")  # fmt: skip
     async with request.app.state.engine.connect() as conn:
         rows = (await conn.execute(text(
             f"SELECT {', '.join('s.' + c for c in COLUMNS.split(', '))}, ST_Distance(s.geog, p.geog) / 1000.0 AS km "
-            "FROM tfl_station s JOIN place p ON p.id = :p WHERE ST_DWithin(s.geog, p.geog, :m) "
-            "ORDER BY km LIMIT :limit"), {"p": pid, "m": km * 1000, "limit": limit})).all()  # fmt: skip
+            f"FROM tfl_station s CROSS JOIN {src} p WHERE ST_DWithin(s.geog, p.geog, :m) "  # fixed SQL
+            "ORDER BY km LIMIT :limit"), {"p": pid, "m": km * 1000, "limit": limit, "lat": lat, "lon": lon})).all()  # fmt: skip
         out = [{**station_row(r), "km": round(r.km, 2), "closures": await alerts_at(conn, [r.id])} for r in rows]
     return {"place": pid, "count": len(out), "stations": out}
 
