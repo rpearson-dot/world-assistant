@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - UK Power Networks: planned roadworks failed every run since the portal renamed the dataset ("associated with"
   became "connected to"). Both titles are known, and a title that differs only in such filler words still counts.
 - A test that passed only because an earlier one left a database engine behind; a lint warning in the UKPN code.
+### Added
+- **Air and water** (docs/environment.md): air quality near each place as Defra's Daily Air Quality Index (1-10) with
+  the NO2, ozone, PM2.5 and PM10 readings behind it (Defra UK-AIR); river levels near home with their usual range and
+  trend, rainfall in the last hour and day, and tide gauges near coastal places (Environment Agency). Live, no key.
+  Home Assistant gets an "Air and water" device; the assistant gets `air_quality`, `river_levels` and `tides`.
+  `python -m app.environment` shows what each source sends.
+- **Storm overflows**: Thames Water's monitors (via Water UK's National Storm Overflow Hub) near home and on the rivers
+  you watch (`PUT /v1/environment/overflows/rivers`, or the `watch_rivers` tool), within 15 km to catch spills upstream:
+  which are discharging now and for how long, which did in the last 48 hours, which monitors are offline. HA sensor
+  `storm_overflows_<home>` counts the spills, for an automation to alert on; assistant tool `storm_overflows`.
 
 ## [0.30.0] - 2026-11-05
 

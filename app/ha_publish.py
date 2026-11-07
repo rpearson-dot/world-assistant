@@ -15,6 +15,7 @@ import hashlib
 import json
 import logging
 import math
+import re
 import statistics
 from datetime import UTC, datetime
 from typing import Any
@@ -409,6 +410,53 @@ def trips_device(trips: list[dict[str, Any]]) -> Device:
     return Device("trips", "Trips", sensors)
 
 
+def environment_device(summary: dict[str, Any]) -> Device:
+    """Air and water: the air quality index at each place, home's river level and rain, tides where there are."""
+    sensors: list[Sensor] = []
+    for p in summary.get("places") or []:
+        pid = re.sub(r"[^a-z0-9]+", "_", str(p["place"]).lower()).strip("_")
+        a = p.get("air") or {}
+        sensors.append(Sensor(f"air_quality_{pid}", f"Air quality {p['name']}", a.get("index"), icon="mdi:air-filter",
+                              state_class="measurement", attributes={"band": a.get("band"), "worst": a.get("worst"),
+                              "readings": a.get("readings") or {}, "error": a.get("error"), "note": a.get("note")}))  # fmt: skip
+        if "rivers" in p:
+            first = ((p["rivers"] or {}).get("rivers") or [{}])[0]
+            sensors.append(Sensor(f"river_level_{pid}", f"River level near {p['name']}", first.get("level_m"), unit="m",
+                                  icon="mdi:waves-arrow-up", state_class="measurement",
+                                  attributes={"river": first.get("river"), "station": first.get("station"),
+                                              "state": first.get("state"), "trend": first.get("trend"),
+                                              "typical_low_m": first.get("typical_low_m"), "typical_high_m": first.get("typical_high_m"),
+                                              "at": first.get("at"), "others": ((p["rivers"] or {}).get("rivers") or [])[1:],
+                                              "error": (p["rivers"] or {}).get("error")}))  # fmt: skip
+        if "rain" in p:
+            g = ((p["rain"] or {}).get("gauges") or [{}])[0]
+            sensors.append(Sensor(f"rain_24h_{pid}", f"Rain near {p['name']}, 24 hours", g.get("last_24h_mm"), unit="mm",
+                                  icon="mdi:weather-pouring", state_class="measurement",
+                                  attributes={"last_hour_mm": g.get("last_hour_mm"), "gauge": g.get("gauge"), "at": g.get("at"),
+                                              "error": (p["rain"] or {}).get("error")}))  # fmt: skip
+        if "overflows" in p:
+            o = p["overflows"] or {}
+
+            def brief(x: dict[str, Any]) -> dict[str, Any]:
+                return {k: x.get(k) for k in ("name", "river", "km", "since", "hours", "last_end")}
+
+            sensors.append(Sensor(f"storm_overflows_{pid}", f"Storm overflows spilling near {p['name']}",
+                                  None if o.get("error") else len(o.get("discharging") or []),
+                                  icon="mdi:pipe-leak", state_class="measurement",
+                                  attributes={"discharging": [brief(x) for x in o.get("discharging") or []],
+                                              "last_48h": [brief(x) for x in o.get("recent") or []],
+                                              "offline": o.get("offline"), "watched_rivers": o.get("rivers"),
+                                              "watched": o.get("count"), "error": o.get("error")}))  # fmt: skip
+        if p.get("tide"):
+            t = p["tide"]
+            sensors.append(Sensor(f"tide_{pid}", f"Tide near {p['name']}", t.get("level_m"), unit=t.get("unit") or "m",
+                                  icon="mdi:waves", state_class="measurement",
+                                  attributes={"gauge": t.get("gauge"), "trend": t.get("trend"), "at": t.get("at")}))  # fmt: skip
+    if not sensors:
+        raise ValueError("no places to report air and water for")
+    return Device("environment", "Air and water", sensors)
+
+
 async def _get(c: httpx.AsyncClient, path: str, **params: Any) -> Any:
     r = await c.get(path, params=params or None)
     r.raise_for_status()
@@ -509,7 +557,10 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
             raise ValueError("no charging sites stored (GRIDSERVE not set up yet)")
         return ev_device(data)
 
-    for name, build in (("ev", ev), ("trips", trips), ("energy", energy), ("power", power), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
+    async def environment() -> Device:
+        return environment_device(await _get(c, "/v1/environment/summary"))
+
+    for name, build in (("environment", environment), ("ev", ev), ("trips", trips), ("energy", energy), ("power", power), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
         await attempt(name, build)
     return devices
 
