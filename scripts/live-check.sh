@@ -7,6 +7,9 @@
 #     bash scripts/live-check.sh --quick         # skips the slower shop and timetable checks
 #     bash scripts/live-check.sh --out DIR       # writes it in DIR instead, keeping the latest ten there
 #
+# A check that belongs to a module switched off at /modules is not run: it shows as OFF in the summary and is not a
+# failure (its pages answer "switched off", and its shops and sources should not be asked).
+#
 # scripts/deploy.sh runs it after every update, in the background, into WA_DATA_DIR/live-checks (WA_LIVE_CHECK=0 turns
 # that off). Its result never decides whether an update is kept: other people's services are down sometimes.
 #
@@ -45,6 +48,31 @@ API = "http://localhost:8000"
 results: list[tuple[str, str]] = []
 
 
+def switched_on() -> set[str] | None:
+    """The modules switched on now (None if that cannot be read: then everything is checked)."""
+    try:
+        from app.modules import registry, selection
+
+        mods = list(registry.modules())
+        with create_engine(s.database_url).connect() as c:
+            raw = c.execute(text("SELECT value FROM app_setting WHERE key = :k"), {"k": selection.KEY}).scalar()
+        return selection.enabled_ids(mods, selection.Selection.from_json(raw) if raw else selection.Selection())
+    except Exception as exc:  # noqa: BLE001
+        print(f"(could not read which modules are on: {type(exc).__name__}; checking everything)")
+        return None
+
+
+ON = switched_on()
+
+
+def off(name: str, module: str | None) -> bool:
+    """True (and noted) when the check's module is switched off."""
+    if module and ON is not None and module not in ON:
+        results.append((name, f"OFF  ({module} is switched off at /modules: not checked)"))
+        return True
+    return False
+
+
 def head(t: str) -> None:
     print("\n" + "=" * 100 + f"\n== {t}\n" + "=" * 100, flush=True)
 
@@ -53,7 +81,9 @@ def note(name: str, ok: bool, why: str = "") -> None:
     results.append((name, ("OK   " if ok else "FAIL ") + why))
 
 
-def run(name: str, *args: str, timeout: int = 180) -> None:
+def run(name: str, *args: str, timeout: int = 180, module: str | None = None) -> None:
+    if off(name, module):
+        return
     head(f"{name}:  python -m {' '.join(args)}")
     t = time.time()
     try:
@@ -68,6 +98,10 @@ def run(name: str, *args: str, timeout: int = 180) -> None:
 
 
 def get(name: str, path: str, show: int = 4000, **params: object) -> object:
+    from app.modules import registry
+
+    if off(name, registry.module_for_path(path)):
+        return None
     head(f"{name}:  GET {path} {params or ''}")
     t = time.time()
     try:
@@ -99,17 +133,17 @@ get("API health", "/healthz", show=500)
 run("Smoke (every page and GET endpoint)", "app.smoke", timeout=300)
 
 # 0.31.0: Air and water
-run("Air and water probe (Defra, EA, overflow Hub)", "app.environment")
+run("Air and water probe (Defra, EA, overflow Hub)", "app.environment", module="environment")
 get("Air and water summary", "/v1/environment/summary", show=3000)
 get("Storm overflows", "/v1/environment/overflows")
 
 # 0.32.0 and 0.33.0: Wishlist, Outdoors
 if not QUICK:
-    run("Wishlist probe (Aldi, Lidl)", "app.wishlist", "kamado", "bbq")
-    run("Outdoors probe (GO Outdoors, Bikesy)", "app.outdoors", "105", "cassette")
-    run("Outdoors probe (GO Outdoors, Bikesy) 2", "app.outdoors", "two", "man", "tent")
+    run("Wishlist probe (Aldi, Lidl)", "app.wishlist", "kamado", "bbq", module="wishlist")
+    run("Outdoors probe (GO Outdoors, Bikesy)", "app.outdoors", "105", "cassette", module="outdoors")
+    run("Outdoors probe (GO Outdoors, Bikesy) 2", "app.outdoors", "two", "man", "tent", module="outdoors")
     run("Sigma Sports product page probe", "app.outdoors",
-        "https://www.sigmasports.com/item/Shimano/105-HG700-11-speed-Cassette-11-34T/IST8")
+        "https://www.sigmasports.com/item/Shimano/105-HG700-11-speed-Cassette-11-34T/IST8", module="outdoors")
 get("Wishlist list", "/v1/wishlist", show=2000)
 get("Outdoors list", "/v1/outdoors", show=2000)
 
@@ -125,17 +159,22 @@ get("Bank holidays", "/v1/bank-holidays", show=1500)
 # Events, with Data Thistle
 get("Events near home (Skiddle, Ticketmaster, Data Thistle)", "/v1/events/near", show=4000, lat=lat, lon=lon, days=7)
 if keys["what3words_api_key"]:
-    run("what3words probe (the words for home; not counted)", "app.integrations.what3words.client", str(lat), str(lon))
+    run("what3words probe (the words for home; not counted)", "app.integrations.what3words.client", str(lat), str(lon),
+        module="here")
 if keys["datathistle_token"]:
-    run("Data Thistle probe (one request)", "app.integrations.datathistle.client", str(lat), str(lon))
+    run("Data Thistle probe (one request)", "app.integrations.datathistle.client", str(lat), str(lon), module="events")
 if not QUICK and keys["bods_api_key"]:
-    run("BODS bus line probe (the 406)", "app.integrations.bus.bods_probe", "406", "51.3343", "-0.2678", timeout=240)
-    run("BODS disruptions probe", "app.integrations.bods.disruptions_probe", str(lat), str(lon), "25", timeout=240)
+    run("BODS bus line probe (the 406)", "app.integrations.bus.bods_probe", "406", "51.3343", "-0.2678", timeout=240,
+        module="bods")
+    run("BODS disruptions probe", "app.integrations.bods.disruptions_probe", str(lat), str(lon), "25", timeout=240,
+        module="busdisruptions")
 
 head("Summary")
 for name, res in results:
     print(f"{res:<45} {name}")
-print(f"\n{sum(r.startswith('OK') for _, r in results)} of {len(results)} OK")
+n_off = sum(r.startswith("OFF") for _, r in results)
+checked = len(results) - n_off
+print(f"\n{sum(r.startswith('OK') for _, r in results)} of {checked} OK" + (f"; {n_off} not checked (switched off)" if n_off else ""))
 PY
 
 echo "Done: $OUT"
