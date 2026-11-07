@@ -77,19 +77,34 @@ ROWS: dict[str, Any] = {
                          "status": "Active", "location": "High Road, New Malden", "has_closures": False}],
     "disruption_corridors": [("d1", "a3"), ("ghost", "a3")],
     "local_event_rows": [{"id": "skiddle:1", "source": "skiddle", "name": "Gig", "day": "2026-11-01",
-                          "type": "LIVE", "venue": "Hall", "town": "Kingston", "lat": NEAR[0], "lon": NEAR[1]}],
+                          "type": "LIVE", "venue": "Hall", "venue_id": "hall:KT11AA", "town": "Kingston",
+                          "lat": NEAR[0], "lon": NEAR[1]},
+                         {"id": "skiddle:2", "source": "skiddle", "name": "Nowhere", "day": "2026-11-01",
+                          "venue_id": "gone:KT99ZZ", "lat": NEAR[0], "lon": NEAR[1]}],
+    "venue_rows": [{"id": "hall:KT11AA", "name": "Hall", "town": "Kingston", "postcode": "KT1 1AA", "lat": NEAR[0],
+                    "lon": NEAR[1]}],
     "area_rows": [{"id": "district:K", "kind": "district", "name": "Kingston", "code": "E1"},
                   {"id": "county:L", "kind": "county", "name": "Greater London", "code": "E2"},
                   {"id": "region:SE", "kind": "region", "name": "South East", "code": "E3"},
                   {"id": "district:Empty", "kind": "district", "name": "Nobody lives here", "code": "E4"}],
     "inside_pairs": [("Place", "home", "district:K"), ("Disruption", "d1", "district:K"),
-                     ("LocalEvent", "skiddle:1", "district:K"), ("Place", "ghost", "district:K")],
+                     ("Venue", "hall:KT11AA", "district:K"), ("Place", "ghost", "district:K")],
     "area_parents": [("district:K", "county:L"), ("county:L", "region:SE"), ("district:Empty", "county:L")],
 }
 
 
 def built() -> model.Graph:
     return model.build(**ROWS)
+
+
+def test_a_live_event_is_at_its_venue_and_the_venue_is_in_its_area() -> None:
+    g = built()
+    nodes = {(n.label, n.id) for n in g.nodes}
+    assert ("Venue", "hall:KT11AA") in nodes and ("LocalEvent", "skiddle:1") in nodes
+    rels = {(r.type, r.start, r.end) for r in g.rels}
+    assert ("AT", ("LocalEvent", "skiddle:1"), ("Venue", "hall:KT11AA")) in rels
+    assert ("IN", ("Venue", "hall:KT11AA"), ("Area", "district:K")) in rels
+    assert ("LocalEvent", "skiddle:2") not in nodes  # its venue is not in the graph: it would join nothing
 
 
 # --- what the graph is made of ------------------------------------------------------------------
@@ -128,7 +143,7 @@ def test_areas_keep_only_what_something_is_in_and_the_areas_above_those() -> Non
     assert sorted(n.id for n in g.nodes if n.label == "Area") == ["county:L", "district:K", "region:SE"]
     ins = {(r.start, r.end[1]) for r in g.rels if r.type == "IN"}
     assert (("Place", "home"), "district:K") in ins
-    assert (("Disruption", "d1"), "district:K") in ins and (("LocalEvent", "skiddle:1"), "district:K") in ins
+    assert (("Disruption", "d1"), "district:K") in ins and (("Venue", "hall:KT11AA"), "district:K") in ins
     assert (("Area", "district:K"), "county:L") in ins and (("Area", "county:L"), "region:SE") in ins
     assert not any(a == "district:Empty" for _, a in ins)
     assert not any(s == ("Place", "ghost") for s, _ in ins)
@@ -309,8 +324,8 @@ VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
 GEO_MIGRATIONS = ["0003_nh_storage", "0006_places_trips", "0007_fuel", "0009_vehicle",
                   "0011_bus_tracking", "0016_ha_location", "0017_ha_origin", "0018_geography",
                   "0020_naptan", "0021_flood", "0025_tfl_road", "0027_boundary_usrn", "0028_local_event",
-                  "0030_tfl_station", "0031_ukpn", "0034_ev"]  # fmt: skip
-GEO_TABLES = ["ev_site_log", "ev_tariff", "ev_evse", "ev_site", "ukpn_carbon", "ukpn_place_area", "ukpn_works", "ukpn_fault_history", "ukpn_fault", "tfl_station_alert", "tfl_station_part", "tfl_station", "local_event", "usrn", "boundary", "tfl_road_disruption", "flood_warning", "flood_area", "naptan_stop", "bus_timetable", "bus_target_hit", "bus_target_day", "bus_anomaly", "bus_segment_obs",
+                  "0030_tfl_station", "0031_ukpn", "0034_ev", "0043_event_venue"]  # fmt: skip
+GEO_TABLES = ["event_venue", "ev_site_log", "ev_tariff", "ev_evse", "ev_site", "ukpn_carbon", "ukpn_place_area", "ukpn_works", "ukpn_fault_history", "ukpn_fault", "tfl_station_alert", "tfl_station_part", "tfl_station", "local_event", "usrn", "boundary", "tfl_road_disruption", "flood_warning", "flood_area", "naptan_stop", "bus_timetable", "bus_target_hit", "bus_target_day", "bus_anomaly", "bus_segment_obs",
               "bus_stop", "bus_tracker", "vehicle", "fuel_price_change", "fuel_price", "fuel_station",
               "ha_location", "trip", "place", "nh_sign_message", "nh_sign", "nh_event_corridor",
               "nh_event", "nh_corridor"]  # fmt: skip
@@ -367,10 +382,18 @@ def geo_schema() -> Iterator[None]:
         conn.execute(sa.text("INSERT INTO tfl_road_disruption (id, scope, seen, geom) VALUES "
                              "('d1', 'planned', now(), ST_SetSRID(ST_MakePoint(:lo, :la), 4326)::geography)"),
                      {"la": NEAR[0], "lo": NEAR[1]})
-        conn.execute(sa.text("INSERT INTO local_event (id, source, name, day, lat, lon, seen) VALUES "
-                             "('skiddle:1', 'skiddle', 'Gig', CURRENT_DATE + 3, :la, :lo, now()), "
-                             "('skiddle:old', 'skiddle', 'Past', CURRENT_DATE - 3, :la, :lo, now())"),
-                     {"la": NEAR[0], "lo": NEAR[1]})
+        # events at a venue near home: only those on now are live (today in London, started, not ended)
+        conn.execute(sa.text("INSERT INTO event_venue (id, name, lat, lon, first_seen, last_seen) VALUES "
+                             "('the-station:KT172JA', 'The Station', :la, :lo, now(), now())"), {"la": NEAR[0], "lo": NEAR[1]})
+        conn.execute(sa.text(
+            "INSERT INTO local_event (id, source, name, day, starts, ends, venue_id, lat, lon, seen) VALUES "
+            "('skiddle:allday', 'skiddle', 'All day', (now() AT TIME ZONE 'Europe/London')::date, NULL, NULL, 'the-station:KT172JA', :la, :lo, now()), "
+            "('skiddle:started', 'skiddle', 'Started', (now() AT TIME ZONE 'Europe/London')::date, '00:00', now() + interval '1 hour', 'the-station:KT172JA', :la, :lo, now()), "
+            "('skiddle:later', 'skiddle', 'Later', (now() AT TIME ZONE 'Europe/London')::date, '23:59', NULL, 'the-station:KT172JA', :la, :lo, now()), "
+            "('skiddle:ended', 'skiddle', 'Ended', (now() AT TIME ZONE 'Europe/London')::date, '00:00', now() - interval '1 minute', 'the-station:KT172JA', :la, :lo, now()), "
+            "('skiddle:1', 'skiddle', 'Gig', CURRENT_DATE + 3, NULL, NULL, 'the-station:KT172JA', :la, :lo, now()), "
+            "('skiddle:old', 'skiddle', 'Past', CURRENT_DATE - 3, NULL, NULL, NULL, :la, :lo, now())"),
+            {"la": NEAR[0], "lo": NEAR[1]})  # fmt: skip
         conn.execute(sa.text("INSERT INTO flood_warning (id, area, severity_level, severity, seen) VALUES "
                              "('wide', 'wide', 2, 'Flood Warning', now()), ('gone', 'gone', 4, 'Gone', now())"))
         conn.execute(sa.text("INSERT INTO ukpn_fault (id, lat, lon, seen) VALUES ('cut', :la, :lo, now())"),
@@ -423,13 +446,17 @@ async def test_postgis_finds_what_is_near_and_what_is_on_the_way(geo_schema: Non
         assert rows["flood_crosses"] == [("wide", "a3")]
 
         assert [r["id"] for r in rows["disruption_rows"]] == ["d1"]
-        assert [r["id"] for r in rows["local_event_rows"]] == ["skiddle:1"]  # the past one is gone
-        assert ("LocalEvent", "skiddle:1", "home") in near and ("Disruption", "d1", "home") in near
+        # only what is on now (a "Later" today at 23:59 is not, unless this runs in that minute)
+        assert {r["id"] for r in rows["local_event_rows"]} - {"skiddle:later"} == {"skiddle:allday", "skiddle:started"}
+        assert [r["id"] for r in rows["venue_rows"]] == ["the-station:KT172JA"]  # the venue stays, events or not
+        assert ("Venue", "the-station:KT172JA", "home") in near and ("Disruption", "d1", "home") in near
+        assert not any(label == "LocalEvent" for label, *_ in rows["near_pairs"])  # events reach places by their venue
         inside = {(label, thing, area) for label, thing, area in rows["inside_pairs"]}
         assert ("Place", "home", "district:K") in inside and ("Place", "home", "county:L") in inside
         assert ("Place", "brum", "district:K") not in inside
         assert ("district:K", "county:L") in rows["area_parents"]
         # everything else with a position is in its areas too (fuel stations only when near you or on the way)
+        assert ("Venue", "the-station:KT172JA", "district:K") in inside
         assert {("Station", "f1", "district:K"), ("Location", "phone", "district:K"), ("PowerCut", "cut", "district:K"),
                 ("FloodWarning", "wide", "county:L")} <= inside  # fmt: skip
         assert not any(t == "f3" for _, t, _ in inside)

@@ -26,9 +26,11 @@ RAIL_STATION, ENTRANCE, LINE, CLOSURE = "RailStation", "Entrance", "Line", "Stat
 POWER_CUT, STREET_WORK, SUBSTATION = "PowerCut", "StreetWork", "Substation"
 # EV charging sites (GRIDSERVE): only those near a place or along a corridor
 CHARGE_SITE = "ChargeSite"
+# Where events are held: kept after their events end (the events themselves are in only while they are on)
+VENUE = "Venue"
 LABELS = (PLACE, TRIP, CORRIDOR, ROAD_EVENT, STATION, LOCATION, VEHICLE, TRACKER, BUS_STOP, FLOOD,
           AREA, DISRUPTION, LOCAL_EVENT, RAIL_STATION, ENTRANCE, LINE, CLOSURE, POWER_CUT, STREET_WORK, SUBSTATION,
-          CHARGE_SITE)
+          CHARGE_SITE, VENUE)
 
 # Relationship types.
 FROM, TO, USES, AFFECTS, ALONG, NEAR, DRIVES, CALLS_AT, COVERS, CROSSES = (
@@ -167,13 +169,26 @@ def disruptions(rows: Iterable[dict[str, Any]], affects: Iterable[tuple[str, str
     return nodes, [Rel(AFFECTS, (DISRUPTION, d), (CORRIDOR, c)) for d, c in affects if d in known]
 
 
-def local_events(rows: Iterable[dict[str, Any]]) -> list[Node]:
-    """What's on in the next fortnight (Skiddle, Ticketmaster), held by the events sync."""
-    return [Node(LOCAL_EVENT, r["id"], {"name": r["name"], "source": r.get("source"), "type": r.get("type"),
-                                        "day": str(r["day"]) if r.get("day") else None,
-                                        "venue": r.get("venue"), "town": r.get("town"),
-                                        "lat": r.get("lat"), "lon": r.get("lon")})
+def venues(rows: Iterable[dict[str, Any]]) -> list[Node]:
+    """The places events are held (Skiddle, Ticketmaster), kept for a year after an event there was last listed."""
+    return [Node(VENUE, r["id"], {"name": r["name"], "town": r.get("town"), "postcode": r.get("postcode"),
+                                  "lat": r.get("lat"), "lon": r.get("lon")})
             for r in rows]  # fmt: skip
+
+
+def local_events(rows: Iterable[dict[str, Any]], venue_ids: Iterable[str] = ()) -> tuple[list[Node], list[Rel]]:
+    """What is on now (the rows are only events that are live: started, and not yet ended), each AT its venue. One
+    whose venue is not in the graph is left out: the graph is how things join up, and it would join nothing."""
+    known = set(venue_ids)
+    rows = [r for r in rows if r.get("venue_id") in known]
+    nodes = [Node(LOCAL_EVENT, r["id"], {"name": r["name"], "source": r.get("source"), "type": r.get("type"),
+                                         "day": str(r["day"]) if r.get("day") else None, "starts": r.get("starts"),
+                                         "ends": r["ends"].isoformat() if hasattr(r.get("ends"), "isoformat") else r.get("ends"),
+                                         "venue": r.get("venue"), "town": r.get("town"), "url": r.get("url"),
+                                         "lat": r.get("lat"), "lon": r.get("lon")})
+             for r in rows]  # fmt: skip
+    rels = [Rel(AT, (LOCAL_EVENT, r["id"]), (VENUE, r["venue_id"])) for r in rows]
+    return nodes, rels
 
 
 def areas(
@@ -312,6 +327,7 @@ def build(
     disruption_rows: Sequence[dict[str, Any]] = (),
     disruption_corridors: Sequence[tuple[str, str]] = (),
     local_event_rows: Sequence[dict[str, Any]] = (),
+    venue_rows: Sequence[dict[str, Any]] = (),
     area_rows: Sequence[dict[str, Any]] = (),
     inside_pairs: Sequence[tuple[str, str, str]] = (),
     area_parents: Sequence[tuple[str, str]] = (),
@@ -339,7 +355,8 @@ def build(
     stop_nodes, stop_rels = bus_stops(bus_stop_rows, calls_at)
     flood_nodes = floods(flood_rows)
     disruption_nodes, disruption_rels = disruptions(disruption_rows, disruption_corridors)
-    event_here = local_events(local_event_rows)
+    venue_nodes = venues(venue_rows)
+    event_here, event_at = local_events(local_event_rows, (v.id for v in venue_nodes))
     area_nodes, area_rels = areas(area_rows, inside_pairs, area_parents)
     rail_nodes, rail_rels = rail_stations(rail_station_rows, rail_part_rows, rail_closure_rows)
     power_nodes, power_rels = power(power_cut_rows, street_work_rows, work_corridors, supply_rows)
@@ -347,7 +364,7 @@ def build(
 
     nodes = [*place_nodes, *trip_nodes, *corridor_nodes, *event_nodes, *station_nodes,
              *location_nodes, *vehicle_nodes, *tracker_nodes, *stop_nodes, *flood_nodes,
-             *disruption_nodes, *event_here, *area_nodes, *rail_nodes, *power_nodes, *charge_nodes]  # fmt: skip
+             *disruption_nodes, *event_here, *venue_nodes, *area_nodes, *rail_nodes, *power_nodes, *charge_nodes]  # fmt: skip
     rels = [
         *trip_rels,
         *event_rels,
@@ -357,6 +374,7 @@ def build(
         *rail_rels,
         *power_rels,
         *charge_rels,
+        *event_at,
         *flood_reach(flood_covers, flood_crosses),
         *near_places(near_pairs),
         *along_corridors(along_pairs),
