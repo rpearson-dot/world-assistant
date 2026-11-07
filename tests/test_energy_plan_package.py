@@ -267,8 +267,10 @@ def test_a_joined_free_hour_finds_its_slot_from_the_inverter() -> None:
     assert render(a["variables"]["slot"], INVERTER, sunday, start="2026-10-25T23:00:00+00:00") == 6
     assert render(a["variables"]["slot"], INVERTER, sunday, start="2026-10-25T10:00:00+00:00") == 3  # mid-slot
     cond = a["conditions"][0]["value_template"]
-    assert render(cond, {}, joined=False, end="x", on_now="on") is False
-    assert render(cond, {}, joined=True, end="x", on_now="off") is True
+    assert render(cond, {}, joined=False, end="x", on_now="on", scheduled=False) is False
+    assert render(cond, {}, joined=True, end="x", on_now="off", scheduled=False) is True
+    assert render(cond, {}, joined=True, end="x", on_now="off", scheduled=True) is False  # it has its own slot
+    assert v["scheduled"] is False  # Cosy: no room, so the slot is borrowed
 
 
 def test_the_health_max_suggestion_names_the_slot() -> None:
@@ -608,3 +610,51 @@ def test_the_car_can_charge_from_the_house_battery_at_a_set_current() -> None:
     assert render(c["conditions"][2]["value_template"], st, at, **w) is True  # 16 A now, 10 wanted
     w["now_amps"] = 10.0
     assert render(c["conditions"][2]["value_template"], st, at, **w) is False  # already right
+
+
+def test_a_joined_free_hour_gets_slots_of_its_own_when_they_fit() -> None:
+    free = [{"start": "2026-10-24T13:00:00+01:00", "end": "2026-10-24T14:00:00+01:00", "joined": True},  # today
+            {"start": "2026-10-24T16:00:00+01:00", "end": "2026-10-24T17:00:00+01:00", "joined": False}]  # fmt: skip
+    go = build(rates(GO), NOW, LONDON, free=free)
+    assert [(w["start"], w["end"], w["free"]) for w in go["windows"]] == [("00:30", "05:30", False), ("13:00", "14:00", True)]
+    own = next(s for s in go["slots"] if s["start"] == "13:00")
+    assert own["charge"] and own["free"] and own["pence"] == 0.0 and own["cover_to"] == "00:30"
+    assert next(s for s in go["slots"] if s["start"] == "14:00")["charge"] is False
+    night = next(s for s in go["slots"] if s["start"] == "00:30")
+    assert night["free"] is False and night["cover_to"] == "13:00"  # the night only has to last until the free hour
+    assert len(go["slots"]) == 6 and go["free_left_out"] == []
+
+    # next to a cheap window: split off it, one more slot
+    after = [{"start": "2026-10-25T05:30:00+00:00", "end": "2026-10-25T06:30:00+00:00", "joined": True}]
+    w = build(rates(GO), NOW, LONDON, free=after)["windows"]
+    assert [(x["start"], x["end"], x["free"]) for x in w] == [("00:30", "05:30", False), ("05:30", "06:30", True)]
+    # inside one: the window either side of it stays cheap
+    inside = [{"start": "2026-10-25T02:00:00+00:00", "end": "2026-10-25T03:00:00+00:00", "joined": True}]
+    w = build(rates(GO), NOW, LONDON, free=inside)["windows"]
+    assert [(x["start"], x["end"], x["free"]) for x in w] == [("00:30", "02:00", False), ("02:00", "03:00", True),
+                                                              ("03:00", "05:30", False)]  # fmt: skip
+
+    # Cosy's three windows fill all six slots: left out, so Home Assistant borrows a slot as before
+    cosy_free = [{"start": "2026-10-25T09:00:00+00:00", "end": "2026-10-25T10:00:00+00:00", "joined": True}]
+    cosy = build(rates(COSY), NOW, LONDON, free=cosy_free)
+    assert not any(w["free"] for w in cosy["windows"]) and cosy["free_left_out"] == ["Sun 09:00"]
+    assert [s["start"] for s in cosy["slots"]] == [s["start"] for s in SCHED]
+    # a free hour more than a day off does not count yet
+    later = [{"start": "2026-10-25T13:00:00+00:00", "end": "2026-10-25T14:00:00+00:00", "joined": True}]  # 27 hours off
+    assert not any(w["free"] for w in build(rates(GO), NOW, LONDON, free=later)["windows"])
+
+
+def test_a_free_slot_fills_to_the_free_target_and_is_not_borrowed() -> None:
+    free = [{"start": "2026-10-24T13:00:00+01:00", "end": "2026-10-24T14:00:00+01:00", "joined": True}]
+    sched = build(rates(GO), NOW, LONDON, free=free)["slots"]
+    st = SETTINGS | {"sensor.wa_energy_charge_schedule#slots": sched, "sensor.wa_battery_charge_rate": "4.8",
+                     "input_number.wa_free_target_pct": "100", "input_number.wa_max_target_pct": "80.0"}  # fmt: skip
+    by = {t["start"]: t for t in targets(st)}
+    assert by["13:00"]["free"] and by["13:00"]["target"] == 80  # the free target, held to the health max
+    assert not by["00:30"]["free"] and by["00:30"]["carried"] is False  # not raised to help the free hour along
+    a = auto("wa_energy_free_start")
+    on = st | {f"text.office_inverter_time_slot_{x['n']}_start": x["start"] for x in sched} | {
+        "sensor.wa_inverter_slot_check": "ok"}
+    at = "2026-10-24T12:00:00+00:00"
+    assert render(a["variables"]["scheduled"], on, NOW, start=at) is True
+    assert render(a["variables"]["scheduled"], on | {"sensor.wa_inverter_slot_check": "mismatch"}, NOW, start=at) is False
