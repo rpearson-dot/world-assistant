@@ -14,6 +14,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - Outdoors handles failed shops: one that refuses, times out or answers unexpectedly is skipped for the rest of the
   check and named on the page; a followed product that cannot be read keeps its last price and says since when.
 
+### Fixed
+- Here no longer waits on a slow source: each part has 15 seconds, and one that takes longer says so while the rest
+  are shown.
+
 ## [0.34.1] - 2026-11-07
 
 ### Added

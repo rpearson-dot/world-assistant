@@ -135,6 +135,12 @@ def _blank(part: str, d: dict[str, Any]) -> bool:
     return part in ("stations", "roads") and not (d.get("stations") or d.get("disruptions"))
 
 
+# In-process calls ignore httpx's timeout, so each part has its own deadline: one slow outside source must not hold up
+# the rest (or the page). Kept well inside the 30 seconds callers such as the smoke check wait.
+AREA_S = 5.0
+PART_S = 15.0
+
+
 async def gather(request: Request, lat: float, lon: float) -> dict[str, Any]:
     """Every part for a point, asked at once inside the server."""
     token = get_settings().api_token
@@ -143,9 +149,10 @@ async def gather(request: Request, lat: float, lon: float) -> dict[str, Any]:
     out: dict[str, Any] = {"lat": round(lat, 5), "lon": round(lon, 5), "area": None, "parts": []}
     async with httpx.AsyncClient(transport=transport, base_url="http://wa.internal", headers=headers, timeout=30) as c:
         try:
-            pc = (await c.get("/v1/postcodes/near", params={"lat": lat, "lon": lon, "radius_km": 1, "limit": 1})).json()
-            out["area"] = (pc.get("postcodes") or [None])[0]
-        except (httpx.HTTPError, ValueError):
+            pc = await asyncio.wait_for(c.get("/v1/postcodes/near", params={"lat": lat, "lon": lon, "radius_km": 1, "limit": 1}),
+                                        AREA_S)  # fmt: skip
+            out["area"] = (pc.json().get("postcodes") or [None])[0]
+        except (httpx.HTTPError, ValueError, TimeoutError):
             pass
         postcode = (out["area"] or {}).get("postcode") or ""
 
@@ -153,7 +160,10 @@ async def gather(request: Request, lat: float, lon: float) -> dict[str, Any]:
             q = {"lat": lat, "lon": lon, **{k: (postcode if v == "{pc}" else v) for k, v in extra.items()}}
             q = {k: v for k, v in q.items() if v != ""}
             try:
-                r = await c.get(path, params=q)
+                r = await asyncio.wait_for(c.get(path, params=q), PART_S)
+            except TimeoutError:
+                return {"part": part, "title": title, "ok": False, "slow": True,
+                        "text": f"Did not answer within {PART_S:.0f} seconds; ask again in a minute."}  # fmt: skip
             except httpx.HTTPError as exc:
                 return {"part": part, "title": title, "ok": False, "text": f"Could not ask ({type(exc).__name__})."}
             if r.status_code == 404 and "off" in r.text.lower():
