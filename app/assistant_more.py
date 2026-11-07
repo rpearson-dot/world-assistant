@@ -603,7 +603,8 @@ def _outdoor_text(it: dict[str, Any]) -> str:
     ps = it.get("products") or []
     if not ps:
         return f"{it['name']}: not priced yet."
-    shop = {"gooutdoors": "GO Outdoors", "decathlon": "Decathlon", "bikesy": "Bikesy", "tradeinn": "Tradeinn"}
+    shop = {"gooutdoors": "GO Outdoors", "decathlon": "Decathlon", "bikesy": "Bikesy", "tradeinn": "Tradeinn",
+            "sigma": "Sigma Sports"}
     sym = {"GBP": "£", "EUR": "€", "USD": "$"}
 
     def one(p: dict[str, Any]) -> str:
@@ -620,9 +621,12 @@ def _outdoor_text(it: dict[str, Any]) -> str:
             extra.append("out of stock")
         if p.get("error"):
             extra.append(f"could not check it lately: {p['error']}")
-        return f"{p['name']} at {shop.get(p['retailer'], p['retailer'])}, {price}" + (f" ({', '.join(extra)})" if extra else "")
+        at = p.get("shop") and f"{p['shop']} (via {shop.get(p['retailer'], p['retailer'])})" or shop.get(p["retailer"], p["retailer"])
+        return f"{p['name']} at {at}, {price}" + (f" ({', '.join(extra)})" if extra else "")
 
-    return f"{it['name']}: " + "; ".join(one(p) for p in ps[:3]) + "."
+    shown = ps[:3]
+    fav = next((p for p in it.get("preferred") or [] if p not in shown), None)  # the preferred shop, even if dearer
+    return f"{it['name']}: " + "; ".join(one(p) for p in shown + ([fav] if fav else [])) + "."
 
 
 async def outdoors_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
@@ -694,8 +698,9 @@ MORE: list[Tool] = [
          floods_tool),
     Tool("road_disruptions_near", "TfL road works, closures and incidents near a saved place in London.",
          {"type": "object", "properties": _props(place=PLACE, km=("number", "how far, default 0.5"))}, road_disruptions_tool),
-    Tool("outdoors", "The family's Outdoors list in KitchenOwl, priced every day at GO Outdoors and Decathlon: each "
-         "thing's price now, the lowest seen, sale prices, stock, and price drops this week.",
+    Tool("outdoors", "The family's Outdoors list in KitchenOwl, priced every day at GO Outdoors, Decathlon, Bikesy (with "
+         "the shop each deal is at), Sigma Sports and Tradeinn: each thing's price now, the lowest seen, sale prices, "
+         "stock, price drops this week, and the preferred local shop's price (Sigma Sports) even when dearer.",
          {"type": "object", "properties": _props(name=("string", "just this item (any part of its name)"))}, outdoors_tool),
     Tool("outdoors_add", "Add something to the Outdoors list in KitchenOwl (acts: adds it there) and price it now. Give "
          "a GO Outdoors or Decathlon product link to follow that product exactly; otherwise GO Outdoors is searched.",

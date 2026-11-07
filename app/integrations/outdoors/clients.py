@@ -30,16 +30,23 @@ URL = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 LDJSON = re.compile(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.IGNORECASE | re.DOTALL)
 
 
+def _on(host: str, site: str) -> bool:
+    """The host is the site or one of its subdomains (not a look-alike such as notsigmasports.com)."""
+    return host == site or host.endswith("." + site)
+
+
 def links(text: str) -> list[tuple[str, str]]:
-    """(retailer, url) for each GO Outdoors or Decathlon product link in an item's description."""
+    """(retailer, url) for each GO Outdoors, Decathlon or Sigma Sports product link in an item's description."""
     out = []
     for u in URL.findall(text or ""):
         u = u.rstrip(").,;")
         host = (urlparse(u).hostname or "").lower()
-        if host.endswith("gooutdoors.co.uk") and "/products/" in u:
+        if _on(host, "gooutdoors.co.uk") and "/products/" in u:
             out.append(("gooutdoors", u.split("?")[0].split("#")[0]))
-        elif host.endswith("decathlon.co.uk"):
+        elif _on(host, "decathlon.co.uk"):
             out.append(("decathlon", u.split("#")[0]))
+        elif _on(host, "sigmasports.com") and "/item/" in u:
+            out.append(("sigma", u.split("?")[0].split("#")[0]))
     return out
 
 
@@ -183,7 +190,7 @@ def bikesy_deals(html: str) -> list[dict[str, Any]]:
             continue
         price, top = min(prices), max(prices)
         out.append({"retailer": "bikesy", "id": pid, "name": name.replace("&amp;", "&"), "brand": None, "price": price,
-                    "was": top if top > price else None, "available": True,
+                    "was": top if top > price else None, "available": True, "shop": shop_in(chunk),
                     "url": f"{BIKESY}/outbound.php?pid={pid}"})  # fmt: skip
     return out
 
@@ -272,3 +279,169 @@ async def tradeinn_search(client: httpx.AsyncClient, query: str, shop: str = "tr
             else "something other than JSON (it may have changed its site)"  # fmt: skip
         raise ShopError(f"Tradeinn sent {why}") from exc
     return data if raw else tradeinn_products(data, shop)
+
+
+# --- Bikesy: which shop a deal is at ------------------------------------------------------------------------------
+# Bikesy's View Deal links hide the shop (outbound.php), but each deal names it, in the shop's logo or in words.
+SHOPS = ("Sigma Sports", "Tredz", "Merlin Cycles", "Wiggle", "Chain Reaction", "Rutland Cycling", "Evans Cycles",
+         "Leisure Lakes", "Halfords", "Decathlon", "Cycle Republic", "Planet X", "Ribble", "Mantel", "Bike24",
+         "Bike-Discount", "Bike Components", "BikeInn", "Tradeinn", "Alltricks", "Probikekit", "Sportpursuit",
+         "Cyclestore", "Westbrook Cycles", "Balfe's Bikes", "Pedal On", "Freewheel", "Condor Cycles")  # fmt: skip
+
+
+def shop_in(chunk: str) -> str | None:
+    """The shop a Bikesy deal names (in its text, an image's alt text or a logo's file name), if it is one known here."""
+    flat = re.sub(r"[^a-z0-9]+", "", chunk.lower())
+    for name in SHOPS:
+        if re.sub(r"[^a-z0-9]+", "", name.lower()) in flat:
+            return name
+    return None
+
+
+# --- Sigma Sports --------------------------------------------------------------------------------------------------
+# Its own site (shops at Hampton Wick, Oakham, Letchworth and Wilmslow), with no API. A product page is read from the
+# schema.org Product it may publish, else from the page itself: the name in its heading and the first pound figures
+# after it (the price, then the full price when it is on offer). Its search address is not published, so the likely
+# ones are tried, only those its robots.txt allows, and the first that lists products is used from then on
+# (WA_OUTDOORS_SIGMA_SEARCH sets it, with {q} for the words).
+SIGMA = "https://www.sigmasports.com"
+NAMES["sigma"] = "Sigma Sports"
+SIGMA_SEARCHES = (SIGMA + "/search?q={q}", SIGMA + "/search?query={q}", SIGMA + "/search/{q}")
+SIGMA_ITEM = re.compile(r'href="((?:https://www\.sigmasports\.com)?/item/([^/"?#]+)/([^/"?#]+)/([A-Za-z0-9]+))[?#"]')
+_robots: dict[str, Any] = {}
+_sigma_search: dict[str, str] = {}
+
+
+async def allowed(client: httpx.AsyncClient, url: str) -> bool:
+    """Whether the site's robots.txt lets an automated reader (us) fetch this address. Read once per site; a site
+    with no robots.txt (or one that cannot be read) allows it."""
+    from urllib.robotparser import RobotFileParser
+
+    site = "{0.scheme}://{0.netloc}".format(urlparse(url))
+    if site not in _robots:
+        rp = RobotFileParser()
+        try:
+            r = await client.get(site + "/robots.txt", headers=HEADERS, timeout=15)
+            rp.parse(r.text.splitlines() if r.status_code == 200 else [])
+        except httpx.HTTPError:
+            rp.parse([])
+        _robots[site] = rp
+    return bool(_robots[site].can_fetch(HEADERS["User-Agent"], url))
+
+
+def _heading(html: str) -> str:
+    m = re.search(r"<h1[^>]*>(.*?)</h1>", html, re.IGNORECASE | re.DOTALL)
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", m.group(1))).replace("&amp;", "&").strip() if m else ""
+
+
+def sigma_page(html: str, url: str) -> dict[str, Any] | None:
+    """A Sigma Sports product from its page: the schema.org Product if there is one, else the heading and prices."""
+    code = url.rstrip("/").split("/")[-1]
+    found = _ld_products(html)
+    if found:
+        p = found[0]
+        offers = p.get("offers") or {}
+        offers = offers[0] if isinstance(offers, list) and offers else offers
+        stock = str(offers.get("availability") or "")
+        brand = p.get("brand")
+        return {"retailer": "sigma", "id": code, "name": str(p.get("name") or "").strip() or _heading(html) or url,
+                "brand": brand.get("name") if isinstance(brand, dict) else brand,
+                "price": _pounds(offers.get("price") or offers.get("lowPrice")), "was": None,
+                "available": "OutOfStock" not in stock and "SoldOut" not in stock, "url": url}  # fmt: skip
+    name = _heading(html)
+    h1 = re.search(r"</h1>", html, re.IGNORECASE)
+    if not name or not h1:
+        return None
+    after = _text(html[h1.end():h1.end() + 6000].replace("&pound;", "£"))
+    after = re.sub(r"save\s*(?:\|\s*)?£\s*[\d,.]+", " ", after, flags=re.IGNORECASE)
+    prices = [float(x.replace(",", "")) for x in re.findall(r"£\s*([\d,]+(?:\.\d{1,2})?)", after)[:2]]
+    if not prices:
+        return None
+    price = prices[0]
+    was = prices[1] if len(prices) > 1 and prices[1] > price else None
+    stock = after[:3000].lower()
+    out = "out of stock" in stock and "in stock, available" not in stock
+    return {"retailer": "sigma", "id": code, "name": name, "brand": url.split("/item/")[1].split("/")[0].replace("-", " "),
+            "price": price, "was": was, "available": not out, "url": url}  # fmt: skip
+
+
+async def sigma_product(client: httpx.AsyncClient, url: str, raw: bool = False) -> Any:
+    """One Sigma Sports product from its page."""
+    html = await _get(client, "sigma", url, json_=False)
+    if raw:
+        return {"ld_json": _ld_products(html), "heading": _heading(html), "start": html[:1500]}
+    p = sigma_page(html, url)
+    if not p:
+        raise ShopError("Sigma Sports' page had no product name and price (it may have changed its site, or blocked the request)")
+    return p
+
+
+def sigma_listing(html: str) -> list[dict[str, Any]]:
+    """The products on a Sigma Sports listing (search, category or brand page): each is the stretch of the page from
+    its first /item/ link to the next product's, with the lowest pound figure as the price and the highest as the full
+    price. The name is the link's text or image alt text, else made from the address."""
+    html = html.replace("&pound;", "£")
+    marks = [(m.start(), m) for m in SIGMA_ITEM.finditer(html)]
+    order: list[str] = []
+    first: dict[str, tuple[int, Any]] = {}
+    for at, m in marks:
+        code = m.group(4)
+        if code not in first:
+            order.append(code)
+            first[code] = (at, m)
+    out = []
+    for i, code in enumerate(order):
+        at, m = first[code]
+        end = first[order[i + 1]][0] if i + 1 < len(order) else at + 3000
+        chunk = html[at:end]
+        alt = re.search(r'\balt="([^"]{6,200})"', chunk)
+        brand, slug = m.group(2).replace("-", " "), m.group(3).replace("-", " ")
+        name = alt.group(1).strip() if alt else f"{brand} {slug}"
+        money = re.sub(r"save\s*(?:\|\s*)?£\s*[\d,.]+", " ", _text(chunk), flags=re.IGNORECASE)
+        prices = [float(x.replace(",", "")) for x in re.findall(r"£\s*([\d,]+(?:\.\d{1,2})?)", money)]
+        if not prices:
+            continue
+        price, top = min(prices), max(prices)
+        href = m.group(1)
+        out.append({"retailer": "sigma", "id": code, "name": name.replace("&amp;", "&"), "brand": brand, "price": price,
+                    "was": top if top > price else None, "available": True,
+                    "url": href if href.startswith("http") else SIGMA + href})  # fmt: skip
+    return out
+
+
+def _shares_a_word(products: list[dict[str, Any]], query: str) -> bool:
+    words = {w for w in re.findall(r"[a-z0-9]+", query.lower()) if len(w) > 2}
+    return any(words & set(re.findall(r"[a-z0-9]+", p["name"].lower())) for p in products)
+
+
+async def sigma_search(client: httpx.AsyncClient, query: str, raw: bool = False, template: str = "") -> Any:
+    """Sigma Sports' products for some words, from its search page (see above for how the address is found)."""
+    from urllib.parse import quote_plus
+
+    q = quote_plus(query)
+    tries = [template] if template else ([_sigma_search["at"]] if "at" in _sigma_search else list(SIGMA_SEARCHES))
+    closed = answered = 0
+    for t in tries:
+        url = t.replace("{q}", q)
+        if not await allowed(client, url):
+            closed += 1
+            continue
+        try:
+            html = await _get(client, "sigma", url, json_=False)
+        except ShopError as exc:
+            if "no such page" in str(exc) and not template:
+                continue
+            raise
+        if raw:
+            return {"url": url, "start": html[:2500]}
+        answered += 1
+        got = sigma_listing(html)
+        if got and _shares_a_word(got, query) or "at" in _sigma_search or template:
+            _sigma_search.setdefault("at", t)
+            return got
+    if closed == len(tries):
+        raise ShopError("Sigma Sports' robots.txt closes its search to automated readers: paste product links instead")
+    if not answered:
+        raise ShopError("Sigma Sports has none of the likely search addresses (set WA_OUTDOORS_SIGMA_SEARCH, or paste "
+                        "product links)")  # fmt: skip
+    return []  # pages came back, none listing these words: nothing found (or not the search page; the probe shows which)

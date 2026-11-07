@@ -4,9 +4,14 @@ The things live in KitchenOwl (a list called "Outdoors" in the shopping househol
 in the family adds one in the KitchenOwl app and ticks it off when it is bought. An item's description says what to
 follow:
 
-    a GO Outdoors or Decathlon product link    that product exactly (Decathlon is only ever read this way)
-    nothing                                     GO Outdoors' search and Bikesy's deals (UK bike shops) for the item's
-                                                name: the three cheapest matches at each
+    a GO Outdoors, Decathlon or Sigma Sports    that product exactly (Decathlon is only ever read this way)
+      product link
+    nothing                                     GO Outdoors' search, Bikesy's deals (UK bike shops, each deal with
+                                                its shop), Sigma Sports' search and the Tradeinn shops chosen, for
+                                                the item's name: the three cheapest matches at each
+
+The preferred shops (Sigma Sports unless WA_OUTDOORS_PREFERRED_SHOPS says otherwise) have their price shown beside the
+cheapest even when they are not the cheapest: a local shop to collect from can be worth a few pounds.
     "under £300", "must: gore-tex"             a top price, and words a product's name has to have
 
     GET  /v1/outdoors                    every item with the products it follows: price now, before, lowest, and drops
@@ -97,7 +102,7 @@ async def products(engine: AsyncEngine, key: str) -> list[dict[str, Any]]:
     async with engine.connect() as conn:
         rows = [_row(r) for r in await conn.execute(text(
             "SELECT retailer, product_id, name, brand, url, pinned, price, previous_price, was_price, lowest_price, "
-            "lowest_at, available, dropped_at, error, error_at, currency, first_seen, last_seen FROM outdoors_product WHERE item_key = :k "
+            "lowest_at, available, dropped_at, error, error_at, currency, shop, first_seen, last_seen FROM outdoors_product WHERE item_key = :k "
             "ORDER BY pinned DESC, price NULLS LAST"), {"k": key})]  # fmt: skip
     for p in rows:
         p["dropped"] = bool(p["dropped_at"] and datetime.fromisoformat(p["dropped_at"]) >= since)
@@ -112,20 +117,36 @@ async def overview(request: Request) -> dict[str, Any]:
     for it in its:
         ps = await products(engine, it["key"])
         pounds = [p for p in ps if p["price"] is not None and p.get("currency", "GBP") == "GBP"]  # like with like
+        liked = preferred()
         out.append({**it, "products": ps, "cheapest": min(p["price"] for p in pounds) if pounds else None,
                     "dropped": [p for p in ps if p["dropped"]],
                     "under": [p for p in pounds if it["max_price"] and p["price"] <= it["max_price"]],
-                    "failing": [p for p in ps if p.get("error")]})  # fmt: skip
+                    "failing": [p for p in ps if p.get("error")],
+                    "preferred": [p for p in pounds if shop_of(p).lower() in liked]})  # fmt: skip
     return {"list": lst, "items": out, "last_check": await _setting(engine, LAST_KEY)}
 
 
+def preferred() -> set[str]:
+    return {x.strip().lower() for x in get_settings().outdoors_preferred_shops.split(",") if x.strip()}
+
+
+def shop_of(p: dict[str, Any]) -> str:
+    """The shop a product is at: a Bikesy deal's own shop when it names one, else the source's name."""
+    return p.get("shop") or O.NAMES.get(p.get("retailer") or "", p.get("retailer") or "")
+
+
 def searches() -> list[tuple[str, Any]]:
-    """(source, search) for an item without a link: GO Outdoors, Bikesy, and each Tradeinn shop chosen."""
+    """(source, search) for an item without a link: GO Outdoors, Bikesy, Sigma Sports and each Tradeinn shop chosen."""
     from functools import partial
 
-    shops = [x.strip().lower() for x in get_settings().outdoors_tradeinn_shops.split(",") if x.strip()]
-    return [("gooutdoors", O.go_search), ("bikesy", O.bikesy_search)] + [
-        (f"tradeinn:{s}", partial(O.tradeinn_search, shop=s)) for s in shops if s in O.TRADEINN_SHOPS]
+    s = get_settings()
+    shops = [x.strip().lower() for x in s.outdoors_tradeinn_shops.split(",") if x.strip()]
+    sigma = [("sigma", partial(O.sigma_search, template=s.outdoors_sigma_search))] if s.outdoors_sigma else []
+    return [("gooutdoors", O.go_search), ("bikesy", O.bikesy_search), *sigma] + [
+        (f"tradeinn:{x}", partial(O.tradeinn_search, shop=x)) for x in shops if x in O.TRADEINN_SHOPS]
+
+
+PRODUCT = {"gooutdoors": O.go_product, "decathlon": O.decathlon_product, "sigma": O.sigma_product}
 
 
 async def read(client: httpx.AsyncClient, it: dict[str, Any], down: dict[str, str] | None = None,
@@ -142,7 +163,7 @@ async def read(client: httpx.AsyncClient, it: dict[str, Any], down: dict[str, st
             failed_links.append((url, down[retailer]))
             continue
         try:
-            p = await (O.go_product(client, url) if retailer == "gooutdoors" else O.decathlon_product(client, url))
+            p = await PRODUCT[retailer](client, url)
             got.append({**p, "pinned": True})
         except C.ShopError as exc:
             errors.append(str(exc))
@@ -195,20 +216,20 @@ async def record(engine: AsyncEngine, it: dict[str, Any], got: list[dict[str, An
             low = min(lows) if lows else None
             await conn.execute(text(
                 "INSERT INTO outdoors_product (item_key, retailer, product_id, item_name, name, brand, url, pinned, price, "
-                "previous_price, was_price, lowest_price, lowest_at, available, dropped_at, last_seen, currency) VALUES "
+                "previous_price, was_price, lowest_price, lowest_at, available, dropped_at, last_seen, currency, shop) VALUES "
                 "(:k, :r, :p, :iname, :n, :b, :u, :pin, CAST(:price AS numeric), NULL, CAST(:was AS numeric), "
                 "CAST(:price AS numeric), CASE WHEN CAST(:price AS numeric) IS NULL THEN NULL ELSE CAST(:now AS timestamptz) END, "
-                ":avail, NULL, :now, :cur) ON CONFLICT (item_key, retailer, product_id) DO UPDATE SET item_name = EXCLUDED.item_name, "
+                ":avail, NULL, :now, :cur, :shop) ON CONFLICT (item_key, retailer, product_id) DO UPDATE SET item_name = EXCLUDED.item_name, "
                 "name = EXCLUDED.name, brand = EXCLUDED.brand, url = EXCLUDED.url, pinned = EXCLUDED.pinned, "
                 "previous_price = CASE WHEN CAST(:changed AS boolean) THEN outdoors_product.price ELSE outdoors_product.previous_price END, "
                 "price = COALESCE(EXCLUDED.price, outdoors_product.price), was_price = EXCLUDED.was_price, "
                 "lowest_price = CAST(:low AS numeric), lowest_at = CASE WHEN CAST(:low AS numeric) IS DISTINCT FROM "
                 "outdoors_product.lowest_price THEN CAST(:now AS timestamptz) ELSE outdoors_product.lowest_at END, "
                 "available = EXCLUDED.available, dropped_at = CASE WHEN CAST(:fell AS boolean) THEN CAST(:now AS timestamptz) "
-                "ELSE outdoors_product.dropped_at END, error = NULL, error_at = NULL, last_seen = :now, currency = EXCLUDED.currency"),
+                "ELSE outdoors_product.dropped_at END, error = NULL, error_at = NULL, last_seen = :now, currency = EXCLUDED.currency, shop = EXCLUDED.shop"),
                 {"k": it["key"], "r": p["retailer"], "p": p["id"], "iname": it["name"], "n": p["name"], "b": p["brand"],
                  "u": p["url"], "pin": p["pinned"], "price": price, "was": p["was"], "avail": p["available"],
-                 "changed": changed, "low": low, "fell": fell, "now": now, "cur": p.get("currency") or "GBP"})  # fmt: skip
+                 "changed": changed, "low": low, "fell": fell, "now": now, "cur": p.get("currency") or "GBP", "shop": p.get("shop")})  # fmt: skip
             if changed:
                 await conn.execute(text("INSERT INTO outdoors_price (item_key, retailer, product_id, price, at) "
                                         "VALUES (:k, :r, :p, :price, :now)"),
@@ -336,7 +357,7 @@ async def probe(arg: str) -> None:
             print(f"\n== {O.NAMES[retailer]}: {url or arg!r}")
             try:
                 if url:
-                    fn = O.go_product if retailer == "gooutdoors" else O.decathlon_product
+                    fn = PRODUCT[retailer]
                     print(json.dumps(await fn(c, url), indent=2, default=str))
                     print("-- raw, first 2500 characters:")
                     print(json.dumps(await fn(c, url, raw=True), indent=1, default=str)[:2500])
@@ -344,7 +365,8 @@ async def probe(arg: str) -> None:
                     from functools import partial
 
                     tradeinn = [(f"Tradeinn ({x})", partial(O.tradeinn_search, shop=x)) for x in ("trekkinn", "bikeinn")]
-                    for name, fn in (("GO Outdoors", O.go_search), ("Bikesy", O.bikesy_search), *tradeinn):
+                    sigma = ("Sigma Sports", O.sigma_search)
+                    for name, fn in (("GO Outdoors", O.go_search), ("Bikesy", O.bikesy_search), sigma, *tradeinn):
                         print(f"\n-- {name}")
                         try:
                             got = await fn(c, arg)

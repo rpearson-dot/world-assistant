@@ -41,7 +41,8 @@ form.add { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minm
   <button class="primary">Add</button>
 </form>
 <p class="dim">Priced every morning, or now with <b>Check now</b>. With a link, that product is followed exactly (Decathlon
-is only read this way); without one, GO Outdoors is searched for the name and its three cheapest matches are followed.
+is only read this way); without one, GO Outdoors, Bikesy, Sigma Sports and Tradeinn are searched for the name and the three
+cheapest matches at each are followed.
 In KitchenOwl, put the link (and <b>under £300</b>, or <b>must: gore-tex</b>) in the item's description. A price that
 falls shows as a drop for a week. Nothing is ever bought.</p>
 <p id="amsg" class="err"></p>
@@ -63,7 +64,7 @@ function button(text, onclick) { const b = el('button', null, text); b.type = 'b
 const SYM = { GBP: '£', EUR: '€', USD: '$' };
 const money = (v, cur) => v == null ? '' : (SYM[cur || 'GBP'] || (cur + ' ')) + Number(v).toFixed(2);
 const day = s => s ? new Date(s).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
-const shop = r => ({ gooutdoors: 'GO Outdoors', decathlon: 'Decathlon', bikesy: 'Bikesy', tradeinn: 'Tradeinn' }[r] || r);
+const shop = r => ({ gooutdoors: 'GO Outdoors', decathlon: 'Decathlon', bikesy: 'Bikesy', tradeinn: 'Tradeinn', sigma: 'Sigma Sports' }[r] || r);
 try { tok.value = sessionStorage.getItem('wa_token') || ''; } catch (e) {}
 async function api(method, path, body) {
   const r = await fetch(path, { method, headers: { Authorization: 'Bearer ' + tok.value, 'Content-Type': 'application/json' },
@@ -79,7 +80,7 @@ function product(p) {
   const li = el('li');
   const name = p.url ? Object.assign(el('a', null, p.name), { href: p.url, target: '_blank', rel: 'noopener noreferrer' }) : el('span', null, p.name);
   const c = p.currency;
-  li.append(el('b', null, shop(p.retailer) + ': '), name, ' ' + money(p.price, c));
+  li.append(el('b', null, (p.shop ? p.shop + ' (via ' + shop(p.retailer) + ')' : shop(p.retailer)) + ': '), name, ' ' + money(p.price, c));
   const bits = [];
   if (p.dropped && p.previous_price != null) bits.push('down from ' + money(p.previous_price, c) + ' on ' + day(p.dropped_at));
   if (p.was_price) bits.push('was ' + money(p.was_price, c));
@@ -96,8 +97,12 @@ function thing(it) {
   if (it.max_price) h.append(el('span', 'chip' + (it.under.length ? ' down' : ''), (it.under.length ? 'under ' : 'up to ') + money(it.max_price)));
   d.append(h);
   if (it.products.length) { const ul = el('ul', 'prods'); it.products.forEach(p => ul.append(product(p))); d.append(ul); }
+  const fav = (it.preferred || [])[0];
+  if (fav && it.cheapest != null && fav.price > it.cheapest)
+    d.append(el('p', 'dim', 'Preferred shop: ' + (fav.shop || shop(fav.retailer)) + ' has it at ' + money(fav.price) + ', '
+      + money(fav.price - it.cheapest) + ' more than the cheapest.'));
   else d.append(el('p', 'dim', 'Not priced yet.'));
-  const how = it.links.length ? 'Follows the linked product' + (it.links.length > 1 ? 's' : '') : 'Searches GO Outdoors for "' + it.name + '"';
+  const how = it.links.length ? 'Follows the linked product' + (it.links.length > 1 ? 's' : '') : 'Searches GO Outdoors, Bikesy, Sigma Sports and Tradeinn for "' + it.name + '"';
   d.append(el('p', 'dim', how + (it.must.length ? ', must have: ' + it.must.join(', ') : '')));
   const row = el('div', 'row'), m = el('span', 'err');
   row.append(button('Check now', () => guard(async () => { show(await api('POST', '/v1/outdoors/check', { item: it.key })); }, m)),
