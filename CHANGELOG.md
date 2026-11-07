@@ -28,6 +28,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ### Fixed
 - Sensors that went while World Assistant was restarting stayed in Home Assistant for good: what was published is
   now remembered across restarts, so they are removed.
+### Added
+- Car charging plan (`wa_ev_plan.yaml`, Home charging dashboard): **charge current**, set before each start where the
+  charger offers it (OCPP Smart Charging's maximum current), and **charging from the house battery**: outside cheap
+  times, while the house battery is above a level you set, at a lower current (10 A is about 2.3 kW) the battery can
+  cover. Off by default; it does not start if the current cannot be set. Copy both files again.
 
 ## [0.30.0] - 2026-11-05
 

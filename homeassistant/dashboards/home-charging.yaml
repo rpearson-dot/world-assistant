@@ -159,6 +159,14 @@ views:
                 name: Always charge when low
               - entity: input_number.wa_ev_min_soc
                 name: Low means below
+              - entity: input_number.wa_ev_amps
+                name: Charge current (0 = the charger's own)
+              - entity: input_boolean.wa_ev_battery_enabled
+                name: Also charge from the house battery
+              - entity: input_number.wa_ev_battery_above
+                name: When the house battery is above
+              - entity: input_number.wa_ev_battery_amps
+                name: At this current (10 A is about 2.3 kW)
             grid_options:
               columns: full
           - type: markdown
@@ -173,6 +181,14 @@ views:
               {%- if not is_number(states('sensor.wa_car_charge_level')) %}
 
               No charge level from the car: it charges whenever it is cheap or free, until it stops by itself.
+              {%- endif %}
+              {%- set e = states('input_text.wa_ev_entity_current') %}{% set cur = e if e.count('.') == 1 else 'number.charger_maximum_current' %}
+              {%- if not is_number(states(cur)) and (states('input_number.wa_ev_amps') | int(0) > 0 or is_state('input_boolean.wa_ev_battery_enabled', 'on')) %}
+
+              ⚠️ The charger does not let Home Assistant set its current ({{ cur }} is {{ states(cur) }}), so it charges at its own maximum and charging from the house battery does not start. Chargers that offer OCPP Smart Charging have it; a firmware update may add it.
+              {%- elif is_number(states(cur)) %}
+
+              Charger current now {{ states(cur) | int }} A{{ ' (from the house battery)' if is_state('sensor.wa_car_charge_source', 'battery') else '' }}.
               {%- endif %}
             grid_options:
               columns: full
@@ -202,6 +218,8 @@ views:
                 name: Car charge level
               - entity: input_text.wa_ev_entity_range
                 name: Car range
+              - entity: input_text.wa_ev_entity_current
+                name: Charger maximum current
             grid_options:
               columns: full
 

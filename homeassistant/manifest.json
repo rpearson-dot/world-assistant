@@ -10,8 +10,8 @@
       "sha256": "cc1e311d9753e7702784fedd5779b8394df31454fff1704f5bf22eec54ee88ce"
     },
     "dashboards/home-charging.yaml": {
-      "changed_in": "0.23.4",
-      "sha256": "72ccf5eb4e77c23349a914f1f9906dbbe973a9f8dc6db13a0221fb42b8141b2a"
+      "changed_in": "0.31.0",
+      "sha256": "ef2cc85901a8f9b38e4438e81003dba8a9046ebaed0d89fdc7e175cfcbcd26ce"
     },
     "dashboards/leaf.yaml": {
       "changed_in": "0.26.1",
@@ -38,8 +38,8 @@
       "sha256": "a30f18f26a7e1fd9d9bcc9d9db2972a1b60413cd03e5cc1bbe4841f7074e765f"
     },
     "packages/wa_ev_plan.yaml": {
-      "changed_in": "0.23.7",
-      "sha256": "440b1f2678159e7fe95ecffa343b2f8f2027b4f93c3898e11eab9aaf656b49da"
+      "changed_in": "0.31.0",
+      "sha256": "311b0120d8db00adc08daecaf065cfe5394a3238c64644075f167991f332c8d9"
     },
     "packages/world_assistant_bus.yaml": {
       "changed_in": "0.7.5",

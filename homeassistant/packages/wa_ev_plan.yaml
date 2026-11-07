@@ -7,7 +7,15 @@
 #     follows your tariff as it is (Cosy's windows, Go's night, Agile's cheap half hours as they move), or a
 #     charging window of the energy plan is on;
 #   - a Free Electricity hour you joined is on (sensor.wa_energy_free_electricity_now);
-#   - "WA car: always charge when low" is on and the car is below "WA car: low means below".
+#   - "WA car: always charge when low" is on and the car is below "WA car: low means below";
+#   - "WA car: also charge from the house battery" is on and the house battery is at or above "WA car: house battery
+#     above" (once charging this way, it carries on until the battery is 5% below that), at "WA car: current from the
+#     house battery": about 2.3 kW at 10 A, which the battery can cover without buying from the grid.
+# CURRENT: if the charger lets Home Assistant set its maximum current (number.charger_maximum_current in the OCPP
+# integration: only chargers that offer OCPP Smart Charging have it), the plan sets it: "WA car: current from the
+# house battery" when charging from the battery, and "WA car: charge current" otherwise (0 leaves it as it is).
+# Without that entity (or while it is unavailable) the charger runs at its own maximum and charging from the house
+# battery is not started, since it could not be held to the battery's rate.
 # RESTING WHEN FULL: once charging stops because the car reached its target, it is not started again for "WA car:
 # rest after full" (60 minutes or more), unless the car drops more than 5% below the target. The car's reading
 # often slips a point after a charge stops, which would otherwise start it again within minutes, over and over.
@@ -24,7 +32,7 @@
 # dashboard and the energy plan's outcome log follow whatever you set.
 #
 # HOW: the charger's charge control switch (OCPP remote start/stop), checked every 5 minutes and whenever the rate,
-# a free hour, the plug or the car's charge level changes. The charger's own maximum current is left as it is. Every
+# a free hour, the plug or the car's charge level changes. The current is set as above, before each start. Every
 # start and stop (or, in a dry run, what would have happened) goes to the logbook under "WA car charging". The
 # charger is asked for meter readings every minute while it charges (some, like the Sync EV, never send them).
 #
@@ -50,6 +58,9 @@ input_boolean:
   wa_ev_low_enabled:
     name: "WA car: always charge when low"
     icon: mdi:battery-alert-variant-outline
+  wa_ev_battery_enabled:
+    name: "WA car: also charge from the house battery"
+    icon: mdi:home-battery-outline
 
 input_number:
   wa_ev_target_soc:
@@ -75,6 +86,30 @@ input_number:
     max: 360
     step: 30
     unit_of_measurement: min
+  wa_ev_amps:
+    # no "initial": kept across restarts; it starts at 0, which leaves the charger's current as it is
+    name: "WA car: charge current"
+    icon: mdi:current-ac
+    min: 0
+    max: 32
+    step: 1
+    unit_of_measurement: A
+  wa_ev_battery_amps:
+    # no "initial": kept across restarts; it starts at 6 A, the least a charger can be set to
+    name: "WA car: current from the house battery"
+    icon: mdi:current-ac
+    min: 6
+    max: 16
+    step: 1
+    unit_of_measurement: A
+  wa_ev_battery_above:
+    # no "initial": kept across restarts; it starts at 60%
+    name: "WA car: house battery above"
+    icon: mdi:home-battery
+    min: 60
+    max: 100
+    step: 5
+    unit_of_measurement: "%"
   wa_ev_min_soc:
     name: "WA car: low means below"
     min: 5
@@ -105,6 +140,9 @@ input_text:
     max: 255
   wa_ev_entity_range:
     name: "WA car: car range entity (default sensor.nissan_leaf_hv66bzd_estimated_range)"
+    max: 255
+  wa_ev_entity_current:
+    name: "WA car: charger maximum current entity (default number.charger_maximum_current)"
     max: 255
 
 template:
@@ -174,6 +212,23 @@ template:
           {% set soc = states('sensor.wa_car_charge_level') %}
           {{ (km | float * 0.621371 * 100 / soc | float) | round(0) if is_number(km) and is_number(soc) and soc | float >= 5 else none }}
 
+      # what the charge now runs on: grid (cheap, free or low) or battery (the house battery); none when not charging
+      - name: "WA car charge source"
+        unique_id: wa_ev_source
+        icon: mdi:transmission-tower-import
+        state: >-
+          {% set soc = states('sensor.wa_car_charge_level') | float(-1) %}
+          {% set target = states('input_number.wa_ev_target_soc') | float(80) %}
+          {% set hm = now().strftime('%H:%M') %}
+          {% set ns = namespace(window=false) %}
+          {% for w in state_attr('sensor.wa_energy_charge_schedule', 'windows') or [] %}
+            {% if (w.start < w.end and w.start <= hm < w.end) or (w.end <= w.start and (hm >= w.start or hm < w.end)) %}
+              {% set ns.window = true %}{% endif %}
+          {% endfor %}
+          {% set grid = is_state('sensor.wa_energy_free_electricity_now', 'on') or is_state('sensor.wa_energy_cheap_now', 'on') or ns.window
+             or (is_state('input_boolean.wa_ev_low_enabled', 'on') and 0 <= soc < states('input_number.wa_ev_min_soc') | float(20)) %}
+          {% if not is_state('sensor.wa_car_charging_plan', 'charge') %}none{% elif grid %}grid{% else %}battery{% endif %}
+
       - name: "WA car charging plan"
         unique_id: wa_ev_plan
         icon: mdi:car-electric
@@ -200,11 +255,16 @@ template:
           {% set full_ts = state_attr('input_datetime.wa_ev_full_at', 'timestamp') %}
           {% set rest = states('input_number.wa_ev_rest_min') | float(60) %}
           {% set held = full_ts is number and now().timestamp() < full_ts + rest * 60 and (soc < 0 or soc >= target - 5) %}
+          {% set cur = states('input_text.wa_ev_entity_current') %}{% set cur = cur if cur.count('.') == 1 else 'number.charger_maximum_current' %}
+          {% set house = states('sensor.office_inverter_battery_soc') | float(-1) %}
+          {% set above = states('input_number.wa_ev_battery_above') | float(60) - (5 if status == 'Charging' else 0) %}
+          {% set battery = is_state('input_boolean.wa_ev_battery_enabled', 'on') and is_number(states(cur)) and house >= above > 0 %}
           {% if status in ['Available', 'Unavailable', 'Faulted', 'unknown', 'unavailable'] %}unplugged
           {% elif soc >= 0 and soc >= target %}full
           {% elif held %}full
           {% elif free or low %}charge
           {% elif cheap and (soc < 0 or soc < target - room) %}charge
+          {% elif battery and not cheap %}charge
           {% else %}wait{% endif %}
         attributes:
           why: >-
@@ -220,7 +280,12 @@ template:
             {% elif is_state('input_boolean.wa_ev_low_enabled', 'on') and 0 <= soc < states('input_number.wa_ev_min_soc') | float(20) %}the car is below {{ states('input_number.wa_ev_min_soc') | int }}%
             {% elif room > 0 and soc >= 0 and target - room <= soc < target %}leaving {{ room | int }}% for the free electricity at {{ (ns2.first | as_local).strftime('%a %H:%M') }}: charged to {{ (target - room) | int }}% until then
             {% elif is_state('sensor.wa_energy_cheap_now', 'on') %}the rate is cheap now ({{ states('sensor.wa_energy_rate') }} p/kWh)
+            {% elif is_state('sensor.wa_car_charge_source', 'battery') %}the house battery is at {{ states('sensor.office_inverter_battery_soc') }}%: charging from it at {{ states('input_number.wa_ev_battery_amps') | int }} A
             {% else %}the rate is not cheap now{% endif %}
+          # the current to set (A); 0 leaves the charger's own
+          amps: >-
+            {% if is_state('sensor.wa_car_charge_source', 'battery') %}{{ states('input_number.wa_ev_battery_amps') | int(6) }}
+            {% else %}{{ states('input_number.wa_ev_amps') | int(0) }}{% endif %}
           # while resting after a full charge: when it may start again
           rests_until: >-
             {% set full_ts = state_attr('input_datetime.wa_ev_full_at', 'timestamp') %}
@@ -270,6 +335,9 @@ automation:
       switch: >-
         {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else 'switch.charger_charge_control' }}
       plan: "{{ states('sensor.wa_car_charging_plan') }}"
+      current: >-
+        {% set e = states('input_text.wa_ev_entity_current') %}{{ e if e.count('.') == 1 else 'number.charger_maximum_current' }}
+      amps: "{{ state_attr('sensor.wa_car_charging_plan', 'amps') | int(0) }}"
       status: "{{ states('sensor.wa_charger_status') }}"
       charging: "{{ status == 'Charging' }}"
       switch_on: "{{ is_state(switch, 'on') }}"
@@ -290,6 +358,16 @@ automation:
       - condition: template
         value_template: "{{ start or stop }}"
     actions:
+      - if:  # the current first, so a charge from the house battery never starts at the charger's full rate
+          - condition: template
+            value_template: "{{ apply and start and amps > 0 and is_number(states(current)) }}"
+        then:
+          - action: number.set_value
+            continue_on_error: true
+            target:
+              entity_id: "{{ current }}"
+            data:
+              value: "{{ amps }}"
       - if:
           - condition: template
             value_template: "{{ apply }}"
@@ -323,7 +401,47 @@ automation:
             {{ 'Started' if start else 'Stopped' }} charging the car{{ ' (dry run: nothing changed)' if not apply else '' }}:
             {% if start %}{{ state_attr('sensor.wa_car_charging_plan', 'why') | trim }}{% elif plan == 'full' %}it is at {{ soc }}%, the
             target is {{ states('input_number.wa_ev_target_soc') | int }}%{% else %}{{ state_attr('sensor.wa_car_charging_plan', 'why') | trim }};
-            next cheap or free time {{ next }}{% endif %}. Car {{ soc }}%, charger {{ status }}.
+            next cheap or free time {{ next }}{% endif %}. Car {{ soc }}%, charger {{ status }}{{ (', ' ~ amps ~ ' A') if start and amps > 0 and is_number(states(current)) else '' }}.
+
+  - id: wa_ev_current
+    alias: "WA car charging: set the charge current"
+    mode: queued
+    max: 2
+    triggers:
+      - trigger: state
+        entity_id: sensor.wa_car_charging_plan
+        attribute: amps
+      - trigger: state
+        entity_id: sensor.wa_charger_status
+        to: Charging
+    variables:
+      current: >-
+        {% set e = states('input_text.wa_ev_entity_current') %}{{ e if e.count('.') == 1 else 'number.charger_maximum_current' }}
+      amps: "{{ state_attr('sensor.wa_car_charging_plan', 'amps') | int(0) }}"
+      now_amps: "{{ states(current) | float(-1) }}"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.wa_ev_apply
+        state: "on"
+      - condition: state
+        entity_id: sensor.wa_car_charging_plan
+        state: charge
+      - condition: template
+        value_template: "{{ amps > 0 and now_amps >= 0 and now_amps | int != amps }}"
+    actions:
+      - action: number.set_value
+        continue_on_error: true
+        target:
+          entity_id: "{{ current }}"
+        data:
+          value: "{{ amps }}"
+      - action: logbook.log
+        data:
+          name: WA car charging
+          entity_id: input_boolean.wa_ev_apply
+          message: >-
+            Charge current set to {{ amps }} A (was {{ now_amps | int }} A): charging from the
+            {{ 'house battery' if is_state('sensor.wa_car_charge_source', 'battery') else 'grid' }}.
 
   - id: wa_ev_meter_values
     alias: "WA car charging: ask the charger for meter readings while it charges"
