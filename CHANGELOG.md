@@ -15,6 +15,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   kept with the points it names (`bus_disruption_point`), not only those near a saved place; the plain listing still
   shows only those near your places.
 
+- **Bank holidays** from GOV.UK's feed (`GET /v1/bank-holidays`, the `bank_holidays` tool; `WA_BANK_HOLIDAY_DIVISION`
+  for Scotland or Northern Ireland). A bus tracker set to weekdays only now rests on a bank holiday instead of counting
+  its buses as missed, and next buses gives no weekday-timetable times on one. Fetched weekly and kept; a built-in
+  2026-27 list stands in until the first fetch.
+
 ### Fixed
 - Here's bus stops part asked NaPTAN for stops of kind "bus" (they are "bus_stop"), so it showed an error; it is now
   the next buses part.

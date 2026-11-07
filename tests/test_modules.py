@@ -109,7 +109,7 @@ def test_all_but_and_only_modes_and_the_core_stays_on() -> None:
     off = selection.enabled_ids(mods(), selection.Selection("all", off=frozenset({"fuel", "core"}), chosen=True))
     assert "fuel" not in off and "core" in off  # the core cannot be switched off
     only = selection.enabled_ids(mods(), selection.Selection("only", on=frozenset({"bus"}), chosen=True))
-    assert only == {"core", "bus"}
+    assert only == {"core", "bankholidays", "bus"}  # every core module stays on
 
 
 def test_what_a_module_needs_comes_with_it() -> None:
@@ -311,12 +311,12 @@ def test_choose_switch_and_reset_through_the_api(monkeypatch: pytest.MonkeyPatch
 
         only = c.put("/v1/modules", headers=H, json={"mode": "only", "on": ["bus"]}).json()
         on = {m["id"] for m in only["modules"] if m["enabled"]}
-        assert only["chosen"] and on == {"core", "bus"}
+        assert only["chosen"] and on == {"core", "bankholidays", "bus"}
         assert c.get("/v1/fuel/near", headers=H).status_code == 404  # off, and nothing needed a restart
         assert c.get("/v1/ask", headers=H).status_code == 200
 
         turned = c.post("/v1/modules/fuel/enable", headers=H).json()
-        assert {m["id"] for m in turned["modules"] if m["enabled"]} == {"core", "bus", "fuel"}
+        assert {m["id"] for m in turned["modules"] if m["enabled"]} == {"core", "bankholidays", "bus", "fuel"}
         assert c.get("/v1/fuel/near", headers=H).status_code != 404
         c.post("/v1/modules/bus/disable", headers=H)
         assert c.get("/v1/bus/trackers", headers=H).status_code == 404

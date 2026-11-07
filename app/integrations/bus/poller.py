@@ -11,6 +11,8 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from app.bankholidays import ensure as ensure_bank_holidays
+from app.bankholidays import is_bank_holiday
 from app.config import get_settings
 from app.integrations.bods.client import BodsError, Box, fetch_vehicles
 from app.integrations.bus import bods_source, live, store
@@ -38,7 +40,8 @@ log = logging.getLogger("wa.bus")
 
 
 def in_window(cfg: TrackerConfig, local: datetime) -> bool:
-    if cfg.weekdays_only and local.weekday() > 4:
+    """Whether the tracker's window is open now: never on a weekend or bank holiday for a weekdays-only tracker."""
+    if cfg.weekdays_only and (local.weekday() > 4 or is_bank_holiday(local.date())):
         return False
     minutes = local.hour * 60 + local.minute
     return to_minutes(cfg.poll_start) <= minutes <= to_minutes(cfg.poll_end)
@@ -323,6 +326,7 @@ async def poll_bus(ctx: dict[str, Any]) -> str:
     if not settings.bus_poll_enabled:
         return "disabled"
     engine: AsyncEngine = ctx["engine"]
+    await ensure_bank_holidays(engine)
     now = time.time()
     tz = ZoneInfo(settings.local_tz)
     local = datetime.fromtimestamp(now, tz)

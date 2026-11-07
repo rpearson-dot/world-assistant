@@ -5,7 +5,7 @@ There are no countdowns outside London (TfL's Arrivals feed is London's), so the
 within a few kilometres, each line's timetable from its operator's file on BODS (found and checked as the tracker
 does, and kept a day), and each bus's minutes to a stop from where it is along that route (bods_source.arrivals: a
 typical bus speed, so it does not see traffic). Where no bus is on its way yet, the timetable's next time is given
-instead, on weekdays only, since the timetables read here are weekday ones.
+instead, on weekdays that are not bank holidays, since the timetables read here are weekday ones.
 
 A timetable can take some seconds to fetch the first time, so it is fetched in the background: an answer never waits
 more than a few seconds for one, and says which lines are still being looked up (they are there on the next ask).
@@ -21,6 +21,8 @@ from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from app.bankholidays import ensure as ensure_bank_holidays
+from app.bankholidays import is_bank_holiday
 from app.integrations.bods.client import BodsError, box_around, fetch_vehicles
 from app.integrations.bods.txc import Route, TxcError
 from app.integrations.bus import bods_source as B
@@ -66,7 +68,7 @@ def _fresh(key: tuple[str, str]) -> bool:
 
 
 def _next_times(route: Route, sid: str, direction: str, now: datetime, n: int = 2) -> list[str]:
-    if now.weekday() >= 5:
+    if now.weekday() >= 5 or is_bank_holiday(now.date()):  # the timetables read are weekday ones
         return []
     hm = now.strftime("%H:%M")
     return [t for t in route.times_at(sid, direction) if t > hm][:n]
@@ -77,6 +79,7 @@ async def departures(engine: Any, api_key: str, lat: float, lon: float, stops: l
     """For each stop (id, name, lat, lon), the buses on their way (minutes, live) and, failing that, the timetable's
     next times; plus which lines are still being looked up or have no timetable."""
     now_ts = now_ts or time.time()
+    await ensure_bank_holidays(engine)
     box = box_around(lat, lon, LINES_KM)
     if vehicles is None:
         vehicles = await fetch_vehicles(api_key, box)
@@ -125,4 +128,4 @@ async def departures(engine: Any, api_key: str, lat: float, lon: float, stops: l
     return {"stops": [{**s, "buses": by_stop[s["id"]][:8]} for s in stops], "lines": [ln for _, ln in lines],
             "loading": sorted(set(loading)), "no_timetable": missing,
             "note": "Minutes are worked out from where each bus is along its route, at a typical speed (no traffic). "
-                    "Timetable times are weekday ones."}  # fmt: skip
+                    "Timetable times are weekday ones, not given at weekends or on bank holidays."}  # fmt: skip

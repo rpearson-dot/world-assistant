@@ -152,6 +152,8 @@ class Settings(BaseSettings):
     bus_disruptions_poll_enabled: bool = False
     bus_disruptions_km: float = 25.0  # kept when a stop or place it names is this close to a saved place
     bus_disruptions_stale_days: int = 90  # an open-ended one that started longer ago than this is dropped
+    # Which bank holidays count (GOV.UK's feed): england-and-wales, scotland or northern-ireland
+    bank_holiday_division: str = "england-and-wales"
     energy_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
     octopus_account: str = ""  # e.g. A-1234ABCD; with the octopus_api_key secret this finds the tariff
     octopus_tariff: str = ""  # optional override, e.g. E-1R-COSY-22-12-08-A; needs no key
