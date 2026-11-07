@@ -87,3 +87,61 @@ async def test_sync_reads_every_place_a_page_at_a_time_until_there_is_no_more(mo
     assert [a for a in asked if a[0] == "skiddle" and a[1] == "51.33"] == [("skiddle", "51.33", 0)]  # 40: one page
     assert [a[2] for a in asked if a[0] == "ticketmaster" and a[1] == "51.5"] == [0]  # total 100: one page
     assert out["events"] == 250 + 40 + 100 + 100 and out["places"] == 2
+
+
+def test_an_event_knows_its_venue_and_when_it_ends() -> None:
+    from app.integrations.localevents.sync import venue_id
+
+    row = to_row("skiddle", {**GOOD, "postcode": "kt1 1aa", "end_date": "2026-11-01T23:00:00+00:00"}, NOW)
+    assert row and row["venue_id"] == "hall:KT11AA" and row["ends"] == datetime(2026, 11, 1, 23, tzinfo=UTC)
+    assert to_row("skiddle", {**GOOD, "end_date": "2026-11-01"}, NOW)["ends"] is None  # type: ignore[index]  # no time: unknown
+    # the same venue however a source spells it; without a postcode, where it is to about 100 m
+    assert venue_id("The Rose  Theatre", "KT1 1HL", 51.4, -0.3) == venue_id("the rose theatre", "kt11hl", 0, 0)
+    assert venue_id("Rose Theatre", None, 51.40871, -0.30659) == "rose-theatre:51.409,-0.307"
+    assert venue_id("Rose Theatre", "not a postcode", 51.40871, -0.30659) == "rose-theatre:51.409,-0.307"
+    assert venue_id("", "KT1 1HL", 51.4, -0.3) is None
+
+
+DB = __import__("os").environ.get("WA_TEST_DATABASE_URL")
+
+
+@__import__("pytest").mark.skipif(not DB, reason="WA_TEST_DATABASE_URL not set")
+def test_venues_are_saved_kept_and_dropped_after_a_year() -> None:
+    import importlib.util
+    from datetime import timedelta
+    from pathlib import Path
+
+    import sqlalchemy as sa
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    from app.integrations.localevents import sync as ls
+
+    eng = sa.create_engine(DB)  # type: ignore[arg-type]
+    with eng.begin() as conn:
+        for t in ("event_venue", "local_event"):
+            conn.execute(sa.text(f"DROP TABLE IF EXISTS {t} CASCADE"))
+        with Operations.context(MigrationContext.configure(conn)):
+            for f in ("0028_local_event", "0043_event_venue"):
+                spec = importlib.util.spec_from_file_location(f, Path("migrations/versions") / f"{f}.py")
+                m = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+                spec.loader.exec_module(m)  # type: ignore[union-attr]
+                m.upgrade()
+    try:
+        row = ls.to_row("skiddle", {**GOOD, "postcode": "KT1 1AA", "end_date": "2026-11-01T23:00:00+00:00"}, NOW)
+        with eng.begin() as conn:
+            conn.execute(ls.UPSERT, [row])
+            v = {"id": row["venue_id"], "name": "Hall", "town": None, "postcode": "KT1 1AA", "lat": 51.4, "lon": -0.3}  # type: ignore[index]
+            conn.execute(ls.VENUES, [{**v, "seen": NOW - timedelta(days=400)}, {**v, "id": "old:KT99ZZ", "seen": NOW - timedelta(days=400)}])
+            conn.execute(ls.VENUES, [{**v, "seen": NOW}])  # seen again: kept, first seen stays
+            conn.execute(sa.text("DELETE FROM event_venue WHERE last_seen < :before"),
+                         {"before": NOW - timedelta(days=ls.VENUE_DAYS)})
+            got = conn.execute(sa.text("SELECT id, first_seen < last_seen, geog IS NOT NULL FROM event_venue")).all()
+            ev = conn.execute(sa.text("SELECT venue_id, ends FROM local_event")).one()
+        assert [tuple(r) for r in got] == [("hall:KT11AA", True, True)]  # the year-old one is gone
+        assert ev.venue_id == "hall:KT11AA" and ev.ends == datetime(2026, 11, 1, 23, tzinfo=UTC)
+    finally:
+        with eng.begin() as conn:
+            for t in ("event_venue", "local_event"):
+                conn.execute(sa.text(f"DROP TABLE IF EXISTS {t} CASCADE"))
+        eng.dispose()

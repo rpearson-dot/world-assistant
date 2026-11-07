@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import sys
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
@@ -34,13 +35,49 @@ LIMIT = 100  # per page, place and source
 SKIDDLE_GAP_S = 2.1
 UPSERT = text(
     """
-    INSERT INTO local_event (id, source, name, day, starts, type, venue, town, postcode, lat, lon, price, url, seen)
-    VALUES (:id, :source, :name, :day, :starts, :type, :venue, :town, :postcode, :lat, :lon, :price, :url, :seen)
+    INSERT INTO local_event (id, source, name, day, starts, ends, type, venue, venue_id, town, postcode, lat, lon,
+                             price, url, seen)
+    VALUES (:id, :source, :name, :day, :starts, :ends, :type, :venue, :venue_id, :town, :postcode, :lat, :lon, :price,
+            :url, :seen)
     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, day = EXCLUDED.day, starts = EXCLUDED.starts,
-      type = EXCLUDED.type, venue = EXCLUDED.venue, town = EXCLUDED.town, postcode = EXCLUDED.postcode,
-      lat = EXCLUDED.lat, lon = EXCLUDED.lon, price = EXCLUDED.price, url = EXCLUDED.url, seen = EXCLUDED.seen
+      ends = EXCLUDED.ends, type = EXCLUDED.type, venue = EXCLUDED.venue, venue_id = EXCLUDED.venue_id,
+      town = EXCLUDED.town, postcode = EXCLUDED.postcode, lat = EXCLUDED.lat, lon = EXCLUDED.lon,
+      price = EXCLUDED.price, url = EXCLUDED.url, seen = EXCLUDED.seen
     """
 )
+# The venues events are at, kept (for the graph) after their events have gone; one not seen for VENUE_DAYS is dropped.
+VENUES = text(
+    """
+    INSERT INTO event_venue (id, name, town, postcode, lat, lon, first_seen, last_seen)
+    VALUES (:id, :name, :town, :postcode, :lat, :lon, :seen, :seen)
+    ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, town = COALESCE(EXCLUDED.town, event_venue.town),
+      postcode = COALESCE(EXCLUDED.postcode, event_venue.postcode), lat = EXCLUDED.lat, lon = EXCLUDED.lon,
+      last_seen = EXCLUDED.last_seen
+    """
+)
+VENUE_DAYS = 365
+
+
+def venue_id(name: Any, postcode: Any, lat: float, lon: float) -> str | None:
+    """One venue however each source spells it: its name in plain letters, with its postcode (or, without one, where it
+    is to about 100 m). None without a name."""
+    plain = re.sub(r"[^a-z0-9]+", "-", str(name or "").lower()).strip("-")
+    if not plain:
+        return None
+    pc = re.sub(r"\s+", "", str(postcode or "")).upper()
+    return f"{plain}:{pc}" if re.fullmatch(r"[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}", pc) else f"{plain}:{lat:.3f},{lon:.3f}"
+
+
+def _ends(v: Any) -> datetime | None:
+    """A provider's end time, when it gives one with a time of day (a bare date says nothing about when it ends)."""
+    s = str(v or "")
+    if len(s) <= 10:
+        return None
+    try:
+        t = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=ZoneInfo(get_settings().local_tz))
 
 
 def to_row(source: str, e: dict[str, Any], seen: datetime) -> dict[str, Any] | None:
@@ -51,9 +88,12 @@ def to_row(source: str, e: dict[str, Any], seen: datetime) -> dict[str, Any] | N
         return None
     if not e.get("id") or not e.get("name") or e.get("lat") is None or e.get("lon") is None:
         return None
+    lat, lon = float(e["lat"]), float(e["lon"])
     return {"id": f"{source}:{e['id']}", "source": source, "name": e["name"], "day": day, "starts": e.get("doors_open"),
-            "type": e.get("type"), "venue": e.get("venue"), "town": e.get("town"), "postcode": e.get("postcode"),
-            "lat": float(e["lat"]), "lon": float(e["lon"]), "price": e.get("price"), "url": e.get("url"), "seen": seen}  # fmt: skip
+            "ends": _ends(e.get("end_date")), "type": e.get("type"), "venue": e.get("venue"),
+            "venue_id": venue_id(e.get("venue"), e.get("postcode"), lat, lon), "town": e.get("town"),
+            "postcode": e.get("postcode"), "lat": lat, "lon": lon, "price": e.get("price"), "url": e.get("url"),
+            "seen": seen}  # fmt: skip
 
 
 async def places(engine: AsyncEngine, limit: int) -> list[tuple[str, float, float]]:
@@ -111,6 +151,13 @@ async def sync(engine: AsyncEngine, redis: Any = None) -> dict[str, Any]:
     async with engine.begin() as conn:
         if rows:
             await conn.execute(UPSERT, list(rows.values()))
+            venues = {r["venue_id"]: {"id": r["venue_id"], "name": r.get("venue"), "town": r.get("town"),
+                                      "postcode": r.get("postcode"), "lat": r["lat"], "lon": r["lon"], "seen": started}
+                      for r in rows.values() if r.get("venue_id")}  # fmt: skip
+            if venues:
+                await conn.execute(VENUES, list(venues.values()))
+        await conn.execute(text("DELETE FROM event_venue WHERE last_seen < :before"),
+                           {"before": started - timedelta(days=VENUE_DAYS)})
         # Over, or no longer listed by a source that answered: dropped. A source that failed keeps what it had.
         answered = [x for x in sources if not any(f.startswith(x + " ") for f in failures)]
         gone = (await conn.execute(

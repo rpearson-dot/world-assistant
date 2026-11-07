@@ -80,9 +80,19 @@ DISRUPTIONS = (
     "SELECT id, category, severity, scope, status, location, has_closures FROM tfl_road_disruption "
     "WHERE geom IS NOT NULL AND (ends_at IS NULL OR ends_at > now())"
 )
+# An event is in the graph only while it is on: today (London), from its start time (all day without one) until it
+# ends (the end of the day without an end). The graph is rebuilt every half hour, so it comes and goes within that.
+LIVE_EVENT = """
+e.day = (now() AT TIME ZONE 'Europe/London')::date
+AND (e.starts IS NULL OR e.starts !~ '^[0-9]{1,2}:[0-9]{2}'
+     OR e.day + e.starts::time <= (now() AT TIME ZONE 'Europe/London'))
+AND (e.ends IS NULL OR e.ends > now())
+"""
 LOCAL_EVENTS = (
-    "SELECT id, source, name, day, type, venue, town, lat, lon FROM local_event WHERE day >= CURRENT_DATE"
+    "SELECT e.id, e.source, e.name, e.day, e.starts, e.ends, e.type, e.venue, e.venue_id, e.town, e.url, e.lat, e.lon "
+    "FROM local_event e WHERE " + LIVE_EVENT
 )
+VENUES = "SELECT id, name, town, postcode, lat, lon FROM event_venue"
 AREAS = "SELECT id, kind, name, code FROM boundary WHERE kind = ANY(:kinds)"
 EVENT_CORRIDORS = "SELECT record_id, corridor_id FROM nh_event_corridor"
 CALLS_AT = "SELECT DISTINCT tracker, sid FROM bus_stop"
@@ -112,9 +122,8 @@ SELECT 'StreetWork', w.id, p.id, ST_Distance(w.geog, p.geog) / 1000.0
 FROM ukpn_works w JOIN place p ON ST_DWithin(w.geog, p.geog, :near_m)
 WHERE w.stage = 'open' OR w.ends_at IS NULL OR w.ends_at > now()
 UNION ALL
-SELECT 'LocalEvent', e.id, p.id, ST_Distance(e.geog, p.geog) / 1000.0
-FROM local_event e JOIN place p ON ST_DWithin(e.geog, p.geog, :near_m)
-WHERE e.day >= CURRENT_DATE
+SELECT 'Venue', v.id, p.id, ST_Distance(v.geog, p.geog) / 1000.0
+FROM event_venue v JOIN place p ON ST_DWithin(v.geog, p.geog, :near_m)
 UNION ALL
 SELECT 'Disruption', d.id, p.id, ST_Distance(d.geom, p.geog) / 1000.0
 FROM tfl_road_disruption d JOIN place p ON ST_DWithin(d.geom, p.geog, :near_m)
@@ -151,9 +160,8 @@ UNION ALL
 SELECT 'RailStation', s.id, b.id
 FROM tfl_station s JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, s.geog::geometry)
 UNION ALL
-SELECT 'LocalEvent', e.id, b.id
-FROM local_event e JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, e.geog::geometry)
-WHERE e.day >= CURRENT_DATE
+SELECT 'Venue', v.id, b.id
+FROM event_venue v JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, v.geog::geometry)
 UNION ALL
 SELECT 'Disruption', d.id, b.id
 FROM tfl_road_disruption d JOIN boundary b ON b.kind = ANY(:kinds) AND ST_Intersects(b.geom, d.geom::geometry)
@@ -272,6 +280,7 @@ async def read(
         out["flood_crosses"] = [tuple(r) for r in await conn.execute(text(FLOOD_CROSSES))]
         out["disruption_rows"] = [dict(r._mapping) for r in await conn.execute(text(DISRUPTIONS))]
         out["local_event_rows"] = [dict(r._mapping) for r in await conn.execute(text(LOCAL_EVENTS))]
+        out["venue_rows"] = [dict(r._mapping) for r in await conn.execute(text(VENUES))]
         kinds = {"kinds": area_kinds}
         out["area_rows"] = [dict(r._mapping) for r in await conn.execute(text(AREAS), kinds)]
         out["inside_pairs"] = [tuple(r) for r in await conn.execute(text(INSIDE_PAIRS), kinds)]

@@ -37,7 +37,8 @@ With it switched off, every graph endpoint answers 503 and says so. Nothing else
 | `FloodWarning` | live flood alert, warning or severe warning | area, level, severity, county, river or sea |
 | `Area` | region, county or district (kinds from `WA_BOUNDARY_KINDS`) that something is in | name, kind, code |
 | `Disruption` | live TfL road disruption (works, incidents, closures) | location, category, severity, planned or not |
-| `LocalEvent` | event in the next fortnight from Skiddle or Ticketmaster | name, day, venue, town, type |
+| `Venue` | where Skiddle and Ticketmaster events are held; kept a year after an event there was last listed | name, town, postcode |
+| `LocalEvent` | an event that is on now: today, from its start time (all day without one) until it ends (end of day without an end); in and out within the half-hourly rebuild. Data Thistle's are not stored, by its terms | name, day, starts, ends, venue, type, url |
 
 | Relationship | Meaning |
 | --- | --- |
@@ -51,8 +52,9 @@ With it switched off, every graph endpoint answers 503 and says so. Nothing else
 | `(FloodWarning)-[:COVERS]->(Place)` | the warned area contains the place |
 | `(FloodWarning)-[:CROSSES]->(Corridor)` | the warned area crosses the corridor |
 | `(Disruption)-[:AFFECTS]->(Corridor)` | a TfL disruption lying along that corridor |
-| `(Disruption\|LocalEvent)-[:NEAR {km}]->(Place)` | close to a place |
-| `(Place\|BusStop\|RailStation\|Disruption\|LocalEvent\|Station\|Location\|PowerCut\|StreetWork\|FloodWarning)-[:IN]->(Area)` | inside that area (a flood warning: its area reaches into it) |
+| `(Disruption\|Venue)-[:NEAR {km}]->(Place)` | close to a place |
+| `(LocalEvent)-[:AT]->(Venue)` | on there now |
+| `(Place\|BusStop\|RailStation\|Disruption\|Venue\|Station\|Location\|PowerCut\|StreetWork\|FloodWarning)-[:IN]->(Area)` | inside that area (a flood warning: its area reaches into it) |
 | `(Area)-[:IN]->(Area)` | a district in its county, a county in its region |
 
 Only areas something is in are written, plus the wider areas above them, so the graph does not carry every
