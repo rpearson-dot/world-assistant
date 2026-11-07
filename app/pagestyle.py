@@ -155,13 +155,27 @@ SECTIONS = {"shopping": (("shopping", "/shopping", "List"), ("wishlist", "/wishl
 SECTION_OF = {pid: sec for sec, parts in SECTIONS.items() for pid, _, _ in parts}
 
 
+def _switched_on(pid: str) -> bool:
+    """A part whose module is switched off (at /modules) is left out of its section's tabs."""
+    try:
+        from app.modules import registry, selection
+
+        mods = list(registry.modules())
+        if pid not in {m.id for m in mods}:
+            return True
+        return pid in selection.enabled_ids(mods, selection._cache["sel"])
+    except Exception:  # noqa: BLE001 - the tabs must never be why a page fails
+        return True
+
+
 def _subnav(here: str) -> str:
     sec = SECTION_OF.get(here)
-    if not sec:
-        return ""
+    parts = [p for p in SECTIONS.get(sec or "", ()) if p[0] == sec or p[0] == here or _switched_on(p[0])]
+    if len(parts) < 2:
+        return ""  # nothing else in the section is on: no tabs
     return '<nav class="subtabs" aria-label="Shopping">' + "".join(
         f'<a href="{path}"{' class="here" aria-current="page"' if pid == here else ""}>{label}</a>'
-        for pid, path, label in SECTIONS[sec]) + "</nav>"
+        for pid, path, label in parts) + "</nav>"
 
 
 def _icon(name: str) -> str:

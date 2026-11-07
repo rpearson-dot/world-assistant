@@ -362,3 +362,14 @@ def test_every_setting_in_env_example_reaches_the_containers() -> None:
     host_only = {"WA_HOST"}  # read by docker-compose.traefik.yml, not the app
     missing = sorted(v for v in named - host_only if f"{v}:" not in compose and f"${{{v}" not in compose)
     assert not missing, f"in .env.example but not passed by docker-compose.yml: {missing}"
+
+
+def test_shopping_tabs_leave_out_switched_off_parts(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from app import pagestyle
+    from app.modules import selection
+
+    monkeypatch.setitem(selection._cache, "sel", selection.Selection("all", off=frozenset({"wishlist", "outdoors"}), chosen=True))
+    assert 'class="subtabs"' not in pagestyle.themed("<body><!--NAV-->", "shopping")  # both off: no tabs at all
+    monkeypatch.setitem(selection._cache, "sel", selection.Selection("all", off=frozenset({"wishlist"}), chosen=True))
+    page = pagestyle.themed("<body><!--NAV-->", "shopping")
+    assert 'href="/outdoors"' in page and 'href="/wishlist"' not in page.split('class="subtabs"')[1]

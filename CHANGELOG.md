@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ### Changed
 - Wishlist and Outdoors are parts of Shopping: no longer in the menu themselves, but tabs (List, Wishlist, Outdoors)
   along the top of each, with Shopping shown as the current page.
+  A part switched off at /modules is left out of the tabs (and with both off there are none).
 
 ### Fixed
 - Wishlist: Aldi and Lidl are asked for an item's distinctive words ("kamado", not "kamado bbq", which brought back
