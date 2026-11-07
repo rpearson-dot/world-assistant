@@ -52,7 +52,7 @@ WORK = {  # Open Street and Roadworks, as sent
 PROPOSED = {  # Proposed Street and Roadworks, as sent (road_category1 is a number, not the street)
     "permit_ref": "UK019-NEXT", "town": "KINGSTON ROAD,  NEW MALDEN", "work_category": "STANDARD",
     "works_description1": "Disconnection Or Alteration Of Supply", "road_category1": "2",
-    "traffic_management_type1": "Road closure", "proposedstartdate3": "2026-11-05", "proposedenddate1": "2026-11-07",
+    "traffic_management_type1": "Road closure", "proposedstartdate3": "2026-11-05", "proposedenddate1": "2099-11-07",  # far off: ended proposals are hidden
     "geo_point_2d": {"lon": HOME[1] - 0.001, "lat": HOME[0]},
 }  # fmt: skip
 
@@ -348,3 +348,13 @@ async def test_hourly_until_a_cut_is_at_home_and_every_cut_is_kept(schema: None,
         await engine.dispose()
         get_settings.cache_clear()
         uc.forget()
+
+
+def test_a_reworded_title_still_finds_its_dataset() -> None:
+    """In 2026 the portal renamed "... associated with UK Power Networks' activities" to "... connected to ..."; the
+    job then failed every run. The same distinctive words, give or take filler, still count."""
+    new = "Proposed Street and Roadworks connected to UK Power Networks' activities"
+    assert new in uc.TITLES["works_proposed"]
+    assert uc._close(new, "Proposed Street and Roadworks associated with UK Power Networks' activities")
+    assert not uc._close("Open Street and Roadworks connected to UK Power Networks' activities", new)
+    assert not uc._close("Proposed Street Lighting", new)

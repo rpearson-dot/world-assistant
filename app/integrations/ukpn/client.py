@@ -12,6 +12,7 @@ GeoJSON Feature or geometry.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any, Self
 
@@ -23,8 +24,10 @@ API = "/api/explore/v2.1"
 # What this app uses, by the title the portal gives it (first that exists wins).
 TITLES: dict[str, tuple[str, ...]] = {
     "faults": ("National Energy Outage API", "Live Faults"),
-    "works_open": ("Open Street and Roadworks associated with UK Power Networks' activities",),
-    "works_proposed": ("Proposed Street and Roadworks associated with UK Power Networks' activities",),
+    "works_open": ("Open Street and Roadworks connected to UK Power Networks' activities",
+                   "Open Street and Roadworks associated with UK Power Networks' activities"),
+    "works_proposed": ("Proposed Street and Roadworks connected to UK Power Networks' activities",
+                       "Proposed Street and Roadworks associated with UK Power Networks' activities"),
     "boundary": ("UK Power Networks Boundary", "UK Power Networks Licence Boundaries"),
     "idno": ("Independent Distribution Network Operator areas",),
     "gsp": ("UK Power Networks Licence Area Grid Supply Points Areas",),
@@ -33,7 +36,8 @@ TITLES: dict[str, tuple[str, ...]] = {
     "rota": ("Rota Load Disconnection",),
 }
 # Known ids, tried when the catalogue search finds nothing (the portal's search can be fussy about punctuation).
-KNOWN_IDS = {"faults": ("ukpn-national-energy-outage", "ukpn-live-faults"), "works_open": ("ukpn-open-streetworks",)}
+KNOWN_IDS = {"faults": ("ukpn-national-energy-outage", "ukpn-live-faults"), "works_open": ("ukpn-open-streetworks",),
+             "works_proposed": ("ukpn-proposed-streetworks",)}
 
 
 class UkpnError(Exception):
@@ -106,8 +110,15 @@ class UkpnClient:
         for title in TITLES[kind]:
             words = title.replace("'", " ").replace('"', " ")
             found = await self._get("/catalog/datasets", {"where": f'search("{words}")', "limit": 20})
-            for d in found.get("results") or []:
+            results = found.get("results") or []
+            for d in results:
                 if _title(d).strip().lower() == title.lower():
+                    _found[kind] = Dataset(kind, d["dataset_id"], _title(d), d.get("fields") or [])
+                    return _found[kind]
+            # A small rewording (they renamed "associated with" to "connected to" in 2026) must not lose it: the
+            # same distinctive words, in any order, still count.
+            for d in results:
+                if _close(_title(d), title):
                     _found[kind] = Dataset(kind, d["dataset_id"], _title(d), d.get("fields") or [])
                     return _found[kind]
         for dataset_id in KNOWN_IDS.get(kind, ()):
@@ -141,6 +152,19 @@ class UkpnClient:
         if not geo:
             raise UkpnError(f"{ds.title} has no position field")
         return await self.export(ds, where=f"within_distance({geo}, geom'POINT({lon} {lat})', {km}km)")
+
+
+_FILLER = {"a", "an", "and", "the", "of", "to", "with", "by", "for", "in", "on", "associated", "connected", "s"}
+
+
+def _words(title: str) -> set[str]:
+    return {w for w in re.split(r"[^a-z0-9]+", title.lower()) if w and w not in _FILLER}
+
+
+def _close(found: str, wanted: str) -> bool:
+    """The same title give or take filler words ("associated with" or "connected to", "the", "of")."""
+    a, b = _words(found), _words(wanted)
+    return bool(b) and a == b
 
 
 def _title(d: dict[str, Any]) -> str:

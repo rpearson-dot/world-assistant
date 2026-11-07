@@ -94,6 +94,9 @@ def test_endpoints_accept_no_place(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(mod, "place_or_default", fake_default)
         monkeypatch.setattr(mod, "_place", fake_place)
     monkeypatch.setattr(pollen, "history", fake_history)
+    # Its own state, not whatever engine an earlier test left on the app (it passed in CI only because of one).
+    # No engine also means the module gate lets the request through.
+    monkeypatch.setattr(app.state, "engine", None, raising=False)
     r = TestClient(app).get("/v1/pollen/history", headers={"Authorization": "Bearer s3cret"})
     assert r.status_code == 200 and r.json()["place"] == "Home" and seen == [""]
 
