@@ -35,6 +35,7 @@ from sqlalchemy import text
 
 from app import ha_names as N
 from app.auth import require_token
+from app.ha import unique_id
 
 router = APIRouter(prefix="/v1/ha", tags=["home assistant"], dependencies=[Depends(require_token)])
 INVENTORY_KEY = "ha_inventory"
@@ -197,13 +198,35 @@ def secrets_checks(check: Any, text_: str | None, installed: dict[str, str | Non
         check("info", "secrets.yaml", "the packages ask World Assistant at " + ", ".join(hosts))
 
 
+def secrets_base(text_: str | None, paths: dict[str, str]) -> str | None:
+    """The address Home Assistant's secrets.yaml uses for World Assistant: a wa_* URL less World Assistant's path for
+    it (the most common, if they differ). Only the address: no token or other value leaves this."""
+    if not text_:
+        return None
+    seen: dict[str, int] = {}
+    for name, value in SECRET_LINE.findall(text_):
+        v, path = value.strip().strip("'\""), paths.get(name, "").rstrip("/")
+        m = re.match(r"^(https?://[^/\s]+)(/\S*)?$", v)
+        if not m or name == "wa_authorization":
+            continue
+        rest = (m.group(2) or "").rstrip("/")
+        if path and rest.endswith(path):
+            base = m.group(1) + rest[: len(rest) - len(path)]
+        elif not path:
+            continue
+        else:
+            base = m.group(1)
+        seen[base] = seen.get(base, 0) + 1
+    return max(seen, key=lambda b: seen[b]) if seen else None
+
+
 def _slug(unique_id: str) -> str:
     """The entity id Home Assistant makes of a unique id: lower case, anything but letters, digits and _ as _."""
     return re.sub(r"[^a-z0-9_]", "_", str(unique_id).lower())
 
 
 def live_checks(check: Any, live: dict[str, Any] | None, names: dict[str, str], registry: set[str],
-                platforms: dict[str, Any] | None = None) -> None:  # fmt: skip
+                platforms: dict[str, Any] | None = None, leftover: set[str] | None = None) -> None:  # fmt: skip
     """With Home Assistant's live states: does each named entity report, and are World Assistant's sensors fresh?"""
     if not live:
         return
@@ -224,7 +247,8 @@ def live_checks(check: Any, live: dict[str, Any] | None, names: dict[str, str], 
         check("ok", "Entities reporting", ", ".join(fine))
     wa = [s for e, s in states.items() if str(e).startswith(("sensor.wa_", "binary_sensor.wa_"))]
     platforms = platforms or {}
-    stale = sorted(str(s.get("entity_id")) for s in wa if s.get("state") == "unavailable")
+    stale = sorted(str(s.get("entity_id")) for s in wa if s.get("state") == "unavailable"
+                   and s.get("entity_id") not in (leftover or set()))  # fmt: skip
     tiles = [e for e in stale if "_tile_" in e]
     asked = [e for e in stale if e not in tiles and platforms.get(e) not in (None, "mqtt")]
     published = [e for e in stale if e not in tiles and e not in asked]
@@ -246,11 +270,13 @@ def live_checks(check: Any, live: dict[str, Any] | None, names: dict[str, str], 
 def inventory(raw: dict[str, str | None], current: dict[str, str], installed: dict[str, str | None],
               rendered: dict[str, str], wa_mqtt: dict[str, Any], wa_home: tuple[float, float] | None,
               places: list[dict[str, Any]] | None = None, live: dict[str, Any] | None = None,
-              api_token: str = "", secret_paths: dict[str, str] | None = None) -> dict[str, Any]:  # fmt: skip
+              api_token: str = "", secret_paths: dict[str, str] | None = None,
+              provided: set[str] | None = None) -> dict[str, Any]:  # fmt: skip
     """Everything found and every problem, from Home Assistant's files (raw: name -> text, None when missing).
     installed / rendered: World Assistant's files as found in the config folder / as they would be written now.
     places: World Assistant's places (id, name, kind, lat, lon). live: Home Assistant's states through its API
-    ({"states": [...]} or {"error": "..."}), when a token is set."""
+    ({"states": [...]} or {"error": "..."}), when a token is set. provided: the unique ids World Assistant published
+    last (None when not known yet), to find the sensors it no longer provides."""
     cfg = _data(raw.get("core.config"))
     entries = [e for e in _data(raw.get("core.config_entries")).get("entries") or [] if isinstance(e, dict)]
     entities = [e for e in _data(raw.get("core.entity_registry")).get("entities") or []
@@ -299,6 +325,14 @@ def inventory(raw: dict[str, str | None], current: dict[str, str], installed: di
     if len(renamed_all) > len(renamed):
         check("info", "Older sensor names", f"{len(renamed_all) - len(renamed)} World Assistant sensors keep names from an "
                                             "earlier version; none of your files use them, so nothing needs doing")  # fmt: skip
+    leftover = [] if provided is None else sorted(
+        ({"entity_id": e["entity_id"], "unique_id": e["unique_id"], "domain": e["entity_id"].split(".")[0]}
+         for e in mqtt_wa if e["unique_id"] not in provided), key=lambda x: x["entity_id"])  # fmt: skip
+    if leftover:
+        check("change", "Sensors no longer provided", f"{len(leftover)}: World Assistant does not publish these any "
+              "more (a place or feature removed, or a sensor retired), so they stay unavailable. \"Remove leftovers\" "
+              "below deletes them from Home Assistant: " + ", ".join(x["entity_id"] for x in leftover[:20])
+              + (f" and {len(leftover) - 20} more" if len(leftover) > 20 else ""))  # fmt: skip
     if missing:
         check("problem", "Sensors your files need", "not in Home Assistant (World Assistant too old, that part not set up "
                                                     "or switched off, or not published yet): " + ", ".join(missing[:30]))  # fmt: skip
@@ -379,7 +413,8 @@ def inventory(raw: dict[str, str | None], current: dict[str, str], installed: di
     if places_only:
         check("info", "Places", "World Assistant places that are not Home Assistant zones: "
               + ", ".join(p["name"] for p in places_only) + " (copy them as zones below)")  # fmt: skip
-    live_checks(check, live, current, ids, {e["entity_id"]: e.get("platform") for e in entities})
+    live_checks(check, live, current, ids, {e["entity_id"]: e.get("platform") for e in entities},
+                {x["entity_id"] for x in leftover})  # fmt: skip
 
     integrations = sorted({(e.get("domain"), e.get("title")) for e in entries if not e.get("disabled_by")},
                           key=lambda x: (str(x[0]), str(x[1])))  # fmt: skip
@@ -387,7 +422,8 @@ def inventory(raw: dict[str, str | None], current: dict[str, str], installed: di
     return {
         "read_at": datetime.now(UTC).isoformat(), "version": version, "home": home,
         "names": names, "checks": checks, "files": files,
-        "wa_sensors": {"count": len(mqtt_wa), "renamed": renamed, "missing": missing},
+        "wa_sensors": {"count": len(mqtt_wa), "renamed": renamed, "missing": missing, "leftover": leftover},
+        "base_url": secrets_base(raw.get("secrets.yaml"), secret_paths or {}),
         "mqtt": ha_broker,
         "integrations": [{"domain": d, "title": t} for d, t in integrations],
         "zones": zone_rows, "places_not_zones": places_only, "live": bool(live and live.get("states")),
@@ -507,9 +543,46 @@ async def discover(request: Request) -> dict[str, Any]:
     result = inventory(raw, current, installed,
                        {p: render((HA_DIR / p).read_text(), current) for p in ours},
                        {"host": conf.host, "port": conf.port}, await _wa_home(engine), await _places(engine), live,
-                       get_settings().api_token, SECRET_PATHS)  # fmt: skip
+                       get_settings().api_token, SECRET_PATHS, await provided_ids(request))  # fmt: skip
     await _put(engine, INVENTORY_KEY, result)
     return result
+
+
+async def provided_ids(request: Request) -> set[str] | None:
+    """The unique ids of every sensor and image the last publish sent (None until one has been recorded)."""
+    from app.ha_publish import published_keys
+
+    keys = await published_keys(getattr(request.app.state, "redis", None))
+    if keys is None:
+        return None
+    return {unique_id(dev, k) for dev, ks in keys.items() for k in ks}
+
+
+@router.post("/leftovers/remove")
+async def remove_leftovers(request: Request) -> dict[str, Any]:
+    """Delete from Home Assistant the World Assistant sensors that Find my setup found are no longer provided: an
+    empty retained discovery message removes each. Checked again against what is published now, so nothing current
+    goes."""
+    from app import mqtt
+    from app.config import get_settings
+    from app.ha_smb import _get
+    from app.mqtt_config import load
+
+    inv = await _get(request.app.state.engine, INVENTORY_KEY) or {}
+    provided = await provided_ids(request)
+    if provided is None:
+        raise HTTPException(409, "World Assistant has not recorded what it publishes yet: wait for the next publish")
+    gone = [x for x in (inv.get("wa_sensors") or {}).get("leftover") or []
+            if str(x.get("unique_id", "")).startswith("wa_") and x["unique_id"] not in provided
+            and re.match(r"^[a-z_]+$", str(x.get("domain", "")))]  # fmt: skip
+    if not gone:
+        return {"removed": [], "detail": "nothing to remove: run Find my setup again if Home Assistant still shows some"}
+    conf, _ = await load(request.app.state.engine)
+    disc = get_settings().mqtt_discovery_prefix
+    ok = await mqtt.publish([(f"{disc}/{x['domain']}/{x['unique_id']}/config", "", True) for x in gone], conf)
+    if not ok:
+        raise HTTPException(502, f"could not reach the MQTT broker: {mqtt.last_error}")
+    return {"removed": [x["entity_id"] for x in gone]}
 
 
 @router.get("/inventory")

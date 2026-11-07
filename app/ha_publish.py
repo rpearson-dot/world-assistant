@@ -606,6 +606,9 @@ async def ha_sync(ctx: dict[str, Any]) -> int:
         return 0
     fp = _fingerprint(devices)
     first = ctx.get("ha_fingerprint") != fp
+    if first and "ha_keys" not in ctx:  # after a restart: what the last run published, to remove what has gone since
+        ctx["ha_keys"] = {d: [k for k in ks if not k.startswith(IMAGE_MARK)]
+                          for d, ks in (await published_keys(ctx.get("redis"), marked=True) or {}).items()}  # fmt: skip
     keys = {d.id: [x.key for x in d.sensors] for d in devices}
     gone: list[mqtt.Message] = []
     if first:  # sensors that existed at the last discovery but not now (an expired place): remove them
@@ -623,6 +626,8 @@ async def ha_sync(ctx: dict[str, Any]) -> int:
     if ok:
         ctx["ha_fingerprint"] = fp
         ctx["ha_keys"] = keys
+        if first:
+            await save_published(ctx.get("redis"), devices)
     else:
         ctx["ha_images"] = before  # not sent: try again next time
     sensors = sum(len(d.sensors) for d in devices)
@@ -631,6 +636,42 @@ async def ha_sync(ctx: dict[str, Any]) -> int:
 
 
 HA_LAST_KEY = "wa:ha:last"
+HA_KEYS_KEY = "wa:ha:published"  # {device: [sensor keys, and image keys marked IMAGE_MARK]}: kept, no expiry
+IMAGE_MARK = "image:"
+
+
+async def save_published(redis: Any, devices: list[Device]) -> None:
+    """Record every sensor and image published, so a restart (or Find my setup) knows what is still provided."""
+    if redis is None:
+        return
+    keys = {d.id: [x.key for x in d.sensors] + [IMAGE_MARK + i.key for i in d.images] for d in devices}
+    # a device missing from this run (its source failed for now) keeps what it had: never offer working sensors for removal
+    for dev, ks in (await published_keys(redis, marked=True) or {}).items():
+        keys.setdefault(dev, ks)
+    try:
+        await redis.set(HA_KEYS_KEY, json.dumps(keys))
+    except Exception:  # best effort
+        log.debug("could not record the published sensors", exc_info=True)
+
+
+async def published_keys(redis: Any, marked: bool = False) -> dict[str, list[str]] | None:
+    """What the last discovery published ({device: keys}; image keys keep IMAGE_MARK if `marked`), or None if not
+    recorded."""
+    if redis is None:
+        return None
+    try:
+        raw = await redis.get(HA_KEYS_KEY)
+    except Exception:  # noqa: BLE001 - best effort: unknown is a fine answer
+        return None
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return {str(d): [str(k) if marked else str(k).removeprefix(IMAGE_MARK) for k in ks] for d, ks in data.items()}
 
 
 async def record(ctx: dict[str, Any], ok: bool, sensors: int) -> None:

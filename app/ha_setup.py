@@ -264,6 +264,7 @@ PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
   in Home Assistant is changed, and no password or key is kept.</p>
   <div class="row"><button id="disc" class="primary" type="button">Find my setup</button><span id="discmsg" class="dim"></span></div>
   <ul id="checks" class="checks-list"></ul>
+  <div class="row" id="leftbox" hidden><button id="leftgo" type="button">Remove leftovers</button><span id="leftmsg" class="dim"></span></div>
   <details id="discmore"><summary>What was found</summary><div id="found" class="dim"></div></details>
   <div id="zonebox" hidden><h3>Zones and places</h3>
     <div id="zin"></div><div id="zout"></div><span id="zmsg" class="dim"></span></div>
@@ -336,6 +337,7 @@ const hdr = () => ({ Authorization: 'Bearer ' + tok.value });
 let data = null, token = '';
 try { $('since').value = localStorage.getItem('wa_ha_since') || ''; } catch (e) {}
 $('base').value = location.origin;
+let baseTyped = false;  // once typed in, the box is never overwritten by what secrets.yaml says
 function newer(a, b) {  // is version a later than b?
   const p = v => (v || '0').split('.').map(n => parseInt(n, 10) || 0);
   const x = p(a), y = p(b);
@@ -485,7 +487,9 @@ $('namesave').onclick = async () => {
   } catch (e) { $('namemsg').textContent = e.message; }
 };
 const MARK = { ok: '✓ ', problem: '✗ ', check: '? ', change: '→ ', info: '· ' };
+let lastInv = null;
 function showInventory(inv, fresh) {
+  lastInv = inv;
   found = inv.names || null;
   installed = {}; (inv.files || []).forEach(f => { installed[f.path] = f.state; });
   $('checks').replaceChildren(...(inv.checks || []).map(c => {
@@ -506,6 +510,10 @@ function showInventory(inv, fresh) {
   $('found').textContent = bits.join('; ') + '.';
   $('discmsg').textContent = (fresh ? 'Read just now' : 'Last read ') + ' ' + new Date(inv.read_at).toLocaleString() + '.';
   showZones(inv);
+  if (inv.base_url && !baseTyped) $('base').value = inv.base_url;  // the address Home Assistant already uses
+  const left = (inv.wa_sensors || {}).leftover || [];
+  $('leftbox').hidden = !left.length;
+  $('leftmsg').textContent = left.length ? left.length + ' sensor' + (left.length === 1 ? '' : 's') + ' World Assistant no longer provides' : '';
   if (data) {
     renderNames(null);
     $('pk').replaceChildren(...data.files.filter(f => f.kind === 'package').map(f => row(f, true)));
@@ -624,7 +632,17 @@ $('smbcopy').onclick = async () => {
 $('copylove').onclick = () => copyText($('lovelace').textContent).then(() => $('copylove').textContent = 'Copied');
 
 $('go').onclick = load;
-$('base').oninput = secrets;
+$('base').oninput = () => { baseTyped = true; secrets(); };
+$('leftgo').onclick = async () => {
+  const n = ((lastInv && lastInv.wa_sensors) || {}).leftover || [];
+  if (!confirm('Remove ' + n.length + ' sensors World Assistant no longer provides from Home Assistant?')) return;
+  $('leftmsg').textContent = 'Removing…';
+  try {
+    const r = await fetch('/v1/ha/leftovers/remove', { method: 'POST', headers: hdr() }), d = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.status);
+    $('leftmsg').textContent = d.removed.length ? 'Removed ' + d.removed.length + '. Run Find my setup again to check.' : d.detail;
+  } catch (e) { $('leftmsg').textContent = 'Could not remove them: ' + e.message; }
+};
 $('since').oninput = () => { try { localStorage.setItem('wa_ha_since', $('since').value.trim()); } catch (e) {} if (data) load(); };
 $('copysec').onclick = () => copyText($('sec').textContent).then(() => $('secmsg').textContent = 'Copied.', e => $('secmsg').textContent = e.message);
 $('showtok').onclick = async () => {

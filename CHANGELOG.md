@@ -18,6 +18,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   you watch (`PUT /v1/environment/overflows/rivers`, or the `watch_rivers` tool), within 15 km to catch spills upstream:
   which are discharging now and for how long, which did in the last 48 hours, which monitors are offline. HA sensor
   `storm_overflows_<home>` counts the spills, for an automation to alert on; assistant tool `storm_overflows`.
+### Added
+- Find my setup fills in the address Home Assistant uses for World Assistant from the `wa_*` lines in `secrets.yaml`
+  (address only), so lines it writes match even when the page is opened at another address.
+- Find my setup lists sensors World Assistant **no longer provides** (removed places, retired sensors) that sit in Home
+  Assistant as unavailable, and **Remove leftovers** deletes them. They are no longer mixed in with "World Assistant
+  sensors unavailable".
+
+### Fixed
+- Sensors that went while World Assistant was restarting stayed in Home Assistant for good: what was published is
+  now remembered across restarts, so they are removed.
 
 ## [0.30.0] - 2026-11-05
 
