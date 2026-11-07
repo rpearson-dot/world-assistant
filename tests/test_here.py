@@ -150,10 +150,10 @@ async def test_a_postcode_instead_of_a_point(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(geo, "lookup_postcode", nowhere)
     req: Any = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(engine=None)))
-    d = await H.here(req, lat=None, lon=None, postcode="kt17 1aa", parts=None)
+    d = await H.here(req, lat=None, lon=None, postcode="kt17 1aa", words=None, parts=None)
     assert (d["lat"], d["lon"]) == (51.3343, -0.2678)
     with pytest.raises(HTTPException, match="Could not find the postcode 'ZZ1 1ZZ'"):
-        await H.here(req, lat=None, lon=None, postcode="zz1 1zz", parts=None)
+        await H.here(req, lat=None, lon=None, postcode="zz1 1zz", words=None, parts=None)
     with pytest.raises(HTTPException) as e:
-        await H.here(req, lat=None, lon=None, postcode=None, parts=None)
+        await H.here(req, lat=None, lon=None, postcode=None, words=None, parts=None)
     assert e.value.status_code == 422

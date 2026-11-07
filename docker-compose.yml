@@ -110,6 +110,7 @@ x-app: &app
     - ticketmaster_api_key
     - datathistle_token
     - datathistle_refresh_token
+    - what3words_api_key
     - pollen_api_key
     - kitchenowl_token
     - sainsburys_email
@@ -261,6 +262,8 @@ secrets:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/datathistle_token.txt
   datathistle_refresh_token:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/datathistle_refresh_token.txt
+  what3words_api_key:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/what3words_api_key.txt
   redis_password:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/redis_password.txt
   pollen_api_key:

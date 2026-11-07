@@ -25,7 +25,8 @@ PAGE = """<!doctype html>
 .area { font-size: 18px; font-weight: 600; margin: 4px 0; }
 form.save, form.pc { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
 form.pc { margin-top: 10px; }
-form.pc input { width: 10em; text-transform: uppercase; }
+form.pc input { width: 14em; }
+.w3w { margin: 0 0 4px; } .w3w a { color: #e11f26; font-weight: 600; text-decoration: none; }
 </style></head><body><main>
 <!--NAV-->
 <h1>Here</h1>
@@ -36,10 +37,11 @@ form.pc input { width: 10em; text-transform: uppercase; }
 <div class="card">
 <div class="row"><button id="go" type="button" class="primary">Use my location</button>
 <button id="again" type="button" hidden>Look again</button></div>
-<form id="pc" class="pc"><label>or a postcode <input id="pcode" maxlength="10" placeholder="KT17 1AA" autocomplete="postal-code"></label>
+<form id="pc" class="pc"><label>or a postcode or ///three.words <input id="pcode" maxlength="80" placeholder="KT17 1AA" autocomplete="postal-code"></label>
 <button>Look up</button></form>
 <p id="where" class="dim">Everything World Assistant knows about where you are now, without saving it as a place.</p>
 <p id="area" class="area"></p>
+<p id="w3w" class="w3w" hidden></p>
 <p id="hmsg" class="err"></p>
 </div>
 <div id="parts" class="parts"></div>
@@ -73,6 +75,10 @@ function show(d) {
   const a = d.area;
   $('area').textContent = a ? a.postcode + (a.ward ? ', ' + a.ward : '') + (a.district ? ', ' + a.district : '') : d.lat + ', ' + d.lon;
   $('where').textContent = 'At ' + d.lat + ', ' + d.lon + '.';
+  const w = d.what3words, wb = $('w3w'); wb.replaceChildren(); wb.hidden = !w;
+  if (w && w.words) wb.append(Object.assign(el('a', null, '///' + w.words), { href: w.map, target: '_blank', rel: 'noopener noreferrer' }),
+    el('span', 'dim', w.nearest ? ' near ' + w.nearest : ''));
+  else if (w && w.error) wb.append(el('span', 'dim', 'what3words: ' + w.error));
   const box = $('parts'); box.replaceChildren();
   d.parts.filter(p => !p.off && !p.blank).forEach(p => {
     const c = el('div', 'card' + (p.ok ? '' : ' quiet')); c.append(el('h3', null, p.title), el('p', p.ok ? null : 'dim', p.text)); box.append(c);
@@ -101,8 +107,9 @@ async function lookPostcode() {
   const pc = $('pcode').value.trim();
   if (!pc) { $('pcode').focus(); return; }
   last = lookPostcode;
-  $('hmsg').textContent = ''; $('where').textContent = 'Asking every source about ' + pc.toUpperCase() + '...';
-  try { show(await api('GET', '/v1/here?postcode=' + encodeURIComponent(pc))); }
+  const bare = pc.split('///').join(''), words = bare.split('.').length === 3 && !/\\s/.test(bare);  // three words: what3words
+  $('hmsg').textContent = ''; $('where').textContent = 'Asking every source about ' + (words ? pc : pc.toUpperCase()) + '...';
+  try { show(await api('GET', '/v1/here?' + (words ? 'words=' : 'postcode=') + encodeURIComponent(pc))); }
   catch (e) { $('hmsg').textContent = e.message; $('where').textContent = ''; }
 }
 $('go').onclick = look; $('again').onclick = () => (last || look)();

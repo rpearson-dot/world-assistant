@@ -2,9 +2,14 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.37.0] - 2026-11-07
 
 ### Added
+- **what3words** on Here (`what3words_api_key`, free plan): the three words for every point Here is asked about, on
+  the page (linked to what3words' map), in `/v1/here`'s data and the assistant's answer; and three words
+  (`///filled.count.soap`) typed into Here's box, sent as `/v1/here?words=` or given to the `here` tool, instead of a
+  postcode. Those look-ups are counted and stop at 90 a month (`WA_WHAT3WORDS_MONTHLY_LIMIT`; the free plan allows
+  100). The key goes in a header, never the address.
 - Here takes a postcode as well as the browser's location (`/v1/here?postcode=`): a box on the page, pointed to when
   the browser cannot give a location (the plain http address, location not allowed, no fix).
 

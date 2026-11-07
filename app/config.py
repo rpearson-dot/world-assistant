@@ -163,6 +163,9 @@ class Settings(BaseSettings):
     outdoors_preferred_shops: str = "Sigma Sports"
     # Data Thistle's free tier allows 1,000 requests a month: stop at this many, leaving room for checks by hand
     datathistle_monthly_limit: int = 900
+    # what3words' free plan: 100 three-word look-ups (words to a place) a month; stop short of it. Showing the words for
+    # a place is not counted.
+    what3words_monthly_limit: int = 90
     # Which bank holidays count (GOV.UK's feed): england-and-wales, scotland or northern-ireland
     bank_holiday_division: str = "england-and-wales"
     energy_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
@@ -216,6 +219,10 @@ class Settings(BaseSettings):
     @property
     def datathistle_refresh_token(self) -> str:
         return read_secret("datathistle_refresh_token")
+
+    @property
+    def what3words_api_key(self) -> str:
+        return read_secret("what3words_api_key")
 
     @property
     def octopus_api_key(self) -> str:

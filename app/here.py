@@ -177,7 +177,20 @@ async def gather(request: Request, lat: float, lon: float) -> dict[str, Any]:
                 return {"part": part, "title": title, "ok": False, "text": str(detail or f"HTTP {r.status_code}")[:200]}
             return {"part": part, "title": title, "ok": True, "blank": _blank(part, d), "text": words(part, d), "data": d}
 
-        out["parts"] = list(await asyncio.gather(*(one(*p) for p in PARTS)))
+        async def three_words() -> dict[str, Any] | None:
+            from app.integrations.what3words import client as W3W
+
+            if not get_settings().what3words_api_key:
+                return None
+            try:
+                return await asyncio.wait_for(W3W.to_words(lat, lon), AREA_S)
+            except TimeoutError:
+                return {"error": "what3words did not answer in time"}
+            except W3W.What3WordsError as exc:
+                return {"error": str(exc)}
+
+        *parts, out["what3words"] = await asyncio.gather(*(one(*p) for p in PARTS), three_words())
+        out["parts"] = list(parts)
     return out
 
 
@@ -185,12 +198,26 @@ async def gather(request: Request, lat: float, lon: float) -> dict[str, Any]:
 async def here(request: Request, lat: float | None = Query(None, ge=49.5, le=61.0),
                lon: float | None = Query(None, ge=-8.7, le=2.0),
                postcode: str | None = Query(None, max_length=10, description="instead of lat and lon"),
+               words: str | None = Query(None, max_length=80, description="what3words, instead of lat and lon"),
                parts: str | None = Query(None, description="only these parts, comma-separated")) -> dict[str, Any]:  # fmt: skip
     """Everything World Assistant knows about a point in Great Britain (or a postcode's centre), each part with a
     sentence and its data."""
+    from app.integrations.what3words import client as W3W
+
+    if (lat is None or lon is None) and (words or W3W.words_in(postcode or "")):
+        try:
+            got3 = await W3W.to_place(words or postcode or "", getattr(request.app.state, "redis", None))
+        except W3W.What3WordsError as exc:
+            raise HTTPException(404 if "does not know" in str(exc) else 422, str(exc)) from exc
+        lat, lon = got3["lat"], got3["lon"]
+        if lat is None or lon is None:
+            raise HTTPException(404, "what3words gave no place for those words.")
+        if not (49.5 <= lat <= 61.0 and -8.7 <= lon <= 2.0):
+            near = f" (near {got3['nearest']})" if got3.get("nearest") else ""
+            raise HTTPException(422, f"///{got3['words']} is outside Great Britain{near}.")
     if lat is None or lon is None:
         if not (postcode or "").strip():
-            raise HTTPException(422, "Give lat and lon, or a postcode.")
+            raise HTTPException(422, "Give lat and lon, a postcode, or three words (///filled.count.soap).")
         from app.geo import PostcodeError, lookup_postcode
         from app.postcodes import local_postcode
 

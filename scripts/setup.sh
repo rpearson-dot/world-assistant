@@ -249,6 +249,7 @@ key datathistle_token "Data Thistle: theatre, comedy, exhibitions, family days o
 key ticketmaster_api_key "Ticketmaster: concerts, sport and shows near you" "https://developer.ticketmaster.com/"
 key pollen_api_key "Polleninformation: pollen forecasts (personal use, 40 requests a day)" "https://www.polleninformation.at/en/data-interface"
 key octopus_api_key "Octopus Energy: your tariff and Saving Sessions" "https://octopus.energy/dashboard/new/accounts/personal-details/api-access"
+key what3words_api_key "what3words: three words for a place on Here, and three words to a place (free plan)" "https://accounts.what3words.com/select-plan"
 if [ -s "$dir/octopus_api_key.txt" ]; then
   env_set WA_OCTOPUS_ACCOUNT "$(ask "  Octopus account number (A-1234ABCD)" "$(env_get WA_OCTOPUS_ACCOUNT)")"
 fi
