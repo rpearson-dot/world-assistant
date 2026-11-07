@@ -52,7 +52,7 @@ WORK = {  # Open Street and Roadworks, as sent
 PROPOSED = {  # Proposed Street and Roadworks, as sent (road_category1 is a number, not the street)
     "permit_ref": "UK019-NEXT", "town": "KINGSTON ROAD,  NEW MALDEN", "work_category": "STANDARD",
     "works_description1": "Disconnection Or Alteration Of Supply", "road_category1": "2",
-    "traffic_management_type1": "Road closure", "proposedstartdate3": "2026-11-05", "proposedenddate1": "2026-11-07",
+    "traffic_management_type1": "Road closure", "proposedstartdate3": "2026-11-05", "proposedenddate1": "2099-11-07",  # far off: ended proposals are hidden
     "geo_point_2d": {"lon": HOME[1] - 0.001, "lat": HOME[0]},
 }  # fmt: skip
 
