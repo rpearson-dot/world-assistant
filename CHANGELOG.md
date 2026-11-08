@@ -2,6 +2,28 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.39.0] - 2026-11-08
+
+### Added
+- **Bike garage** (`/bikes`, `docs/bikes.md`), stage 1: riders (anyone can add themselves), bikes of every type (road,
+  gravel, cyclocross, hardtail and full-suspension MTB, hybrid, time trial, tandem; any as an e-bike) with default
+  parts from their answers (brakes and suspension front and rear separately), labelled sets (wheels, swapped singly or
+  as a group), parts with lives by distance, hours or time, the due list, the service log, tyre pressures and checks,
+  sealant, labelled AXS batteries with their health, a spares shelf, rider kit, running cost, wet rides suggested
+  from the rain gauges and confirmed, rides by hand or from Garmin Connect's CSV export, photos and brand pictures (else
+  generic drawings), due parts onto the Outdoors list, and assistant tools. Each part has its kind's model details
+  (teeth, speeds, diameter, size...), and is replaced with the same again or something different, its history saying
+  what changed. Imported rides are asked about their bike (Garmin keeps the last one), with the likely wrong ones
+  flagged from their activity type. Migration 0044. Garmin's API comes in stage 2.
+- Bike garage: **undo** anything logged (a replacement puts the old part back and the spare back on the shelf),
+  delete a ride, a part or a bike added by mistake, and **retired bikes** with their distance, cost, parts and history.
+- Live check: the bike garage, and a rain gauge probe for its wet suggestions.
+
+### Fixed
+- Events: a listing whose map position is more than 10 km from its own postcode (a Swansea show that Ticketmaster
+  placed near home) is moved to the postcode, from the local Code-Point table, and left out when that is outside the
+  search. Also for the events kept for the knowledge graph.
+
 ## [0.38.1] - 2026-11-07
 
 ### Fixed
@@ -15,7 +37,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   its first request) is said briefly on Here ("not available on this key's plan"), and what3words is not asked again
   for six hours, then tried again in case it was a mistake.
 - The live check shows the 406's timetable probe as INFO (TfL's buses publish no BODS timetable), not a failure.
-
 ## [0.38.0] - 2026-11-07
 
 ### Changed

@@ -814,3 +814,8 @@ MORE: list[Tool] = [
                                                  name=("string", "optional name"), id=("string", "optional id")),
           "required": ["from_place", "to_place"]}, add_trip_tool),
 ]
+
+# The bike garage's tools live with it (app/bikes/tools.py).
+from app.bikes.tools import TOOLS as _BIKE_TOOLS
+
+MORE += _BIKE_TOOLS
