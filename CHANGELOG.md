@@ -2,6 +2,20 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.38.1] - 2026-11-07
+
+### Fixed
+- The smoke check after an update failed the Wishlist and Outdoors pages when those modules were switched off at
+  /modules, which stopped the update before its live check. A page of a switched-off module now shows as "off" and
+  is not a failure; a page that is really missing still is.
+- Air quality: Defra UK-AIR's search for stations near a point answers HTTP 500 (its full station list and readings
+  work). World Assistant now reads the full list (kept for a day, and the last one used if UK-AIR fails) and finds the
+  nearest stations itself.
+- what3words: a refusal (the free plan answered "Quota exceeded or API plan does not have access to this feature" on
+  its first request) is said briefly on Here ("not available on this key's plan"), and what3words is not asked again
+  for six hours, then tried again in case it was a mistake.
+- The live check shows the 406's timetable probe as INFO (TfL's buses publish no BODS timetable), not a failure.
+
 ## [0.38.0] - 2026-11-07
 
 ### Changed

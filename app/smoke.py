@@ -72,7 +72,12 @@ def fetch(base: str, path: str, token: str | None = None, method: str = "GET",
 
 class Report:
     def __init__(self, out: Callable[[str], None] = print) -> None:
-        self.out, self.failed, self.total = out, 0, 0
+        self.out, self.failed, self.total, self.off = out, 0, 0, 0
+
+    def switched_off(self, what: str) -> None:
+        """A page of a module switched off at /modules: said so, not counted as a pass or a failure."""
+        self.off += 1
+        self.out(f"off  {what}  (switched off at /modules)")
 
     def check(self, ok: bool, what: str, detail: str = "") -> bool:
         self.total += 1
@@ -109,6 +114,9 @@ def run(base: str, token: str, *, seed: bool = False, out: Callable[[str], None]
         r.check(s == 200, f"GET {path}", f"HTTP {s}" if s != 200 else "")
     for path in PAGES:
         s, ct, b = fetch(base, path)
+        if s == 404 and "is switched off" in b:
+            r.switched_off(f"page {path}")
+            continue
         good = s == 200 and "text/html" in ct and "<nav" in b and "<script>" in b
         good = good and "/*BASE_CSS*/" not in b and "<!--NAV-->" not in b
         r.check(good, f"page {path}", f"HTTP {s}" if not good else "")
@@ -192,7 +200,8 @@ def run(base: str, token: str, *, seed: bool = False, out: Callable[[str], None]
         s, _, _ = fetch(base, f"/v1/places/{place}", token, "DELETE")
         r.check(s in (200, 204), "delete the test place", f"HTTP {s}")
 
-    r.out(f"\n{r.total - r.failed} of {r.total} checks passed" + ("" if not r.failed else f", {r.failed} FAILED"))
+    r.out(f"\n{r.total - r.failed} of {r.total} checks passed" + ("" if not r.failed else f", {r.failed} FAILED")
+          + (f"; {r.off} page{'s' if r.off != 1 else ''} switched off, not checked" if r.off else ""))
     return 1 if r.failed else 0
 
 

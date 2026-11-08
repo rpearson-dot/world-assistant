@@ -1,7 +1,8 @@
 """Air quality (Defra UK-AIR) and river levels, rainfall and tide gauges (Environment Agency), read live.
 
 UK-AIR: the Sensor Observation Service's REST API (52°North Timeseries API v1), Open Government Licence, no key.
-    GET {UKAIR}/stations?near={"center":{"type":"Point","coordinates":[lon,lat]},"radius":km}
+    GET {UKAIR}/stations                                     every station (kept a day); the nearest are found here
+                                                             (its own ?near= search answered HTTP 500 in Nov 2026)
     GET {UKAIR}/timeseries?station={id}&expanded=true        each series' pollutant, unit and last value
     GET {UKAIR}/timeseries/{id}/getData?timespan=PT24H/<now>  the readings, for the 8- and 24-hour means
 The Daily Air Quality Index (1 to 10) is worked out here from those readings, as Defra defines it.
@@ -41,6 +42,7 @@ _cache: dict[str, tuple[float, Any]] = {}
 
 def forget() -> None:
     _cache.clear()
+    _ukair_stations.clear()
 
 
 async def _json(client: httpx.AsyncClient, url: str, params: dict[str, Any] | None = None) -> Any:
@@ -159,21 +161,39 @@ def _values(data: Any, series_id: str) -> list[tuple[datetime, float]]:
     return sorted(out)
 
 
+STATIONS_S = 86400
+_ukair_stations: dict[str, Any] = {}
+
+
+async def all_stations(client: httpx.AsyncClient) -> list[dict[str, Any]]:
+    """Every UK-AIR station (a few hundred), kept for a day: stations rarely change, and UK-AIR's own nearby search
+    (?near=) fails. If a fresh list cannot be had, the last one is used."""
+    if _ukair_stations.get("at") and time.monotonic() - _ukair_stations["at"] < STATIONS_S:
+        return _ukair_stations["list"]
+    try:
+        got = await _json(client, f"{UKAIR}/stations", None)
+    except EnvError:
+        if _ukair_stations.get("list"):
+            return _ukair_stations["list"]
+        raise
+    if not isinstance(got, list):
+        raise EnvError("UK-AIR sent no list of stations")
+    _ukair_stations.update(at=time.monotonic(), list=got)
+    return got
+
+
 async def air_near(client: httpx.AsyncClient, lat: float, lon: float, km: float = 20,
                    now: datetime | None = None) -> dict[str, Any]:  # fmt: skip
     """Each pollutant from the nearest station measuring it recently, its mean as the index uses it, and the
     overall index (the highest of the four)."""
     now = now or datetime.now(UTC)
-    near = '{"center":{"type":"Point","coordinates":[%s,%s]},"radius":%s}' % (lon, lat, km)  # noqa: UP031
-    stations = await _json(client, f"{UKAIR}/stations", {"near": near})
-    if not isinstance(stations, list):
-        raise EnvError("UK-AIR sent no list of stations")
+    stations = await all_stations(client)
     placed = []
     for f in stations:
         pt = station_point(f)
         sid = (f.get("properties") or {}).get("id")
-        if pt and sid is not None:
-            placed.append((km_between(lat, lon, *pt), str(sid), (f.get("properties") or {}).get("label") or str(sid), pt))
+        if pt and sid is not None and (d := km_between(lat, lon, *pt)) <= km:
+            placed.append((d, str(sid), (f.get("properties") or {}).get("label") or str(sid), pt))
     placed.sort()
     readings: dict[str, dict[str, Any]] = {}
     for dist, sid, label, pt in placed[:8]:

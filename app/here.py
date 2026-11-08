@@ -187,7 +187,7 @@ async def gather(request: Request, lat: float, lon: float) -> dict[str, Any]:
             except TimeoutError:
                 return {"error": "what3words did not answer in time"}
             except W3W.What3WordsError as exc:
-                return {"error": str(exc)}
+                return {"error": exc.brief, "detail": str(exc)}
 
         *parts, out["what3words"] = await asyncio.gather(*(one(*p) for p in PARTS), three_words())
         out["parts"] = list(parts)

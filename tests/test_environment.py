@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -47,14 +46,18 @@ def test_station_positions_in_either_order() -> None:
     assert C.station_point({"geometry": {}}) is None
 
 
+asked: list[str] = []
+
+
 def ukair() -> httpx.MockTransport:
     def answer(req: httpx.Request) -> httpx.Response:
         path, q = req.url.path, parse_qs(urlparse(str(req.url)).query)
         if path.endswith("/stations"):
-            near = json.loads(q["near"][0])
-            assert near["center"]["coordinates"] == [HOME[1], HOME[0]]
+            assert "near" not in q  # UK-AIR's nearby search answers HTTP 500: every station is asked for
+            asked.append("stations")
             return httpx.Response(200, json=[
-                {"properties": {"id": 7, "label": "Far Away"}, "geometry": {"coordinates": [-0.0, 51.5]}},
+                {"properties": {"id": 9, "label": "Edinburgh St Leonards"}, "geometry": {"coordinates": [-3.18, 55.95]}},
+                {"properties": {"id": 7, "label": "Far Away"}, "geometry": {"coordinates": [-0.1, 51.45]}},
                 {"properties": {"id": 3, "label": "Sutton Worcester Park"}, "geometry": {"coordinates": [-0.24, 51.38]}},
             ])  # fmt: skip
         if path.endswith("/timeseries"):
@@ -93,6 +96,21 @@ async def test_air_uses_the_means_defra_does_and_the_worst_pollutant_sets_the_in
     assert (o3["station"], o3["mean"], o3["index"]) == ("Far Away", 110.0, 4)  # the near one is stale: the next one
     assert "pm10" not in r["readings"]
     assert (r["index"], r["band"], r["worst"]) == (4, "Moderate", "Ozone")
+    assert not any(x["station"].startswith("Edinburgh") for x in r["readings"].values())  # beyond 20 km
+
+
+async def test_the_station_list_is_kept_a_day_and_the_last_one_used_if_uk_air_fails() -> None:
+    C.forget()
+    asked.clear()
+    async with httpx.AsyncClient(transport=ukair()) as c:
+        await C.air_near(c, *HOME, now=NOW)
+        C._cache.clear()  # the ten-minute cache gone: the station list is still kept
+        await C.air_near(c, *HOME, now=NOW)
+    assert asked == ["stations"]
+    C._ukair_stations["at"] -= C.STATIONS_S + 1  # a day on, and UK-AIR failing: the last list is used
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda r: httpx.Response(500) if r.url.path.endswith("/stations") else ukair().handle_request(r))) as c:  # fmt: skip
+        assert len(await C.all_stations(c)) == 3
 
 
 async def test_no_recent_reading_says_so() -> None:

@@ -20,7 +20,7 @@ PAGE = "<html><nav>n</nav><script>1</script></html>"
 
 
 def toy(*, broken_route: bool = False, bad_page: bool = False, open_api: bool = False,
-        plain_503: bool = False, json_503: bool = False) -> FastAPI:  # fmt: skip
+        plain_503: bool = False, json_503: bool = False, off: tuple[str, ...] = ()) -> FastAPI:  # fmt: skip
     app = FastAPI()
 
     def auth(
@@ -41,7 +41,10 @@ def toy(*, broken_route: bool = False, bad_page: bool = False, open_api: bool = 
     def readyz() -> dict:
         return {"ok": True}
 
-    for p in smoke.PAGES:
+    for p in off:  # as the module gate answers a page of a module switched off at /modules
+        app.get(p, response_class=HTMLResponse)(lambda p=p: HTMLResponse(
+            f"<!doctype html><title>Off</title><body><h1>{p} is switched off</h1></body>", status_code=404))
+    for p in [x for x in smoke.PAGES if x not in off]:
         body = PAGE.replace("<nav>", "/*BASE_CSS*/<nav>") if (bad_page and p == "/fuel") else PAGE
         app.get(p, response_class=HTMLResponse)(lambda body=body: body)
 
@@ -170,3 +173,10 @@ def test_the_local_check_is_skipped_when_local_access_is_off(monkeypatch: pytest
     monkeypatch.setenv("WA_LOCAL_NO_TOKEN", "false")
     code, text = go(toy())
     assert code == 0 and "local network needs no token" not in text
+
+
+def test_a_switched_off_page_is_said_and_not_a_failure() -> None:
+    code, text = go(toy(json_503=True, off=("/wishlist", "/outdoors")))
+    assert code == 0, text
+    assert "off  page /wishlist  (switched off at /modules)" in text and "FAIL" not in text
+    assert "2 pages switched off, not checked" in text

@@ -62,7 +62,8 @@ async def test_both_ways_with_the_key_in_a_header_and_only_one_way_counted() -> 
 async def test_errors_in_words() -> None:
     cases = ((401, {"error": {"code": "InvalidKey", "message": "Authentication failed"}}, "refused the key"),
              (429, {"error": {"code": "QuotaExceeded", "message": "Quota exceeded"}}, "allowance is used \\(it said HTTP 429, QuotaExceeded"),
-             (402, {"error": {"code": "PlanNotAllowed", "message": "upgrade"}}, "plan for this key does not allow"),
+             (402, {"error": {"code": "QuotaExceeded", "message": "Quota exceeded or API plan does not have access"}},
+              "its plan does not include this \\(it said HTTP 402"),
              (400, {"error": {"code": "BadWords", "message": "words must be three words"}}, "does not know that"),
              (500, {}, "HTTP 500"))  # fmt: skip
     for status, body, words in cases:
@@ -127,3 +128,26 @@ async def test_without_a_key_here_has_no_words(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(type(get_settings()), "what3words_api_key", property(lambda self: ""))
     req: Any = SimpleNamespace(app=fake_app([]))
     assert (await H.gather(req, 51.3343, -0.2678))["what3words"] is None
+
+
+async def test_after_a_refusal_it_waits_before_asking_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    """As what3words answered on 7 November 2026 (the free plan, the very first request)."""
+    W._refused.clear()
+    asked: list[str] = []
+
+    def refuse(req: httpx.Request) -> httpx.Response:
+        asked.append(str(req.url))
+        return httpx.Response(402, json={"error": {"code": "QuotaExceeded", "message": "Quota exceeded or API plan does not "
+                                                   "have access to this feature."}})  # fmt: skip
+
+    t = httpx.MockTransport(refuse)
+    with pytest.raises(W.What3WordsError) as e:
+        await W.to_words(51.37, -0.247, key="k", transport=t)
+    assert e.value.brief == "not available on this key's plan" and "HTTP 402" in str(e.value)
+    with pytest.raises(W.What3WordsError) as e2:
+        await W.to_words(51.37, -0.247, key="k", transport=t)
+    assert len(asked) == 1 and e2.value.brief.endswith("(checking again later)")  # not asked again
+    W._refused["until"] = 0  # six hours on: asked again, and an answer clears it
+    ok = httpx.MockTransport(lambda r: httpx.Response(200, json=ANSWER))
+    assert (await W.to_words(51.37, -0.247, key="k", transport=ok))["words"] == "filled.count.soap"
+    assert W._refused == {}
