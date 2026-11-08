@@ -104,7 +104,7 @@ async def test_here_shows_the_words_and_takes_them(monkeypatch: pytest.MonkeyPat
     assert d["what3words"]["words"] == "filled.count.soap"
     got: list[tuple[float, float]] = []
 
-    async def gathered(request: Any, lat: float, lon: float) -> dict[str, Any]:
+    async def gathered(request: Any, lat: float, lon: float, *a: Any, **kw: Any) -> dict[str, Any]:
         got.append((lat, lon))
         return {"lat": lat, "lon": lon, "area": None, "parts": []}
 

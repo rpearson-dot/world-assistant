@@ -54,3 +54,12 @@ a saved place):
 
 Each part says what it found, or why it failed. Because these are read live, the deploy check leaves them out, so a
 slow day at Defra cannot hold up an update.
+
+## River flow
+
+`GET /v1/environment/flows?place=` gives river flow where an Environment Agency gauge estimates it (cubic metres a
+second), the trend over three hours, and how it compares with that river's usual flows there. The usual flows come
+from the National River Flow Archive (UKCEH): from very low (below Q95, the flow exceeded 95% of the time, which is a
+dry spell), through low and normal, to high (above Q10) and very high (above Q05, a spate). The flow is also given as
+a share of the mean. Many gauges measure only level, so not every river has a flow. Flow is on the Environment
+page's Floods and rivers tab, in the assistant's `river_levels`, and is home's "River flow" sensor in Home Assistant.

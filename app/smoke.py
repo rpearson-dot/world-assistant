@@ -176,7 +176,12 @@ def run(base: str, token: str, *, seed: bool = False, out: Callable[[str], None]
         why = "" if ok else (b[:100] if s else b)
         if ok and s == 200 and "json" in ct:
             try:
-                json.loads(b)
+                if "ndjson" in ct:  # a stream (Here's parts as they arrive): one JSON value to a line
+                    for line in b.splitlines():
+                        if line.strip():
+                            json.loads(line)
+                else:
+                    json.loads(b)
             except ValueError:
                 ok, why = False, "claims JSON but is not"
         r.check(ok, f"GET {url}", f"HTTP {s} {why}".strip() if not ok else f"HTTP {s}")

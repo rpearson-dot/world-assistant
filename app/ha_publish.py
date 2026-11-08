@@ -492,6 +492,13 @@ def environment_device(summary: dict[str, Any]) -> Device:
                                   icon="mdi:weather-pouring", state_class="measurement",
                                   attributes={"last_hour_mm": g.get("last_hour_mm"), "gauge": g.get("gauge"), "at": g.get("at"),
                                               "error": (p["rain"] or {}).get("error")}))  # fmt: skip
+        if "flows" in p and (p["flows"] or {}).get("flows"):
+            f = p["flows"]["flows"][0]
+            sensors.append(Sensor(f"river_flow_{pid}", f"River flow near {p['name']}", f.get("flow_m3s"), unit="m³/s",
+                                  icon="mdi:waves-arrow-right", state_class="measurement",
+                                  attributes={"river": f.get("river"), "station": f.get("station"), "state": f.get("state"),
+                                              "pct_of_mean": f.get("pct_of_mean"), "trend": f.get("trend"), "usual": f.get("usual"),
+                                              "at": f.get("at")}))  # fmt: skip
         if "overflows" in p:
             o = p["overflows"] or {}
 

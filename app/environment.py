@@ -2,6 +2,7 @@
 
     GET /v1/environment/air?place=&km=      the nearest readings of each pollutant, and the index
     GET /v1/environment/rivers?place=&km=   river level gauges: level, usual range, trend
+    GET /v1/environment/flows?place=&km=    river flow (m³/s) where measured, compared with its usual flows (NRFA)
     GET /v1/environment/rain?place=&km=     rain gauges: the last hour and the last 24 hours
     GET /v1/environment/tides?place=&km=    the nearest tide gauge: measured level and trend
     GET /v1/environment/overflows?place=&km=&rivers=   storm overflows nearby and on watched rivers: spilling now,
@@ -75,6 +76,15 @@ async def rivers(request: Request, place: str | None = Query(None, description="
     """River level gauges near a place: the level now, its usual range there (low, normal, high) and the trend."""
     pid, name, lat, lon = await _where(request, place, lat, lon)
     return {"place": pid, "name": name, **await _call(C.rivers_near, lat, lon, km)}
+
+
+@router.get("/flows")
+async def flows(request: Request, place: str | None = Query(None, description="saved place; default: home"),
+                km: float = Query(10, gt=0, le=40), lat: float | None = LAT, lon: float | None = LON) -> dict[str, Any]:  # fmt: skip
+    """River flow near a place, where a gauge estimates it: cubic metres a second now, the trend, and how it compares
+    with that river's usual flows there (very low below Q95 to very high above Q05, and as a share of the mean)."""
+    pid, name, lat, lon = await _where(request, place, lat, lon)
+    return {"place": pid, "name": name, **await _call(C.flows_near, lat, lon, km)}
 
 
 @router.get("/rain")
@@ -164,6 +174,7 @@ async def summary(request: Request) -> dict[str, Any]:
             if pid == home_id:
                 p["rivers"] = await part(C.rivers_near, lat, lon)
                 p["rain"] = await part(C.rain_near, lat, lon)
+                p["flows"] = await part(C.flows_near, lat, lon)
                 p["overflows"] = await part(C.overflows_near, lat, lon, 3, await watched_rivers(request))
             out["places"].append(p)
     return out
@@ -173,7 +184,8 @@ async def probe(lat: float, lon: float) -> None:
     """Print what each source sends near a point, raw and as read here."""
     async with httpx.AsyncClient(timeout=TIMEOUT) as c:
         for title, fn, kw in (("Air quality (UK-AIR)", C.air_near, {}), ("Rivers (EA)", C.rivers_near, {}),
-                              ("Rain (EA)", C.rain_near, {}), ("Tides (EA, 30 km)", C.tides_near, {"km": 30}),
+                              ("Rain (EA)", C.rain_near, {}), ("River flow (EA, NRFA's usual flows)", C.flows_near, {}),
+                              ("Tides (EA, 30 km)", C.tides_near, {"km": 30}),
                               ("Storm overflows (Thames Water via the Hub, 3 km)", C.overflows_near, {})):  # fmt: skip
             print(f"\n== {title}")
             try:
@@ -186,6 +198,12 @@ async def probe(lat: float, lon: float) -> None:
             print(json.dumps((await C._json(c, f"{C.UKAIR}/stations", {"near": near}))[:2], indent=2)[:2000])
         except (C.EnvError, TypeError) as exc:  # not used since 0.38.1 (it fails): only noted, not a failure
             print(f"Note: UK-AIR's nearby search still fails ({exc}); World Assistant reads its full station list instead")
+        print("\n== NRFA stations (the usual flows): how many, and the first")
+        try:
+            st = await C.nrfa_stations(c)
+            print(len(st), "stations;", sum(1 for x in st if x.get("ea_ref")), "with a measuring authority's id;", json.dumps(st[:1], default=str))
+        except C.EnvError as exc:
+            print(f"FAILED: {exc}")
         print("\n== Thames Water overflows, raw (first one within 3 km)")
         try:
             raw = await C._json(c, C.OVERFLOW_FEEDS["Thames Water"], {

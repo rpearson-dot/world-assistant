@@ -43,6 +43,7 @@ _cache: dict[str, tuple[float, Any]] = {}
 def forget() -> None:
     _cache.clear()
     _ukair_stations.clear()
+    _nrfa.clear()
 
 
 async def _json(client: httpx.AsyncClient, url: str, params: dict[str, Any] | None = None) -> Any:
@@ -300,6 +301,117 @@ async def rivers_near(client: httpx.AsyncClient, lat: float, lon: float, km: flo
             "trend": trend(rec), "unit": m.get("unitName") or "m", "ref": s["stationReference"],
         })  # fmt: skip
     return {"rivers": out, "count": len(out), "source": EA_ATTRIBUTION}
+
+
+# --- river flow: the EA's live estimates (m³/s) where a gauge measures flow, and how that compares with the river's
+# usual flows there from the National River Flow Archive (UKCEH): its flow-duration figures, Q95 (exceeded 95% of the
+# time: a dry spell) to Q05 (exceeded 5% of the time: a spate)
+NRFA = "https://nrfaapps.ceh.ac.uk/nrfa/ws/station-info"
+NRFA_FIELDS = "id,name,river,lat-long,measuring-authority-station-id,gdf-mean-flow,gdf-q95-flow,gdf-q70-flow,gdf-q50-flow,gdf-q10-flow,gdf-q05-flow"
+NRFA_ATTRIBUTION = "National River Flow Archive (UKCEH), flow statistics"
+NRFA_TTL_S = 7 * 86400
+_nrfa: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+
+
+async def nrfa_stations(client: httpx.AsyncClient) -> list[dict[str, Any]]:
+    """Every NRFA gauging station with its flow statistics, read once a week (one request)."""
+    hit = _nrfa.get("all")
+    if hit and time.monotonic() - hit[0] < NRFA_TTL_S:
+        return hit[1]
+    try:
+        r = await client.get(NRFA, params={"station": "*", "format": "json-object", "fields": NRFA_FIELDS},
+                             headers={"User-Agent": USER_AGENT, "Accept": "application/json"}, timeout=60)  # fmt: skip
+    except httpx.HTTPError as exc:
+        raise EnvError(f"nrfaapps.ceh.ac.uk did not answer ({type(exc).__name__})") from exc
+    if r.status_code >= 400:
+        raise EnvError(f"nrfaapps.ceh.ac.uk answered HTTP {r.status_code}")
+    try:
+        data = r.json()
+    except ValueError as exc:
+        raise EnvError("nrfaapps.ceh.ac.uk did not send JSON") from exc
+    out = []
+    for x in (data or {}).get("data") or []:
+        ll = x.get("lat-long") or {}
+        la, lo = _num(ll.get("latitude")), _num(ll.get("longitude"))
+        if la is None or lo is None:
+            continue
+        out.append({"id": x.get("id"), "name": x.get("name"), "river": x.get("river"), "lat": la, "lon": lo,
+                    "ea_ref": str(x.get("measuring-authority-station-id") or "").strip().upper() or None,
+                    "mean": _num(x.get("gdf-mean-flow")), "q95": _num(x.get("gdf-q95-flow")), "q70": _num(x.get("gdf-q70-flow")),
+                    "q50": _num(x.get("gdf-q50-flow")), "q10": _num(x.get("gdf-q10-flow")), "q05": _num(x.get("gdf-q05-flow"))})  # fmt: skip
+    _nrfa["all"] = (time.monotonic(), out)
+    return out
+
+
+def nrfa_match(stations: list[dict[str, Any]], ref: str, lat: float, lon: float, river: str | None) -> dict[str, Any] | None:
+    """The NRFA station for an EA flow gauge: the same station reference, else the nearest within 2 km (on the same
+    river, when both say)."""
+    ref = (ref or "").upper()
+    same = next((s for s in stations if s.get("ea_ref") and s["ea_ref"] == ref), None)
+    if same:
+        return same
+    best = None
+    for s in stations:
+        d = km_between(lat, lon, s["lat"], s["lon"])
+        if d > 2:
+            continue
+        if river and s.get("river") and river.split()[0].lower() not in str(s["river"]).lower() and str(s["river"]).split()[0].lower() not in river.lower():
+            continue
+        if best is None or d < best[0]:
+            best = (d, s)
+    return best[1] if best else None
+
+
+def flow_band(value: float | None, st: dict[str, Any] | None) -> dict[str, Any]:
+    """How a flow compares with the river's usual there: very low (under Q95) to very high (over Q05), and as a share
+    of the mean flow."""
+    if value is None or not st:
+        return {"state": None, "pct_of_mean": None}
+    q95, q70, q10, q05, mean = (st.get(k) for k in ("q95", "q70", "q10", "q05", "mean"))
+    state = None
+    if q95 is not None and value < q95:
+        state = "very low"
+    elif q70 is not None and value < q70:
+        state = "low"
+    elif q05 is not None and value > q05:
+        state = "very high"
+    elif q10 is not None and value > q10:
+        state = "high"
+    elif q70 is not None or q10 is not None:
+        state = "normal"
+    return {"state": state, "pct_of_mean": round(100 * value / mean) if mean else None}
+
+
+async def flows_near(client: httpx.AsyncClient, lat: float, lon: float, km: float = 10, limit: int = 3,
+                     now: datetime | None = None) -> dict[str, Any]:  # fmt: skip
+    """The nearest gauges that estimate river flow: m³/s now, the trend over 3 hours, and how it compares with the
+    river's usual flows there (from the NRFA; without it, the flow alone)."""
+    now = now or datetime.now(UTC)
+    try:
+        nrfa = await nrfa_stations(client)
+    except EnvError:
+        nrfa = []
+    out = []
+    for s in (await _stations(client, lat, lon, km, parameter="flow"))[:limit]:
+        d = await _detail(client, s["stationReference"])
+        m = next((m for m in _measures(d) if m.get("parameter") == "flow"), None)
+        if not m:
+            continue
+        latest = m.get("latestReading") if isinstance(m.get("latestReading"), dict) else {}
+        value, when = _num(latest.get("value")), _when(latest.get("dateTime"))
+        rec = await _recent(client, m["@id"], now - timedelta(hours=3)) if m.get("@id") else []
+        river = d.get("riverName") or s.get("riverName")
+        st = nrfa_match(nrfa, s["stationReference"], _num(s.get("lat")) or lat, _num(s.get("long")) or lon, river)
+        out.append({
+            "station": d.get("label") or s.get("label"), "river": river, "km": round(s["_km"], 1), "flow_m3s": value,
+            "at": when.isoformat() if when else None, "unit": "m³/s",
+            "trend": trend(rec, step=max(0.02, abs(value or 0) * 0.05)), "ref": s["stationReference"],
+            **flow_band(value, st),
+            "usual": {k: st.get(k) for k in ("mean", "q95", "q50", "q10")} if st else None,
+            "nrfa": {"id": st["id"], "name": st["name"]} if st else None,
+        })  # fmt: skip
+    return {"flows": out, "count": len(out), "source": EA_ATTRIBUTION + (f"; {NRFA_ATTRIBUTION}" if nrfa else ""),
+            "note": None if nrfa else "the usual flows (National River Flow Archive) could not be read"}  # fmt: skip
 
 
 async def rain_near(client: httpx.AsyncClient, lat: float, lon: float, km: float = 10, limit: int = 2,
