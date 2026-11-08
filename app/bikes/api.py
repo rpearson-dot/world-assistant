@@ -1776,6 +1776,14 @@ async def check_recalls(engine: AsyncEngine, rider: dict[str, Any], client: Any 
     old = (rider.get("settings") or {}).get("recalls") or {}
     got["dismissed"] = old.get("dismissed") or []
     await _save_recalls(engine, rider["id"], got)
+    try:
+        from app import notify
+
+        for m in recall_view(got)["matches"]:
+            await notify.send(engine, "system", f"recall:{m['link']}", f"Safety recall: {m['maker']}", f"{m['title']} ({m.get('date') or ''})",
+                              tags=["warning"], click=m["link"])  # fmt: skip
+    except Exception:
+        log.warning("recall notifications failed", exc_info=True)
     return got
 
 

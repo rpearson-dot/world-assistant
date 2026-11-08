@@ -26,7 +26,7 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any
 
-PAGES = ("/settings", "/bus", "/trains", "/fuel", "/events", "/pollen", "/places", "/energy", "/ha", "/graph", "/map", "/shopping",
+PAGES = ("/settings", "/bus", "/trains", "/fuel", "/events", "/pollen", "/environment", "/places", "/energy", "/ha", "/graph", "/map", "/shopping",
          "/here", "/vehicles", "/wishlist", "/outdoors", "/bikes")
 SEED = "smoke-test-place"
 SKIP_SWEEP = {"/mcp", "/healthz", "/readyz", "/v1/backups/{name}"}  # checked on their own, or a download

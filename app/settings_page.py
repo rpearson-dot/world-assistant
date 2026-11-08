@@ -62,7 +62,7 @@ PAGE = """<!doctype html>
 
 <div class="seg" role="tablist">
   <button data-tab="setup" class="on" role="tab">Setup</button><button data-tab="keys" role="tab">Keys</button>
-  <button data-tab="mqtt" role="tab">MQTT</button><button data-tab="backup" role="tab">Backups and updates</button><button data-tab="system" role="tab">System</button><button data-tab="look" role="tab">Look</button>
+  <button data-tab="mqtt" role="tab">MQTT</button><button data-tab="backup" role="tab">Backups and updates</button><button data-tab="system" role="tab">System</button><button data-tab="look" role="tab">Look</button><button data-tab="notify" role="tab">Notifications</button>
 </div>
 
 <section data-pane="setup">
@@ -139,6 +139,22 @@ PAGE = """<!doctype html>
     <div class="row"><button id="lookdefault" type="button">Make this the default for every device</button>
     <button id="lookfollow" type="button">Follow the server's default on this device</button></div>
     <p id="lookmsg" class="dim"></p></div>
+</section>
+
+<section data-pane="notify" hidden>
+  <div class="card"><h2>Notifications</h2>
+    <p class="dim">Alerts on your phone through World Assistant's own ntfy server, reached over your tailnet. Nothing is sent
+    through a third party except, for an iPhone, a wake-up via ntfy.sh that carries no message.</p>
+    <div id="nfstate" class="dim"></div>
+    <ol id="nfhow" class="small"></ol>
+    <label class="row" style="font-weight:600"><input id="nfon" type="checkbox" style="width:auto"> Send notifications</label>
+    <div id="nfkinds"></div>
+    <div class="row"><label>Quiet from <input id="nfqf" type="time"></label><label>until <input id="nfqt" type="time"></label></div>
+    <p class="dim small">In quiet hours notifications wait until they end (a severe flood warning does not). Each is sent once.</p>
+    <div class="row"><button id="nfsave" class="primary" type="button">Save</button><button id="nftest" type="button">Send a test</button>
+    <button id="nfnew" type="button">New topic</button></div>
+    <p id="nfmsg" class="dim"></p></div>
+  <div class="card"><h2>Sent lately</h2><div id="nflog" class="small dim">Nothing yet.</div></div>
 </section>
 
 <section data-pane="system" hidden>
@@ -420,12 +436,39 @@ async function load() {
   $('msg').textContent = '';
   try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
   try { await refreshKeys(); } catch (e) { $('msg').textContent = 'Could not load: ' + e.message; return; }
-  bkLoad(); auLoad(); mqLoad(); sysLoad().catch(e => $('sys').textContent = e.message);
+  bkLoad(); auLoad(); mqLoad(); nfLoad(); sysLoad().catch(e => $('sys').textContent = e.message);
   let done = false; try { done = localStorage.getItem('wa_wizard') === 'done'; } catch (e) {}
   if (!done && setup.you.find(x => x.id === 'home').state !== 'ready') wizard(0);
 }
 $('go').onclick = load;
-const TABS = ['setup', 'keys', 'mqtt', 'backup', 'system', 'look'];
+const TABS = ['setup', 'keys', 'mqtt', 'backup', 'system', 'look', 'notify'];
+// --- notifications: an ntfy topic on World Assistant's own server ----------------------------------------
+let nf = null;
+function nfShow(d) {
+  nf = d; $('nfon').checked = d.enabled; $('nfqf').value = d.quiet_from; $('nfqt').value = d.quiet_to;
+  $('nfstate').textContent = d.connected ? 'The ntfy server is part of this install.' : 'No ntfy server: add docker-compose.tailscale.yml (see docs/notifications.md).';
+  const how = $('nfhow'); how.replaceChildren();
+  if (d.server) for (const [t, code] of [['Install the ntfy app (App Store or Google Play) on a phone that is on your tailnet.', null],
+      ['In the app: Settings, Default server: ', d.server], ['Subscribe to the topic: ', d.topic], ['Or open on the phone: ', d.subscribe], ['Then press "Send a test" here.', null]]) {
+    const li = el('li', null, t); if (code) li.append(el('code', null, code)); how.append(li); }
+  $('nfkinds').replaceChildren(...Object.entries(d.kind_names).map(([k, name]) => { const l = el('label', 'row'), c = el('input'); c.type = 'checkbox'; c.style.width = 'auto';
+    c.checked = !!d.kinds[k]; c.dataset.kind = k; l.append(c, document.createTextNode(' ' + name)); return l; }));
+}
+async function nfLoad() {
+  try { nfShow(await api('/v1/notify/settings'));
+    const lg = (await api('/v1/notify/log')).sent; if (lg.length) $('nflog').replaceChildren(...lg.map(x => el('div', x.ok ? null : 'err',
+      new Date(x.at).toLocaleString('en-GB') + ' · ' + x.title + (x.ok ? '' : ' (not sent: ' + x.error + ')')))); }
+  catch (e) { $('nfmsg').textContent = e.message; }
+}
+async function nfPut(extra) {
+  const kinds = {}; document.querySelectorAll('#nfkinds input').forEach(c => { kinds[c.dataset.kind] = c.checked; });
+  nfShow(await api('/v1/notify/settings', { method: 'PUT', body: JSON.stringify(Object.assign({ enabled: $('nfon').checked, kinds, quiet_from: $('nfqf').value, quiet_to: $('nfqt').value }, extra || {})) }));
+}
+$('nfsave').onclick = async () => { try { await nfPut(); $('nfmsg').textContent = 'Saved.'; } catch (e) { $('nfmsg').textContent = e.message; } };
+$('nftest').onclick = async () => { $('nfmsg').textContent = 'Sending…'; try { await api('/v1/notify/test', { method: 'POST' }); $('nfmsg').textContent = 'Sent: it should be on your phone now.'; nfLoad(); }
+  catch (e) { $('nfmsg').textContent = 'Not sent: ' + e.message; } };
+$('nfnew').onclick = async () => { if (!confirm('Make a new topic? The phone must subscribe to the new one.')) return;
+  try { await nfPut({ new_topic: true }); $('nfmsg').textContent = 'New topic made: subscribe to it on the phone.'; } catch (e) { $('nfmsg').textContent = e.message; } };
 // --- look: the theme and light or dark, kept on this device ------------------------------------------
 const THEMES = /*THEMES*/, MODES = /*MODES*/;
 function look() {

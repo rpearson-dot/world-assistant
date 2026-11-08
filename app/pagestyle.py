@@ -132,7 +132,7 @@ PAGES = (  # (id, path, label, icon, on the phone's tab bar)
     ("fuel", "/fuel", "Fuel", "fuel", True),
     ("energy", "/energy", "Energy", "energy", False),
     ("events", "/events", "Events", "events", False),
-    ("pollen", "/pollen", "Pollen", "pollen", False),
+    ("environment", "/environment", "Environment", "pollen", False),
     ("places", "/places", "Places", "places", False),
     ("vehicles", "/vehicles", "Vehicles", "vehicles", False),
     ("bikes", "/bikes", "Bikes", "bikes", False),
@@ -146,7 +146,10 @@ PAGES = (  # (id, path, label, icon, on the phone's tab bar)
 # Pages that are parts of another: not in the menu themselves, but tabs along the top of their section, which the menu
 # shows as current while one of them is open.
 SECTIONS = {"shopping": (("shopping", "/shopping", "List"), ("wishlist", "/wishlist", "Wishlist"),
-                         ("outdoors", "/outdoors", "Outdoors"))}  # fmt: skip
+                         ("outdoors", "/outdoors", "Outdoors")),
+            "environment": (("environment", "/environment", "Air"), ("pollen", "/pollen", "Pollen"),
+                            ("floods", "/environment/floods", "Floods and rivers"), ("env-tides", "/environment/tides", "Tides"),
+                            ("env-overflows", "/environment/overflows", "Overflows"))}  # fmt: skip
 SECTION_OF = {pid: sec for sec, parts in SECTIONS.items() for pid, _, _ in parts}
 
 
@@ -168,7 +171,7 @@ def _subnav(here: str) -> str:
     parts = [p for p in SECTIONS.get(sec or "", ()) if p[0] == sec or p[0] == here or _switched_on(p[0])]
     if len(parts) < 2:
         return ""  # nothing else in the section is on: no tabs
-    return '<nav class="subtabs" aria-label="Shopping">' + "".join(
+    return f'<nav class="subtabs" aria-label="{sec.capitalize() if sec else ""}">' + "".join(
         f'<a href="{path}"{' class="here" aria-current="page"' if pid == here else ""}>{label}</a>'
         for pid, path, label in parts) + "</nav>"
 

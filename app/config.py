@@ -94,6 +94,8 @@ class Settings(BaseSettings):
     # that part is not installed. The public URL is the address the family's KitchenOwl apps use (on the tailnet).
     kitchenowl_url: str = ""
     kitchenowl_public_url: str = ""
+    ntfy_url: str = ""  # the ntfy server World Assistant posts to (docker-compose.tailscale.yml: http://ntfy:80)
+    ntfy_public_url: str = ""  # the address the phone subscribes to (https://<device>.<tailnet>:8443)
     supermarket_url: str = ""
 
     # National Highways allows 10 calls per subscription key per minute.
