@@ -266,4 +266,5 @@ if __name__ == "__main__":  # the live check's probe: python -m app.crime LAT LO
         print(f"FAILED: {exc}")
         sys.exit(1)
     print(words(out))
-    print(json.dumps({k: v for k, v in out.items() if k != "attribution"}, indent=1, default=str)[:3000])
+    # not where it was asked for (home): the counts, kinds, months and police team only
+    print(json.dumps({k: v for k, v in out.items() if k not in ("attribution", "lat", "lon", "streets")}, indent=1, default=str)[:3000])
