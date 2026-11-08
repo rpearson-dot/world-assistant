@@ -30,7 +30,8 @@ API gives), each ride's GPS track for rain along the route and saved routes, and
   kind, indoor and virtual too) are taken.
 - **Rides you imported from the CSV** are matched (start within five minutes, distance within 2%) and become the
   Garmin ride, keeping the bike and the wet answer you gave.
-- **Which bike:** choose a bike for each kind of Garmin ride (Gravel Cycling, Indoor Cycling, ...) and for any other.
+- **Which bike:** choose a bike for commutes, for each kind of Garmin ride (Gravel Cycling, Indoor Cycling, ...) and
+  for any other. A ride Garmin marks as a commute (its type, or its event type) goes to the Commute bike first.
   Recent rides are still asked about, as before; rides more than four weeks old are not.
 - **Weight:** your latest Garmin weight sets the tyre pressures (switch it off on the card).
 - **The key runs out:** a warning on the card a fortnight before; Garmin also emails a week before. A token that stops

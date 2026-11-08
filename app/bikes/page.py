@@ -68,7 +68,8 @@ button.small { padding: 3px 9px; font-size: 13px; }
       <label>Runs out on <input id="gexp" type="date"></label><button class="primary">Save the key</button></form>
       <div class="row"><button id="gforget" type="button" class="small">Forget the key</button></div></details>
     <details id="grulebox"><summary class="small">Which bike each kind of Garmin ride goes to</summary>
-      <p class="dim small">For new rides from Garmin; you are still asked to confirm the bike of each recent ride.</p>
+      <p class="dim small">For new rides from Garmin; you are still asked to confirm the bike of each recent ride. A ride Garmin
+      marks as a commute goes to the Commute bike first, whatever kind of ride it is.</p>
       <form id="grules" class="grid"></form>
       <label class="small"><input type="checkbox" id="gweight"> Take this rider's weight from Garmin (for tyre pressures)</label>
       <div class="row"><button id="grulesgo" type="button" class="primary small">Save</button>
@@ -474,7 +475,7 @@ async function garmin() {
   const f = $('grules'); f.replaceChildren();
   const bikes = g.bikes.filter(b => !b.retired_at);
   for (const t of ['default', ...s.types]) {
-    const l = el('label', null, (t === 'default' ? 'Any other ride' : t.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())) + ' '), sel = el('select');
+    const l = el('label', null, (t === 'default' ? 'Any other ride' : t === 'commute' ? 'Commute (any kind)' : t.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())) + ' '), sel = el('select');
     sel.name = t; sel.append(new Option('ask me', ''));
     for (const b of bikes) sel.append(new Option(b.label, b.id));
     sel.value = s.rules[t] != null ? String(s.rules[t]) : ''; l.append(sel); f.append(l);

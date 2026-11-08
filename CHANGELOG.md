@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - **Bikes:** a rider's Garmin key, sync and bike rules are in the rider box at the top of the page (no separate Garmin
   Connect card), and a new rider can be given their Garmin key as they are added.
 
+### Added
+- **Commute** as a kind of Garmin ride for choosing its bike: a ride Garmin marks as a commute goes to that bike first,
+  whatever kind of ride it is. The Garmin probe counts rides by event type and commutes.
+
 ## [0.42.0] - 2026-11-08
 
 ### Added

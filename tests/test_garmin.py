@@ -37,6 +37,12 @@ def test_activities_become_rides_and_only_rides() -> None:
     for k in ("running", "motorcycling", "walking", "strength_training"):
         assert G.to_ride(act(10, k, 1, 5), "sam") is None, k
     assert G.to_ride(act(11, "e_bike_mountain", 1, 5), "sam")["activity"] == "E Bike Mountain"  # type: ignore[index]
+    # Garmin's commute: as the event type (Transportation) or the ride's own type
+    c = G.to_ride(act(12, "road_biking", 1, 9, eventType={"typeKey": "transportation"}), "sam")
+    assert c and c["commute"] and c["activity"] == "Road Biking (Commute)"
+    assert G.to_ride(act(13, "bike_commute", 1, 9), "sam")["commute"]  # type: ignore[index]
+    rules = {"commute": 5, "road_biking": 7, "default": 9}
+    assert (G.rule_for(rules, "road_biking", True), G.rule_for(rules, "road_biking", False), G.rule_for(rules, "x", False)) == (5, 7, 9)
 
 
 def test_the_latest_weight_in_kg_and_twins_by_time_and_distance() -> None:
