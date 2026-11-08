@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.46.0] - 2026-11-08
 
 ### Added
 - **Groupsets:** fit a groupset to a bike (26 of them, Shimano and SRAM, from 2005's XT and 2010's Force to 2025's
