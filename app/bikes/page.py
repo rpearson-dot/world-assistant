@@ -40,6 +40,28 @@ form.grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, min
 .press { display: flex; gap: 14px; flex-wrap: wrap; font-size: 14px; }
 table.costs { border-collapse: collapse; width: 100%; font-size: 14px; } table.costs td, table.costs th { padding: 4px 6px; border-top: 1px solid var(--line); text-align: left; }
 button.small { padding: 3px 9px; font-size: 13px; }
+/* the workshop: bikes in a row, shelves below; parts and wheels dragged between them */
+.ws-bikes { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; }
+.ws-bike { flex: 0 0 280px; border: var(--frame) solid var(--line); border-radius: var(--radius); padding: 10px; background: var(--card); }
+.ws-bike h4 { margin: 0 0 4px; display: flex; justify-content: space-between; gap: 8px; }
+.ws-pic { color: var(--ink); } .ws-pic svg { width: 100%; height: auto; }
+.odo { font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; font-size: 12px; background: var(--ink); color: var(--card);
+  border-radius: 4px; padding: 1px 6px; letter-spacing: .04em; white-space: nowrap; }
+.ws-zone { border: 2px dashed var(--line); border-radius: var(--radius-sm); padding: 6px; margin-top: 6px; min-height: 34px; }
+.ws-zone.over { border-color: var(--accent); background: var(--chip); }
+.ws-zone.bad { border-color: var(--bad); }
+.ws-zone .zl { font-size: 12px; color: var(--dim); display: flex; justify-content: space-between; gap: 6px; align-items: center; }
+.ws-wheels { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ws-chip, .ws-wheel { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; margin: 2px; border-radius: var(--pill);
+  background: var(--chip); border: 1px solid var(--line); font-size: 12px; cursor: grab; touch-action: none; user-select: none; }
+.ws-chip svg { width: 16px; height: 16px; } .ws-chip.due { border-color: var(--bad); } .ws-chip.coming { border-color: var(--warn); }
+.ws-chip.sel, .ws-wheel.sel { outline: 2px solid var(--accent); }
+.ws-wheel { display: flex; justify-content: space-between; border-radius: var(--radius-sm); background: var(--card); font-weight: 600; }
+.ws-ghost { position: fixed; z-index: 99; pointer-events: none; opacity: .85; transform: translate(-50%, -50%); }
+.shelf { border-bottom: 6px solid var(--line); border-radius: 0 0 4px 4px; padding: 6px 4px 2px; margin-top: 10px; min-height: 40px; }
+.shelf h4 { margin: 0; font-size: 13px; color: var(--dim); }
+.shelf.over { background: var(--chip); }
+#wsinfo { margin-top: 8px; }
 </style></head><body><main>
 <!--NAV-->
 <h1>Bikes</h1>
@@ -76,6 +98,16 @@ button.small { padding: 3px 9px; font-size: 13px; }
       <button id="grulesapply" type="button" class="small">Save, and give rides without a bike theirs</button></div></details>
     <p id="gmsg" class="dim"></p>
   </div>
+</div>
+
+<div class="card" id="wscard" hidden><h2>Workshop</h2>
+  <p class="dim small">Drag a part or a wheel onto a bike, a wheel or a shelf; a spare dropped where there is one already replaces
+  it. Tap one to see its odometer and wear. Services and checks stay on each bike's card below.</p>
+  <div class="ws-bikes" id="wsbikes"></div>
+  <div class="shelf ws-drop" data-drop="shelf"><h4>Spares shelf</h4><div id="wsspares"></div></div>
+  <div class="shelf ws-drop" data-drop="kit"><h4>Kit (batteries, helmet, shoes)</h4><div id="wskit"></div></div>
+  <div class="shelf ws-drop" data-drop="storage"><h4>Wheels in storage</h4><div id="wsstore"></div></div>
+  <div id="wsinfo" class="small"></div><p id="wsmsg" class="err small"></p>
 </div>
 
 <div class="card" id="duecard" hidden><h2>Due</h2><ul class="parts" id="due"></ul></div>
@@ -406,6 +438,120 @@ function partForm(w, s) {  // a part straight onto a wheel (or set)
       model: model.value || null, price: price.value === '' ? null : Number(price.value) }); await load(); }, out); };
   w.append(f);
 }
+// --- the workshop: drag parts and wheels between bikes, wheels and shelves (mouse or finger) ---------------------------
+const SINGLE_SKIP = new Set(['other', 'axs_battery', 'coin_cells']);
+function wsIndex() {  // every part and wheel by id, with where it is
+  const parts = {}, sets = {};
+  for (const b of g.bikes.filter(x => !x.retired_at)) {
+    for (const p of b.parts || []) parts[p.id] = { p, bike: b, where: 'bike' };
+    for (const p of b.batteries || []) parts[p.id] = { p, bike: b, where: 'bike' };
+    for (const s of b.sets || []) { sets[s.id] = { s, bike: b }; for (const p of s.parts || []) parts[p.id] = { p, bike: b, set: s, where: 'wheel' }; }
+  }
+  for (const s of g.loose_sets || []) { sets[s.id] = { s, bike: null }; for (const p of s.parts || []) parts[p.id] = { p, set: s, where: 'wheel' }; }
+  for (const p of g.shelf || []) parts[p.id] = { p, where: 'shelf' };
+  for (const p of g.kit || []) if (!parts[p.id]) parts[p.id] = { p, where: 'kit' };
+  return { parts, sets };
+}
+// things you can pick up: replaced parts and batteries, not services and checks (those stay on the bike's card)
+const wsThing = p => (cat.kinds[p.kind] || {}).action === 'replaced' || p.kind === 'axs_battery';
+const wsIcon = p => svg(cat.icons[(cat.kinds[p.kind] || {}).icon] || cat.icons.part);
+function wsChip(p) {
+  const c = el('span', 'ws-chip ' + ((p.wear || {}).state || '')); c.dataset.drag = 'part:' + p.id;
+  c.append(wsIcon(p), document.createTextNode((p.label || (cat.kinds[p.kind] || {}).name || p.kind) + (p.position && p.position !== 'front' && p.position !== 'rear' ? '' : '') +
+    (p.status === 'shelf' && p.quantity > 1 ? ' ×' + p.quantity : '')));
+  c.title = p.name + (p.describe ? ' (' + p.describe + ')' : ''); return c;
+}
+const wsKm = km => el('span', 'odo', String(Math.round(km || 0)).padStart(5, '0') + ' km');
+function wsWheel(s) {
+  const z = el('div', 'ws-zone ws-drop'); z.dataset.drop = 'wheel:' + s.id;
+  const w = el('div', 'ws-wheel'); w.dataset.drag = 'set:' + s.id; w.append(el('span', null, s.label), wsKm(s.km)); z.append(w);
+  for (const p of (s.parts || []).filter(wsThing)) z.append(wsChip(p));
+  return z;
+}
+function workshop() {
+  $('wscard').hidden = !g.bikes.some(b => !b.retired_at);
+  const row = $('wsbikes'); row.replaceChildren();
+  for (const b of g.bikes.filter(x => !x.retired_at)) {
+    const t = el('div', 'ws-bike'), h = el('h4'); h.append(el('span', null, b.label), wsKm(b.km)); t.append(h);
+    const pic = el('div', 'ws-pic ws-drop'); pic.dataset.drop = 'bike:' + b.id; pic.append(svg(b.art)); t.append(pic);
+    const frame = el('div', 'ws-zone ws-drop'); frame.dataset.drop = 'bike:' + b.id; frame.append(el('div', 'zl', 'Frame, drivetrain and brakes'));
+    for (const p of (b.parts || []).concat(b.batteries || []).filter(wsThing)) frame.append(wsChip(p));
+    const wheels = el('div', 'ws-wheels');
+    for (const end of ['front', 'rear']) {
+      const s = (b.sets || []).find(x => x.kind === 'wheel' && x.position === end);
+      if (s) wheels.append(wsWheel(s));
+      else { const z = el('div', 'ws-zone ws-drop'); z.dataset.drop = 'bike:' + b.id; z.append(el('div', 'zl', 'No ' + end + ' wheel: drop one here')); wheels.append(z); }
+    }
+    t.append(wheels, frame); row.append(t);
+  }
+  $('wsspares').replaceChildren(...(g.shelf || []).map(wsChip));
+  $('wskit').replaceChildren(...(g.kit || []).filter(p => !p.bike_id).map(wsChip));
+  $('wsstore').replaceChildren(...(g.loose_sets || []).filter(s => s.kind === 'wheel').map(wsWheel));
+}
+function wsInfo(kind, id) {  // what a tap shows: the odometer and wear
+  const ix = wsIndex(), box = $('wsinfo'); box.replaceChildren();
+  document.querySelectorAll('.ws-chip.sel, .ws-wheel.sel').forEach(x => x.classList.remove('sel'));
+  document.querySelectorAll('[data-drag="' + kind + ':' + id + '"]').forEach(x => x.classList.add('sel'));
+  if (kind === 'set') { const s = ix.sets[id]; if (!s) return;
+    box.append(el('b', null, s.s.label + ' '), wsKm(s.s.km), document.createTextNode(s.bike ? ' on ' + s.bike.label : ' in storage')); return; }
+  const it = ix.parts[id]; if (!it) return; const p = it.p, w = p.wear;
+  box.append(el('b', null, p.name + ' '), w && w.km != null ? wsKm(w.km) : '', document.createTextNode((p.describe ? ' ' + p.describe : '') +
+    (w && w.state !== 'untracked' ? ': ' + wearText(w) + ' (' + Math.round(w.share * 100) + '% of its life)' : '') +
+    (it.bike ? ', on ' + it.bike.label + (it.set ? ', ' + it.set.label : '') : it.set ? ', ' + it.set.label + ' (storage)' : it.where === 'shelf' ? ', on the shelf' : ', in your kit')));
+}
+async function wsDrop(kind, id, target) {
+  const ix = wsIndex(), [tk, tv] = target.split(':'), say = $('wsmsg'); say.textContent = '';
+  if (kind === 'set') {
+    if (tk === 'storage') return api('POST', '/v1/bikes/fit', { item: 'set', id, bike_id: null });
+    const bikeId = tk === 'bike' ? Number(tv) : tk === 'wheel' ? (ix.sets[tv] || {}).bike && ix.sets[tv].bike.id : null;
+    if (!bikeId) throw new Error('Drop a wheel onto a bike, or onto the storage shelf');
+    const r = await api('POST', '/v1/bikes/fit', { item: 'set', id, bike_id: bikeId });
+    if ((r.warnings || []).length) say.textContent = 'Fitted, but: ' + r.warnings.join('; ');
+    return r;
+  }
+  const it = ix.parts[id]; if (!it) return;
+  const p = it.p;
+  if (tk === 'shelf' || tk === 'kit' || tk === 'storage') return api('POST', '/v1/bikes/fit', { item: 'part', id, bike_id: null });
+  const body = tk === 'wheel' ? { set_id: Number(tv) } : { bike_id: Number(tv) };
+  // already one of these there? From the shelf that is a replacement; from anywhere else it has to come off first
+  const there = tk === 'wheel' ? ((ix.sets[tv] || {}).s || {}).parts || [] : (g.bikes.find(b => b.id === Number(tv)) || {}).parts || [];
+  const same = SINGLE_SKIP.has(p.kind) ? [] : there.filter(x => x.kind === p.kind && x.id !== p.id);
+  if (same.length && it.where === 'shelf') {
+    let old = same[0];
+    if (same.length > 1) { const end = prompt('Replace which: ' + same.map(x => x.position || x.name).join(' or ') + '?', same[0].position || ''); if (end === null) return;
+      old = same.find(x => x.position === end.trim().toLowerCase()) || same[0]; }
+    if (!confirm('Replace ' + old.name + (old.describe ? ' (' + old.describe + ')' : '') + ' with ' + p.name + (p.describe ? ' (' + p.describe + ')' : '') + '? Its count starts again.')) return;
+    return api('POST', '/v1/bikes/service', { rider: rider(), action: 'replaced', part_id: old.id, spare_id: p.id });
+  }
+  return api('POST', '/v1/bikes/fit', { item: 'part', id, ...body });
+}
+(() => {  // pointer dragging: works with a mouse, a pen or a finger
+  let drag = null;
+  const target = (x, y) => { const e = document.elementFromPoint(x, y); return e && e.closest('.ws-drop'); };
+  document.addEventListener('pointerdown', e => {
+    const src = e.target.closest('[data-drag]'); if (!src || !src.closest('#wscard')) return;
+    drag = { src, x: e.clientX, y: e.clientY, ghost: null, over: null }; src.setPointerCapture(e.pointerId);
+  });
+  document.addEventListener('pointermove', e => {
+    if (!drag) return;
+    if (!drag.ghost && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 6) {
+      drag.ghost = drag.src.cloneNode(true); drag.ghost.classList.add('ws-ghost'); document.body.append(drag.ghost); }
+    if (!drag.ghost) return;
+    drag.ghost.style.left = e.clientX + 'px'; drag.ghost.style.top = e.clientY + 'px';
+    const t = target(e.clientX, e.clientY);
+    if (t !== drag.over) { if (drag.over) drag.over.classList.remove('over'); drag.over = t; if (t) t.classList.add('over'); }
+  });
+  const end = e => {
+    if (!drag) return; const d = drag; drag = null;
+    if (d.over) d.over.classList.remove('over');
+    const [kind, id] = d.src.dataset.drag.split(':');
+    if (!d.ghost) { wsInfo(kind, Number(id)); return; }
+    d.ghost.remove();
+    const t = e.type === 'pointerup' && target(e.clientX, e.clientY); if (!t) return;
+    guard(async () => { const r = await wsDrop(kind, Number(id), t.dataset.drop); if (r !== undefined) { await load(); wsInfo(kind, Number(id)); } }, $('wsmsg'));
+  };
+  document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end);
+})();
 function draw() {
   const due = g.due.filter(d => d.state === 'due' || d.share >= 0.75);
   $('duecard').hidden = !due.length; $('due').replaceChildren();
@@ -467,6 +613,7 @@ function draw() {
     li.append(sel); $('unassigned').append(li);
   }
   $('bikes').replaceChildren(...g.bikes.filter(b => !b.retired_at).map(bikeCard));
+  workshop();
   $('storecard').hidden = !(g.loose_sets || []).length; $('store').replaceChildren(...(g.loose_sets || []).map(s => wheelBlock(s, null)));
   $('logcard').hidden = !g.log.length; $('log').replaceChildren();
   for (const x of g.log) $('log').append(logRow(x, true));
@@ -562,6 +709,12 @@ function answersInto(f, t, d) {  // a bike's answers as a form: for a new bike (
   for (const k of ['front_width', 'rear_width']) { const l = el('label', null, (k[0] === 'f' ? 'Front' : 'Rear') + ' tyre width mm '), i = el('input'); i.type = 'number'; i.name = k; i.min = 15; i.max = 130; i.value = d[k]; l.append(i); f.append(l); }
   { const l = el('label', null, 'Front chainrings '), i = el('input'); i.type = 'number'; i.name = 'front_rings'; i.min = 1; i.max = 3; i.value = d.front_rings; l.append(i); f.append(l); }
   if (t === 'tandem') { const l = el('label', null, 'Stoker weight kg '), i = el('input'); i.type = 'number'; i.name = 'stoker_kg'; i.min = 20; i.max = 200; l.append(i); f.append(l); }
+  // for its picture: the model (its own frame shape), and its paint
+  const pick = (name, lab, opts, value, none) => { const l = el('label', null, lab + ' '), sel = el('select'); sel.name = name;
+    sel.append(new Option(none, '')); for (const [v, txt] of opts) sel.append(new Option(txt, v)); sel.value = value || ''; l.append(sel); f.append(l); };
+  pick('model', 'Model (for its picture)', Object.entries(cat.models || {}).filter(([, m]) => m.type === t).map(([k, m]) => [k, m.name]), d.model, 'a typical ' + (cat.types[t] || t).toLowerCase());
+  pick('paint', 'Frame colour', Object.entries(cat.paints || {}), d.paint, "the theme's colour");
+  pick('paint2', 'Second colour (fork and stays; the rear triangle on full suspension)', Object.entries(cat.paints || {}), d.paint2, 'the same');
 }
 async function load() {
   if (!rider()) return;

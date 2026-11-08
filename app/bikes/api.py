@@ -118,8 +118,12 @@ async def catalogue() -> dict[str, Any]:
                  "indoor": v.indoor, "measure": v.measure, "icon": v.icon, "action": v.action, "bought": v.bought}
              for k, v in D.KINDS.items()}  # fmt: skip
     from app.bikes import art
+    from app.bikes.art import MODELS
+    from app.themes import PAINTS
 
-    return {"types": D.BIKE_TYPES, "choices": D.CHOICES, "kinds": kinds, "icons": art.catalogue_icons(), "specs": D.SPECS,
+    return {"types": D.BIKE_TYPES, "choices": D.CHOICES,
+            "models": {k: {"name": m["name"], "type": m["type"]} for k, m in MODELS.items()},
+            "paints": {k: v[0] for k, v in PAINTS.items()}, "kinds": kinds, "icons": art.catalogue_icons(), "specs": D.SPECS,
             "defaults": {t: D.defaults_for(t) for t in D.BIKE_TYPES}}  # fmt: skip
 
 
@@ -188,6 +192,41 @@ async def _fit(c: Any, item: str, item_id: int, at: datetime, bike_id: int | Non
                     {"i": item, "n": item_id, "b": bike_id, "s": set_id, "t": at})  # fmt: skip
 
 
+async def _check_place(c: Any, part: dict[str, Any], bike_id: int | None, set_id: int | None) -> None:
+    """Refuse (422) a part going where it cannot: a cassette on a front wheel, a chain on a wheel, a rotor on a
+    rim-brake wheel, a second tyre on a wheel (app/bikes/placement.py)."""
+    from app.bikes import placement as P
+
+    if bike_id is None and set_id is None:
+        return
+    now = _now()
+    bike = wheel = wheel_bike = None
+    if bike_id is not None:
+        r = (await c.execute(text("SELECT id, label, config FROM bike WHERE id = :b"), {"b": bike_id})).first()
+        if not r:
+            raise HTTPException(404, "No such bike")
+        bike = _row(r)
+    if set_id is not None:
+        r = (await c.execute(text("SELECT id, label, kind, position FROM bike_set WHERE id = :s"), {"s": set_id})).first()
+        if not r:
+            raise HTTPException(404, "No such wheel or set")
+        wheel = _row(r)
+        on = (await c.execute(text("SELECT bike_id FROM bike_fit WHERE item = 'set' AND item_id = :s AND at <= :t "
+                                   "ORDER BY at DESC, id DESC LIMIT 1"), {"s": set_id, "t": now})).scalar()  # fmt: skip
+        if on is not None:
+            r = (await c.execute(text("SELECT id, label, config FROM bike WHERE id = :b"), {"b": on})).first()
+            wheel_bike = _row(r) if r else None
+    # what is fitted there now (each part's latest fit), other than this part
+    here = [_row(r) for r in await c.execute(text(
+        "SELECT p.id, p.kind, p.position FROM bike_part p JOIN LATERAL (SELECT bike_id, set_id FROM bike_fit f WHERE "
+        "f.item = 'part' AND f.item_id = p.id AND f.at <= :t ORDER BY at DESC, id DESC LIMIT 1) f ON true "
+        "WHERE p.status IN ('fitted', 'kit') AND " + ("f.set_id = :w" if set_id is not None else "f.bike_id = :w AND f.set_id IS NULL")),
+        {"t": now, "w": set_id if set_id is not None else bike_id})]  # fmt: skip
+    why = P.problems(part, bike=bike if set_id is None else None, wheel=wheel, wheel_bike=wheel_bike, there=here)
+    if why:
+        raise HTTPException(422, "; ".join(why))
+
+
 async def _new_part(c: Any, rider: str, kind: str, position: str | None, details: dict[str, Any], at: datetime | None,
                     status: str = "fitted", **more: Any) -> int:  # fmt: skip
     return (await c.execute(text(
@@ -202,9 +241,17 @@ async def _new_part(c: Any, rider: str, kind: str, position: str | None, details
 
 
 def _check(cfg: dict[str, Any]) -> None:
+    from app.bikes.art import MODELS
+    from app.themes import PAINTS
+
     for k, allowed in D.CHOICES.items():
         if k in cfg and cfg[k] not in allowed:
             raise HTTPException(422, f"{k} must be one of {', '.join(allowed)}")
+    if cfg.get("model") and cfg["model"] not in MODELS:
+        raise HTTPException(422, f"model must be one of {', '.join(MODELS)}")
+    for k in ("paint", "paint2"):
+        if cfg.get(k) and cfg[k] not in PAINTS:
+            raise HTTPException(422, f"{k} must be one of {', '.join(PAINTS)}")
 
 
 @router.post("/bikes", status_code=201)
@@ -461,6 +508,8 @@ async def add_part(request: Request, body: PartIn) -> dict[str, Any]:
     await _rider(request.app.state.engine, body.rider)
     at = datetime.combine(body.fitted_at, datetime.min.time(), TZ) if body.fitted_at else _now()
     async with request.app.state.engine.begin() as c:
+        if body.status != "shelf":
+            await _check_place(c, {"id": None, "kind": body.kind, "position": body.position}, body.bike_id, body.set_id)
         pid = await _new_part(c, body.rider, body.kind, body.position, body.details, at if body.status != "shelf" else None,
                               body.status, **body.model_dump(exclude={"rider", "kind", "position", "details", "status", "fitted_at"}))  # fmt: skip
         if body.status != "shelf":
@@ -598,6 +647,12 @@ async def fit(request: Request, body: FitIn) -> dict[str, Any]:
             if not row:
                 raise HTTPException(404, "No such part")
             p = _row(row)
+            await _check_place(c, p, body.bike_id, body.set_id)
+            if p["status"] == "shelf" and (p["quantity"] or 1) > 1 and (body.bike_id or body.set_id):  # one off a pile
+                await c.execute(text("UPDATE bike_part SET quantity = quantity - 1 WHERE id = :p"), {"p": p["id"]})
+                p = {**p, "id": await _new_part(c, p["rider_id"], p["kind"], p["position"], p["details"] or {}, at, label=p["label"],
+                                                brand=p["brand"], model=p["model"], url=p["url"], photo_url=p["photo_url"],
+                                                price=p["price"], life=p["life"])}  # fmt: skip
             await _fit(c, "part", p["id"], at, bike_id=body.bike_id, set_id=body.set_id)
             kit = D.KINDS.get(p["kind"], D.KINDS["other"]).on == "rider"  # rider kit (an AXS battery) stays kit on a bike
             status = "kit" if kit else ("fitted" if (body.bike_id or body.set_id) else "shelf")
@@ -607,10 +662,22 @@ async def fit(request: Request, body: FitIn) -> dict[str, Any]:
         if body.bike_id is not None:  # the wheels these replace come off
             ends = {s["position"] for s in sets_ if s["kind"] == "wheel"}
             moved += [f"{x} off" for x in await _wheels_off(c, body.bike_id, ends, [s["id"] for s in sets_], at)]
+        warnings: list[str] = []
+        if body.bike_id is not None:  # a wheel's parts that do not suit the bike it goes onto: said, not refused
+            from app.bikes import placement as P
+
+            br = (await c.execute(text("SELECT id, label, config FROM bike WHERE id = :b"), {"b": body.bike_id})).first()
+            for s in sets_:
+                parts = [_row(r) for r in await c.execute(text(
+                    "SELECT p.id, p.kind, p.position FROM bike_part p JOIN LATERAL (SELECT set_id FROM bike_fit f WHERE "
+                    "f.item = 'part' AND f.item_id = p.id ORDER BY at DESC, id DESC LIMIT 1) f ON true "
+                    "WHERE f.set_id = :s AND p.status = 'fitted'"), {"s": s["id"]})]  # fmt: skip
+                if br:
+                    warnings += P.wheel_warnings(s, parts, _row(br))
         for s in sets_:
             await _fit(c, "set", s["id"], at, bike_id=body.bike_id)
             moved.append(s["label"])
-    return {"moved": moved, "at": at.isoformat()}
+    return {"moved": moved, "at": at.isoformat(), "warnings": warnings}
 
 
 # --- the service log -------------------------------------------------------------------------------------------------
@@ -1054,6 +1121,8 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
         b["art"] = art.bike(b.get("config") or {}, b["label"])
         b["pressures"] = pressures(b, rider)
         b["km"] = round(sum(r["km"] for r in rides if r["bike_id"] == b["id"]), 1)
+    for s in sets_.values():  # each wheel's odometer: the rides of the bike it was on at the time
+        s["km"] = round(sum(r["km"] for r in rides if r["bike_id"] is not None and pl.bike_of_set(s["id"], r["started"]) == r["bike_id"]), 1)
     loose = [s for s in sets_.values() if s["bike_id"] is None and not s.get("retired_at")]
     # things to replace first, then services and checks; within each, the most worn first
     due.sort(key=lambda d: (d["state"] != "due", not D.KINDS.get(d["kind"], D.KINDS["other"]).bought, -d["share"]))

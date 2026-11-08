@@ -33,7 +33,11 @@ class Kind:
 KINDS: dict[str, Kind] = {
     "chain": Kind("Chain", km=3500, wet=True, indoor=True, icon="chain",
                   measure="measure its stretch: replace at 0.5% (11- and 12-speed) or 0.75% (10-speed and below)"),
-    "timing_chain": Kind("Timing chain", km=15000, wet=True, indoor=True, icon="chain"),
+    "timing_chain": Kind("Timing chain", km=15000, wet=True, indoor=True, icon="chain",
+                         measure="its stretch, and its tension at the eccentric bottom bracket"),
+    "timing_rings": Kind("Timing chainrings", km=30000, wet=True, indoor=True, icon="chainring"),
+    "eccentric_bb": Kind("Eccentric bottom bracket (timing chain tension)", days=180, icon="chainring", action="checked",
+                         measure="the timing chain's slack: about 1 cm up and down midway; turn the eccentric to take it up"),
     "lube": Kind("Chain lube or wax", km=250, wet=True, indoor=True, icon="drop", action="serviced"),
     "cassette": Kind("Cassette", km=10000, on="wheel", wet=True, indoor=True, icon="cassette"),
     "chainrings": Kind("Chainrings", km=20000, wet=True, indoor=True, icon="chainring"),
@@ -206,8 +210,12 @@ def planned_parts(cfg: dict[str, Any]) -> list[Planned]:
         out += [Planned("dropper_lower", "bike"), Planned("dropper_full", "bike")]
     out += [Planned("bottom_bracket", "bike", None, {"pressfit": c["bottom_bracket"] == "pressfit"}),
             Planned("headset", "bike"), Planned("bar_tape", "bike"), Planned("pedals", "bike")]  # fmt: skip
-    if c["type"] == "tandem":  # the stoker's drivetrain and seat, and the chain joining the two cranksets
-        out += [Planned("timing_chain", "bike"), Planned("chainrings", "bike", "stoker"),
+    if c["type"] == "tandem":
+        # The timing chain joins the captain's single ring to a ring on the stoker's crank (the left side); the drive
+        # chainrings are the stoker's, on the right, so the bike's chainrings are the stoker's. The captain's bottom
+        # bracket is eccentric: turning it tensions the timing chain (a long one: often two chains joined).
+        out += [Planned("timing_chain", "bike", None, {"links": "long: often two chains joined"}),
+                Planned("timing_rings", "bike"), Planned("eccentric_bb", "bike", "captain"),
                 Planned("bottom_bracket", "bike", "stoker"), Planned("pedals", "bike", "stoker"),
                 Planned("saddle", "bike", "stoker")]  # fmt: skip
     if c.get("ebike"):
@@ -252,6 +260,7 @@ def bar(psi: float) -> float:
 SPECS: dict[str, list[tuple[str, str]]] = {
     "chain": [("speeds", "Speeds"), ("links", "Links")],
     "timing_chain": [("links", "Links")],
+    "timing_rings": [("teeth", "Teeth (each ring)")],
     "cassette": [("speeds", "Speeds"), ("range", "Range (e.g. 10-44)"), ("freehub", "Freehub (HG, XD, XDR, Microspline)")],
     "chainrings": [("teeth", "Teeth (e.g. 42 or 50/34)"), ("bcd", "Mount (BCD or direct)"), ("speeds", "Speeds")],
     "jockey_wheels": [("teeth", "Teeth")],
