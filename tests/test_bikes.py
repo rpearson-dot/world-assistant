@@ -630,3 +630,32 @@ def test_a_tyre_size_as_written_gives_its_width_etrto_and_wheel_and_the_pressure
     assert D.tyre_details({"compound": "soft"}) == {"compound": "soft"}
     big, small = D.tyre_pressure(50, False, "hybrid", 90, "rear"), D.tyre_pressure(50, False, "hybrid", 90, "rear", bead_mm=559)
     assert small > big  # a 26-inch wheel a little higher than a 700c at the same width
+
+
+@pytest.mark.skipif(not DB, reason="WA_TEST_DATABASE_URL not set")
+def test_removing_a_part_the_bike_does_not_have(garage: Any) -> None:
+    c = garage
+    c.post("/v1/bikes/riders", json={"name": "Rob", "weight_kg": 80})
+    yeti = c.post("/v1/bikes/bikes", json={"rider": "rob", "label": "Yeti", "type": "full_suspension"}).json()["id"]
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    dropper = _part(g, "dropper_lower")
+    # a fixed seatpost: removing the dropper's service says so in the answers, and both dropper services go
+    r = c.post(f"/v1/bikes/parts/{dropper['id']}/remove").json()
+    assert r["answer"] == {"dropper": "none"} and len(r["retired"]) == 2
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    b = next(x for x in g["bikes"] if x["id"] == yeti)
+    assert b["config"]["dropper"] == "none" and not [p for p in b["parts"] if p["kind"].startswith("dropper")]
+    # any other part: off, and not added back when the answers change
+    hanger = _part(g, "hanger")
+    assert c.post(f"/v1/bikes/parts/{hanger['id']}/remove").json()["deleted"] is True
+    c.patch(f"/v1/bikes/bikes/{yeti}", json={"config": {"front_tyre": "tubed"}})
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    b = next(x for x in g["bikes"] if x["id"] == yeti)
+    assert "hanger@" in b["config"]["removed"] and not [p for p in b["parts"] if p["kind"] == "hanger"]
+    # a part with history is retired, keeping it
+    chain = _part(g, "chain")
+    c.post("/v1/bikes/service", json={"rider": "rob", "action": "replaced", "part_id": chain["id"]})
+    chain = _part(c.get("/v1/bikes", params={"rider": "rob"}).json(), "chain")
+    c.post("/v1/bikes/service", json={"rider": "rob", "action": "checked", "part_id": chain["id"]})
+    assert c.post(f"/v1/bikes/parts/{chain['id']}/remove").json()["deleted"] is False
+    assert c.post("/v1/bikes/parts/99999/remove").status_code == 404

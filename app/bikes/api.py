@@ -364,7 +364,8 @@ async def delete_bike(request: Request, bike_id: int) -> dict[str, Any]:
 async def _reconcile(c: Any, b: dict[str, Any], cfg: dict[str, Any]) -> dict[str, list[str]]:
     """Add the parts the new answers give that the bike lacks; retire those it has that they no longer give."""
     now = _now()
-    want = [(p.kind, p.position, p.on, p.details) for p in D.planned_parts(cfg)]
+    gone = set(cfg.get("removed") or [])  # parts taken off for good: not added back
+    want = [(p.kind, p.position, p.on, p.details) for p in D.planned_parts(cfg) if f"{p.kind}@{p.position or ''}" not in gone]
     have = await _parts_on(c, b["id"], b["rider_id"])
     wheels = {r.position: r.id for r in await c.execute(text(
         "SELECT s.id, s.position FROM bike_set s JOIN LATERAL (SELECT bike_id FROM bike_fit f WHERE f.item = 'set' AND "
@@ -383,8 +384,14 @@ async def _reconcile(c: Any, b: dict[str, Any], cfg: dict[str, Any]) -> dict[str
         added.append(name_of({"kind": kind, "position": pos}))
     for h in remaining:  # only kinds the answers give: a part of another kind you added yourself stays
         if h["kind"] in _ANY_DEFAULT:
-            await c.execute(text("UPDATE bike_part SET status = 'retired', retired_at = :t WHERE id = :p"), {"t": now, "p": h["id"]})
-            await _fit(c, "part", h["id"], now)
+            logged = (await c.execute(text("SELECT count(*) FROM bike_service WHERE part_id = :p"), {"p": h["id"]})).scalar_one()
+            if not logged and h.get("price") is None and not h.get("brand") and not h.get("model"):
+                # never anything but a default (the bike never had it): gone, not kept as history
+                await c.execute(text("DELETE FROM bike_fit WHERE item = 'part' AND item_id = :p"), {"p": h["id"]})
+                await c.execute(text("DELETE FROM bike_part WHERE id = :p"), {"p": h["id"]})
+            else:
+                await c.execute(text("UPDATE bike_part SET status = 'retired', retired_at = :t WHERE id = :p"), {"t": now, "p": h["id"]})
+                await _fit(c, "part", h["id"], now)
             retired.append(name_of(h))
     return {"added": added, "retired": retired}
 
@@ -572,6 +579,51 @@ async def delete_part(request: Request, part_id: int) -> dict[str, Any]:
         if not (await c.execute(text("DELETE FROM bike_part WHERE id = :p"), {"p": part_id})).rowcount:
             raise HTTPException(404, "No such part")
     return {"id": part_id, "deleted": True}
+
+
+# a part that only exists because of one of the bike's answers: removing it is changing that answer, so its sibling
+# parts go too and it is not added back (a dropper's two services both go when the bike has no dropper)
+ANSWER_OF = {"dropper_lower": ("dropper", "none"), "dropper_full": ("dropper", "none"),
+             "fork_lowers": ("front_suspension", "none"), "fork_damper": ("front_suspension", "none"),
+             "susp_stem": ("front_suspension", "none"), "shock_air": ("rear_suspension", "none"),
+             "shock_damper": ("rear_suspension", "none"), "susp_post": ("rear_suspension", "none")}  # fmt: skip
+
+
+@router.post("/parts/{part_id}/remove")
+async def remove_part(request: Request, part_id: int) -> dict[str, Any]:
+    """Take a part off for good: the bike does not have it (a dropper listed on a bike with a fixed seatpost, say).
+    A part with no history is deleted; one with history is retired, which keeps it in the log and costs. A part one of
+    the bike's answers gives changes that answer (the dropper to none), so the parts that go with it go too; any other
+    part the answers give is remembered as removed, so changing the answers later does not add it back."""
+    async with request.app.state.engine.begin() as c:
+        p = (await c.execute(text("SELECT * FROM bike_part WHERE id = :p"), {"p": part_id})).first()
+        if not p:
+            raise HTTPException(404, "No such part")
+        p = _row(p)
+        fits = [_row(r) for r in await c.execute(text("SELECT f.* FROM bike_fit f JOIN bike_part q ON f.item = 'part' AND f.item_id = q.id "
+                                                      "WHERE q.rider_id = :r UNION ALL SELECT f.* FROM bike_fit f JOIN bike_set s ON "
+                                                      "f.item = 'set' AND f.item_id = s.id WHERE s.rider_id = :r"), {"r": p["rider_id"]})]  # fmt: skip
+        bike_id = W.Placer(fits).bike_of_part(part_id, _now() + timedelta(seconds=1)) if p["status"] == "fitted" else None
+        b = _row(r) if bike_id and (r := (await c.execute(text("SELECT * FROM bike WHERE id = :b"), {"b": bike_id})).first()) else None
+        answer = ANSWER_OF.get(p["kind"])
+        if b and answer and (b["config"] or {}).get(answer[0], answer[1]) != answer[1]:
+            cfg = {**b["config"], answer[0]: answer[1]}
+            await c.execute(text("UPDATE bike SET config = CAST(:c AS jsonb) WHERE id = :b"), {"c": json.dumps(cfg), "b": b["id"]})
+            changes = await _reconcile(c, b, cfg)
+            return {"id": part_id, "answer": {answer[0]: answer[1]}, **changes}
+        logged = (await c.execute(text("SELECT count(*) FROM bike_service WHERE part_id = :p"), {"p": part_id})).scalar_one()
+        if b and p["kind"] in _ANY_DEFAULT:  # not added back by the answers
+            gone = sorted({*((b["config"] or {}).get("removed") or []), f"{p['kind']}@{p['position'] or ''}"})
+            await c.execute(text("UPDATE bike SET config = CAST(:c AS jsonb) WHERE id = :b"),
+                            {"c": json.dumps({**b["config"], "removed": gone}), "b": b["id"]})  # fmt: skip
+        if not logged and p["start_km"] in (None, 0):
+            await c.execute(text("DELETE FROM bike_fit WHERE item = 'part' AND item_id = :p"), {"p": part_id})
+            await c.execute(text("DELETE FROM bike_part WHERE id = :p"), {"p": part_id})
+            return {"id": part_id, "deleted": True, "added": [], "retired": []}
+        now = _now()
+        await c.execute(text("UPDATE bike_part SET status = 'retired', retired_at = :t WHERE id = :p"), {"t": now, "p": part_id})
+        await _fit(c, "part", part_id, now)
+    return {"id": part_id, "deleted": False, "added": [], "retired": [name_of(p)]}
 
 
 async def _put_photo(request: Request, table: str, item_id: int, body: PhotoIn) -> dict[str, Any]:

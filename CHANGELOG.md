@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [Unreleased]
 
 ### Added
+- **Remove a part the bike does not have:** every part has a Remove button. A dropper (or suspension) service on a bike
+  without one changes the bike's answers to say so and takes all of that thing's parts off; any other part comes off and
+  is not added back when the answers change. A part with nothing logged is deleted; one with history is retired.
+  Changing a bike's answers now deletes, rather than keeps as history, default parts that never had anything logged.
 - **Build a wheel in the workshop:** front or rear, a name and wheelset group, starting empty or with a bike's usual
   wheel parts; it goes into storage, ready for parts to be dragged onto it and then for it to be dragged onto a bike.
   The spares shelf has Add a spare.

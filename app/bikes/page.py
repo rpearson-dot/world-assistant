@@ -270,6 +270,7 @@ function partRow(p, bike) {
   acts.append(button(label, () => action === 'replaced' ? replaceForm(li, p) : service(p, action)));
   if (action !== 'replaced' && (cat.kinds[p.kind] || {}).km) acts.append(button('Replaced', () => replaceForm(li, p)));
   acts.append(button('Edit', () => editPart(li, p)));
+  acts.append(button('Remove', () => removePart(p, bike)));
   if ((cat.kinds[p.kind] || {}).on === 'wheel') {  // onto another wheel (the cassette onto the new wheel, say)
     const mv = el('select'); mv.append(new Option('Move to…', ''));
     for (const [s, sb] of allWheels()) if (s.id !== p.set_id) mv.append(new Option(s.label + (sb ? ' (' + sb.label + ')' : ' (storage)'), s.id));
@@ -328,6 +329,16 @@ async function service(p, action) {
     else if (!confirm('Log ' + p.name + ' as replaced with a new one? Its count starts again.')) return;
   }
   await guard(async () => { await api('POST', '/v1/bikes/service', body); await load(); });
+}
+const ANSWER = { dropper_lower: 'dropper post', dropper_full: 'dropper post', fork_lowers: 'suspension fork', fork_damper: 'suspension fork',
+  susp_stem: 'suspension stem', shock_air: 'rear shock', shock_damper: 'rear shock', susp_post: 'suspension seatpost' };
+async function removePart(p, bike) {  // the bike does not have it: a dropper on a bike with a fixed seatpost, say
+  const whose = bike ? bike.label : 'the garage', what = ANSWER[p.kind];
+  const ask = what ? 'Does ' + whose + ' have no ' + what + '? Its ' + what + ' parts and services come off, and its answers change to say so.'
+    : 'Remove ' + p.name + (p.describe ? ' (' + p.describe + ')' : '') + ' from ' + whose + '? It is not added back. Anything logged for it stays in the history.';
+  if (!confirm(ask)) return;
+  await guard(async () => { const r = await api('POST', '/v1/bikes/parts/' + p.id + '/remove');
+    msg.textContent = 'Removed: ' + ((r.retired || []).join(', ') || p.name) + (r.added && r.added.length ? '; added: ' + r.added.join(', ') : ''); await load(); });
 }
 function editPart(li, p) {
   if (li.querySelector('.edit')) { li.querySelector('.edit').remove(); return; }
