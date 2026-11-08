@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from app import eventplace
 from app.config import get_settings
 from app.integrations.skiddle.client import DEFAULT_BASE, SkiddleClient, SkiddleError
 from app.integrations.ticketmaster.client import DEFAULT_BASE as TM_BASE
@@ -142,11 +143,13 @@ async def sync(engine: AsyncEngine, redis: Any = None) -> dict[str, Any]:
                     failures.append(f"{source} at {place}: {exc}")
                     break
                 got = found.get("events", [])
+                listed = len(got)
+                got, _, _ = await eventplace.check(engine, got, (lat, lon), s.events_sync_radius_km)  # misplaced listings
                 for e in got:
                     row = to_row(source, e, started)
                     if row:
                         rows[row["id"]] = row
-                if len(got) < LIMIT or (page + 1) * LIMIT >= int(found.get("total") or 0):
+                if listed < LIMIT or (page + 1) * LIMIT >= int(found.get("total") or 0):
                     break  # that was all of it
     async with engine.begin() as conn:
         if rows:

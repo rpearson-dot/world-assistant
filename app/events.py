@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import text
 
+from app import eventplace
 from app.auth import require_token
 from app.config import get_settings
 from app.integrations.datathistle.client import ATTRIBUTION as DT_ATTRIBUTION
@@ -196,11 +197,16 @@ async def search(
             events += [{**e, "source": src} for e in res["events"]]
     if errors and len(errors) == len(active):
         raise HTTPException(502, "; ".join(errors))
+    # a listing whose map position disagrees with its own postcode is moved there, and left out if that is too far
+    events, moved, dropped = await eventplace.check(getattr(request.app.state, "engine", None), events, (lat, lon), radius_km)
+    total -= dropped
     events.sort(key=_sort_key)
     out = {
         "place": name, "radius_km": radius_km, "days": days, "type": type, "count": len(events[:limit]),
         "total": total, "events": events[:limit], "sources": active, "errors": errors,
     }  # fmt: skip
+    if moved:
+        out["misplaced"] = {"moved": moved, "dropped": dropped}
     if "datathistle" in active:
         out["attribution"] = [DT_ATTRIBUTION]
         with contextlib.suppress(Exception):
@@ -273,7 +279,7 @@ async function search() {
       const c = el('div', 'card');
       c.append(el('h2', null, [e.date, e.doors_open, e.type].filter(Boolean).join('  ·  ')));
       c.append(el('p', 'big', e.name || '(unnamed)'));
-      c.append(el('p', 'dim', [e.venue, e.town, e.distance_km != null ? e.distance_km.toFixed(1) + ' km' : null, e.availability, e.price, ({ ticketmaster: 'Ticketmaster', datathistle: 'Data Thistle' }[e.source] || 'Skiddle')].filter(Boolean).join('  ·  ')));
+      c.append(el('p', 'dim', [e.venue, e.town, e.distance_km != null ? e.distance_km.toFixed(1) + ' km' : null, e.availability, e.price, e.moved, ({ ticketmaster: 'Ticketmaster', datathistle: 'Data Thistle' }[e.source] || 'Skiddle')].filter(Boolean).join('  ·  ')));
       if (e.url) { const a = el('a', null, 'Details and tickets'); a.href = e.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; c.append(a); }
       $('list').append(c);
     }

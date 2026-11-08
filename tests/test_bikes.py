@@ -428,3 +428,68 @@ async def test_the_product_lookup_only_asks_public_https_websites(monkeypatch: p
                      ("https://user:pw@shop.example/", "https")):  # fmt: skip
         with pytest.raises(HTTPException, match=why):
             await A.public_https(bad)
+
+
+@pytest.mark.skipif(not DB, reason="WA_TEST_DATABASE_URL not set")
+def test_undo_a_replacement_delete_rides_and_parts_and_retire_a_bike_keeping_its_history(garage: Any) -> None:
+    c = garage
+    c.post("/v1/bikes/riders", json={"name": "Rob"})
+    road = c.post("/v1/bikes/bikes", json={"rider": "rob", "label": "Road", "fitted_at": "2026-01-01"}).json()
+    for day in ("2026-02-01T09:00", "2026-02-08T09:00"):
+        c.post("/v1/bikes/rides", json={"rider": "rob", "bike_id": road["id"], "started": day, "km": 1000, "hours": 40, "wet": False})
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    pads = _part(g, "disc_pads", "front")
+    assert pads["wear"]["state"] == "due"
+
+    # the only spare is fitted, then the replacement is undone: the old pads are back with their wear, the spare on the shelf
+    spare = c.post("/v1/bikes/parts", json={"rider": "rob", "kind": "disc_pads", "status": "shelf", "brand": "Shimano"}).json()
+    done = c.post("/v1/bikes/service", json={"rider": "rob", "action": "replaced", "part_id": pads["id"], "spare_id": spare["id"]}).json()
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    assert _part(g, "disc_pads", "front")["id"] == spare["id"] and not g["shelf"]
+    assert g["log"][0]["id"] == done["id"] and g["log"][0]["undo"] and g["log"][0]["bike"] == "Road"
+    u = c.delete(f"/v1/bikes/service/{done['id']}").json()
+    assert u["restored_part"] == pads["id"] and u["back_on_shelf"] == spare["id"]
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    back = _part(g, "disc_pads", "front")
+    assert back["id"] == pads["id"] and back["wear"]["km"] == 2000 and g["shelf"][0]["id"] == spare["id"] and not g["log"]
+
+    # the same again, then a check on the new pads: undoing the replacement waits until the check is undone
+    r = c.post("/v1/bikes/service", json={"rider": "rob", "action": "replaced", "part_id": pads["id"]}).json()
+    chk = c.post("/v1/bikes/service", json={"rider": "rob", "action": "checked", "part_id": r["new_part"]}).json()
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    assert [x["undo"] for x in g["log"][:2]] == [True, False]
+    assert c.delete(f"/v1/bikes/service/{r['id']}").status_code == 409
+    c.delete(f"/v1/bikes/service/{chk['id']}")
+    assert c.delete(f"/v1/bikes/service/{r['id']}").json()["removed_part"] == r["new_part"]
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    assert _part(g, "disc_pads", "front")["id"] == pads["id"]
+
+    # a ride logged twice is deleted: its wear comes off
+    assert len(g["recent_rides"]) == 2
+    assert c.delete(f"/v1/bikes/rides/{g['recent_rides'][0]['id']}").json()["deleted"]
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    assert _part(g, "disc_pads", "front")["wear"]["km"] == 1000
+    assert c.delete("/v1/bikes/rides/manual:nope").status_code == 404
+
+    # a part added by mistake is deleted; a bike with rides is retired, not deleted
+    extra = c.post("/v1/bikes/parts", json={"rider": "rob", "kind": "chain", "status": "shelf"}).json()
+    assert c.delete(f"/v1/bikes/parts/{extra['id']}").json()["deleted"]
+    assert c.delete(f"/v1/bikes/bikes/{road['id']}").status_code == 409
+    c.post("/v1/bikes/service", json={"rider": "rob", "action": "cost", "bike_id": road["id"], "cost": 25, "note": "service"})
+    c.patch(f"/v1/bikes/bikes/{road['id']}", json={"retired": True})
+    c.post("/v1/bikes/rides", json={"rider": "rob", "bike_id": road["id"], "started": "2026-03-01T09:00", "km": 1500, "hours": 50, "wet": False})
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    assert not g["due"]  # a retired bike's parts are not due
+    old = g["retired"][0]
+    assert old["label"] == "Road" and old["km"] == 2500 and old["rides"] == 2 and old["cost"]["total"] == 25.0
+    assert any(p["kind"] == "chain" for p in old["parts"]) and {"Road front wheel", "Road rear wheel"} == set(old["sets"])
+    assert any(x["action"] == "cost" for x in old["history"])
+    c.patch(f"/v1/bikes/bikes/{road['id']}", json={"retired": False})
+    assert not c.get("/v1/bikes", params={"rider": "rob"}).json()["retired"]
+
+    # a bike added by mistake (no rides) is deleted with its parts and wheels
+    oops = c.post("/v1/bikes/bikes", json={"rider": "rob", "label": "Oops", "type": "gravel"}).json()
+    d = c.delete(f"/v1/bikes/bikes/{oops['id']}").json()
+    assert d["deleted"] and d["sets"] == 2 and d["parts"] > 5
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    assert [b["label"] for b in g["bikes"]] == ["Road"] and not g["loose_sets"]

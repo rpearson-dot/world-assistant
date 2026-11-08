@@ -57,6 +57,17 @@ and safety recall checks.
   was at; after a few charges each battery's own hours per charge are used, and after six it is compared with its
   first charges: one giving 20% fewer hours is flagged as wearing.
 
+## Undo, delete and retire
+- **Recent work** lists what was logged, newest first, each with **Undo**: the part's count goes back to what it was.
+  Undoing a replacement puts the old part back where it was, with its wear, and takes the new one away (a spare goes
+  back on the shelf). If the new part has had things logged since, undo those first.
+- **Recent rides** (under Rides): delete one logged twice; its wear comes off the parts. An imported ride comes back
+  if the same file is imported again.
+- **Delete** a part (in its Edit) or a bike (with no rides) added by mistake. A used part is replaced instead, and a
+  bike with rides is **retired** (sold, stolen, written off), which keeps everything.
+- **Retired bikes**: each with its distance, rides, dates, cost (in total and per km), the parts and wheels still on
+  it, and its history. Its parts are not due. **Bring it back** to ride it again.
+
 ## Assistant
 `bikes` (the garage), `bike_due`, `bike_service` ("charged Battery A at 30%", "replaced the front pads"),
 `bike_ride` (log a ride), `tyre_pressure`.

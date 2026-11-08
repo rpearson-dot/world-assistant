@@ -173,6 +173,12 @@ if not QUICK and keys["bods_api_key"]:
     run("BODS disruptions probe", "app.integrations.bods.disruptions_probe", str(lat), str(lon), "25", timeout=240,
         module="busdisruptions")
 
+# 0.39.0: the bike garage (its rides' wet suggestion comes from the EA rain gauges)
+riders = get("Bike riders", "/v1/bikes/riders", show=1000)
+if isinstance(riders, dict) and riders.get("riders"):
+    get("Bike garage (the first rider)", "/v1/bikes", show=3000, rider=riders["riders"][0]["id"])
+run("Bike rain probe (the nearest EA gauge, yesterday morning)", "app.bikes.rain", str(lat), str(lon), module="bikes")
+
 head("Summary")
 for name, res in results:
     print(f"{res:<45} {name}")

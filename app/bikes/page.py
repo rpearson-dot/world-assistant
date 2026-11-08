@@ -91,7 +91,17 @@ button.small { padding: 3px 9px; font-size: 13px; }
     <label>Bike for these rides <select id="importbike"></select></label>
     <label><input type="checkbox" id="miles"> Distances in miles</label><button class="primary">Import</button></form></details>
   <p id="ridemsg" class="dim"></p>
+  <details><summary class="small">Recent rides (delete one logged twice)</summary><ul class="parts" id="recentrides"></ul></details>
 </div>
+
+<div class="card" id="logcard" hidden><h2>Recent work</h2>
+  <p class="dim small">What was logged, newest first. Undo puts the part's count back; undoing a replacement puts the old part
+  back and takes the new one away (a spare goes back on the shelf).</p>
+  <ul class="parts" id="log"></ul></div>
+
+<div class="card" id="retiredcard" hidden><h2>Retired bikes</h2>
+  <p class="dim small">Sold, stolen or written off: their rides, parts, history and cost are kept. Bring one back to ride it again.</p>
+  <div id="retired"></div></div>
 
 <div class="card"><h2>Shelf and kit</h2>
   <p class="dim small">Spares on the shelf are used first when a part is due. Kit is yours, not a bike's: helmet, shoes, AXS batteries.</p>
@@ -251,7 +261,8 @@ function editPart(li, p) {
     if (d.brand && !f.elements.brand.value) f.elements.brand.value = d.brand;
     if (d.name && !f.elements.model.value) f.elements.model.value = d.name;
     f.dataset.photo = d.image || ''; out.textContent = d.image ? 'Picture found (linked from the product page).' : 'No picture on that page.';
-  }, out)), el('button', 'primary small', 'Save'), out);
+  }, out)), el('button', 'primary small', 'Save'),
+  button('Delete', () => { if (confirm('Delete ' + p.name + ' and its log? This is for a part added by mistake: a used part is replaced instead, keeping its history.')) guard(async () => { await api('DELETE', '/v1/bikes/parts/' + p.id); await load(); }, out); }), out);
   f.append(row);
   f.onsubmit = e => { e.preventDefault(); guard(async () => {
     const v = n => f.elements[n] && f.elements[n].value !== '' ? f.elements[n].value : null;
@@ -286,7 +297,9 @@ function bikeCard(b) {
   const photoIn = el('input'); photoIn.type = 'file'; photoIn.accept = 'image/*'; photoIn.capture = 'environment'; photoIn.hidden = true;
   photoIn.onchange = () => guard(async () => { await api('PUT', '/v1/bikes/bikes/' + b.id + '/photo', { data_url: await shrink(photoIn.files[0]) }); await load(); });
   info.append(el('div', 'row'));
-  info.lastChild.append(button('Photo', () => photoIn.click()), photoIn);
+  info.lastChild.append(button('Photo', () => photoIn.click()), photoIn,
+    button('Retire', () => { if (confirm('Retire ' + b.label + '? Its rides, parts, history and cost are kept, and you can bring it back.')) guard(async () => { await api('PATCH', '/v1/bikes/bikes/' + b.id, { retired: true }); await load(); }); }));
+  if (!b.km) info.lastChild.append(button('Delete', () => { if (confirm('Delete ' + b.label + ' and its parts and wheels? This is for a bike added by mistake; it cannot be undone.')) guard(async () => { await api('DELETE', '/v1/bikes/bikes/' + b.id); await load(); }); }));
   top.append(pic, info); card.append(top);
   const list = el('ul', 'parts'); (b.parts || []).forEach(p => list.append(partRow(p, b)));
   const d = el('details'); d.append(el('summary', 'small', 'Frame, drivetrain and brakes (' + (b.parts || []).length + ')'), list); card.append(d);
@@ -294,9 +307,9 @@ function bikeCard(b) {
     const w = el('div', 'wheel'), h4 = el('h4', null, s.label);
     if (s.grp) h4.append(el('span', 'chip', s.grp));
     const sel = el('select'); sel.append(new Option('Move to…', ''));
-    for (const other of g.bikes) if (other.id !== b.id) sel.append(new Option('onto ' + other.label, other.id));
+    for (const other of g.bikes) if (other.id !== b.id && !other.retired_at) sel.append(new Option('onto ' + other.label, other.id));
     sel.append(new Option('off (into storage)', 'off'));
-    if (s.grp) for (const other of g.bikes) if (other.id !== b.id) sel.append(new Option('whole set "' + s.grp + '" onto ' + other.label, 'g' + other.id));
+    if (s.grp) for (const other of g.bikes) if (other.id !== b.id && !other.retired_at) sel.append(new Option('whole set "' + s.grp + '" onto ' + other.label, 'g' + other.id));
     sel.onchange = () => { const v = sel.value; if (!v) return; guard(async () => {
       if (v[0] === 'g') await api('POST', '/v1/bikes/fit', { item: 'group', group: s.grp, rider: rider(), bike_id: Number(v.slice(1)) });
       else await api('POST', '/v1/bikes/fit', { item: 'set', id: s.id, bike_id: v === 'off' ? null : Number(v) });
@@ -354,12 +367,22 @@ function draw() {
   for (const r of g.unassigned_rides.slice(-30).reverse()) {
     const li = el('li'); li.append(el('span', 'ic', '🚲'));
     li.append(el('div', null, new Date(r.started).toLocaleDateString('en-GB') + ', ' + fmt(r.km) + ' km' + (r.title ? ' (' + r.title + ')' : '')));
-    const sel = el('select'); sel.append(new Option('Which bike?', '')); g.bikes.forEach(b => sel.append(new Option(b.label, b.id)));
+    const sel = el('select'); sel.append(new Option('Which bike?', '')); g.bikes.filter(b => !b.retired_at).forEach(b => sel.append(new Option(b.label, b.id)));
     sel.onchange = () => guard(async () => { await api('PATCH', '/v1/bikes/rides/' + encodeURIComponent(r.id), { bike_id: Number(sel.value) }); await load(); });
     li.append(sel); $('unassigned').append(li);
   }
   $('bikes').replaceChildren(...g.bikes.filter(b => !b.retired_at).map(bikeCard));
-  for (const id of ['ridebike', 'importbike']) { const s = $(id), keep = s.value; s.replaceChildren(new Option(id === 'importbike' ? 'ask for each' : '—', '')); g.bikes.forEach(b => s.append(new Option(b.label, b.id))); s.value = keep; }
+  $('logcard').hidden = !g.log.length; $('log').replaceChildren();
+  for (const x of g.log) $('log').append(logRow(x, true));
+  $('recentrides').replaceChildren();
+  for (const r of g.recent_rides) {
+    const li = el('li'); li.append(el('span', 'ic', '🚲'));
+    li.append(el('div', 'small', new Date(r.started).toLocaleDateString('en-GB') + ', ' + fmt(r.km) + ' km' + (r.bike ? ' on ' + r.bike : '') + (r.title ? ' (' + r.title + ')' : '') + (r.wet ? ', wet' : '')));
+    li.append(button('Delete', () => { if (confirm('Delete this ride? Its wear comes off the parts.')) guard(async () => { await api('DELETE', '/v1/bikes/rides/' + encodeURIComponent(r.id)); await load(); }); }));
+    $('recentrides').append(li);
+  }
+  $('retiredcard').hidden = !g.retired.length; $('retired').replaceChildren(...g.retired.map(retiredCard));
+  for (const id of ['ridebike', 'importbike']) { const s = $(id), keep = s.value; s.replaceChildren(new Option(id === 'importbike' ? 'ask for each' : '—', '')); g.bikes.filter(b => !b.retired_at).forEach(b => s.append(new Option(b.label, b.id))); s.value = keep; }
   $('shelf').replaceChildren(...g.shelf.map(p => { const li = partRow(p); li.querySelector('b').textContent = p.name + ' × ' + p.quantity; return li; }));
   $('kit').replaceChildren(...g.kit.map(p => partRow(p)));
   const c = g.costs, box = $('costs'); box.replaceChildren();
@@ -369,6 +392,34 @@ function draw() {
   box.append(tbl);
   const kinds = Object.values(c.kinds); if (kinds.length) box.append(el('p', null, 'Per 1,000 km: ' + kinds.map(k => k.name + ' £' + k.per_1000km.toFixed(2)).join(', ')));
   $('to_outdoors').value = g.settings.to_outdoors; $('wet_factor').value = g.settings.wet_factor; $('trainer').checked = !!g.settings.trainer_has_cassette; $('weight').value = g.rider.weight_kg || '';
+}
+function logRow(x, undo) {
+  const li = el('li'); li.append(el('span', 'ic', '🔧'));
+  li.append(el('div', 'small', new Date(x.at).toLocaleDateString('en-GB') + ': ' + (LABEL[x.action] || x.action) + (x.part_name ? ' ' + x.part_name : '') +
+    (x.bike ? ' on ' + x.bike : '') + (x.note ? ', ' + x.note : '') + (x.cost != null ? ' (£' + Number(x.cost).toFixed(2) + ')' : '')));
+  if (undo) li.append(x.undo ? button('Undo', () => { if (confirm('Undo this?')) guard(async () => { await api('DELETE', '/v1/bikes/service/' + x.id); await load(); }); })
+    : el('span', 'dim small', 'undo what came after first'));
+  return li;
+}
+function retiredCard(b) {
+  const box = el('details', 'card'), s = el('summary');
+  s.append(el('b', null, b.label), el('span', 'dim small', ' retired ' + new Date(b.retired_at).toLocaleDateString('en-GB') + ', ' + fmt(b.km) + ' km in ' + b.rides + ' rides' +
+    (b.cost ? ', £' + b.cost.total.toFixed(2) + ' in parts and work' : '')));
+  box.append(s);
+  const top = el('div', 'bike'), pic = el('div', 'pic');
+  if (b.has_photo) photo('/v1/bikes/bikes/' + b.id + '/photo', b.label).then(i => pic.replaceChildren(i)); else pic.append(svg(b.art));
+  const info = el('div');
+  if (b.first_ride) info.append(el('p', 'small', 'Ridden ' + new Date(b.first_ride).toLocaleDateString('en-GB') + ' to ' + new Date(b.last_ride).toLocaleDateString('en-GB')));
+  if (b.cost && b.cost.per_km != null) info.append(el('p', 'small', '£' + b.cost.per_km.toFixed(3) + ' per km' + (b.cost.purchase ? ', bought for £' + b.cost.purchase : '')));
+  if (b.sets.length) info.append(el('p', 'small', 'Wheels still on it: ' + b.sets.join(', ')));
+  info.append(button('Bring it back', () => guard(async () => { await api('PATCH', '/v1/bikes/bikes/' + b.id, { retired: false }); await load(); })));
+  top.append(pic, info); box.append(top);
+  if (b.parts.length) { box.append(el('h4', null, 'Parts on it')); const ul = el('ul', 'parts');
+    for (const p of b.parts) { const li = el('li'); li.append(picture(p, cat.icons[(cat.kinds[p.kind] || {}).icon] || cat.icons.part));
+      li.append(el('div', 'small', p.name + (p.describe ? ' (' + p.describe + ')' : '') + (p.wear && p.wear.measures && p.wear.measures.km ? ', ' + fmt(p.wear.measures.km.used) + ' km' : ''))); ul.append(li); }
+    box.append(ul); }
+  if (b.history.length) { box.append(el('h4', null, 'History')); const ul = el('ul', 'parts'); for (const x of b.history) ul.append(logRow(x, false)); box.append(ul); }
+  return box;
 }
 function findPart(id) { for (const b of g.bikes) for (const p of b.parts.concat(...b.sets.map(s => s.parts), b.batteries)) if (p.id === id) return p; return g.kit.find(p => p.id === id); }
 function answers() {

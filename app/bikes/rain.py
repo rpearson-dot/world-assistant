@@ -44,3 +44,25 @@ async def suggest(client: httpx.AsyncClient, lat: float, lon: float, started: da
 def home_point(places: list[dict[str, Any]]) -> tuple[float, float] | None:
     home = next((p for p in places if p.get("kind") == "home" or p.get("id") == "home"), None) or (places[0] if places else None)
     return (float(home["lat"]), float(home["lon"])) if home else None
+
+
+async def _probe(lat: float, lon: float) -> int:
+    """For the live check: what the nearest gauge says for a two-hour ride yesterday morning."""
+    from zoneinfo import ZoneInfo
+
+    now = datetime.now(ZoneInfo("Europe/London"))
+    started = (now - timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+    async with httpx.AsyncClient(timeout=15) as client:
+        wet, why = await suggest(client, lat, lon, started, 2.0, now)
+    print(f"A 2 h ride from {started:%a %d %b %H:%M}: {'wet' if wet else 'dry' if wet is False else 'no suggestion'} ({why})")
+    if wet is None:
+        print("FAILED: no rain gauge reading")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    import asyncio
+    import sys
+
+    sys.exit(asyncio.run(_probe(float(sys.argv[1]), float(sys.argv[2]))))

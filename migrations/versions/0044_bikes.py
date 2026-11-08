@@ -121,6 +121,7 @@ def upgrade() -> None:
         sa.Column("resets", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("level_before", sa.Float()),  # a battery's charge (%) when it was put on charge
         sa.Column("new_part_id", sa.Integer(), sa.ForeignKey("bike_part.id", ondelete="SET NULL")),  # what replaced it
+        sa.Column("spare_id", sa.Integer(), sa.ForeignKey("bike_part.id", ondelete="SET NULL")),  # the shelf spare it used
         sa.Column("cost", sa.Numeric(10, 2)),
         sa.Column("note", sa.Text()),
     )

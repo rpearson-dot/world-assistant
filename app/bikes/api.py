@@ -284,6 +284,30 @@ async def change_bike(request: Request, bike_id: int, body: BikePatch) -> dict[s
     return {"id": bike_id, **changes}
 
 
+@router.delete("/bikes/{bike_id}")
+async def delete_bike(request: Request, bike_id: int) -> dict[str, Any]:
+    """Delete a bike added by mistake, with the parts and wheels on it. A bike with rides is retired instead (sold,
+    stolen, written off), which keeps its rides, parts, history and cost."""
+    async with request.app.state.engine.begin() as c:
+        b = (await c.execute(text("SELECT * FROM bike WHERE id = :b"), {"b": bike_id})).first()
+        if not b:
+            raise HTTPException(404, "No such bike")
+        if (await c.execute(text("SELECT count(*) FROM bike_ride WHERE bike_id = :b"), {"b": bike_id})).scalar():
+            raise HTTPException(409, "This bike has rides: retire it instead, which keeps its history")
+        sets_ = [r.id for r in await c.execute(text(
+            "SELECT s.id FROM bike_set s JOIN LATERAL (SELECT bike_id FROM bike_fit f WHERE f.item = 'set' AND f.item_id = s.id "
+            "ORDER BY at DESC, id DESC LIMIT 1) f ON true WHERE f.bike_id = :b"), {"b": bike_id})]  # fmt: skip
+        parts = [p["id"] for p in await _parts_on(c, bike_id, b.rider_id)]
+        for pid in parts:
+            await c.execute(text("DELETE FROM bike_fit WHERE item = 'part' AND item_id = :p"), {"p": pid})
+            await c.execute(text("DELETE FROM bike_part WHERE id = :p"), {"p": pid})
+        for sid in sets_:
+            await c.execute(text("DELETE FROM bike_fit WHERE item = 'set' AND item_id = :s"), {"s": sid})
+            await c.execute(text("DELETE FROM bike_set WHERE id = :s"), {"s": sid})
+        await c.execute(text("DELETE FROM bike WHERE id = :b"), {"b": bike_id})
+    return {"id": bike_id, "deleted": True, "parts": len(parts), "sets": len(sets_)}
+
+
 async def _reconcile(c: Any, b: dict[str, Any], cfg: dict[str, Any]) -> dict[str, list[str]]:
     """Add the parts the new answers give that the bike lacks; retire those it has that they no longer give."""
     now = _now()
@@ -444,6 +468,17 @@ async def change_part(request: Request, part_id: int, body: PartPatch) -> dict[s
 
 class PhotoIn(BaseModel):
     data_url: str = Field(max_length=3_000_000, description="data:image/jpeg;base64,... (the page shrinks it first)")
+
+
+@router.delete("/parts/{part_id}")
+async def delete_part(request: Request, part_id: int) -> dict[str, Any]:
+    """Delete a part added by mistake, with its log. A part that was used and is done with is replaced or retired
+    instead, which keeps its history and cost."""
+    async with request.app.state.engine.begin() as c:
+        await c.execute(text("DELETE FROM bike_fit WHERE item = 'part' AND item_id = :p"), {"p": part_id})
+        if not (await c.execute(text("DELETE FROM bike_part WHERE id = :p"), {"p": part_id})).rowcount:
+            raise HTTPException(404, "No such part")
+    return {"id": part_id, "deleted": True}
 
 
 async def _put_photo(request: Request, table: str, item_id: int, body: PhotoIn) -> dict[str, Any]:
@@ -627,8 +662,49 @@ async def service(request: Request, body: ServiceIn) -> dict[str, Any]:
                     await c.execute(text("UPDATE bike_service SET note = :n WHERE id = :s"), {"n": note, "s": sid})
                     out["note"] = note
             await _fit(c, "part", new_id, at, bike_id=where.bike_id if where else None, set_id=where.set_id if where else None)
-            await c.execute(text("UPDATE bike_service SET new_part_id = :n WHERE id = :s"), {"n": new_id, "s": sid})
+            await c.execute(text("UPDATE bike_service SET new_part_id = :n, spare_id = :sp WHERE id = :s"),
+                            {"n": new_id, "sp": body.spare_id or None, "s": sid})  # fmt: skip
             out["new_part"] = new_id
+    return out
+
+
+@router.delete("/service/{service_id}")
+async def undo_service(request: Request, service_id: int) -> dict[str, Any]:
+    """Undo a logged service, check, charge or cost: the part's count goes back to what it was. Undoing a replacement
+    also puts the old part back where it was and takes the new one away (a spare goes back on the shelf). A
+    replacement whose new part has had things logged since is refused: undo those first."""
+    async with request.app.state.engine.begin() as c:
+        s = (await c.execute(text("SELECT * FROM bike_service WHERE id = :s"), {"s": service_id})).first()
+        if not s:
+            raise HTTPException(404, "No such entry")
+        s = _row(s)
+        out: dict[str, Any] = {"id": service_id, "action": s["action"], "undone": True}
+        if s["action"] == "replaced" and s.get("part_id"):
+            new_id = s.get("new_part_id")
+            status = "fitted"
+            if new_id is not None:
+                later = (await c.execute(text("SELECT count(*) FROM bike_service WHERE part_id = :n"), {"n": new_id})).scalar()
+                if later:
+                    raise HTTPException(409, "The new part has had things logged since: undo those first")
+                new = _row((await c.execute(text("SELECT * FROM bike_part WHERE id = :n"), {"n": new_id})).first())
+                status = new["status"] if new["status"] in ("fitted", "kit") else "fitted"
+                if s.get("spare_id") == new_id:  # the spare itself was fitted: back on the shelf
+                    await c.execute(text("DELETE FROM bike_fit WHERE item = 'part' AND item_id = :n AND at >= :t"), {"n": new_id, "t": s["at"]})
+                    await c.execute(text("UPDATE bike_part SET status = 'shelf', fitted_at = NULL WHERE id = :n"), {"n": new_id})
+                    out["back_on_shelf"] = new_id
+                else:
+                    if s.get("spare_id"):  # one was taken off a pile of spares
+                        await c.execute(text("UPDATE bike_part SET quantity = quantity + 1 WHERE id = :sp"), {"sp": s["spare_id"]})
+                        out["back_on_shelf"] = s["spare_id"]
+                    await c.execute(text("DELETE FROM bike_fit WHERE item = 'part' AND item_id = :n"), {"n": new_id})
+                    await c.execute(text("DELETE FROM bike_part WHERE id = :n"), {"n": new_id})
+                    out["removed_part"] = new_id
+            # the old part: off the bike at the replacement, so that fit goes, and it is fitted again
+            await c.execute(text("DELETE FROM bike_fit WHERE item = 'part' AND item_id = :p AND at = :t AND bike_id IS NULL AND set_id IS NULL"),
+                            {"p": s["part_id"], "t": s["at"]})  # fmt: skip
+            await c.execute(text("UPDATE bike_part SET status = :st, retired_at = NULL WHERE id = :p"), {"st": status, "p": s["part_id"]})
+            out["restored_part"] = s["part_id"]
+        await c.execute(text("DELETE FROM bike_service WHERE id = :s"), {"s": service_id})
     return out
 
 
@@ -709,6 +785,16 @@ async def change_ride(request: Request, ride_id: str, body: RidePatch) -> dict[s
             if not n:
                 raise HTTPException(404, "No such ride")
     return {"id": ride_id, **vals}
+
+
+@router.delete("/rides/{ride_id:path}")
+async def delete_ride(request: Request, ride_id: str) -> dict[str, Any]:
+    """Delete a ride (logged twice, or not a ride at all): its wear comes off the parts. An imported ride deleted here
+    comes back if the same file is imported again."""
+    async with request.app.state.engine.begin() as c:
+        if not (await c.execute(text("DELETE FROM bike_ride WHERE id = :i"), {"i": ride_id})).rowcount:
+            raise HTTPException(404, "No such ride")
+    return {"id": ride_id, "deleted": True}
 
 
 def _number(s: str) -> float | None:
@@ -833,6 +919,7 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
     battery_life: dict[int, float] = {}
     parts_by_id = {p["id"]: p for p in rows["parts"]}
     replaced_by = {s["new_part_id"]: s for s in services if s.get("new_part_id")}
+    retired_ids = {b["id"] for b in rows["bikes"] if b.get("retired_at")}
 
     def history(p: dict[str, Any]) -> list[dict[str, Any]]:
         """What was done to this part and to the ones it replaced, newest first ("SRAM 40t → Hope 42t")."""
@@ -866,7 +953,7 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
         here = pl.now("part", p["id"])
         out["bike_id"] = pl.bike_of_part(p["id"], soon)
         out["set_id"] = here["set_id"] if here else None
-        if out["wear"]["state"] in ("due", "coming"):
+        if out["wear"]["state"] in ("due", "coming") and out["bike_id"] not in retired_ids:  # a retired bike's parts are not due
             spares = spare_kinds.get(p["kind"]) or []
             due.append({"part_id": p["id"], "name": out["name"], "kind": p["kind"], "state": out["wear"]["state"],
                         "share": out["wear"]["share"], "measures": out["wear"]["measures"], "bike_id": out["bike_id"],
@@ -899,9 +986,39 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
             ask.append({**_out(r), "doubt": doubt[0] if doubt else None, "suggest_bike": doubt[1] if doubt else None,
                         "garmin_link": garmin_link(r)})  # fmt: skip
     unassigned = [_out(r) for r in rides if r["bike_id"] is None]
+    labels = {b["id"]: b["label"] for b in rows["bikes"]}
+    logged = {s["part_id"] for s in services if s.get("part_id")}
+
+    def entry(s: dict[str, Any]) -> dict[str, Any]:
+        p = parts_by_id.get(s.get("part_id")) or {}
+        bid = s.get("bike_id") or (pl.bike_of_part(p["id"], s["at"]) if p else None)
+        if bid is None and p and s["action"] == "replaced":  # off at the replacement: where it was just before
+            bid = pl.bike_of_part(p["id"], s["at"] - timedelta(seconds=1))
+        return {"id": s["id"], "at": s["at"].isoformat(), "action": s["action"], "note": s.get("note"), "cost": _plain(s.get("cost")),
+                "part": (describe(p) or name_of(p)) if p else None, "part_name": name_of(p) if p else None, "bike_id": bid,
+                "bike": labels.get(bid),
+                "undo": not (s["action"] == "replaced" and s.get("new_part_id") in logged)}  # fmt: skip
+
+    log = [entry(s) for s in services[-25:]][::-1]
+    recent = [{**_out(r), "bike": labels.get(r["bike_id"])} for r in rides[-25:]][::-1]
+    c = costs(rows, now)
+    by_bike = {x["bike_id"]: x for x in c["bikes"]}
+    retired = []
+    for b in rows["bikes"]:
+        if not b.get("retired_at"):
+            continue
+        hist = [entry(s) for s in services if s.get("bike_id") == b["id"]
+                or (s.get("part_id") in parts_by_id and entry(s)["bike_id"] == b["id"])][::-1]  # fmt: skip
+        bike_rides = [r for r in rides if r["bike_id"] == b["id"]]
+        on = bikes[b["id"]]
+        retired.append({**_out(b), "has_photo": b.get("has_photo"), "art": on["art"], "km": on["km"], "rides": len(bike_rides),
+                        "first_ride": bike_rides[0]["started"].isoformat() if bike_rides else None,
+                        "last_ride": bike_rides[-1]["started"].isoformat() if bike_rides else None,
+                        "parts": on["parts"] + [p for s in on["sets"] for p in s["parts"]], "sets": [s["label"] for s in on["sets"]],
+                        "cost": by_bike.get(b["id"]), "history": hist[:100]})  # fmt: skip
     return {"rider": _out(rider), "settings": st, "bikes": list(bikes.values()), "loose_sets": loose, "shelf": shelf,
             "kit": kit, "due": due, "ask_wet": ask[-50:], "unassigned_rides": unassigned[-100:],
-            "costs": costs(rows, now)}  # fmt: skip
+            "log": log, "recent_rides": recent, "retired": retired, "costs": c}  # fmt: skip
 
 
 # What a ride's activity type says about the bike it was on (Garmin's types: "Mountain Biking", "Gravel Cycling",

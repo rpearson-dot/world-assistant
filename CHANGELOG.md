@@ -2,19 +2,6 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [0.38.1] - 2026-11-07
-
-### Fixed
-- The smoke check after an update failed the Wishlist and Outdoors pages when those modules were switched off at
-  /modules, which stopped the update before its live check. A page of a switched-off module now shows as "off" and
-  is not a failure; a page that is really missing still is.
-- Air quality: Defra UK-AIR's search for stations near a point answers HTTP 500 (its full station list and readings
-  work). World Assistant now reads the full list (kept for a day, and the last one used if UK-AIR fails) and finds the
-  nearest stations itself.
-- what3words: a refusal (the free plan answered "Quota exceeded or API plan does not have access to this feature" on
-  its first request) is said briefly on Here ("not available on this key's plan"), and what3words is not asked again
-  for six hours, then tried again in case it was a mistake.
-- The live check shows the 406's timetable probe as INFO (TfL's buses publish no BODS timetable), not a failure.
 ## [Unreleased]
 
 ### Added
@@ -28,7 +15,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   (teeth, speeds, diameter, size...), and is replaced with the same again or something different, its history saying
   what changed. Imported rides are asked about their bike (Garmin keeps the last one), with the likely wrong ones
   flagged from their activity type. Migration 0044. Garmin's API comes in stage 2.
+- Bike garage: **undo** anything logged (a replacement puts the old part back and the spare back on the shelf),
+  delete a ride, a part or a bike added by mistake, and **retired bikes** with their distance, cost, parts and history.
+- Live check: the bike garage, and a rain gauge probe for its wet suggestions.
 
+### Fixed
+- Events: a listing whose map position is more than 10 km from its own postcode (a Swansea show that Ticketmaster
+  placed near home) is moved to the postcode, from the local Code-Point table, and left out when that is outside the
+  search. Also for the events kept for the knowledge graph.
+
+## [0.38.1] - 2026-11-07
+
+### Fixed
+- The smoke check after an update failed the Wishlist and Outdoors pages when those modules were switched off at
+  /modules, which stopped the update before its live check. A page of a switched-off module now shows as "off" and
+  is not a failure; a page that is really missing still is.
+- Air quality: Defra UK-AIR's search for stations near a point answers HTTP 500 (its full station list and readings
+  work). World Assistant now reads the full list (kept for a day, and the last one used if UK-AIR fails) and finds the
+  nearest stations itself.
+- what3words: a refusal (the free plan answered "Quota exceeded or API plan does not have access to this feature" on
+  its first request) is said briefly on Here ("not available on this key's plan"), and what3words is not asked again
+  for six hours, then tried again in case it was a mistake.
+- The live check shows the 406's timetable probe as INFO (TfL's buses publish no BODS timetable), not a failure.
 ## [0.38.0] - 2026-11-07
 
 ### Changed
