@@ -22,7 +22,7 @@ API gives), each ride's GPS track for rain along the route and saved routes, and
 
 ## Garmin Connect
 - **Your key:** in Garmin Connect on the web, Settings, then Personal API Key; choose how long it lasts (30 days to a
-  year). Paste it into the Garmin Connect card on the Bikes page, with the date it runs out. Garmin checks it before it
+  year). Paste it in with the rider (top of the Bikes page: when adding the rider, or under "This rider's Garmin key"), with the date it runs out. Garmin checks it before it
   is kept (a refused key is not saved); it goes in the keys folder as `garmin_<rider>.txt` and is never shown again.
   Each rider has their own. You can also put the file there yourself.
 - **The sync:** every morning at 06:50, and with Sync now. The first reads your whole history; later ones look back a

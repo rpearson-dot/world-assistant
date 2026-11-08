@@ -52,26 +52,29 @@ button.small { padding: 3px 9px; font-size: 13px; }
   <details id="newrider"><summary class="small">Add a rider</summary>
     <form id="addrider" class="grid"><label>Name <input id="rname" maxlength="40" required></label>
     <label>Weight kg <input id="rkg" type="number" min="25" max="240" step="0.1" placeholder="for tyre pressures"></label>
-    <button class="primary">Add</button></form></details></div>
+    <label>Garmin key <input id="rkey" type="password" autocomplete="off" placeholder="optional: Personal API Key"></label>
+    <label>Key runs out on <input id="rexp" type="date"></label>
+    <button class="primary">Add</button></form>
+    <p class="dim small">The Garmin key is the rider's own: Garmin Connect on the web, Settings, then Personal API Key. It can be
+    added later too.</p></details></div>
   <p id="rmsg" class="err"></p>
-</div>
-
-<div class="card" id="garmincard" hidden><h2>Garmin Connect</h2>
-  <p id="gwarn" class="err"></p><p id="gstate" class="small"></p>
-  <div class="row"><button id="gsync" type="button">Sync now</button></div>
-  <details id="gkeybox"><summary class="small">Garmin key</summary>
-    <p class="dim small">Make one in Garmin Connect on the web: Settings, then Personal API Key. Copy it here: it is kept on this
-    server (the keys folder) and never shown again. Rides then come in every morning; the first sync reads your whole history.</p>
-    <form id="gkey" class="grid"><label>Key <input id="gkeyv" type="password" autocomplete="off" required></label>
-    <label>Runs out on <input id="gexp" type="date"></label><button class="primary">Save the key</button></form>
-    <div class="row"><button id="gforget" type="button" class="small">Forget the key</button></div></details>
-  <details id="grulebox"><summary class="small">Which bike each kind of ride goes to</summary>
-    <p class="dim small">For new rides from Garmin; you are still asked to confirm the bike of each recent ride.</p>
-    <form id="grules" class="grid"></form>
-    <label class="small"><input type="checkbox" id="gweight"> Take my weight from Garmin (for tyre pressures)</label>
-    <div class="row"><button id="grulesgo" type="button" class="primary small">Save</button>
-    <button id="grulesapply" type="button" class="small">Save, and give rides without a bike theirs</button></div></details>
-  <p id="gmsg" class="dim"></p>
+  <div id="garmincard" hidden>
+    <p id="gwarn" class="err"></p>
+    <div class="row"><span id="gstate" class="small"></span><button id="gsync" type="button" class="small">Sync now</button></div>
+    <details id="gkeybox"><summary class="small">This rider's Garmin key</summary>
+      <p class="dim small">Make one in Garmin Connect on the web: Settings, then Personal API Key. Copy it here: it is kept on this
+      server (the keys folder) and never shown again. Rides then come in every morning; the first sync reads the whole history.</p>
+      <form id="gkey" class="grid"><label>Key <input id="gkeyv" type="password" autocomplete="off" required></label>
+      <label>Runs out on <input id="gexp" type="date"></label><button class="primary">Save the key</button></form>
+      <div class="row"><button id="gforget" type="button" class="small">Forget the key</button></div></details>
+    <details id="grulebox"><summary class="small">Which bike each kind of Garmin ride goes to</summary>
+      <p class="dim small">For new rides from Garmin; you are still asked to confirm the bike of each recent ride.</p>
+      <form id="grules" class="grid"></form>
+      <label class="small"><input type="checkbox" id="gweight"> Take this rider's weight from Garmin (for tyre pressures)</label>
+      <div class="row"><button id="grulesgo" type="button" class="primary small">Save</button>
+      <button id="grulesapply" type="button" class="small">Save, and give rides without a bike theirs</button></div></details>
+    <p id="gmsg" class="dim"></p>
+  </div>
 </div>
 
 <div class="card" id="duecard" hidden><h2>Due</h2><ul class="parts" id="due"></ul></div>
@@ -461,7 +464,7 @@ async function garmin() {
   const s = await api('GET', '/v1/bikes/garmin' + R());
   $('garmincard').hidden = false; $('gwarn').textContent = s.warn || (s.error ? 'Last sync failed: ' + s.error : '');
   const lr = s.last_result || {};
-  $('gstate').textContent = !s.key_set ? 'No Garmin key saved yet: rides come only from the CSV import or by hand.'
+  $('gstate').textContent = !s.key_set ? 'No Garmin key for this rider yet: rides come only from the CSV import or by hand.'
     : !s.last_sync ? 'Key saved. The first sync reads your whole Garmin history.'
     : 'Last sync ' + new Date(s.last_sync).toLocaleString('en-GB') + ': ' + (lr.added || 0) + ' new rides, ' + (lr.updated || 0) + ' changed, ' +
       (lr.removed || 0) + ' deleted in Garmin' + (lr.from_csv ? ', ' + lr.from_csv + ' imported rides matched' : '') +
@@ -507,7 +510,14 @@ $('rider').onchange = () => { try { localStorage.setItem('wa_bike_rider', rider(
 $('btype').onchange = answers; $('bebike').onchange = answers;
 $('auth').onsubmit = e => { e.preventDefault(); try { sessionStorage.setItem('wa_token', tok.value); } catch (x) {} guard(start); };
 $('addrider').onsubmit = e => { e.preventDefault(); guard(async () => { const r = await api('POST', '/v1/bikes/riders', { name: $('rname').value, weight_kg: $('rkg').value ? Number($('rkg').value) : null });
-  $('rname').value = ''; await start(); $('rider').value = r.id; try { localStorage.setItem('wa_bike_rider', r.id); } catch (x) {} await load(); }, $('rmsg')); };
+  $('rname').value = ''; await start(); $('rider').value = r.id; try { localStorage.setItem('wa_bike_rider', r.id); } catch (x) {} await load();
+  if ($('rkey').value) {  // the rider's Garmin key, checked with Garmin; the rider is kept even if Garmin refuses it
+    const k = $('rkey').value; $('rkey').value = '';
+    try { const g = await api('PUT', '/v1/bikes/garmin/key?rider=' + encodeURIComponent(r.id), { value: k, expires: $('rexp').value || null });
+      $('gmsg').textContent = g.message + '. Syncing now...'; const s = await api('POST', '/v1/bikes/garmin/sync?rider=' + encodeURIComponent(r.id));
+      $('gmsg').textContent = g.message + '. ' + (s.skipped || ('Read ' + s.rides + ' rides: ' + s.added + ' new.'));
+    } catch (x) { $('rmsg').textContent = r.name + ' was added, but the Garmin key was not: ' + x.message; }
+    await load(); } }, $('rmsg')); };
 $('addbikego').onclick = () => guard(async () => {
   if (!rider()) throw new Error('Add yourself as a rider first');
   const cfg = {}; for (const i of $('answers').elements) if (i.name) cfg[i.name] = i.type === 'number' ? Number(i.value || 0) : i.value;
