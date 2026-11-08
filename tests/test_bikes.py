@@ -605,7 +605,8 @@ def test_each_model_and_paint_draws_and_bad_ones_are_refused() -> None:
         assert svg.startswith("<svg") and PAINTS["bronze"][1] in svg and PAINTS["red"][1] in svg
     assert "var(--accent)" in art.bike(D.defaults_for("road"))  # no paint: the theme's colour
     _check({"model": "planet-x-reiver-2025", "paint": "barbie-pink"})
-    _check({"pinstripe": "red"})
+    _check({"pinstripe": "red", "fade": True, "paint": "burnt-orange", "paint2": "slate"})
+    assert "linearGradient" in art.bike({**D.defaults_for("gravel"), "paint": "burnt-orange", "paint2": "slate", "fade": True}, "r")
     for bad in ({"model": "penny-farthing"}, {"paint": "#ff00ff"}, {"pinstripe": "tartan"}):
         with pytest.raises(HTTPException):
             _check(bad)

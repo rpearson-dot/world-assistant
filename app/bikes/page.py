@@ -692,7 +692,7 @@ function changeAnswers(card, b) {  // change a bike's answers: parts it now need
   answersInto(f, cfg.type, Object.assign({}, cat.defaults[cfg.type], cfg));
   const save = el('button', 'primary small', 'Save'); save.type = 'button';
   save.onclick = () => guard(async () => {
-    const c = {}; for (const i of f.elements) if (i.name) c[i.name] = i.type === 'number' ? Number(i.value || 0) : i.value;
+    const c = {}; for (const i of f.elements) if (i.name) c[i.name] = i.type === 'number' ? Number(i.value || 0) : i.type === 'checkbox' ? i.checked : i.value;
     const r = await api('PATCH', '/v1/bikes/bikes/' + b.id, { config: c });
     const ch = r || {}; msg.textContent = b.label + ': ' + ((ch.added || []).length ? 'added ' + ch.added.join(', ') : 'nothing added') +
       ((ch.retired || []).length ? '; retired ' + ch.retired.join(', ') : '') + '.'; await load(); }, out);
@@ -716,6 +716,7 @@ function answersInto(f, t, d) {  // a bike's answers as a form: for a new bike (
   pick('paint', 'Frame colour', Object.entries(cat.paints || {}), d.paint, "the theme's colour");
   pick('paint2', 'Second colour (fork and stays; the rear triangle on full suspension)', Object.entries(cat.paints || {}), d.paint2, 'the same');
   pick('pinstripe', 'Pinstripes', Object.entries(cat.paints || {}), d.pinstripe, 'none');
+  { const l = el('label', null, 'Fade into the second colour '), i = el('input'); i.type = 'checkbox'; i.name = 'fade'; i.checked = !!d.fade; l.append(i); f.append(l); }
 }
 async function load() {
   if (!rider()) return;
@@ -798,7 +799,7 @@ $('addrider').onsubmit = e => { e.preventDefault(); guard(async () => { const r 
     await load(); } }, $('rmsg')); };
 $('addbikego').onclick = () => guard(async () => {
   if (!rider()) throw new Error('Add yourself as a rider first');
-  const cfg = {}; for (const i of $('answers').elements) if (i.name) cfg[i.name] = i.type === 'number' ? Number(i.value || 0) : i.value;
+  const cfg = {}; for (const i of $('answers').elements) if (i.name) cfg[i.name] = i.type === 'number' ? Number(i.value || 0) : i.type === 'checkbox' ? i.checked : i.value;
   await api('POST', '/v1/bikes/bikes', { rider: rider(), label: $('blabel').value, type: $('btype').value, ebike: $('bebike').checked, config: cfg,
     fitted_at: $('bdate').value || null, weight_kg: $('bkg').value ? Number($('bkg').value) : null });
   $('blabel').value = ''; await load(); }, $('bmsg'));

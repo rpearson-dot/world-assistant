@@ -43,16 +43,16 @@ GEOMETRY = {
 # differ), wheel and tyre size and bars. Figures from published geometry where there is any (bikeinsights.com: the
 # Reiver's M, the 2008 Trek 1 Series' 56 cm), otherwise typical of the bike and its year.
 MODELS: dict[str, dict[str, Any]] = {
-    "planet-x-reiver-2025": {"name": "Planet X Reiver (2025)", "type": "gravel",
+    "planet-x-reiver-2025": {"name": "Planet X Reiver (2025)", "type": "gravel", "dropped_stays": True,
                              "geometry": {"stack": 562, "reach": 379, "cs": 435, "drop": 69, "wb": 1036, "hta": 71, "sta": 73,
                                           "ht": 140, "st": 520, "r": 351, "tyre": 40}},
-    "yeti-asr-sl-2005": {"name": "Yeti ASR-SL (2005, 26-inch)", "type": "full_suspension",
-                         "geometry": {"stack": 565, "reach": 410, "cs": 425, "drop": 15, "wb": 1070, "hta": 70.5, "sta": 73,
-                                      "ht": 110, "st": 445, "r": 333, "tyre": 52}},
+    "yeti-asr-sl-2005": {"name": "Yeti ASR-SL (2004-5, 26-inch)", "type": "full_suspension",
+                         "geometry": {"stack": 560, "reach": 400, "cs": 425, "drop": 15, "wb": 1050, "hta": 71, "sta": 73,
+                                      "ht": 105, "st": 380, "r": 333, "tyre": 55}},
     "trek-1.2-2008": {"name": "Trek 1.2 (2008)", "type": "road",
                       "geometry": {"stack": 576, "reach": 387, "cs": 410, "drop": 68, "wb": 983, "hta": 73.5, "sta": 73.6,
                                    "ht": 170, "st": 535, "r": 334, "tyre": 25}},
-    "viking-tandem-26": {"name": "Viking tandem (26-inch)", "type": "tandem", "bars": "flat",
+    "viking-tandem-26": {"name": "Viking tandem (26-inch, Salerno style)", "type": "tandem", "bars": "flat", "rack": True,
                          "geometry": {"stack": 600, "reach": 360, "cs": 440, "drop": 55, "wb": 1700, "hta": 71, "sta": 72,
                                       "ht": 170, "st": 480, "r": 333, "tyre": 50}},
 }  # fmt: skip
@@ -79,6 +79,12 @@ def bike(cfg: dict[str, Any], label: str = "bike") -> str:
     bars = model.get("bars") or ("drops" if t in ("road", "gravel", "cyclocross", "tandem") else "tt" if t == "tt" else "flat")
     main = paint(cfg.get("paint")) or "var(--accent)"  # the frame's paint, else the theme's accent
     second = paint(cfg.get("paint2")) or main  # fork and stays
+    defs = ""
+    if cfg.get("fade") and paint(cfg.get("paint2")):  # the frame's colour fading into the second down the fork and stays
+        gid = "fade" + str(abs(hash((label, main, second))) % 10**8)
+        defs = (f'<defs><linearGradient id="{gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{main}"/>'
+                f'<stop offset="0.3" stop-color="{main}"/><stop offset="0.85" stop-color="{second}"/></linearGradient></defs>')
+        second = f"url(#{gid})"
     k, pad = 0.13, 12  # pixels a millimetre, and a margin
     rad = lambda a: math.radians(a)
     # in mm, bottom bracket at 0,0, y up
@@ -116,26 +122,31 @@ def bike(cfg: dict[str, Any], label: str = "bike") -> str:
     r = gm["r"] * k
     tyre = max(2.2, gm["tyre"] * k * 0.9)
     disc = lambda end: cfg.get(f"{end}_brake") in ("hydraulic_disc", "cable_disc", "cable_hydraulic")
-    out: list[str] = []
+    out: list[str] = [defs] if defs else []
     for c, end in ((rear, "rear"), (front, "front")):
         cx, cy = xy(c)
         out.append(_wheel(round(cx, 1), round(cy, 1), round(r, 1), round(tyre, 1), disc(end), t == "tt"))
     frame = [f"M{P(h_top)} L{P(h_low)}", f"M{P(h_low)} L{P(fb)}", f"M{P((0, 0))} L{P(s_top)}"]
     if tandem:  # top tubes over both seat tubes, the boom between the bottom brackets, the captain's seat tube
         frame += [f"M{P(h_top)} L{P(s_top)}", f"M{P(fb)} L{P((0, 0))}", f"M{P(fb)} L{P(cap_top)}",  # type: ignore[arg-type]
-                  f"M{P(h_low)} L{P((0, 0))}"]  # the long diagonal: head tube to the stoker's bottom bracket
+                  f"M{P((h_top[0] + (h_low[0] - h_top[0]) * 0.6, h_top[1] + (h_low[1] - h_top[1]) * 0.6))} L{P((s_top[0] * 0.55, s_top[1] * 0.55))}"]  # the second long tube: head tube to the stoker's seat tube
     else:
         frame.append(f"M{P(h_top)} L{P((s_top[0] * 0.93, s_top[1] * 0.93))}")
-    seat_join = (s_top[0] * 0.9, s_top[1] * 0.9)
+    seat_join = (s_top[0] * 0.72, s_top[1] * 0.72) if model.get("dropped_stays") else (s_top[0] * 0.9, s_top[1] * 0.9)
     if full:
-        # the rear triangle: chainstays to a pivot just above the bottom bracket, seatstays up past the seat tube to the
-        # shock, which runs forward to the top tube just in front of the seat post (as on a Yeti ASR)
-        pivot = (35, 75)
-        stay_top = (s_top[0] * 0.78 - 45, s_top[1] * 0.78)
-        tt_from, tt_to = (s_top[0] * 0.93, s_top[1] * 0.93), h_top
-        shock_b = (tt_from[0] + (tt_to[0] - tt_from[0]) * 0.28, tt_from[1] + (tt_to[1] - tt_from[1]) * 0.28)
+        # as on a Yeti ASR: a short brace from the seat tube forward to the top tube; the rear triangle's chainstays pivot
+        # just above the bottom bracket, its seatstays meet the seat tube halfway up, where the shock's piston eye is;
+        # the shock runs forward and up to the brace
+        pivot = (30, 70)
+        stay_top = (s_top[0] * 0.5 - 20, s_top[1] * 0.5)
+        brace_a = (s_top[0] * 0.8, s_top[1] * 0.8)
+        tt_from = (s_top[0] * 0.93, s_top[1] * 0.93)
+        # the brace runs forward from the seat tube to the top tube; the shock lies under it, rising gently from the
+        # seatstays' eye to a plate under the brace
+        brace_b = (tt_from[0] + (h_top[0] - tt_from[0]) * 0.4, tt_from[1] + (h_top[1] - tt_from[1]) * 0.4)
         shock_a = stay_top
-        frame += [f"M{P(rear)} L{P(pivot)}", f"M{P(rear)} L{P(stay_top)}"]
+        shock_b = (stay_top[0] + 250, stay_top[1] + 115)
+        frame += [f"M{P(rear)} L{P(pivot)}", f"M{P(rear)} L{P(stay_top)}", f"M{P(brace_a)} L{P(brace_b)}"]
     else:
         frame += [f"M{P(rear)} L{P((0, 0))}", f"M{P(rear)} L{P(seat_join)}"]
     stays = [f for f in frame if f.startswith(f"M{P(rear)}")]
@@ -169,7 +180,7 @@ def bike(cfg: dict[str, Any], label: str = "bike") -> str:
                    f'<path d="M{P((sat[0] - 120, sat[1] + 5))} Q{P((sat[0], sat[1] + 22))} {P((sat[0] + 125, sat[1] + 12))}" stroke-width="3.4"/>')
     if tandem:  # the stoker's bars: clamped to the captain's seat post under the saddle, reaching back for the stoker
         sp = (cap_top[0] - 110 * math.cos(rad(gm["sta"])), cap_top[1] + 110 * math.sin(rad(gm["sta"])))  # type: ignore[index]
-        out.append(f'<path d="M{P(sp)} L{P((sp[0] - 150, sp[1] + 15))} L{P((sp[0] - 175, sp[1] - 25))}" stroke-width="2.4"/>')
+        out.append(f'<path d="M{P(sp)} L{P((sp[0] - 120, sp[1] + 35))} L{P((sp[0] - 128, sp[1] + 85))}" stroke-width="2.6"/>')
     # stem and bars: drops on road-ish bikes, aero extensions on a time-trial bike, flat or riser bars on the rest
     stem_end = (h_top[0] + 95, h_top[1] + 20)
     out.append(f'<path d="M{P(h_top)} L{P((h_top[0] - 5, h_top[1] + 25))} L{P(stem_end)}" stroke-width="2.8"/>')
@@ -183,7 +194,8 @@ def bike(cfg: dict[str, Any], label: str = "bike") -> str:
     else:
         out.append(f'<path d="M{P(stem_end)} L{P((stem_end[0] - 15, stem_end[1] + 35))} L{P((stem_end[0] - 70, stem_end[1] + 40))}" stroke-width="3"/>')
     # crank and chainring at the drive bottom bracket (the stoker's on a tandem), the chain to the cassette
-    ring, cog = 95 * k, (40 if cfg.get("drive", "derailleur") == "derailleur" else 28) * k
+    one_by = int(cfg.get("front_rings") or 2) == 1
+    ring, cog = 95 * k, (55 if one_by else 40 if cfg.get("drive", "derailleur") == "derailleur" else 28) * k
     bx, by = xy((0, 0))
     rx_, ry_ = xy(rear)
     crank = lambda cx, cy: f'<path d="M{cx:.1f} {cy:.1f} l-8 20 m-4 0 h9" stroke-width="2.6"/>'
@@ -195,13 +207,14 @@ def bike(cfg: dict[str, Any], label: str = "bike") -> str:
         out.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{timing:.1f}" stroke-width="1.4"/>'
                    f'<circle cx="{cx + 1.2:.1f}" cy="{cy - 0.8:.1f}" r="{timing * 0.45:.1f}" stroke-width="1" opacity="0.8"/>'
                    f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{timing * 0.62:.1f}" stroke-width="1" opacity="0.5"/>' + crank(cx, cy))
-        out.append(f'<circle cx="{bx:.1f}" cy="{by:.1f}" r="{timing:.1f}" stroke-width="1" stroke-dasharray="2 2" opacity="0.7"/>'
+        out.append(f'<circle cx="{bx:.1f}" cy="{by:.1f}" r="{timing:.1f}" stroke-width="1.1"/>'
                    f'<path d="M{cx:.1f} {cy - timing:.1f} L{bx:.1f} {by - timing:.1f} M{cx:.1f} {cy + timing:.1f} L{bx:.1f} {by + timing:.1f}" '
-                   f'stroke-width="1" stroke-dasharray="3 2" opacity="0.75"/>')
+                   f'stroke-width="1.1" opacity="0.85"/>')
         out.append(f'<circle cx="{bx:.1f}" cy="{by:.1f}" r="{ring:.1f}" stroke-width="1.5"/>'
                    f'<circle cx="{bx:.1f}" cy="{by:.1f}" r="{ring * 0.78:.1f}" stroke-width="1.2"/>' + crank(bx, by))
-    else:
-        out.append(f'<circle cx="{bx:.1f}" cy="{by:.1f}" r="{ring:.1f}" stroke-width="1.5"/>' + crank(bx, by))
+    else:  # one ring on a 1x; a smaller inner ring (or two) otherwise
+        inner = "" if one_by else f'<circle cx="{bx:.1f}" cy="{by:.1f}" r="{ring * 0.72:.1f}" stroke-width="1.1"/>'
+        out.append(f'<circle cx="{bx:.1f}" cy="{by:.1f}" r="{ring:.1f}" stroke-width="1.6"/>' + inner + crank(bx, by))
     out.append(f'<circle cx="{rx_:.1f}" cy="{ry_:.1f}" r="{cog:.1f}" stroke-width="1.3"/>')
     belt = cfg.get("drive") == "belt"
     out.append(f'<path d="M{bx:.1f} {by - ring:.1f} L{rx_:.1f} {ry_ - cog:.1f} M{bx:.1f} {by + ring:.1f} L{rx_:.1f} {ry_ + cog:.1f}" '
@@ -212,12 +225,14 @@ def bike(cfg: dict[str, Any], label: str = "bike") -> str:
         a, b = (h_low[0] * 0.25, h_low[1] * 0.25), (h_low[0] * 0.75, h_low[1] * 0.75)
         out.append(f'<path d="M{P(a)} L{P(b)}" stroke-width="8" opacity="0.45"/><circle cx="{bx:.1f}" cy="{by:.1f}" r="{ring * 1.2:.1f}" '
                    f'fill="currentColor" opacity="0.3" stroke="none"/>')
-    if t == "hybrid":  # mudguards over both wheels and a rack over the back
+    if t == "hybrid":  # mudguards over both wheels
         for c in (rear, front):
             cx, cy = xy(c)
             out.append(f'<path d="M{cx - r - 1:.1f} {cy - 4:.1f} A{r + 3:.1f} {r + 3:.1f} 0 0 1 {cx + r + 1:.1f} {cy - 4:.1f}" stroke-width="1.4"/>')
-        top = xy((rear[0], s_top[1] * 0.75))
-        out.append(f'<path d="M{xy(seat_join)[0]:.1f} {top[1]:.1f} L{rx_ - r * 0.7:.1f} {top[1]:.1f} L{rx_:.1f} {ry_:.1f}" stroke-width="1.6"/>')
+    if t == "hybrid" or model.get("rack"):  # a rack over the back wheel, on stays to the axle
+        top = xy((rear[0], gm["drop"] + gm["r"] + 60))
+        out.append(f'<path d="M{xy(seat_join)[0]:.1f} {top[1]:.1f} L{rx_ - r * 0.85:.1f} {top[1]:.1f} M{rx_ - r * 0.4:.1f} {top[1]:.1f} '
+                   f'L{rx_:.1f} {ry_:.1f}" stroke-width="1.6"/>')
     w = width_mm * k + 2 * pad
     h = (top_mm - bottom_mm) * k + 2 * pad
     return _SVG.format(vb=f"0 0 {w:.0f} {h:.0f}", w=2, label=label, body="".join(out))
