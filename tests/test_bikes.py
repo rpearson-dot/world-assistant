@@ -608,3 +608,12 @@ def test_each_model_and_paint_draws_and_bad_ones_are_refused() -> None:
     for bad in ({"model": "penny-farthing"}, {"paint": "#ff00ff"}):
         with pytest.raises(HTTPException):
             _check(bad)
+
+
+def test_a_tandem_has_a_long_timing_chain_its_rings_and_an_eccentric_bottom_bracket() -> None:
+    t = kinds(D.defaults_for("tandem"))
+    assert {("timing_chain", "bike", None), ("timing_rings", "bike", None), ("eccentric_bb", "bike", "captain"),
+            ("chainrings", "bike", None)} <= set(t)  # fmt: skip
+    assert ("chainrings", "bike", "stoker") not in t  # the drive rings are the stoker's: the bike's chainrings
+    timing = next(p for p in D.planned_parts(D.defaults_for("tandem")) if p.kind == "timing_chain")
+    assert "two chains" in timing.details["links"]

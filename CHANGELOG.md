@@ -15,6 +15,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   services as the bike has; an AXS battery only on a bike with AXS shifting or a wireless dropper; and no second
   tyre, cassette, chain (and so on) where there is one already. A wheel moved onto a bike whose answers do not suit its
   parts is fitted with a warning.
+- **Tandems:** timing chainrings and an eccentric bottom bracket (checked every six months: the timing chain's tension)
+  join the long timing chain (noted as often two chains joined); the picture shows the captain's single timing ring
+  with its eccentric, the timing chain to the stoker's crank, and the stoker's two drive rings. An existing tandem gets
+  the new parts when its answers are saved again.
 - **Each wheel's odometer:** the distance of the rides of the bikes it was on.
 
 ### Changed

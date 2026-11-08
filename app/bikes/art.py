@@ -165,10 +165,22 @@ def bike(cfg: dict[str, Any], label: str = "bike") -> str:
     ring, cog = 95 * k, (40 if cfg.get("drive", "derailleur") == "derailleur" else 28) * k
     bx, by = xy((0, 0))
     rx_, ry_ = xy(rear)
-    for c in ([(0, 0), cap_bb] if tandem else [(0, 0)]):
-        cx, cy = xy(c)  # type: ignore[arg-type]
-        out.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{ring:.1f}" stroke-width="1.5"/>'
-                   f'<path d="M{cx:.1f} {cy:.1f} l{-8:.1f} {20:.1f} m-4 0 h9" stroke-width="2.6"/>')
+    crank = lambda cx, cy: f'<path d="M{cx:.1f} {cy:.1f} l-8 20 m-4 0 h9" stroke-width="2.6"/>'
+    if tandem:
+        # the timing chain (on the far side, so dashed): the captain's single ring to a ring on the stoker's crank,
+        # tensioned by the captain's eccentric bottom bracket; the stoker's two drive rings take the chain to the back
+        timing = 70 * k
+        cx, cy = xy(cap_bb)  # type: ignore[arg-type]
+        out.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{timing:.1f}" stroke-width="1.4"/>'
+                   f'<circle cx="{cx + 1.2:.1f}" cy="{cy - 0.8:.1f}" r="{timing * 0.45:.1f}" stroke-width="1" opacity="0.8"/>'
+                   f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{timing * 0.62:.1f}" stroke-width="1" opacity="0.5"/>' + crank(cx, cy))
+        out.append(f'<circle cx="{bx:.1f}" cy="{by:.1f}" r="{timing:.1f}" stroke-width="1" stroke-dasharray="2 2" opacity="0.7"/>'
+                   f'<path d="M{cx:.1f} {cy - timing:.1f} L{bx:.1f} {by - timing:.1f} M{cx:.1f} {cy + timing:.1f} L{bx:.1f} {by + timing:.1f}" '
+                   f'stroke-width="1" stroke-dasharray="3 2" opacity="0.75"/>')
+        out.append(f'<circle cx="{bx:.1f}" cy="{by:.1f}" r="{ring:.1f}" stroke-width="1.5"/>'
+                   f'<circle cx="{bx:.1f}" cy="{by:.1f}" r="{ring * 0.78:.1f}" stroke-width="1.2"/>' + crank(bx, by))
+    else:
+        out.append(f'<circle cx="{bx:.1f}" cy="{by:.1f}" r="{ring:.1f}" stroke-width="1.5"/>' + crank(bx, by))
     out.append(f'<circle cx="{rx_:.1f}" cy="{ry_:.1f}" r="{cog:.1f}" stroke-width="1.3"/>')
     belt = cfg.get("drive") == "belt"
     out.append(f'<path d="M{bx:.1f} {by - ring:.1f} L{rx_:.1f} {ry_ - cog:.1f} M{bx:.1f} {by + ring:.1f} L{rx_:.1f} {ry_ + cog:.1f}" '
