@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.47.0] - 2026-11-08
 
 ### Added
 - **The Garage** (`/bikes/garage`): one bike at a time with its parts marked on its drawing, ringed green to amber
