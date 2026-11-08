@@ -493,3 +493,47 @@ def test_undo_a_replacement_delete_rides_and_parts_and_retire_a_bike_keeping_its
     assert d["deleted"] and d["sets"] == 2 and d["parts"] > 5
     g = c.get("/v1/bikes", params={"rider": "rob"}).json()
     assert [b["label"] for b in g["bikes"]] == ["Road"] and not g["loose_sets"]
+
+
+@pytest.mark.skipif(not DB, reason="WA_TEST_DATABASE_URL not set")
+def test_a_new_wheel_with_its_usual_parts_fitted_and_a_part_moved_onto_it(garage: Any) -> None:
+    c = garage
+    c.post("/v1/bikes/riders", json={"name": "Jo"})
+    bike = c.post("/v1/bikes/bikes", json={"rider": "jo", "label": "Gravel", "type": "gravel"}).json()
+    old_rear = bike["wheels"]["rear"]
+    assert c.post("/v1/bikes/sets", json={"rider": "jo", "label": "W", "kind": "wheel"}).status_code == 422  # front or rear?
+    r = c.post("/v1/bikes/sets", json={"rider": "jo", "label": "Winter rear wheel", "kind": "wheel", "position": "rear",
+                                       "group": "Winter wheels", "bike_id": bike["id"], "parts": True}).json()  # fmt: skip
+    assert r["took_off"] == ["Gravel rear wheel"] and "Tyre" in r["parts"]
+    g = c.get("/v1/bikes?rider=jo").json()
+    b = g["bikes"][0]
+    assert [s["label"] for s in b["sets"]] == ["Gravel front wheel", "Winter rear wheel"]
+    assert [s["id"] for s in g["loose_sets"]] == [old_rear]  # the old rear wheel, in storage, its parts with it
+    new_rear = next(s for s in b["sets"] if s["label"] == "Winter rear wheel")
+    assert {p["kind"] for p in new_rear["parts"]} >= {"tyre", "cassette"}
+    # a spare wheel, not fitted, with no parts; then the old wheel's cassette moved onto it
+    spare = c.post("/v1/bikes/sets", json={"rider": "jo", "label": "Spare rear", "kind": "wheel", "position": "rear"}).json()
+    assert spare["parts"] == [] and spare["took_off"] == []
+    cassette = next(p for p in g["loose_sets"][0]["parts"] if p["kind"] == "cassette")
+    assert c.post("/v1/bikes/fit", json={"item": "part", "id": cassette["id"], "set_id": spare["id"]}).status_code == 200
+    loose = {s["label"]: s for s in c.get("/v1/bikes?rider=jo").json()["loose_sets"]}
+    assert any(p["id"] == cassette["id"] for p in loose["Spare rear"]["parts"])
+    assert not any(p["id"] == cassette["id"] for p in loose["Gravel rear wheel"]["parts"])
+
+
+@pytest.mark.skipif(not DB, reason="WA_TEST_DATABASE_URL not set")
+def test_a_wheel_swap_dated_in_the_past_puts_the_rides_since_on_those_wheels(garage: Any) -> None:
+    c = garage
+    c.post("/v1/bikes/riders", json={"name": "Al"})
+    bike = c.post("/v1/bikes/bikes", json={"rider": "al", "label": "Road", "type": "road", "fitted_at": "2026-01-01"}).json()
+    winter = c.post("/v1/bikes/sets", json={"rider": "al", "label": "Winter rear", "kind": "wheel", "position": "rear",
+                                            "parts": True, "parts_from": bike["id"], "fitted_at": "2026-01-01"}).json()  # fmt: skip
+    for day, km in (("2026-02-01", 50), ("2026-02-10", 30)):
+        c.post("/v1/bikes/rides", json={"rider": "al", "bike_id": bike["id"], "started": f"{day}T09:00:00", "km": km, "wet": False})
+    # the winter wheel went on on 5 February (said afterwards): the ride of the 10th was on it, the 1st's was not
+    assert c.post("/v1/bikes/fit", json={"item": "set", "id": winter["id"], "bike_id": bike["id"], "at": "2026-02-05T00:00:00"}).status_code == 200
+    g = c.get("/v1/bikes?rider=al").json()
+    on = {r["km"]: r["wheels"] for r in g["recent_rides"]}
+    assert on[30.0] == ["Road front wheel", "Winter rear"] and on[50.0] == ["Road front wheel", "Road rear wheel"]
+    tyre = next(p for s in g["bikes"][0]["sets"] if s["label"] == "Winter rear" for p in s["parts"] if p["kind"] == "tyre")
+    assert tyre["wear"]["km"] == 30

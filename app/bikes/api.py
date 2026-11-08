@@ -362,19 +362,54 @@ class SetIn(BaseModel):
     kind: Literal["wheel", "group"] = "group"
     position: Literal["front", "rear"] | None = None
     group: str | None = Field(None, max_length=60, description="wheels sharing a group label swap together")
-    bike_id: int | None = None
+    bike_id: int | None = Field(None, description="fitted to this bike now (a wheel takes the one it replaces off)")
+    parts: bool = Field(False, description="a wheel: give it the usual parts (tyre, rotor, cassette...) for parts_from")
+    parts_from: int | None = Field(None, description="the bike whose answers say what the wheel carries (default bike_id)")
+    fitted_at: date | None = None
+
+
+async def _wheels_off(c: Any, bike_id: int, ends: set[str], keep: list[int], at: datetime) -> list[str]:
+    """Take a bike's wheels at these ends off (into storage), except those in keep; their labels."""
+    off = []
+    for r in await c.execute(text(
+            "SELECT s.id, s.label FROM bike_set s JOIN LATERAL (SELECT bike_id FROM bike_fit f WHERE f.item = 'set' AND "
+            "f.item_id = s.id ORDER BY at DESC, id DESC LIMIT 1) f ON true WHERE f.bike_id = :b AND s.kind = 'wheel' "
+            "AND s.position = ANY(:e) AND NOT (s.id = ANY(:mine))"), {"b": bike_id, "e": list(ends), "mine": keep}):  # fmt: skip
+        await _fit(c, "set", r.id, at)
+        off.append(r.label)
+    return off
 
 
 @router.post("/sets", status_code=201)
 async def add_set(request: Request, body: SetIn) -> dict[str, Any]:
+    """A labelled set: a wheel (front or rear) or any group of parts. A new wheel can come with the usual parts for a
+    bike (from its answers: tyre, tube or sealant, tyre check, rotor, cassette, hub...), and be fitted straight away, the
+    wheel it replaces going into storage."""
+    if body.kind == "wheel" and not body.position:
+        raise HTTPException(422, "Say whether the wheel is a front or a rear one")
     await _rider(request.app.state.engine, body.rider)
+    at = datetime.combine(body.fitted_at, datetime.min.time(), TZ) if body.fitted_at else _now()
+    made: list[str] = []
+    off: list[str] = []
     async with request.app.state.engine.begin() as c:
         if (await c.execute(text("SELECT 1 FROM bike_set WHERE rider_id = :r AND label = :l"), {"r": body.rider, "l": body.label})).first():
             raise HTTPException(409, f"You already have a set called {body.label!r}")
         sid = (await c.execute(text("INSERT INTO bike_set (rider_id, label, kind, position, grp) VALUES (:r, :l, :k, :p, :g) RETURNING id"),
-                               {"r": body.rider, "l": body.label, "k": body.kind, "p": body.position, "g": body.group})).scalar_one()  # fmt: skip
-        await _fit(c, "set", sid, _now(), bike_id=body.bike_id)
-    return {"id": sid, "label": body.label}
+                               {"r": body.rider, "l": body.label, "k": body.kind, "p": body.position, "g": body.group or None})).scalar_one()  # fmt: skip
+        if body.bike_id is not None and body.kind == "wheel":
+            off = await _wheels_off(c, body.bike_id, {body.position or ""}, [sid], at)
+        await _fit(c, "set", sid, at, bike_id=body.bike_id)
+        source = body.parts_from or body.bike_id
+        if body.parts and body.kind == "wheel" and source is not None:
+            row = (await c.execute(text("SELECT config FROM bike WHERE id = :b AND rider_id = :r"), {"b": source, "r": body.rider})).first()
+            if not row:
+                raise HTTPException(404, "No such bike to take the wheel's parts from")
+            for pl in D.planned_parts(row.config or {}):
+                if pl.on == body.position:
+                    pid = await _new_part(c, body.rider, pl.kind, pl.position, pl.details, at)
+                    await _fit(c, "part", pid, at, set_id=sid)
+                    made.append(D.KINDS.get(pl.kind, D.KINDS["other"]).name)
+    return {"id": sid, "label": body.label, "parts": made, "took_off": off}
 
 
 class SetPatch(BaseModel):
@@ -540,8 +575,10 @@ class FitIn(BaseModel):
 @router.post("/fit")
 async def fit(request: Request, body: FitIn) -> dict[str, Any]:
     """Move a part or a set, or every wheel of a group: onto a bike, into a set (a part), or off. Swapping a wheelset onto
-    a bike takes the wheels it replaces off that bike."""
+    a bike takes the wheels it replaces off that bike. A past `at` re-counts the rides since then (until the next move)."""
     at = body.at or _now()
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=TZ)
     moved: list[str] = []
     async with request.app.state.engine.begin() as c:
         if body.item == "group":
@@ -568,13 +605,7 @@ async def fit(request: Request, body: FitIn) -> dict[str, Any]:
             return {"moved": [name_of(p)], "at": at.isoformat()}
         if body.bike_id is not None:  # the wheels these replace come off
             ends = {s["position"] for s in sets_ if s["kind"] == "wheel"}
-            for r in await c.execute(text(
-                    "SELECT s.id, s.label FROM bike_set s JOIN LATERAL (SELECT bike_id FROM bike_fit f WHERE f.item = 'set' AND "
-                    "f.item_id = s.id ORDER BY at DESC, id DESC LIMIT 1) f ON true WHERE f.bike_id = :b AND s.kind = 'wheel' "
-                    "AND s.position = ANY(:e) AND NOT (s.id = ANY(:mine))"),
-                    {"b": body.bike_id, "e": list(ends), "mine": [s["id"] for s in sets_]}):  # fmt: skip
-                await _fit(c, "set", r.id, at)
-                moved.append(f"{r.label} off")
+            moved += [f"{x} off" for x in await _wheels_off(c, body.bike_id, ends, [s["id"] for s in sets_], at)]
         for s in sets_:
             await _fit(c, "set", s["id"], at, bike_id=body.bike_id)
             moved.append(s["label"])
@@ -1053,7 +1084,12 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
                 "undo": not (s["action"] == "replaced" and s.get("new_part_id") in logged)}  # fmt: skip
 
     log = [entry(s) for s in services[-25:]][::-1]
-    recent = [{**_out(r), "bike": labels.get(r["bike_id"])} for r in rides[-25:]][::-1]
+    wheel_sets = [x for x in rows["sets"] if x.get("kind") == "wheel"]
+
+    def wheels_on(r: dict[str, Any]) -> list[str]:  # the wheels a ride counted against: those on its bike then
+        return [x["label"] for x in wheel_sets if r["bike_id"] is not None and pl.bike_of_set(x["id"], r["started"]) == r["bike_id"]]
+
+    recent = [{**_out(r), "bike": labels.get(r["bike_id"]), "wheels": wheels_on(r)} for r in rides[-25:]][::-1]
     c = costs(rows, now)
     by_bike = {x["bike_id"]: x for x in c["bikes"]}
     retired = []

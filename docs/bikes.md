@@ -41,6 +41,18 @@ API gives), each ride's GPS track for rain along the route and saved routes, and
   file's GPS points, devices and developer fields (where tyre pressure sensors write), and weight. It only reads. It is
   part of the live check.
 
+## Wheels
+- **A new wheel:** on the bike, **Add a wheel**: front or rear, its name, its wheelset group (wheels in the same group
+  swap together, e.g. "Winter wheels"), since when, whether to fit it now (the bike's current one goes into storage)
+  and whether it comes with the usual parts for that bike (tyre, tube or sealant, tyre check, rotor, cassette, hub,
+  from the bike's answers). Without them, add its parts one by one with **Add a part** on the wheel.
+- **Moving a part between wheels** (the cassette onto the new wheel): the part's **Move to…** lists every wheel, on a
+  bike or in storage.
+- **Which wheels a ride was on** comes from when each wheel was put on: a ride counts against the wheels on its bike at
+  the time (Recent rides shows them). To put rides on other wheels, move the wheel (or the whole group) with a
+  **from** date: rides from that date until the next move count on it, and every part's wear is worked out again.
+- **Wheels in storage** are listed with their parts, which keep their wear for when they go back on.
+
 ## Many rides at once
 - **Rides to confirm** says how many there are, and has **Mark every unanswered ride dry** (leaving, if ticked, the
   ones the rain gauge says were wet for you to answer) and **Keep every bike as it is**.
