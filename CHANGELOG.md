@@ -11,6 +11,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - **What goes together:** each bike's card says what does not: chain and cassette speeds, freehub bodies, rotor mounts
   and sizes, mineral oil in a DOT brake, tyre width and wheel size. New answers: speeds, widest tyre, rotor sizes,
   wheel size and bars. A brake's bleed part follows its fluid answer.
+- **Sensors:** your Garmin speed, cadence, heart rate, power and radar sensors become kit, with the battery each last
+  reported (from rides and from other activities, such as a run with the heart rate strap). Low is due; log a new
+  battery.
 - **AXS batteries from your rides:** each new Garmin ride's file gives the status and voltage the AXS derailleur
   reported; a low battery is due to charge. The file also gives the ride's route.
 - **Rain along the route:** wet or dry is suggested from the rain gauges along the ride, not just where it started.

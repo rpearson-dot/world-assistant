@@ -260,6 +260,7 @@ ICONS = {
     "helmet": '<path d="M3 15a9 9 0 0 1 18 0zM3 15h18"/>',
     "shoe": '<path d="M3 16l1-8 6 2 4 4h5a2 2 0 0 1 2 2v1H3z"/>',
     "cleat": '<path d="M7 6h10l-2 12H9z"/>',
+    "sensor": '<rect x="5" y="7" width="14" height="10" rx="5"/><path d="M9 12h1l1-2 2 4 1-2h1"/>',
     "lever": '<path d="M5 5h6a3 3 0 0 1 3 3v2l5 9"/><path d="M8 5v6"/>',
     "derailleur": '<circle cx="9" cy="8" r="2.5"/><circle cx="14" cy="17" r="2.5"/><path d="M9 10.5l5 4M5 4l4 1.5"/>',
     "part": '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',

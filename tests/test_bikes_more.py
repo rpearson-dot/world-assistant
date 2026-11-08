@@ -269,3 +269,34 @@ def test_recent_rides_get_their_route_and_batteries_from_their_files(monkeypatch
     assert asyncio.run(G.read_files(api, rides, now)) == 2  # type: ignore[arg-type]
     assert api.calls == ["1", "2", "3"] and len(rides[0]["route"]) >= 3 and rides[0]["sensors"][0]["status"] == "new"
     assert "route" not in rides[2] and rides[2]["sensors"][0]["level"] == 100 and "route" not in rides[1]
+
+
+@pytest.mark.skipif(not DB, reason="WA_TEST_DATABASE_URL not set")
+def test_garmin_sensors_become_kit_with_their_batteries(garage: Any) -> None:  # noqa: F811
+    from app.bikes import api as A
+    from app.main import app
+
+    c = garage
+    c.post("/v1/bikes/riders", json={"name": "Rob", "weight_kg": 80})
+    reiver = c.post("/v1/bikes/bikes", json={"rider": "rob", "label": "Reiver", "type": "gravel"}).json()["id"]
+    now = datetime.now(UTC)
+    readings = [{"maker": "Garmin", "type": "speed", "serial": 11, "status": "good", "level": 80, "volts": 2.9,
+                 "at": (now - timedelta(days=2)).isoformat(), "activity": "Gravel Cycling", "bike_id": reiver},
+                {"maker": "Garmin", "type": "heart rate", "serial": 22, "status": "ok", "level": 50,
+                 "at": (now - timedelta(days=3)).isoformat(), "activity": "Running", "bike_id": None},
+                {"maker": "Garmin", "type": "heart rate", "serial": 22, "status": "low", "level": 20,
+                 "at": (now - timedelta(days=1)).isoformat(), "activity": "Running", "bike_id": None},
+                {"maker": "SRAM", "type": "shifting", "serial": 33, "status": "new", "at": now.isoformat()}]  # fmt: skip
+    assert asyncio.run(A.save_sensors(app.state.engine, "rob", readings)) == {"added": 2, "updated": 0}
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    sens = {p["label"]: p for p in g["kit"] if p["kind"] == "sensor"}
+    assert set(sens) == {"Speed sensor", "Heart rate strap"}  # not the AXS derailleur
+    hr = sens["Heart rate strap"]
+    assert hr["reported"]["status"] == "low" and hr["reported"]["activity"] == "Running" and hr["wear"]["state"] == "due"
+    assert sens["Speed sensor"]["reported"]["bike"] == "Reiver" and sens["Speed sensor"]["wear"]["state"] != "due"
+    # a new battery: what Garmin said before it no longer counts; a later reading updates it
+    c.post("/v1/bikes/service", json={"rider": "rob", "action": "serviced", "part_id": hr["id"]})
+    hr = next(p for p in c.get("/v1/bikes", params={"rider": "rob"}).json()["kit"] if p["id"] == hr["id"])
+    assert "reported" not in hr and hr["wear"]["state"] == "ok"
+    later = [{**readings[1], "status": "new", "level": 100, "at": (now + timedelta(minutes=5)).isoformat()}]
+    assert asyncio.run(A.save_sensors(app.state.engine, "rob", later)) == {"added": 0, "updated": 1}

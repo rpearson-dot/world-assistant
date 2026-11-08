@@ -1317,6 +1317,15 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
         out["wear"] = W.state(p, use, since, now)
         if stretch and stretch["worn"]:
             out["wear"]["state"] = "due"
+        if p["kind"] == "sensor":
+            last = (p.get("details") or {}).get("last") or {}
+            fresh = [s_["at"] for s_ in services if s_.get("part_id") == p["id"] and s_.get("resets")]
+            since_ = max(fresh) if fresh else None  # a battery fitted after the reading: the reading says nothing
+            if last.get("at") and (since_ is None or datetime.fromisoformat(last["at"]) > since_):
+                out["reported"] = {**last, "bike": next((b["label"] for b in rows["bikes"] if b["id"] == last.get("bike_id")), None)}
+                if last.get("level") is not None and last["level"] <= 20:
+                    out["wear"]["state"] = "due"
+                    out["wear"]["share"] = max(out["wear"]["share"], 1.0)
         if p["kind"] == "axs_battery":
             rep_ = reported(p, rides, pl, since, rows["parts"], now)
             if rep_:
@@ -1729,6 +1738,44 @@ async def spares_to_list(request: Any, engine: AsyncEngine) -> dict[str, Any]:
             await c.execute(text("UPDATE bike_rider SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{spares_listed}', "
                                  "CAST(:g AS jsonb)) WHERE id = :r"), {"g": json.dumps(listed), "r": r["id"]})  # fmt: skip
     return {"added": added}
+
+
+SENSOR_NAMES = {"heart rate": "Heart rate strap", "speed": "Speed sensor", "cadence": "Cadence sensor",
+                "speed and cadence": "Speed and cadence sensor", "power": "Power meter", "radar": "Radar",
+                "light": "Bike light", "trainer": "Trainer"}  # fmt: skip
+
+
+async def save_sensors(engine: AsyncEngine, rider: str, readings: list[dict[str, Any]]) -> dict[str, int]:
+    """Garmin's sensors (speed, cadence, heart rate, power, radar) as kit, one for each serial number, with the
+    battery each last reported: a new one is added the first time it is seen. AXS derailleurs are not: their battery
+    is the labelled AXS battery fitted to the bike."""
+    added = updated = 0
+    latest: dict[str, dict[str, Any]] = {}
+    for x in readings:
+        if x.get("type") == "shifting" or not x.get("serial"):
+            continue
+        k = str(x["serial"])
+        if k not in latest or x["at"] > latest[k]["at"]:
+            latest[k] = x
+    if not latest:
+        return {"added": 0, "updated": 0}
+    async with engine.begin() as c:
+        have = {str((r.details or {}).get("serial")): _row(r) for r in await c.execute(text(
+            "SELECT * FROM bike_part WHERE rider_id = :r AND kind = 'sensor' AND status <> 'retired'"), {"r": rider})}  # fmt: skip
+        for serial, x in latest.items():
+            last = {k: x.get(k) for k in ("status", "level", "volts", "at", "activity", "bike_id")}
+            p = have.get(serial)
+            if p is None:
+                name = SENSOR_NAMES.get(str(x.get("type")), f"{x.get('type') or 'Sensor'}".capitalize())
+                await _new_part(c, rider, "sensor", None, {"serial": serial, "maker": x.get("maker"), "type": x.get("type"),
+                                                                 "last": last}, _now(), status="kit", brand=x.get("maker"),
+                                      label=name)  # fmt: skip
+                added += 1
+            elif str(((p["details"] or {}).get("last") or {}).get("at") or "") < x["at"]:
+                d = {**(p["details"] or {}), "last": last}
+                await c.execute(text("UPDATE bike_part SET details = CAST(:d AS jsonb) WHERE id = :p"), {"d": json.dumps(d), "p": p["id"]})
+                updated += 1
+    return {"added": added, "updated": updated}
 
 
 async def bikes_check(ctx: dict[str, Any]) -> Any:

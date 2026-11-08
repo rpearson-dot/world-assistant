@@ -207,6 +207,11 @@ button.small { padding: 3px 9px; font-size: 13px; }
     <label>Price £ <input id="sprice" type="number" min="0" step="0.01"></label><button class="primary">Add</button></form></details>
 </div>
 
+<div class="card" id="sensorcard" hidden><h2>Sensors</h2>
+  <p class="dim small">Your Garmin sensors (speed, cadence, heart rate, power, radar), added the first time a ride's or run's file
+  shows them, with the battery each reported last. Low or critical is due: log New battery when you change it. Edit to
+  name one ("Reiver speed sensor") or say its battery (CR2032).</p><ul class="parts" id="sensors"></ul></div>
+
 <div class="card"><h2>Running cost</h2><div id="costs" class="small"></div></div>
 
 <div class="card"><h2>Settings</h2>
@@ -266,7 +271,7 @@ function wearText(w) {
   return bits.join(' · ');
 }
 const LABEL = { replaced: 'Replaced', serviced: 'Serviced', checked: 'Checked', charged: 'Charged', topped_up: 'Topped up', bled: 'Bled' };
-const OWN = { tyre_check: 'Pumped', lube: 'Lubed' };
+const OWN = { tyre_check: 'Pumped', lube: 'Lubed', sensor: 'New battery' };
 const act = kind => { const a = (cat.kinds[kind] || {}).action || 'replaced'; return [a, OWN[kind] || LABEL[a]]; };
 function partRow(p, bike) {
   const li = el('li'), w = p.wear || { measures: {}, share: 0, state: 'untracked' };
@@ -282,8 +287,9 @@ function partRow(p, bike) {
     (h.early ? '; ' + h.early + ' h when new, ' + h.recent + ' h now' + (h.wearing ? ' (wearing: replace soon)' : '') : ''))); }
   if (p.stretch) { const st = p.stretch; mid.append(el('div', st.worn ? 'err small' : 'dim small', 'Stretch ' + st.latest + '% at ' + fmt(st.readings[st.readings.length - 1].km) + ' km (worn out at ' + st.limit + '%)' +
     (st.life_km ? '; at this rate worn out at about ' + fmt(st.life_km) + ' km' : ''))); }
-  if (p.reported) { const r = p.reported; mid.append(el('div', (r.level != null && r.level <= 20) ? 'err small' : 'dim small', 'Garmin saw it ' + (r.status || 'with no status') +
-    (r.volts ? ' (' + r.volts + ' V)' : '') + ' after the ride on ' + new Date(r.at).toLocaleDateString('en-GB') + (r.level != null && r.level <= 20 ? ': charge it' : ''))); }
+  if (p.reported) { const r = p.reported, low = r.level != null && r.level <= 20; mid.append(el('div', low ? 'err small' : 'dim small', 'Garmin saw the battery ' + (r.status || 'with no status') +
+    (r.volts ? ' (' + r.volts + ' V)' : '') + ' after ' + (r.activity ? 'the ' + r.activity.toLowerCase() : 'the ride') + (r.bike ? ' on ' + r.bike : '') + ', ' + new Date(r.at).toLocaleDateString('en-GB') +
+    (low ? (p.kind === 'sensor' ? ': replace it' : ': charge it') : ''))); }
   const acts = el('div', 'row');
   const [action, label] = act(p.kind);
   if (p.kind === 'chain' || p.kind === 'timing_chain') acts.append(button('Measure', () => measure(p)));
@@ -791,7 +797,9 @@ function draw() {
   $('retiredcard').hidden = !g.retired.length; $('retired').replaceChildren(...g.retired.map(retiredCard));
   for (const id of ['ridebike', 'importbike']) { const s = $(id), keep = s.value; s.replaceChildren(new Option(id === 'importbike' ? 'ask for each' : '—', '')); g.bikes.filter(b => !b.retired_at).forEach(b => s.append(new Option(b.label, b.id))); s.value = keep; }
   $('shelf').replaceChildren(...g.shelf.map(p => { const li = partRow(p); li.querySelector('b').textContent = p.name + ' × ' + p.quantity; return li; }));
-  $('kit').replaceChildren(...g.kit.map(p => partRow(p)));
+  $('kit').replaceChildren(...g.kit.filter(p => p.kind !== 'sensor').map(p => partRow(p)));
+  const sens = g.kit.filter(p => p.kind === 'sensor');
+  $('sensorcard').hidden = !sens.length; $('sensors').replaceChildren(...sens.map(p => partRow(p)));
   const c = g.costs, box = $('costs'); box.replaceChildren();
   const tbl = el('table', 'costs'), head = el('tr'); ['Bike', 'This year', 'km', '£ per km', 'All time'].forEach(x => head.append(el('th', null, x))); tbl.append(head);
   const year = String(new Date().getFullYear());

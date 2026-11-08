@@ -109,6 +109,15 @@ answers**.
 - **Running cost**: per bike this year and in total, the cost per km, and each kind of part's cost per 1,000 km once
   some have been used up. A spare's price counts when it is fitted, not when it is bought.
 
+## Sensors
+Your Garmin sensors with batteries (speed, cadence, heart rate strap, power meter, radar, lights) are added to the
+**Sensors** section the first time a ride's file shows them, one for each serial number. The files of your other
+recent activities (a run with the heart rate strap) are read too, for their sensors only (up to 10 a sync). Each shows
+the battery status and voltage it last reported, after which activity and on which bike; low or critical makes it
+due. Log **New battery** when you change it (a reading from before then no longer counts); a year without one also
+makes it due. Edit one to name it ("Reiver speed sensor") or say its battery (CR2032). AXS derailleurs are not here:
+their battery is the labelled AXS battery on the bike.
+
 ## Rain and rough riding
 - **Wet or dry** is suggested from the Environment Agency rain gauges along a Garmin ride's route (the nearest gauge to
   points about 12 km apart), over the ride and the three hours before it: wet if any had as much rain as a wet ride.

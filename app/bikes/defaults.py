@@ -80,6 +80,8 @@ KINDS: dict[str, Kind] = {
     "di2_battery": Kind("Di2 battery", km=1000, icon="battery", action="charged"),
     "ebike_motor": Kind("E-bike motor service", days=365, icon="motor", action="serviced"),
     "ebike_battery": Kind("E-bike battery check", days=365, icon="battery", action="checked"),
+    "sensor": Kind("Sensor battery", days=365, on="rider", icon="sensor", action="serviced",
+                   measure="Garmin reports its battery after each ride or run that used it"),
     "helmet": Kind("Helmet", days=1825, on="rider", icon="helmet", measure="replace after any crash"),
     "shoes": Kind("Shoes", on="rider", icon="shoe"),
     "cleats": Kind("Pedal cleats", days=540, on="rider", icon="cleat"),
@@ -389,6 +391,7 @@ SPECS: dict[str, list[tuple[str, str]]] = {
     "shock_air": [("model", "Shock (e.g. Deluxe Ultimate 210x55)")],
     "dropper_lower": [("travel_mm", "Travel mm")],
     "axs_battery": [("bought", "Bought (month)"), ("sensor", "Derailleur serial in Garmin (when a bike has two)")],
+    "sensor": [("battery", "Battery (e.g. CR2032)"), ("serial", "Serial (from Garmin)"), ("type", "Kind (heart rate, speed...)")],
     "helmet": [("size", "Size"), ("made", "Made (date on the label)")],
     "bar_tape": [("colour", "Colour")],
 }
