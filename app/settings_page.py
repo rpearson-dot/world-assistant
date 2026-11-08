@@ -6,9 +6,12 @@ It replaces the old Status page (/status now redirects here). The page holds no 
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from app import themes
 from app.pagestyle import themed
 
 page_router = APIRouter(include_in_schema=False)
@@ -21,7 +24,7 @@ PAGE = """<!doctype html>
 /*BASE_CSS*/
   .seg { display: flex; gap: 4px; background: var(--chip); border-radius: 12px; padding: 4px; margin-bottom: 14px; overflow-x: auto; }
   .seg button { flex: 1 0 auto; border: 0; background: none; border-radius: 9px; padding: 7px 12px; font-weight: 600; color: var(--dim); }
-  .seg button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+  .seg button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px var(--shadow); }
   .sum { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
   .sum .big { font-size: 28px; font-weight: 750; } .sum .meter { flex: 1 1 160px; height: 10px; }
   .item { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
@@ -40,9 +43,14 @@ PAGE = """<!doctype html>
   label.switch input { width: 40px; height: 22px; appearance: none; -webkit-appearance: none; border-radius: 999px; background: var(--line);
     position: relative; padding: 0; flex: none; margin-top: 2px; transition: background .15s; }
   label.switch input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
-    background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / .3); transition: left .15s; }
+    background: var(--knob); box-shadow: 0 1px 2px var(--shadow); transition: left .15s; }
   label.switch input:checked { background: var(--good); } label.switch input:checked::after { left: 20px; }
   .note { background: var(--warn-bg); color: var(--warn); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+  .themes { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .theme { text-align: left; display: grid; gap: 6px; padding: 12px; border-radius: var(--radius); }
+  .theme.on { border: 2px solid var(--accent); padding: 11px; }
+  .theme .sw { display: flex; gap: 4px; } .theme .sw i { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--line); }
+  .theme .about { font-size: 13px; color: var(--dim); font-weight: 400; }
 </style></head><body><main>
 <!--NAV-->
 <h1>Settings</h1>
@@ -54,7 +62,7 @@ PAGE = """<!doctype html>
 
 <div class="seg" role="tablist">
   <button data-tab="setup" class="on" role="tab">Setup</button><button data-tab="keys" role="tab">Keys</button>
-  <button data-tab="mqtt" role="tab">MQTT</button><button data-tab="backup" role="tab">Backups and updates</button><button data-tab="system" role="tab">System</button>
+  <button data-tab="mqtt" role="tab">MQTT</button><button data-tab="backup" role="tab">Backups and updates</button><button data-tab="system" role="tab">System</button><button data-tab="look" role="tab">Look</button>
 </div>
 
 <section data-pane="setup">
@@ -119,6 +127,13 @@ PAGE = """<!doctype html>
     It can only apply what has been released. The one-time setup of that job is in the runbook.</p>
     <label class="row" style="font-weight:600"><input id="au" type="checkbox" style="width:auto"> Update this server automatically</label>
     <p id="aumsg" class="dim"></p></div>
+</section>
+
+<section data-pane="look" hidden>
+  <div class="card"><h2>Look</h2>
+    <p class="dim">The colours and style of every page, on this device (each phone or computer keeps its own).</p>
+    <div class="seg" id="modes" role="radiogroup" aria-label="Light or dark"></div>
+    <div class="themes" id="themes"></div></div>
 </section>
 
 <section data-pane="system" hidden>
@@ -290,11 +305,11 @@ $('wizgo').onclick = () => wizard(0);
 
 // --- tabs, backups, updates, system ------------------------------------------------------------------
 function tab(name) {
-  document.querySelectorAll('.seg button').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  document.querySelectorAll('.seg button[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
   document.querySelectorAll('[data-pane]').forEach(p => p.hidden = p.dataset.pane !== name);
   try { history.replaceState(null, '', '#' + name); } catch (e) {}
 }
-document.querySelectorAll('.seg button').forEach(b => b.onclick = () => tab(b.dataset.tab));
+document.querySelectorAll('.seg button[data-tab]').forEach(b => b.onclick = () => tab(b.dataset.tab));
 const AU_WORDS = { updated: 'Updated', unchanged: 'Already up to date', refused: 'Not applied',
   rolled_back: 'Update failed its checks; the previous version is running again', failed: 'Needs attention' };
 async function auLoad() {
@@ -405,7 +420,19 @@ async function load() {
   if (!done && setup.you.find(x => x.id === 'home').state !== 'ready') wizard(0);
 }
 $('go').onclick = load;
-const TABS = ['setup', 'keys', 'mqtt', 'backup', 'system'];
+const TABS = ['setup', 'keys', 'mqtt', 'backup', 'system', 'look'];
+// --- look: the theme and light or dark, kept on this device ------------------------------------------
+const THEMES = /*THEMES*/, MODES = /*MODES*/;
+function look() {
+  const r = document.documentElement, ms = $('modes'), ts = $('themes'), dark = r.hasAttribute('data-dark');
+  ms.replaceChildren(...Object.entries(MODES).map(([id, name]) => { const b = el('button', r.dataset.mode === id ? 'on' : '', name); b.type = 'button';
+    b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', r.dataset.mode === id); b.onclick = () => { window.waTheme(null, id); look(); }; return b; }));
+  ts.replaceChildren(...THEMES.map(t => {
+    const b = el('button', 'theme' + (r.dataset.theme === t.id ? ' on' : '')); b.type = 'button'; b.setAttribute('aria-pressed', r.dataset.theme === t.id);
+    const sw = el('span', 'sw'); for (const c of Object.values(dark ? t.dark : t.light)) { const i = el('i'); i.style.background = c; sw.append(i); }
+    b.append(el('b', null, t.name), el('span', 'about', t.about), sw); b.onclick = () => { window.waTheme(t.id, null); look(); }; return b; }));
+}
+addEventListener('wa-theme', look); look();
 const want = location.hash.slice(1); if (TABS.includes(want)) tab(want);
 window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if (TABS.includes(h)) tab(h); });
 if (tok.value) load();
@@ -415,7 +442,8 @@ if (tok.value) load();
 @page_router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request) -> str:
     """The page holds no data; it calls /v1/setup, /v1/settings/keys and friends."""
-    return themed(PAGE, "settings", request)
+    page = PAGE.replace("/*THEMES*/", json.dumps(themes.catalogue())).replace("/*MODES*/", json.dumps(themes.MODES))
+    return themed(page, "settings", request)
 
 
 @page_router.get("/status")

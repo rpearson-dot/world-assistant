@@ -28,10 +28,11 @@ PAGE = """<!doctype html>
 /*BASE_CSS*/
   main { max-width: 1200px; }
   #map { height: 70vh; min-height: 420px; border-radius: 14px; border: 1px solid var(--line); background: var(--chip); }
-  @media (prefers-color-scheme: dark) { .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.95) contrast(.9); } }
+  :root[data-dark] .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.95) contrast(.9); }
+  @media (prefers-color-scheme: dark) { :root:not([data-mode]) .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.95) contrast(.9); } }
   .layers { display: flex; gap: 6px 16px; flex-wrap: wrap; margin-bottom: 12px; }
   .layers label { display: flex; align-items: center; gap: 6px; font-size: 14px; }
-  .layers .swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,.25); }
+  .layers .swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--shadow); }
   .layers .count { color: var(--dim); font-variant-numeric: tabular-nums; }
   .pop b { display: block; margin-bottom: 2px; }
   .pop .dim { font-size: 12px; }
@@ -62,22 +63,23 @@ async function api(method, path) {
 }
 const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
 
-// How each layer is drawn. Colour carries the meaning; the popup carries the detail.
+// How each layer is drawn. Colour carries the meaning; the popup carries the detail. Colours are the theme's tokens.
+const tok = n => getComputedStyle(document.documentElement).getPropertyValue('--' + n).trim();
 const STYLE = {
-  places:      { colour: '#1f6feb', label: 'Places' },
-  locations:   { colour: '#9333ea', label: 'People' },
-  roads:       { colour: '#0891b2', label: 'Corridors', weight: 4 },
-  road_events: { colour: '#b42318', label: 'Closures', weight: 5 },
-  signs:       { colour: '#b54708', label: 'Signs', small: true },
-  fuel:        { colour: '#1a7f4b', label: 'Fuel', small: true },
-  ev:          { colour: '#0e9f6e', label: 'EV chargers' },
-  stops:       { colour: '#0d6e6e', label: 'Stops', small: true },
-  floods:      { colour: '#1d4ed8', label: 'Floods' },
-  buses:       { colour: '#c2410c', label: 'Live buses', small: true },
-  pollen:      { colour: '#7c7c7c', label: 'Pollen', small: true }
+  places:      { colour: 'series-1', label: 'Places' },
+  locations:   { colour: 'series-2', label: 'People' },
+  roads:       { colour: 'series-3', label: 'Corridors', weight: 4 },
+  road_events: { colour: 'bad', label: 'Closures', weight: 5 },
+  signs:       { colour: 'warn', label: 'Signs', small: true },
+  fuel:        { colour: 'good', label: 'Fuel', small: true },
+  ev:          { colour: 'series-8', label: 'EV chargers' },
+  stops:       { colour: 'series-12', label: 'Stops', small: true },
+  floods:      { colour: 'series-9', label: 'Floods' },
+  buses:       { colour: 'series-5', label: 'Live buses', small: true },
+  pollen:      { colour: 'dim', label: 'Pollen', small: true }
 };
-const FLOOD = { 1: '#7a0c0c', 2: '#d92d20', 3: '#f79009' };  // severe, warning, alert
-const POLLEN = ['#ffffff', '#8cc700', '#f5e400', '#f7a600', '#e63a10'];
+const FLOOD = { 1: 'severe', 2: 'bad', 3: 'warn' };  // severe, warning, alert
+const POLLEN = ['pollen-0', 'pollen-1', 'pollen-2', 'pollen-3', 'pollen-4'];  // the published scale: not themed
 const ON = new Set(['places', 'roads', 'road_events', 'fuel', 'floods']);
 
 let map, drawn = {};
@@ -113,23 +115,23 @@ function popup(key, p) {
 }
 
 function draw(key, collection, cheapest) {
-  const s = STYLE[key], group = L.layerGroup();
+  const s = STYLE[key], group = L.layerGroup(), base = tok(s.colour), edge = tok('shadow');
   for (const f of collection.features) {
     const p = f.properties || {}, g = f.geometry || {};
     let shape;
     if (g.type === 'LineString') {
-      shape = L.polyline(g.coordinates.map(c => [c[1], c[0]]), { color: s.colour, weight: s.weight || 3, opacity: .85 });
+      shape = L.polyline(g.coordinates.map(c => [c[1], c[0]]), { color: base, weight: s.weight || 3, opacity: .85 });
     } else if (g.type === 'Polygon' || g.type === 'MultiPolygon') {
-      const c = FLOOD[p.level] || s.colour;
+      const c = FLOOD[p.level] ? tok(FLOOD[p.level]) : base;
       shape = L.geoJSON(g, { style: { color: c, weight: 2, fillColor: c, fillOpacity: .25 } });
     } else if (g.type === 'Point') {
       let colour = s.colour, r = s.small ? 4 : 7;
-      if (key === 'stops' && p.kind && p.kind !== 'bus_stop') { colour = '#0b3d91'; r = 6; }  // stations stand out from stops
+      if (key === 'stops' && p.kind && p.kind !== 'bus_stop') { colour = 'series-9'; r = 6; }  // stations stand out from stops
       if (key === 'pollen') colour = POLLEN[p.level == null ? 0 : p.level];
-      if (key === 'ev') colour = !p.total ? '#7c7c7c' : p.free ? '#0e9f6e' : p.working ? '#b54708' : '#b42318';  // free, busy, none working
-      if (key === 'fuel' && p.pence && cheapest) colour = p.pence <= cheapest + 2 ? '#1a7f4b' : p.pence <= cheapest + 6 ? '#b54708' : '#b42318';
+      if (key === 'ev') colour = !p.total ? 'dim' : p.free ? 'good' : p.working ? 'warn' : 'bad';  // free, busy, none working
+      if (key === 'fuel' && p.pence && cheapest) colour = p.pence <= cheapest + 2 ? 'good' : p.pence <= cheapest + 6 ? 'warn' : 'bad';
       shape = L.circleMarker([g.coordinates[1], g.coordinates[0]],
-        { radius: r, color: '#00000055', weight: 1, fillColor: colour, fillOpacity: .9 });
+        { radius: r, color: edge, weight: 1, fillColor: tok(colour), fillOpacity: .9 });
     } else continue;
     shape.bindPopup(popup(key, p));
     group.addLayer(shape);
@@ -143,7 +145,7 @@ function controls(counts) {
     const wrap = el('label'), cb = el('input');
     cb.type = 'checkbox'; cb.checked = ON.has(key); cb.dataset.key = key;
     cb.addEventListener('change', () => { cb.checked ? ON.add(key) : ON.delete(key); show(key); });
-    const sw = el('span', null, 'swatch'); sw.style.background = STYLE[key].colour;
+    const sw = el('span', null, 'swatch'); sw.style.background = 'var(--' + STYLE[key].colour + ')';
     wrap.append(cb, sw, el('span', STYLE[key].label), el('span', '(' + (counts[key] || 0) + ')', 'count'));
     box.appendChild(wrap);
   }
@@ -189,6 +191,8 @@ async function load() {
     }
   } catch (e) { msg.textContent = e.message; }
 }
+
+addEventListener('wa-theme', () => { if (Object.keys(drawn).length) load(); });
 
 async function places() {
   try {

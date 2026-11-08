@@ -17,7 +17,7 @@ PAGE = """<!doctype html>
 <title>World Assistant outdoors</title>
 <style>
 /*BASE_CSS*/
-.thing { border-top: 1px solid var(--line, #ddd); padding: 10px 0; }
+.thing { border-top: 1px solid var(--line); padding: 10px 0; }
 .thing:first-child { border-top: 0; }
 .thing h3 { margin: 0 0 4px; font-size: 16px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .chip { font-size: 12px; padding: 1px 8px; border-radius: 9px; background: var(--chip); white-space: nowrap; font-weight: normal; }
