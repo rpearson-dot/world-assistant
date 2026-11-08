@@ -2,6 +2,16 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Bike pictures** from your photos: new paints Burnt orange (metallic copper) and Slate; **Pinstripes** (thin lines of
+  another colour along the tubes, as on a Trek 1.2) and **Fade into the second colour** (down the fork and stays, as on
+  a Planet X Reiver) in Its answers; one chainring and a bigger cassette on a 1x; the Reiver's dropped seatstays; a
+  full-suspension bike's brace from the seat tube to the top tube with the shock under it (black body, silver piston
+  from the seatstays' eye), as on a Yeti ASR; the Viking tandem's second long tube to the stoker's seat tube, its rear
+  rack, the stoker's bars reaching back, and the timing chain on the drive side.
+
 ## [0.45.0] - 2026-11-08
 
 ### Added
