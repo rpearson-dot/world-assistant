@@ -236,7 +236,7 @@ def life_of(kind: str, details: dict[str, Any] | None = None) -> dict[str, float
 
 
 def tyre_pressure(width_mm: float, tubeless: bool, bike_type: str, system_kg: float, end: str,
-                  max_psi: float | None = None) -> float:  # fmt: skip
+                  max_psi: float | None = None, bead_mm: float = 622) -> float:  # fmt: skip
     """A starting tyre pressure in psi, front or rear: wider tyres, tubeless and rough surfaces lower; more weight
     higher (about 45% of the rider and bike on the front, 55% on the rear). A starting point to adjust, calibrated to
     common calculators' figures for 90 kg together (rear, tubed: 85 psi at 25 mm, 72 at 28, 55 at 35)."""
@@ -247,8 +247,47 @@ def tyre_pressure(width_mm: float, tubeless: bool, bike_type: str, system_kg: fl
     if tubeless:
         psi *= 0.92
     psi *= SURFACE.get(bike_type, 1.0)
+    psi *= (622 / max(bead_mm, 300)) ** 0.5  # a smaller wheel (26-inch, 20-inch) a little higher
     psi = round(psi)
     return float(min(psi, max_psi) if max_psi else psi)
+
+
+# Bead seat diameters (ETRTO, mm) by the names on tyres
+BEADS = {"700": 622, "29": 622, "28": 622, "650b": 584, "27.5": 584, "650c": 571, "26": 559, "24": 507, "20": 406, "16": 349}
+WHEELS = {622: "700c / 29-inch", 584: "650b / 27.5-inch", 571: "650c", 559: "26-inch", 507: "24-inch", 406: "20-inch", 349: "16-inch"}
+
+
+def tyre_size(text: Any) -> dict[str, Any]:
+    """A tyre's size as written on it ("700x40c", "29x2.4", "650x47b", "26 x 2.10", "40-622") as its width in mm,
+    bead seat diameter, ETRTO and wheel size; {} when it cannot be read."""
+    import re
+
+    t = str(text or "").lower().replace(" ", "").replace("×", "x")
+    m = re.fullmatch(r"(\d{2,3})-(\d{3})", t)
+    if m:
+        w, bead = int(m[1]), int(m[2])
+    else:
+        m = re.fullmatch(r"(\d{2,3}(?:\.\d)?)x(\d{1,2}(?:\.\d+)?)([abc]?)", t)
+        if not m:
+            return {}
+        rim, width, letter = m[1], float(m[2]), m[3]
+        if rim == "650":
+            bead = 571 if letter == "c" else 584
+        else:
+            bead = BEADS.get(rim.rstrip(".0") if rim.endswith(".0") else rim, 0)
+        if not bead:
+            return {}
+        w = round(width * 25.4) if width < 5 else round(width)  # inches (2.4) or mm (40)
+    return {"width_mm": w, "bead_mm": bead, "etrto": f"{w}-{bead}", "wheel": WHEELS.get(bead, f"{bead} mm bead")}
+
+
+def tyre_details(details: dict[str, Any]) -> dict[str, Any]:
+    """A tyre's details with its width, ETRTO and wheel size worked out from its size as written (or its ETRTO), which
+    win over a width typed by hand; with neither, the details are as given."""
+    got = tyre_size(details.get("size")) or tyre_size(details.get("etrto"))
+    if not got:
+        return details
+    return {**details, "etrto": got["etrto"], "wheel": got["wheel"], "width_mm": got["width_mm"], "bead_mm": got["bead_mm"]}
 
 
 def bar(psi: float) -> float:
@@ -269,8 +308,9 @@ SPECS: dict[str, list[tuple[str, str]]] = {
     "rim_pads": [("compound", "Compound")],
     "rotor": [("diameter_mm", "Diameter mm"), ("mount", "Mount (6-bolt, Centre Lock)"), ("min_mm", "Minimum thickness mm")],
     "brake_fluid": [("fluid", "Fluid (mineral, DOT 4, DOT 5.1)")],
-    "tyre": [("size", "Size (e.g. 700x40c, 29x2.4)"), ("width_mm", "Width mm"), ("compound", "Compound or casing"),
-             ("tubeless", "Tubeless (yes/no)")],
+    "tyre": [("size", "Size (e.g. 700x40c, 29x2.4, 40-622)"), ("etrto", "ETRTO (width-bead, e.g. 40-622)"),
+             ("width_mm", "Width mm"), ("compound", "Compound or casing"), ("tpi", "Casing TPI"),
+             ("tubeless", "Tubeless (yes/no)"), ("max_psi", "Max psi (tyre or rim)")],
     "tube": [("tube", "Tube (butyl, latex, TPU)"), ("valve", "Valve (Presta, Schrader)")],
     "sealant": [("product", "Sealant"), ("ml", "Amount ml")],
     "hub": [("bearings", "Bearings")],

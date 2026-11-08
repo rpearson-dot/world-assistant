@@ -343,7 +343,7 @@ function editPart(li, p) {
   field('Life hours', 'hours', life.hours != null ? life.hours : k.hours, 'number', { min: 0 });
   field('Life days', 'days', life.days != null ? life.days : k.days, 'number', { min: 0 });
   field('Distance before it was added (km)', 'start_km', p.start_km, 'number', { min: 0 });
-  if (p.kind === 'tyre') { field('Pressure psi (blank: suggested)', 'psi', (p.details || {}).psi, 'number', { min: 5, max: 160 }); field('Max psi (tyre or rim)', 'max_psi', (p.details || {}).max_psi, 'number', { min: 5, max: 200 }); field('Width mm', 'width_mm', (p.details || {}).width_mm, 'number', { min: 15, max: 130 }); }
+  if (p.kind === 'tyre') field('Pressure psi (blank: suggested)', 'psi', (p.details || {}).psi, 'number', { min: 5, max: 160 });
   const ph = el('label', null, 'Photo '), file = el('input'); file.type = 'file'; file.accept = 'image/*'; file.capture = 'environment'; ph.append(file); f.append(ph);
   const row = el('div', 'row');
   row.append(button('Look up the product page', () => guard(async () => {
@@ -362,7 +362,7 @@ function editPart(li, p) {
     const body = { label: v('label'), brand: v('brand'), model: v('model'), price: num('price'), url: v('url'), life: lifeOut, start_km: num('start_km') || 0 };
     if (f.dataset.photo) body.photo_url = f.dataset.photo;
     body.details = Object.assign({}, p.details || {}, specValues(f));
-    if (p.kind === 'tyre') Object.assign(body.details, { psi: num('psi'), max_psi: num('max_psi'), width_mm: num('width_mm') || (p.details || {}).width_mm });
+    if (p.kind === 'tyre') Object.assign(body.details, { psi: num('psi') });
     await api('PATCH', '/v1/bikes/parts/' + p.id, body);
     if (file.files[0]) await api('PUT', '/v1/bikes/parts/' + p.id + '/photo', { data_url: await shrink(file.files[0]) });
     await load();
@@ -386,7 +386,8 @@ function bikeCard(b) {
   if (dueHere) h.append(el('span', 'chip due', dueHere + ' due'));
   info.append(h, el('p', 'dim small', fmt(b.km) + ' km logged'));
   const pr = el('div', 'press');
-  for (const end of ['front', 'rear']) { const p = (b.pressures || {})[end]; if (p) pr.append(el('span', null, (end === 'front' ? 'Front ' : 'Rear ') + p.psi + ' psi (' + p.bar + ' bar)' + (p.own ? '' : ' suggested'))); }
+  for (const end of ['front', 'rear']) { const p = (b.pressures || {})[end]; if (p) pr.append(el('span', null, (end === 'front' ? 'Front ' : 'Rear ') + p.psi + ' psi (' + p.bar + ' bar)' + (p.own ? '' : ' suggested') +
+    ' for ' + (p.size ? p.size + (p.wheel_size ? ' (' + p.wheel_size + ')' : '') : p.width_mm + ' mm') + (p.tubeless ? ' tubeless' : ''))); }
   info.append(pr);
   info.append(batteryBox(b));
   const photoIn = el('input'); photoIn.type = 'file'; photoIn.accept = 'image/*'; photoIn.capture = 'environment'; photoIn.hidden = true;

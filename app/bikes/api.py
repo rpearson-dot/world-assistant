@@ -94,7 +94,7 @@ def describe(p: dict[str, Any]) -> str:
     bits = [str(x) for x in (p.get("brand"), p.get("model")) if x]
     for key, _ in D.SPECS.get(p["kind"], []):
         v = d.get(key)
-        if v in (None, "", False):
+        if v in (None, "", False) or (key == "width_mm" and d.get("etrto")) or key == "max_psi":
             continue
         if v is True:  # a yes/no detail: its name ("Tubeless"), not "True"
             bits.append(dict(D.SPECS[p["kind"]]).get(key, key).split(" (")[0])
@@ -232,6 +232,8 @@ async def _check_place(c: Any, part: dict[str, Any], bike_id: int | None, set_id
 
 async def _new_part(c: Any, rider: str, kind: str, position: str | None, details: dict[str, Any], at: datetime | None,
                     status: str = "fitted", **more: Any) -> int:  # fmt: skip
+    if kind == "tyre":
+        details = D.tyre_details(details or {})
     return (await c.execute(text(
         "INSERT INTO bike_part (rider_id, kind, position, details, fitted_at, status, label, brand, model, url, photo_url, "
         "price, quantity, start_km, start_hours, life, notes) VALUES (:r, :k, :p, CAST(:d AS jsonb), :t, :st, :label, :brand, "
@@ -540,8 +542,11 @@ class PartPatch(BaseModel):
 async def change_part(request: Request, part_id: int, body: PartPatch) -> dict[str, Any]:
     vals = body.model_dump(exclude_unset=True)
     async with request.app.state.engine.begin() as c:
-        if not (await c.execute(text("SELECT 1 FROM bike_part WHERE id = :p"), {"p": part_id})).first():
+        kind = (await c.execute(text("SELECT kind FROM bike_part WHERE id = :p"), {"p": part_id})).scalar()
+        if kind is None:
             raise HTTPException(404, "No such part")
+        if kind == "tyre" and vals.get("details"):
+            vals["details"] = D.tyre_details(vals["details"])
         for k, v in vals.items():
             if k in ("life", "details"):
                 await c.execute(text(f"UPDATE bike_part SET {k} = CAST(:v AS jsonb) WHERE id = :p"),
@@ -1231,11 +1236,13 @@ def pressures(bike: dict[str, Any], rider: dict[str, Any]) -> dict[str, Any]:
             continue
         d = tyre.get("details") or {}
         width = float(d.get("width_mm") or cfg.get(f"{s['position']}_width") or 28)
+        bead = float(d.get("bead_mm") or 622)
         suggested = D.tyre_pressure(width, bool(d.get("tubeless")), cfg.get("type", "road"), system, s["position"],
-                                    d.get("max_psi"))  # fmt: skip
+                                    d.get("max_psi"), bead)  # fmt: skip
         psi = float(d["psi"]) if d.get("psi") else suggested
         out[s["position"]] = {"wheel": s["label"], "psi": psi, "bar": D.bar(psi), "suggested": suggested,
-                              "own": bool(d.get("psi")), "width_mm": width, "tubeless": bool(d.get("tubeless"))}  # fmt: skip
+                              "own": bool(d.get("psi")), "width_mm": width, "tubeless": bool(d.get("tubeless")),
+                              "size": d.get("etrto") or d.get("size"), "wheel_size": d.get("wheel")}  # fmt: skip
     return out
 
 

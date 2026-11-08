@@ -619,3 +619,14 @@ def test_a_tandem_has_a_long_timing_chain_its_rings_and_an_eccentric_bottom_brac
     assert ("chainrings", "bike", "stoker") not in t  # the drive rings are the stoker's: the bike's chainrings
     timing = next(p for p in D.planned_parts(D.defaults_for("tandem")) if p.kind == "timing_chain")
     assert "two chains" in timing.details["links"]
+
+
+def test_a_tyre_size_as_written_gives_its_width_etrto_and_wheel_and_the_pressure_follows() -> None:
+    assert D.tyre_size("29x2.4") == {"width_mm": 61, "bead_mm": 622, "etrto": "61-622", "wheel": "700c / 29-inch"}
+    assert D.tyre_size("650x47b")["etrto"] == "47-584" and D.tyre_size("26 x 2.10")["etrto"] == "53-559"
+    assert D.tyre_size("nonsense") == {}
+    d = D.tyre_details({"size": "700x40c", "width_mm": 35, "tubeless": True})
+    assert d["width_mm"] == 40 and d["etrto"] == "40-622" and d["tubeless"]  # the size as written wins
+    assert D.tyre_details({"compound": "soft"}) == {"compound": "soft"}
+    big, small = D.tyre_pressure(50, False, "hybrid", 90, "rear"), D.tyre_pressure(50, False, "hybrid", 90, "rear", bead_mm=559)
+    assert small > big  # a 26-inch wheel a little higher than a 700c at the same width

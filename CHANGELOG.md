@@ -11,6 +11,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - **Folding on the Bikes page:** every card folds by its heading, Your bikes as a whole, and each bike (to its name,
   type, distance and how many parts are due), with Fold every bike and Open every bike; kept on each device.
 
+### Changed (tyres)
+- **Tyre sizes:** a tyre's size as written on it (700x40c, 29x2.4, 650x47b, 26 x 2.10, or its ETRTO such as 40-622) gives
+  its width, ETRTO and wheel size, for its pressure and for buying the same again (the Outdoors list and the
+  replacement carry them). The suggested pressure now also allows for wheel size (a 26-inch a little higher than a
+  700c at the same width), and each bike shows the size it is for. Casing TPI and the tyre or rim's maximum psi are
+  among a tyre's details.
+
 ### Fixed
 - A part's yes-or-no detail reads as its name ("Tubeless"), not "True".
 
