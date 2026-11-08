@@ -40,8 +40,8 @@ GEOMETRY = {
 
 
 # Particular bikes, for their picture (Bikes, Its answers: Model): their own geometry (a medium or 54 cm where sizes
-# differ), wheel and tyre size and bars. Figures from the makers' geometry where published (bikeinsights.com for the
-# Reiver), otherwise typical of the bike and its year.
+# differ), wheel and tyre size and bars. Figures from published geometry where there is any (bikeinsights.com: the
+# Reiver's M, the 2008 Trek 1 Series' 56 cm), otherwise typical of the bike and its year.
 MODELS: dict[str, dict[str, Any]] = {
     "planet-x-reiver-2025": {"name": "Planet X Reiver (2025)", "type": "gravel",
                              "geometry": {"stack": 562, "reach": 379, "cs": 435, "drop": 69, "wb": 1036, "hta": 71, "sta": 73,
@@ -49,9 +49,9 @@ MODELS: dict[str, dict[str, Any]] = {
     "yeti-asr-sl-2005": {"name": "Yeti ASR-SL (2005, 26-inch)", "type": "full_suspension",
                          "geometry": {"stack": 565, "reach": 410, "cs": 425, "drop": 15, "wb": 1070, "hta": 70.5, "sta": 73,
                                       "ht": 110, "st": 445, "r": 333, "tyre": 52}},
-    "trek-1.2-2006": {"name": "Trek 1.2 (2006)", "type": "road",
-                      "geometry": {"stack": 570, "reach": 385, "cs": 410, "drop": 70, "wb": 985, "hta": 73, "sta": 73.5,
-                                   "ht": 150, "st": 540, "r": 335, "tyre": 23}},
+    "trek-1.2-2008": {"name": "Trek 1.2 (2008)", "type": "road",
+                      "geometry": {"stack": 576, "reach": 387, "cs": 410, "drop": 68, "wb": 983, "hta": 73.5, "sta": 73.6,
+                                   "ht": 170, "st": 535, "r": 334, "tyre": 25}},
     "viking-tandem-26": {"name": "Viking tandem (26-inch)", "type": "tandem", "bars": "flat",
                          "geometry": {"stack": 600, "reach": 360, "cs": 440, "drop": 55, "wb": 1700, "hta": 71, "sta": 72,
                                       "ht": 170, "st": 480, "r": 333, "tyre": 50}},

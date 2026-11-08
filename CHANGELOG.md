@@ -23,7 +23,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   and shock, disc rotors, drops, aero or flat bars, crank, chain and rear mech, a dropper post, an e-bike's battery and
   motor, a tandem's double-diamond frame (two seat tubes, the boom and the long diagonal) with stoker bars, a hybrid's
   mudguards and rack. **Its answers** now has a Model (its own geometry: Planet X Reiver 2025, Yeti ASR-SL 2005, Trek
-  1.2 2006, a 26-inch Viking tandem) and a frame and second colour (twenty named paints, Bronze and Barbie pink among
+  1.2 2008, a 26-inch Viking tandem) and a frame and second colour (twenty named paints, Bronze and Barbie pink among
   them); without them the frame takes the theme's colour.
 - **Deploy** restarts the Tailscale container once the new api is healthy (after 0.44.0 the tailnet address stopped
   reaching the api until it was restarted).
