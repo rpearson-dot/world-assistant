@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.45.0] - 2026-11-08
 
 ### Added
 - **Workshop** on the Bikes page: your bikes in a row, each with its front and rear wheel and an odometer, and shelves
