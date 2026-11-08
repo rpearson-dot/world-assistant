@@ -13,6 +13,8 @@ from fastapi import FastAPI, HTTPException, Request
 from app import here as H
 
 ANSWERS: dict[str, Any] = {
+    "/v1/food/hygiene": {"text": "Nearest rated: Corner Cafe: 5."},
+    "/v1/crime": {"text": "4 crimes reported within a mile in September 2026."},
     "/v1/postcodes/near": {"postcodes": [{"postcode": "KT17 1AA", "district": "Epsom and Ewell", "ward": "Town"}]},
     "/v1/live-buses/departures": {"stops": [
         {"id": "4000EP1", "name": "Epsom Station", "indicator": "Stop C", "km": 0.12, "buses": [

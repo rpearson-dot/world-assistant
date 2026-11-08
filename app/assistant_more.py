@@ -560,6 +560,90 @@ async def wishlist_check_tool(request: Request, args: dict[str, Any]) -> dict[st
                      f"Checked {data['wishes']} wishes: none is coming or on sale now.") + errs, "data": data}  # fmt: skip
 
 
+# --- Crime and police -----------------------------------------------------------------------------------------------
+async def crime_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.crime import CrimeError, look_up, words
+
+    lat, lon = args.get("lat"), args.get("lon")
+    if not (isinstance(lat, (int, float)) and isinstance(lon, (int, float))):
+        lat, lon = await _point_of(request, args)
+    try:
+        d = await look_up(float(lat), float(lon), max(1, min(12, int(args.get("months") or 12))))
+    except CrimeError as exc:
+        raise ToolError(str(exc)) from exc
+    return {"text": words(d), "data": d}
+
+
+async def _point_of(request: Request, args: dict[str, Any]) -> tuple[float, float]:
+    """A saved place's or a postcode's point."""
+    from app.postcodes import local_postcode
+
+    if args.get("place"):
+        from sqlalchemy import text as _text
+
+        async with request.app.state.engine.connect() as c:
+            want = str(args["place"]).lower()
+            for r in await c.execute(_text("SELECT id, name, lat, lon FROM place")):
+                if want in (str(r.id).lower(), str(r.name).lower()):
+                    return float(r.lat), float(r.lon)
+        raise ToolError(f"No saved place called {args['place']!r}")
+    pc = str(args.get("postcode") or "").strip()
+    if not pc:
+        raise ToolError("Give lat and lon, a postcode, or a saved place")
+    got = await local_postcode(request.app.state.engine, pc)
+    if got is None:
+        from app.geo import PostcodeError, lookup_postcode
+
+        try:
+            got = await lookup_postcode(pc)
+        except PostcodeError as exc:
+            raise ToolError(f"Could not find the postcode {pc!r} ({exc})") from exc
+    return got.lat, got.lon
+
+
+# --- Food standards --------------------------------------------------------------------------------------------------
+async def food_hygiene_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.food import FoodError, hygiene, hygiene_words
+
+    lat, lon = args.get("lat"), args.get("lon")
+    if not (isinstance(lat, (int, float)) and isinstance(lon, (int, float))):
+        lat, lon = await _point_of(request, args)
+    try:
+        d = await hygiene(float(lat), float(lon), float(args.get("miles") or 0.5), args.get("name") or None, 10)
+    except FoodError as exc:
+        raise ToolError(str(exc)) from exc
+    return {"text": hygiene_words(d), "data": d}
+
+
+async def food_alerts_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.food import FoodError, alerts_words, check, get_alerts
+
+    if args.get("check"):
+        try:
+            await check(request)
+        except FoodError as exc:
+            raise ToolError(str(exc)) from exc
+    d = await get_alerts(request, 20)
+    latest = "; ".join(f"{a['created']}: {a['title']}" for a in d["alerts"][:5])
+    return {"text": alerts_words({"alerts": d["alerts"]}) + (f" Latest: {latest}." if latest else ""), "data": d}
+
+
+# --- Tax and MOT -----------------------------------------------------------------------------------------------------
+async def vehicle_checks_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.vehiclecheck import check_all, list_checks, words
+
+    if args.get("check"):
+        await check_all(request.app.state.engine)
+    d = await list_checks(request)
+    vs = d["vehicles"]
+    if args.get("vehicle"):
+        want = str(args["vehicle"]).lower()
+        vs = [v for v in vs if want in (v["id"], v["name"].lower(), str(v.get("registration") or "").lower())]
+    if not vs:
+        return {"text": "No vehicle has a registration yet: add one on the Vehicles page.", "data": d}
+    return {"text": " ".join(words(v) for v in vs), "data": {"vehicles": vs}}
+
+
 # --- Bank holidays ---------------------------------------------------------------------------------------------------
 async def bank_holidays_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
     from datetime import date as _date
@@ -721,18 +805,40 @@ MORE: list[Tool] = [
           "required": ["name"]}, outdoors_add_tool),
     Tool("outdoors_check", "Price everything on the Outdoors list now and say what has got cheaper (it is also "
          "checked every morning).", {"type": "object", "properties": {}}, outdoors_check_tool),
+    Tool("crime", "Street-level crime reported within a mile of a place over the last 12 months the police have published "
+         "(about two months behind), e.g. to judge an area before moving: what kinds, how many a month, what happened "
+         "to them, and the local police team with "
+         "its phone number, priorities and coming events. From data.police.uk: England, Wales and Northern Ireland.",
+         {"type": "object", "properties": _props(lat=("number", "latitude"), lon=("number", "longitude"),
+                                                 postcode=("string", "a UK postcode instead"),
+                                                 place=("string", "a saved place's name instead, e.g. home"),
+                                                 months=("integer", "how many months, 1 to 12 (default 12)"))}, crime_tool),
+    Tool("food_hygiene", "Food hygiene ratings (0 to 5, from the Food Standards Agency) of restaurants, takeaways, "
+         "shops and other food businesses near a place, nearest first; give a name to look for one.",
+         {"type": "object", "properties": _props(lat=("number", "latitude"), lon=("number", "longitude"),
+                                                 postcode=("string", "a UK postcode instead"),
+                                                 place=("string", "a saved place's name instead"),
+                                                 name=("string", "the business's name, or part of it"),
+                                                 miles=("number", "how far, default 0.5"))}, food_hygiene_tool),
+    Tool("food_alerts", "The Food Standards Agency's latest allergy alerts and product recalls, and any that look like "
+         "something on the shopping list or among the usual products (checked each morning).",
+         {"type": "object", "properties": _props(check=("boolean", "check the FSA now first"))}, food_alerts_tool),
+    Tool("vehicle_checks", "Each saved vehicle's tax and MOT: when they are due, the last MOT's result, mileage and "
+         "advisories, and any outstanding safety recall (from DVLA and DVSA, checked weekly).",
+         {"type": "object", "properties": _props(vehicle=("string", "just this vehicle (name or registration)"),
+                                                 check=("boolean", "ask DVLA and DVSA again now"))}, vehicle_checks_tool),
     Tool("bank_holidays", "The next UK bank holidays (from GOV.UK), and whether today is one.",
          {"type": "object", "properties": _props(count=("integer", "how many, default 3"))}, bank_holidays_tool),
     Tool("here", "Everything about a point that is not a saved place, e.g. where the phone is now: the area, bus stops "
          "and buses, stations, fuel and EV chargers, flood warnings, air quality, rivers, rain, tides, storm overflows, "
-         "pollen, events, roads and power cuts, and its what3words address. Give lat and lon, a postcode, or what3words "
+         "pollen, events, roads, power cuts and crime, and its what3words address. Give lat and lon, a postcode, or what3words "
          "three words.",
          {"type": "object", "properties": _props(lat=("number", "latitude"), lon=("number", "longitude"),
                                                  postcode=("string", "a UK postcode instead of lat and lon"),
                                                  words=("string", "what3words three words (///filled.count.soap) instead"),
                                                  about=("string", ("only these parts, comma-separated: stops, buses, "
                                                         "stations, floods, air, rivers, rain, tides, overflows, pollen, "
-                                                        "fuel, chargers, events, roads, power")))}, here_tool),
+                                                        "fuel, chargers, events, roads, power, crime")))}, here_tool),
     Tool("wishlist", "The family's Wishlist list in KitchenOwl: things to look out for in Aldi's Specialbuys and the "
          "Middle of Lidl. Says which "
          "are coming or on sale now (price, shop, date) and, for the rest, when each was last seen and last on sale.",

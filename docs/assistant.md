@@ -20,12 +20,16 @@ switched off hides its tools.
 | `trains` | next trains on a saved board (`board`, optional `count`) |
 | `station` | a TfL station's facilities and what is closed (lifts), or the stations near a place |
 | `power` | UK Power Networks: power cuts near a place, past cuts, street works, what supplies it |
+| `crime` | crime within a mile of a place over the last 12 published months, and the local police team (data.police.uk) |
+| `food_hygiene` | food hygiene ratings of food businesses near a place, or one by name |
+| `food_alerts` | the FSA's allergy alerts and recalls, and any that look like something on the list or usual products |
+| `vehicle_checks` | each vehicle's tax and MOT due dates, last MOT and advisories, outstanding recalls (DVLA, DVSA) |
 | `ev_chargers` | GRIDSERVE chargers near a place, along a trip or by name: working, free, speed, price |
 | `bus` | whether a bus made the target stop before the deadline, and next buses (`tracker` optional if only one) |
 | `floods_near` | flood warnings and alerts covering a place (`km` to look around it) |
 | `road_disruptions_near` | TfL road works, closures and incidents near a place (`km`, default 0.5) |
 | `bank_holidays` | the next UK bank holidays (GOV.UK), and whether today is one |
-| `here` | everything about a point that is not a saved place (lat and lon, or a postcode): buses, fuel, chargers, floods, air and water, pollen, events, roads, power cuts |
+| `here` | everything about a point that is not a saved place (lat and lon, or a postcode): buses, fuel, chargers, floods, air and water, pollen, events, roads, power cuts, crime, food hygiene |
 | `outdoors` | the KitchenOwl Outdoors list priced at GO Outdoors and Decathlon: prices, lowest seen, sales, drops this week |
 | `outdoors_add` | add a thing to the Outdoors list, optionally with a product link, and price it (acts: adds it in KitchenOwl) |
 | `outdoors_check` | price the Outdoors list now and say what got cheaper |

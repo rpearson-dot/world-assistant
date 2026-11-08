@@ -10,7 +10,7 @@ from app.localnet import PAGE_SNIPPET, page_without_token
 BASE_CSS = themes.css() + """
   [hidden] { display: none !important; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font); }
+  body { margin: 0; background: var(--bg); background-image: var(--page); background-attachment: fixed; color: var(--ink); font: 15px/1.5 var(--font); }
   main { max-width: 960px; margin: 0 auto; padding: 16px; }
   h1, h2, h3 { font-family: var(--font-head); } h1 { font-size: 22px; margin: 4px 0 12px; font-weight: var(--head-weight); }
   h2 { font-size: 13px; text-transform: var(--h2-case); letter-spacing: var(--h2-track); color: var(--dim); margin: 0 0 10px; font-weight: 600; }
@@ -21,7 +21,7 @@ BASE_CSS = themes.css() + """
   input[type=password] { flex: 1 1 220px; min-width: 0; }
   button { cursor: pointer; background: var(--card); box-shadow: var(--raise); } button:active { box-shadow: var(--sink); } button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
   button.link { border: 0; background: none; color: var(--accent); padding: 0 4px; box-shadow: none; }
-  .card { background: var(--card); border: var(--frame) solid var(--line); box-shadow: var(--raise); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+  .card { background: var(--panel); -webkit-backdrop-filter: var(--panel-blur); backdrop-filter: var(--panel-blur); border: var(--frame) solid var(--line); box-shadow: var(--raise); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
   .hero { display: flex; gap: 14px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
   .hero .say { font-size: 20px; font-weight: 650; line-height: 1.3; flex: 1 1 320px; }
   .pill { display: inline-block; padding: 2px 10px; border-radius: var(--pill); font-size: 13px; font-weight: 600; background: var(--chip); color: var(--dim); }
@@ -216,4 +216,6 @@ def themed(page: str, here: str, request: HTTPConnection | None = None) -> str:
     page = page.replace("</head>", HEAD + "</head>", 1).replace("<body>", '<body class="app">', 1)
     page = page.replace('content="width=device-width, initial-scale=1"', 'content="width=device-width, initial-scale=1, viewport-fit=cover"')
     page = page.replace('content="width=device-width,initial-scale=1"', 'content="width=device-width, initial-scale=1, viewport-fit=cover"')
+    if themes.SERVER != {"theme": themes.DEFAULT, "mode": "auto"}:
+        page = page.replace(themes.HEAD_SCRIPT, themes.head_script(themes.SERVER["theme"], themes.SERVER["mode"]), 1)
     return page.replace("/*BASE_CSS*/", BASE_CSS).replace("<!--NAV-->", nav)

@@ -53,6 +53,12 @@ PAGE = """<!doctype html>
 <p id="hint" class="dim"></p>
 </div>
 
+<div class="card" id="checkscard"><h2>Tax and MOT</h2>
+<p class="dim">Give a vehicle its registration: DVLA says its tax and MOT status, DVSA its MOT history and advisories and any
+outstanding recall. Checked every Monday, and with Check now. Needs the keys on Settings, Keys (DVLA, DVSA or both).</p>
+<div id="checks"></div><p id="cmsg" class="err"></p>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
 const tok = $('t'), msg = $('msg'), vmsg = $('vmsg');
@@ -126,6 +132,28 @@ async function load() {
     }));
   }
   $('none').hidden = saved.length > 0;
+  await checks();
+}
+async function checks() {
+  const box = $('checks'); box.replaceChildren();
+  let d = { vehicles: [], keys: {} };
+  try { d = await api('GET', '/v1/vehicle-checks'); } catch (e) { $('checkscard').hidden = /switched off/i.test(e.message); return; }
+  const by = Object.fromEntries(d.vehicles.map(v => [v.id, v]));
+  for (const v of saved) {
+    const c = by[v.id], row = document.createElement('div'); row.className = 'row';
+    const name = document.createElement('b'); name.textContent = v.name;
+    const reg = document.createElement('input'); reg.maxLength = 12; reg.placeholder = 'Registration'; reg.value = c ? c.registration : ''; reg.size = 10;
+    row.append(name, reg, button('Save', () => run(async () => { const r = await api('PUT', '/v1/vehicle-checks/' + v.id + '/registration', { registration: reg.value }); $('cmsg').textContent = ''; }, $('cmsg'))));
+    if (c) row.append(button('Check now', () => run(() => api('POST', '/v1/vehicle-checks/' + v.id + '/check'), $('cmsg'))));
+    box.append(row);
+    if (c) {
+      const p = document.createElement('p'); p.className = c.warnings.length ? 'err' : 'dim'; p.textContent = c.text; box.append(p);
+      if (c.last_mot && c.last_mot.advisories.length) { const det = document.createElement('details'), sum = document.createElement('summary');
+        sum.textContent = 'Last MOT advisories (' + c.last_mot.advisories.length + ')'; det.append(sum);
+        const ul = document.createElement('ul'); for (const a of c.last_mot.advisories) { const li = document.createElement('li'); li.textContent = a; ul.append(li); }
+        det.append(ul); box.append(det); }
+    }
+  }
 }
 function edit(v) {
   editing = v.id; $('formtitle').textContent = 'Change ' + v.name; $('save').textContent = 'Save changes'; $('cancel').hidden = false;

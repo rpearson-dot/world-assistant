@@ -33,6 +33,8 @@ _LIGHT = {
     "raise": "none", "sink": "none", "field": "var(--card)", "bar": "color-mix(in srgb, var(--bg) 88%, transparent)",
     "bar-solid": "var(--bg)", "bar-ink": "var(--ink)", "bar-dim": "var(--dim)", "bar-here": "var(--chip)",
     "link": "var(--accent)", "link-done": "var(--accent)",
+    # glass: a card's fill and what shows through it, and a picture behind the page. Plain in Standard
+    "panel": "var(--card)", "panel-blur": "none", "page": "none",
 }  # fmt: skip
 _DARK = {
     "bg": "#12161d", "card": "#1b212b", "ink": "#e8ecf3", "dim": "#98a2b3", "line": "#2b3340", "chip": "#252d3a",
@@ -48,8 +50,10 @@ _DARK = {
     "raise": "none", "sink": "none", "field": "var(--card)", "bar": "color-mix(in srgb, var(--bg) 88%, transparent)",
     "bar-solid": "var(--bg)", "bar-ink": "var(--ink)", "bar-dim": "var(--dim)", "bar-here": "var(--chip)",
     "link": "var(--accent)", "link-done": "var(--accent)",
+    "panel": "var(--card)", "panel-blur": "none", "page": "none",
 }  # fmt: skip
-SURFACES = ("raise", "sink", "field", "bar", "bar-solid", "bar-ink", "bar-dim", "bar-here", "link", "link-done")
+SURFACES = ("raise", "sink", "field", "bar", "bar-solid", "bar-ink", "bar-dim", "bar-here", "link", "link-done", "panel",
+            "panel-blur", "page")
 _DESIGN = {
     "font": 'system-ui, -apple-system, "Segoe UI", sans-serif',
     "font-head": "inherit",
@@ -120,6 +124,28 @@ THEMES: dict[str, dict[str, Any]] = {
               "design": {"font": 'Tahoma, "MS Sans Serif", "Microsoft Sans Serif", Arial, sans-serif',
                          "radius": "0", "radius-sm": "0", "pill": "0", "h2-case": "none", "h2-track": "0",
                          "head-weight": "700", "frame": "0px"}},
+    "glass": {"name": "Glass", "about": "Frosted, see-through cards over soft colour, with rounder corners: the look of "
+                                         "recent phones and Macs",
+              "light": {"bg": "#eef1f7", "card": "#ffffff", "ink": "#1d1d1f", "dim": "#5c6170", "line": "rgb(120 130 150 / .22)",
+                        "chip": "#e4e8f1", "accent": "#0062cc", "good": "#167a43", "good-bg": "#e3f4ea", "warn": "#a84a00",
+                        "warn-bg": "#fdefdf", "bad": "#c0261b", "bad-bg": "#fde6e4", "shadow": "rgb(30 40 80 / .12)",
+                        "panel": "color-mix(in srgb, #ffffff 58%, transparent)", "panel-blur": "blur(22px) saturate(1.8)",
+                        "field": "color-mix(in srgb, #ffffff 80%, transparent)",
+                        "raise": "inset 0 1px 0 rgb(255 255 255 / .8), 0 8px 28px rgb(30 40 80 / .10)",
+                        "bar": "color-mix(in srgb, #eef1f7 55%, transparent)", "bar-here": "color-mix(in srgb, #ffffff 70%, transparent)",
+                        "page": "radial-gradient(at 12% 8%, #cddcff 0, transparent 46%), radial-gradient(at 88% 14%, #f1d6ff 0, "
+                                "transparent 42%), radial-gradient(at 70% 92%, #c9f0e4 0, transparent 46%), "
+                                "radial-gradient(at 8% 85%, #ffe6cc 0, transparent 40%)"},
+              "dark": {"bg": "#0b0e14", "card": "#1b2030", "ink": "#f2f4f8", "dim": "#a6aec0", "line": "rgb(255 255 255 / .12)",
+                       "chip": "#252b3b", "accent": "#5aa2ff", "on-accent": "#06101f", "shadow": "rgb(0 0 0 / .5)",
+                       "panel": "color-mix(in srgb, #1b2030 55%, transparent)", "panel-blur": "blur(22px) saturate(1.6)",
+                       "field": "color-mix(in srgb, #1b2030 75%, transparent)",
+                       "raise": "inset 0 1px 0 rgb(255 255 255 / .08), 0 10px 30px rgb(0 0 0 / .35)",
+                       "bar": "color-mix(in srgb, #0b0e14 55%, transparent)", "bar-here": "color-mix(in srgb, #ffffff 12%, transparent)",
+                       "page": "radial-gradient(at 12% 8%, #1d2f5c 0, transparent 46%), radial-gradient(at 88% 14%, #3b1f52 0, "
+                               "transparent 42%), radial-gradient(at 70% 92%, #12403a 0, transparent 46%)"},
+              "design": {"font": '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif',
+                         "radius": "22px", "radius-sm": "12px", "h2-case": "none", "h2-track": "0", "head-weight": "600"}},
 }  # fmt: skip
 DEFAULT = "standard"
 MODES = {"auto": "Automatic (as the device)", "light": "Light", "dark": "Dark"}
@@ -165,16 +191,32 @@ def css() -> str:
     return out
 
 
-# Before the page is drawn: the theme and mode this device chose, and whether that comes out dark (following the
-# device when automatic). window.waTheme(theme, mode) changes them (Settings, Look).
-HEAD_SCRIPT = (
-    "<script>(()=>{const r=document.documentElement,q=matchMedia('(prefers-color-scheme: dark)');"
-    "let t='" + DEFAULT + "',m='auto';try{t=localStorage.getItem('wa_theme')||t;m=localStorage.getItem('wa_mode')||m}catch(e){}"
-    "const set=()=>{r.dataset.theme=t;r.dataset.mode=m;r.toggleAttribute('data-dark',m==='dark'||(m==='auto'&&q.matches));"
-    "dispatchEvent(new Event('wa-theme'))};"
-    "window.waTheme=(a,b)=>{t=a||t;m=b||m;try{localStorage.setItem('wa_theme',t);localStorage.setItem('wa_mode',m)}catch(e){}set()};"
-    "q.addEventListener('change',set);set()})()</script>"
-)
+# The server's default (Settings, Look: "for every device"): what a device that has not chosen shows. Loaded when the
+# API starts and changed there (app/look.py).
+SERVER = {"theme": DEFAULT, "mode": "auto"}
+
+
+def head_script(theme: str = DEFAULT, mode: str = "auto") -> str:
+    """Before the page is drawn: the theme and mode this device chose (else the server's default), and whether that
+    comes out dark (following the device when automatic). window.waTheme(theme, mode) changes this device's choice;
+    window.waTheme() with nothing forgets it, so the device follows the server's default again."""
+    theme = theme if theme in THEMES else DEFAULT
+    mode = mode if mode in MODES else "auto"
+    return (
+        "<script>(()=>{const r=document.documentElement,q=matchMedia('(prefers-color-scheme: dark)'),D=['" + theme + "','" + mode + "'];"
+        "let t=D[0],m=D[1],own=false;try{own=!!(localStorage.getItem('wa_theme')||localStorage.getItem('wa_mode'));"
+        "t=localStorage.getItem('wa_theme')||t;m=localStorage.getItem('wa_mode')||m}catch(e){}"
+        "const set=()=>{r.dataset.theme=t;r.dataset.mode=m;r.toggleAttribute('data-dark',m==='dark'||(m==='auto'&&q.matches));"
+        "dispatchEvent(new Event('wa-theme'))};"
+        "window.waServer={theme:D[0],mode:D[1]};window.waOwn=()=>own;"
+        "window.waTheme=(a,b)=>{if(a==null&&b==null){t=window.waServer.theme;m=window.waServer.mode;own=false;try{localStorage.removeItem('wa_theme');"
+        "localStorage.removeItem('wa_mode')}catch(e){}}else{t=a||t;m=b||m;own=true;try{localStorage.setItem('wa_theme',t);"
+        "localStorage.setItem('wa_mode',m)}catch(e){}}set()};"
+        "q.addEventListener('change',set);set()})()</script>"
+    )
+
+
+HEAD_SCRIPT = head_script()
 
 
 def catalogue() -> list[dict[str, Any]]:

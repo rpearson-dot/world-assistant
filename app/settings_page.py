@@ -131,9 +131,14 @@ PAGE = """<!doctype html>
 
 <section data-pane="look" hidden>
   <div class="card"><h2>Look</h2>
-    <p class="dim">The colours and style of every page, on this device (each phone or computer keeps its own).</p>
+    <p class="dim">The colours and style of every page. A device follows the server's default until you choose here for it;
+    each phone or computer then keeps its own.</p>
     <div class="seg" id="modes" role="radiogroup" aria-label="Light or dark"></div>
-    <div class="themes" id="themes"></div></div>
+    <div class="themes" id="themes"></div>
+    <p id="lookwho" class="dim"></p>
+    <div class="row"><button id="lookdefault" type="button">Make this the default for every device</button>
+    <button id="lookfollow" type="button">Follow the server's default on this device</button></div>
+    <p id="lookmsg" class="dim"></p></div>
 </section>
 
 <section data-pane="system" hidden>
@@ -432,7 +437,17 @@ function look() {
     const sw = el('span', 'sw'); for (const c of Object.values(dark ? t.dark : t.light)) { const i = el('i'); i.style.background = c; sw.append(i); }
     b.append(el('b', null, t.name), el('span', 'about', t.about), sw); b.onclick = () => { window.waTheme(t.id, null); look(); }; return b; }));
 }
-addEventListener('wa-theme', look); look();
+function lookWho() {
+  const sv = window.waServer || {}, name = id => (THEMES.find(t => t.id === id) || {}).name || id;
+  $('lookwho').textContent = "The server’s default: " + name(sv.theme) + ', ' + (MODES[sv.mode] || sv.mode).toLowerCase() + '. This device ' +
+    (window.waOwn && window.waOwn() ? 'has its own choice.' : 'follows it.');
+  $('lookfollow').hidden = !(window.waOwn && window.waOwn());
+}
+$('lookdefault').onclick = async () => { $('lookmsg').textContent = ''; try {
+  const r = document.documentElement, got = await api('/v1/settings/look', { method: 'PUT', body: JSON.stringify({ theme: r.dataset.theme, mode: r.dataset.mode }) });
+  window.waServer = got; window.waTheme(); $('lookmsg').textContent = 'Saved: devices that have not chosen their own now show this.'; } catch (e) { $('lookmsg').textContent = e.message; } };
+$('lookfollow').onclick = () => { window.waTheme(); look(); };
+addEventListener('wa-theme', () => { look(); lookWho(); }); look(); lookWho();
 const want = location.hash.slice(1); if (TABS.includes(want)) tab(want);
 window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if (TABS.includes(h)) tab(h); });
 if (tok.value) load();

@@ -6,7 +6,9 @@ tokens. `tests/test_themes.py` fails if a page writes a colour of its own, uses 
 theme is missing a colour or is hard to read.
 
 ## Choosing
-**Settings, Look**: a theme, and Automatic (follows the device), Light or Dark. Each device keeps its own choice.
+**Settings, Look**: a theme, and Automatic (follows the device), Light or Dark. **Make this the default for every
+device** saves it on the server: any device that has not chosen its own shows it (from its next page). Choosing on a
+device keeps that device's own choice in its browser; **Follow the server's default** forgets it again.
 
 | Theme | |
 |---|---|
@@ -14,6 +16,7 @@ theme is missing a colour or is hard to read.
 | Forest | The app icon's greens |
 | High contrast | Black and white with strong colours |
 | Paper | Warm paper, serif headings, squarer corners |
+| Glass | Frosted, see-through cards over soft colour, rounder corners and the system font: the look of recent phones and Macs |
 | Windows 95 | Flat grey metal, bevelled buttons, sunken white fields, navy title bars, blue and purple links; dark is its High Contrast Black |
 
 ## Tokens
@@ -22,7 +25,8 @@ theme is missing a colour or is hard to read.
   `lv2`..`lv4` with their `-ink`, and `series-1`..`series-12` for things told apart by colour (map layers, graph
   nodes, chart lines).
 - **Surfaces** (light and dark): `raise` and `sink` (bevels, as box shadows; none in Standard), `field` (inputs),
-  `bar`, `bar-solid`, `bar-ink`, `bar-dim`, `bar-here` (the title bar and its tabs), `link`, `link-done`.
+  `bar`, `bar-solid`, `bar-ink`, `bar-dim`, `bar-here` (the title bar and its tabs), `link`, `link-done`, and for glass `panel` (a card's fill),
+  `panel-blur` (what shows through it, a backdrop filter) and `page` (a picture behind the page, such as gradients).
 - **Design**: `font`, `font-head`, `radius` (cards), `radius-sm` (inputs, buttons), `pill`, `h2-case`, `h2-track`,
   `head-weight`, `frame` (the width of the line round cards, fields and buttons).
 - **Fixed** (the same in every theme, not ours to change): the pollen risk scale `pollen-0`..`pollen-4`, and

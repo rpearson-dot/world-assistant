@@ -442,6 +442,32 @@ def outdoors_device(data: dict[str, Any]) -> Device:
     ])  # fmt: skip
 
 
+def food_device(data: dict[str, Any]) -> Device:
+    """Food alerts (allergy alerts and recalls) that look like something on the shopping list or usual products."""
+    matched = [{"alert": a["title"], "kind": a["kind"], "date": a.get("created"), "looks_like": [m["what"] for m in a["matches"]],
+                "url": a.get("url")} for a in data.get("matched") or []]  # fmt: skip
+    return Device("food", "World Assistant food alerts", [
+        Sensor("alerts_matched", "Food alerts to check", len(matched), icon="mdi:food-off", state_class="measurement",
+               attributes={"alerts": matched, "checked_at": data.get("checked_at"), "note": data.get("shopping_note")}),
+    ])  # fmt: skip
+
+
+def vehicle_checks_device(data: dict[str, Any]) -> Device:
+    """Each vehicle's MOT and tax due dates (as days left), with warnings."""
+    vs = data.get("vehicles") or []
+    if not vs:
+        raise ValueError("no vehicle has a registration")
+    sensors = []
+    for v in vs:
+        k = slug(v["id"])
+        attrs = {"registration": v.get("registration"), "warnings": v.get("warnings"), "checked_at": v.get("checked_at")}
+        sensors.append(Sensor(f"{k}_mot_days", f"{v['name']} MOT due in", v.get("mot_days"), unit="d", icon="mdi:car-wrench",
+                              attributes={**attrs, "due": v.get("mot_due"), "last_mot": v.get("last_mot")}))
+        sensors.append(Sensor(f"{k}_tax_days", f"{v['name']} tax due in", v.get("tax_days"), unit="d", icon="mdi:cash-clock",
+                              attributes={**attrs, "due": v.get("tax_due"), "status": v.get("tax_status")}))
+    return Device("vehicle_checks", "World Assistant tax and MOT", sensors)
+
+
 def environment_device(summary: dict[str, Any]) -> Device:
     """Air and water: the air quality index at each place, home's river level and rain, tides where there are."""
     sensors: list[Sensor] = []
@@ -598,7 +624,13 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
     async def outdoors() -> Device:
         return outdoors_device(await _get(c, "/v1/outdoors"))
 
-    for name, build in (("environment", environment), ("wishlist", wishlist), ("outdoors", outdoors), ("ev", ev), ("trips", trips), ("energy", energy), ("power", power), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
+    async def food() -> Device:
+        return food_device(await _get(c, "/v1/food/alerts"))
+
+    async def vehicle_checks() -> Device:
+        return vehicle_checks_device(await _get(c, "/v1/vehicle-checks"))
+
+    for name, build in (("environment", environment), ("wishlist", wishlist), ("outdoors", outdoors), ("food", food), ("vehicle_checks", vehicle_checks), ("ev", ev), ("trips", trips), ("energy", energy), ("power", power), ("pollen", pollen), ("fuel", fuel), ("trains", trains), ("roads", roads), ("events", events), ("bus", bus)):
         await attempt(name, build)
     return devices
 

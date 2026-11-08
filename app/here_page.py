@@ -22,6 +22,8 @@ PAGE = """<!doctype html>
 .parts .card { margin: 0; }
 .parts h3 { margin: 0 0 4px; font-size: 15px; }
 .parts .card.quiet { opacity: .7; }
+.bars { display: flex; align-items: flex-end; gap: 3px; height: 42px; margin: 6px 0 2px; } .bars i { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; }
+.small { font-size: 13px; }
 .area { font-size: 18px; font-weight: 600; margin: 4px 0; }
 form.save, form.pc { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
 form.pc { margin-top: 10px; }
@@ -70,6 +72,16 @@ function locate() {
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
   });
 }
+function crimeExtras(c, d) {  // each month's count as small bars, the police team's page, and the credit
+  const top = Math.max(...d.trend.map(t => t.total), 1), bars = el('div', 'bars');
+  for (const t of d.trend) { const b = el('i'); b.style.height = Math.max(2, Math.round(40 * t.total / top)) + 'px';
+    b.title = new Date(t.month + '-01').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) + ': ' + t.total; bars.append(b); }
+  c.append(bars, el('div', 'dim small', 'Each month, ' + new Date(d.trend[0].month + '-01').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) +
+    ' to ' + new Date(d.month + '-01').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })));
+  const t = d.neighbourhood;
+  if (t && t.url) { const a = el('a', 'small', t.name + ' police team'); a.href = t.url; a.target = '_blank'; a.rel = 'noopener'; c.append(a); }
+  c.append(el('div', 'dim small', d.attribution));
+}
 function show(d) {
   point = { lat: d.lat, lon: d.lon };
   const a = d.area;
@@ -82,6 +94,7 @@ function show(d) {
   const box = $('parts'); box.replaceChildren();
   d.parts.filter(p => !p.off && !p.blank).forEach(p => {
     const c = el('div', 'card' + (p.ok ? '' : ' quiet')); c.append(el('h3', null, p.title), el('p', p.ok ? null : 'dim', p.text)); box.append(c);
+    if (p.part === 'crime' && p.ok && (p.data.trend || []).length > 1) crimeExtras(c, p.data);
   });
   const off = d.parts.filter(p => p.off).map(p => p.title);
   if (off.length) box.append(el('p', 'dim', 'Switched off: ' + off.join(', ') + '.'));

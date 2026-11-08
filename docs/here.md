@@ -19,6 +19,8 @@ new. Open **Here** and press **Use my location**; each person's phone or compute
 | Events in the next 3 days | Skiddle, Ticketmaster, local listings | where they list |
 | Road disruption within 2 km | TfL | London |
 | Power cuts within 3 miles | UK Power Networks | London, the South East and the East |
+| Crime within a mile over the last 12 published months (each month as bars), what happened to it, and the neighbourhood police team | data.police.uk (asked when you look, not stored) | England, Wales and Northern Ireland; about two months behind |
+| Food hygiene ratings of the nearest food businesses | Food Standards Agency | England, Wales and Northern Ireland (Scotland's scheme is pass or improvement required) |
 
 Each part is World Assistant's own answer for that point, so it works as it does for a saved place. A part outside its
 area (London's stations and roads elsewhere) is left off; one that is switched off or failing says so, and the rest

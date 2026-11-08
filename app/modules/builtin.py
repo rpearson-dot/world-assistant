@@ -50,7 +50,7 @@ CORE = Module(
     "core", "Core", "Status, Setup, places, keys, backups, updates, Home Assistant and the assistant",
     category="service", core=True, listed=False,
     routers=(
-        "app.status:router", "app.setup_checklist:router", "app.keys:router", "app.mqtt_config:router",
+        "app.status:router", "app.setup_checklist:router", "app.keys:router", "app.look:router", "app.mqtt_config:router",
         "app.ha_smb:router", "app.ha_setup:router", "app.ha_setup:page_router", "app.ha_discover:router",
         "app.autodeploy:router",
         "app.backups:router", "app.ha_locations:router", "app.ha_routes:router", "app.icons:router",
@@ -214,6 +214,18 @@ BUILTIN: tuple[Module, ...] = (
            category="energy", listed=False,
            routers=("app.vehicles:router", "app.vehicles_page:page_router"),
            prefixes=("/v1/vehicles", "/vehicles", "re:/v1/trips/[^/]+/cost"), tools=("trip_cost",)),
+    Module("vehiclechecks", "Tax and MOT", "Each vehicle's tax and MOT status and due dates, its MOT history with "
+           "advisories, and outstanding safety recalls (DVLA and DVSA), with reminders", category="energy",
+           keys=("dvla_api_key", "dvsa_mot_api_key"), any_key=True,
+           more_keys=("dvsa_mot_client_id", "dvsa_mot_client_secret", "dvsa_mot_token_url"), jobs=("vehicle_check",),
+           link="https://developer-portal.driver-vehicle-licensing.api.gov.uk/",
+           note="DVLA: apply for a Vehicle Enquiry Service key. DVSA: register at documentation.history.mot.api.gov.uk; "
+                "its email gives the API key, client id and secret, and the token URL. Either works alone. Give each "
+                "vehicle its registration on the Vehicles page.",
+           routers=("app.vehiclecheck:router",), prefixes=("/v1/vehicle-checks",),
+           worker=(Job("app.vehiclecheck:vehicle_check", {"weekday": {0}, "hour": {7}, "minute": {5}, "timeout": 300,
+                                                          "max_tries": 1}),),
+           tools=("vehicle_checks",)),
     Module("shopping", "Shopping", "The family's KitchenOwl list, priced at Sainsbury's and Ocado",
            category="home", keys=("kitchenowl_token",), link="https://github.com/TomBursch/kitchenowl",
            note="Needs docker-compose.kitchenowl.yml, and docker-compose.supermarket.yml for prices (docs/shopping.md)",
@@ -228,6 +240,17 @@ BUILTIN: tuple[Module, ...] = (
            note="Works without a key; with what3words' (free plan) it shows the three words for a place and takes "
                 "three words instead of a postcode.",
            routers=("app.here:router", "app.here_page:page_router"), prefixes=("/v1/here", "/here"), tools=("here",)),
+    Module("crime", "Crime and police", "Street-level crime within a mile of a place and its neighbourhood police team "
+           "(data.police.uk), looked up when asked", category="place", link="https://data.police.uk/",
+           note="England, Wales and Northern Ireland; the figures are about two months behind.",
+           routers=("app.crime:router",), prefixes=("/v1/crime",), tools=("crime",)),
+    Module("food", "Food standards", "Food hygiene ratings near a place, and the FSA's allergy alerts and product recalls "
+           "checked against your shopping list and usual products", category="home", jobs=("food_alerts_check",),
+           link="https://ratings.food.gov.uk/",
+           note="No key. Alerts are matched against the KitchenOwl list and usual products when shopping is set up.",
+           routers=("app.food:router",), prefixes=("/v1/food",),
+           worker=(Job("app.food:food_alerts_check", {"hour": {7}, "minute": {15}, "timeout": 300, "max_tries": 1}),),
+           tools=("food_hygiene", "food_alerts")),
     Module("wishlist", "Wishlist", "A KitchenOwl list of things to look out for in Aldi's Specialbuys and the Middle of Lidl",
            category="home", keys=("kitchenowl_token",), needs=("shopping",), jobs=("wishlist_check",),
            link="https://www.aldi.co.uk/specialbuys",

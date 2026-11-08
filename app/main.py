@@ -35,6 +35,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if not settings.nh_primary_key:
         log.warning("nh_subscription_key is empty; National Highways calls will fail")
 
+    from app import look
+
+    await look.load(app.state.engine)
     log.info("world-assistant api started (env=%s)", settings.env)
     yield
 

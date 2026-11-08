@@ -66,6 +66,11 @@ KNOWN: tuple[Known, ...] = (
     Known("datathistle_refresh_token", False, "Data Thistle refresh token (World Assistant renews both every 25 days)"),
     Known("what3words_api_key", False, "what3words API key: the three words for a place on Here, and three words to a place"),
     Known("octopus_api_key", False, "Octopus Energy API key (finds your tariff from the account number)"),
+    Known("dvla_api_key", False, "DVLA Vehicle Enquiry Service key: each vehicle's tax and MOT status"),
+    Known("dvsa_mot_api_key", False, "DVSA MOT History API key: each vehicle's MOT tests and advisories"),
+    Known("dvsa_mot_client_id", False, "DVSA MOT History client id (from DVSA's email)"),
+    Known("dvsa_mot_client_secret", False, "DVSA MOT History client secret (from DVSA's email; lasts two years)"),
+    Known("dvsa_mot_token_url", False, "DVSA MOT History token URL (from DVSA's email: login.microsoftonline.com/...)"),
     Known("bods_api_key", False, "Bus Open Data Service key (live buses outside London)"),
     Known("tfwm_app_id", False, "Transport for West Midlands application ID"),
     Known("tfwm_app_key", False, "Transport for West Midlands application key"),
@@ -280,7 +285,7 @@ WEB_KEYS = frozenset({
     "nh_subscription_key", "nh_subscription_key_secondary", "fuel_finder_client_id", "fuel_finder_client_secret",
     "tfl_app_key", "nr_access_token", "ticketmaster_api_key", "skiddle_api_key", "datathistle_token", "datathistle_refresh_token", "what3words_api_key", "octopus_api_key", "bods_api_key",
     "tfwm_app_id", "tfwm_app_key", "pollen_api_key", "ukpn_api_key",
-    "gridserve_api_key",
+    "gridserve_api_key", "dvla_api_key", "dvsa_mot_api_key", "dvsa_mot_client_id", "dvsa_mot_client_secret", "dvsa_mot_token_url",
     "kitchenowl_token", "sainsburys_email", "sainsburys_password", "ocado_email", "ocado_password",
 })  # fmt: skip
 

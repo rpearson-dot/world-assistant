@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Self
 
 import pytest
 
@@ -46,8 +47,8 @@ def test_each_theme_is_complete_and_readable(theme: str, mode: str) -> None:
     assert set(t) == set(T.tokens("standard", mode))
     assert set(T.THEMES[theme][mode]) <= set(t), "a token Standard does not have"
     for k, v in t.items():
-        if k in T.SURFACES:  # bevels, mixes and references to other tokens
-            assert v == "none" or v.startswith(("var(--", "color-mix(", "inset ")) or HEX.match(v), (k, v)
+        if k in T.SURFACES:  # bevels, mixes, references to other tokens, blurs and gradients
+            assert v == "none" or v.startswith(("var(--", "color-mix(", "inset ", "blur(", "radial-gradient(", "linear-gradient(")) or HEX.match(v), (k, v)
         else:
             assert HEX.match(v) or v.startswith("rgb("), (k, v)
     # the graph's colour picker takes #rrggbb: the colours it starts from must be that
@@ -101,3 +102,44 @@ def test_the_look_tab_lists_the_themes(tmp_path: Path) -> None:
         f = tmp_path / "s.js"
         f.write_text(script)
         subprocess.run(["node", "--check", str(f)], check=True)
+
+
+def test_the_servers_default_goes_into_every_page_until_a_device_chooses(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from app import look
+    from app.main import app
+    from app.pagestyle import themed
+
+    page = "<html><head><style>/*BASE_CSS*/</style></head><body><!--NAV--></body></html>"
+    assert "D=['standard','auto']" in themed(page, "map")
+    monkeypatch.setitem(T.SERVER, "theme", "glass")
+    monkeypatch.setitem(T.SERVER, "mode", "dark")
+    assert "D=['glass','dark']" in themed(page, "map") and "D=['standard','auto']" not in themed(page, "map")
+    assert "D=['standard','auto']" in T.head_script("nope", "nope")  # never anything but a known theme and mode
+
+    saved: dict[str, str] = {}
+
+    class Conn:
+        async def __aenter__(self) -> Self:
+            return self
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+        async def execute(self, stmt: object, params: dict[str, str]) -> None:
+            saved.update(params)
+
+    class Engine:
+        def begin(self) -> Conn:
+            return Conn()
+
+    monkeypatch.setenv("API_TOKEN", "s3cret")
+    monkeypatch.setattr(app.state, "engine", Engine(), raising=False)
+    c = TestClient(app)
+    h = {"Authorization": "Bearer s3cret"}
+    assert c.put("/v1/settings/look", json={"theme": "teal", "mode": "auto"}, headers=h).status_code == 422
+    r = c.put("/v1/settings/look", json={"theme": "win95", "mode": "light"}, headers=h)
+    assert r.json() == {"theme": "win95", "mode": "light"} and T.SERVER["theme"] == "win95" and "win95" in saved["v"]
+    assert c.get("/v1/settings/look", headers=h).json()["theme"] == "win95"
+    assert look.KEY == saved["k"]
