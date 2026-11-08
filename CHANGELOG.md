@@ -2,6 +2,18 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Bike garage stage 2, first part: rides from Garmin Connect** (`docs/bikes.md`, "Garmin Connect"). Each rider saves
+  their own Garmin Personal API key on the Bikes page (checked with Garmin, kept in the keys folder, never shown again).
+  Rides come in every morning (and on Sync now): the first sync reads the whole history, later ones the last month,
+  following rides changed or deleted in Garmin. A ride already imported from the CSV becomes the Garmin one, keeping
+  its bike and wet answer. Each kind of Garmin ride can go to a bike; your weight comes from Garmin. A warning
+  a fortnight before the key runs out.
+- `python -m app.bikes.garmin` probes what a key gives (history, gear, GPS, device batteries, tyre pressure fields,
+  weight, rate limits), and is in the live check. A small FIT reader (`app/bikes/fit.py`) for activity files.
+
 ## [0.40.0] - 2026-11-08
 
 ### Added

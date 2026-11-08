@@ -3,9 +3,9 @@
 Every bike's parts, and how worn they are from your rides: what is due, tyre pressures, AXS batteries, spares on the
 shelf, and running cost. The **Bikes** page (`/bikes`), and the assistant.
 
-Design and reasoning: the project's `bike-garage-design.md`. This is stage 1. Stage 2 adds the Garmin Connect Personal
-API (daily sync, the true-up after the first sync, each ride's GPS track for rain along the route and saved routes),
-and safety recall checks.
+Design and reasoning: the project's `bike-garage-design.md`. Stage 2 has begun with rides from Garmin Connect's
+Personal API (below). Still to come: the true-up after the first sync and Garmin's gear (once the probe shows what the
+API gives), each ride's GPS track for rain along the route and saved routes, and safety recall checks.
 
 ## Getting started
 1. **Add yourself as a rider** (top of the page). Your weight sets the suggested tyre pressures. Anyone can add
@@ -17,8 +17,28 @@ and safety recall checks.
    (tubed, latex, tubeless) and width, bottom bracket and pedals.
 3. The bike gets the parts its answers give it, each with a default life. Its wheels are two labelled sets
    ("Gravel front wheel", "Gravel rear wheel") carrying their tyre, rotor, cassette, hub, sealant and tyre check.
-4. **Add rides**: by hand (the bike you choose is taken as right), or from Garmin Connect (on the web: Activities, then Export CSV), choosing the file on the
-   page. Rides already imported are skipped. Rides without a bike are listed to choose one.
+4. **Add rides**: from Garmin Connect with your key (see "Garmin Connect"), by hand (the bike you choose is taken as
+   right), or from Garmin Connect's CSV (on the web: Activities, then Export CSV), choosing the file on the page. Rides already imported are skipped. Rides without a bike are listed to choose one.
+
+## Garmin Connect
+- **Your key:** in Garmin Connect on the web, Settings, then Personal API Key; choose how long it lasts (30 days to a
+  year). Paste it into the Garmin Connect card on the Bikes page, with the date it runs out. Garmin checks it before it
+  is kept (a refused key is not saved); it goes in the keys folder as `garmin_<rider>.txt` and is never shown again.
+  Each rider has their own. You can also put the file there yourself.
+- **The sync:** every morning at 06:50, and with Sync now. The first reads your whole history; later ones look back a
+  month, so a ride edited in Garmin is updated here and one deleted there is taken off. Only rides (cycling of any
+  kind, indoor and virtual too) are taken.
+- **Rides you imported from the CSV** are matched (start within five minutes, distance within 2%) and become the
+  Garmin ride, keeping the bike and the wet answer you gave.
+- **Which bike:** choose a bike for each kind of Garmin ride (Gravel Cycling, Indoor Cycling, ...) and for any other.
+  Recent rides are still asked about, as before; rides more than four weeks old are not.
+- **Weight:** your latest Garmin weight sets the tyre pressures (switch it off on the card).
+- **The key runs out:** a warning on the card a fortnight before; Garmin also emails a week before. A token that stops
+  early tells the page the key's end date, if you did not give it.
+- **The probe:** `python -m app.bikes.garmin [RIDER]` prints what your key gives: how far back the rides go, the fields
+  of a ride and its details (looking for gear, sensors and batteries), whether Garmin's gear can be read, the original
+  file's GPS points, devices and developer fields (where tyre pressure sensors write), and weight. It only reads. It is
+  part of the live check.
 
 ## What it shows
 - **Due**: parts at 90% of their life or close to its end (within 300 km, 10 hours or a fortnight, for lives well over

@@ -104,7 +104,18 @@ def _check(name: str) -> None:
 @router.put("/{name}")
 async def save_key(name: str, body: KeyIn) -> dict[str, Any]:
     _check(name)
-    value = body.value.strip()
+    write_key(name, body.value)
+    return {"name": name, "set": True, "source": "settings"}
+
+
+def write_key(name: str, value: str) -> None:
+    """Save one key to the keys folder (also used for keys saved from other pages, such as each rider's Garmin key)."""
+    if not secretstore.NAME_RE.match(name):
+        raise HTTPException(422, "not a key name")
+    ok, why = writable()
+    if not ok:
+        raise HTTPException(409, why)
+    value = value.strip()
     if not value or any(c in value for c in "\r\n\0"):
         raise HTTPException(422, "a key is one line of text")
     d = secretstore.keys_dir()
@@ -119,7 +130,6 @@ async def save_key(name: str, body: KeyIn) -> dict[str, Any]:
         if os.path.exists(tmp):
             os.unlink(tmp)
         raise
-    return {"name": name, "set": True, "source": "settings"}
 
 
 @router.delete("/{name}")

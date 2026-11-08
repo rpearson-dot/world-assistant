@@ -178,6 +178,11 @@ riders = get("Bike riders", "/v1/bikes/riders", show=1000)
 if isinstance(riders, dict) and riders.get("riders"):
     get("Bike garage (the first rider)", "/v1/bikes", show=3000, rider=riders["riders"][0]["id"])
 run("Bike rain probe (the nearest EA gauge, yesterday morning)", "app.bikes.rain", str(lat), str(lon), module="bikes")
+# stage 2: Garmin Connect's Personal API (each rider's key): what it gives, then the garage's sync state
+run("Garmin probe (rides, history, gear, GPS, sensors, weight)", "app.bikes.garmin", module="bikes", timeout=300)
+if isinstance(riders, dict):
+    for r in riders.get("riders") or []:
+        get(f"Garmin sync state ({r['id']})", "/v1/bikes/garmin", show=1500, rider=r["id"])
 
 head("Summary")
 for name, res in results:

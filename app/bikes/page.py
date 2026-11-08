@@ -56,6 +56,24 @@ button.small { padding: 3px 9px; font-size: 13px; }
   <p id="rmsg" class="err"></p>
 </div>
 
+<div class="card" id="garmincard" hidden><h2>Garmin Connect</h2>
+  <p id="gwarn" class="err"></p><p id="gstate" class="small"></p>
+  <div class="row"><button id="gsync" type="button">Sync now</button></div>
+  <details id="gkeybox"><summary class="small">Garmin key</summary>
+    <p class="dim small">Make one in Garmin Connect on the web: Settings, then Personal API Key. Copy it here: it is kept on this
+    server (the keys folder) and never shown again. Rides then come in every morning; the first sync reads your whole history.</p>
+    <form id="gkey" class="grid"><label>Key <input id="gkeyv" type="password" autocomplete="off" required></label>
+    <label>Runs out on <input id="gexp" type="date"></label><button class="primary">Save the key</button></form>
+    <div class="row"><button id="gforget" type="button" class="small">Forget the key</button></div></details>
+  <details id="grulebox"><summary class="small">Which bike each kind of ride goes to</summary>
+    <p class="dim small">For new rides from Garmin; you are still asked to confirm the bike of each recent ride.</p>
+    <form id="grules" class="grid"></form>
+    <label class="small"><input type="checkbox" id="gweight"> Take my weight from Garmin (for tyre pressures)</label>
+    <div class="row"><button id="grulesgo" type="button" class="primary small">Save</button>
+    <button id="grulesapply" type="button" class="small">Save, and give rides without a bike theirs</button></div></details>
+  <p id="gmsg" class="dim"></p>
+</div>
+
 <div class="card" id="duecard" hidden><h2>Due</h2><ul class="parts" id="due"></ul></div>
 <div class="card" id="askcard" hidden><h2>Rides to confirm</h2>
   <p class="dim small">Which bike each ride was on (Garmin keeps the last one chosen, so it is often wrong), and whether it was wet:
@@ -436,7 +454,45 @@ async function load() {
   if (!rider()) return;
   g = await api('GET', '/v1/bikes?rider=' + encodeURIComponent(rider()));
   draw();
+  await guard(garmin, $('gmsg'));
 }
+const R = () => '?rider=' + encodeURIComponent(rider());
+async function garmin() {
+  const s = await api('GET', '/v1/bikes/garmin' + R());
+  $('garmincard').hidden = false; $('gwarn').textContent = s.warn || (s.error ? 'Last sync failed: ' + s.error : '');
+  const lr = s.last_result || {};
+  $('gstate').textContent = !s.key_set ? 'No Garmin key saved yet: rides come only from the CSV import or by hand.'
+    : !s.last_sync ? 'Key saved. The first sync reads your whole Garmin history.'
+    : 'Last sync ' + new Date(s.last_sync).toLocaleString('en-GB') + ': ' + (lr.added || 0) + ' new rides, ' + (lr.updated || 0) + ' changed, ' +
+      (lr.removed || 0) + ' deleted in Garmin' + (lr.from_csv ? ', ' + lr.from_csv + ' imported rides matched' : '') +
+      (s.key_expires ? '. The key runs out ' + new Date(s.key_expires).toLocaleDateString('en-GB') + '.' : '.');
+  $('gsync').hidden = !s.key_set; $('gforget').hidden = !s.key_set; $('gkeybox').open = !s.key_set;
+  $('grulebox').hidden = !s.key_set; $('gweight').checked = s.weight !== false;
+  const f = $('grules'); f.replaceChildren();
+  const bikes = g.bikes.filter(b => !b.retired_at);
+  for (const t of ['default', ...s.types]) {
+    const l = el('label', null, (t === 'default' ? 'Any other ride' : t.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())) + ' '), sel = el('select');
+    sel.name = t; sel.append(new Option('ask me', ''));
+    for (const b of bikes) sel.append(new Option(b.label, b.id));
+    sel.value = s.rules[t] != null ? String(s.rules[t]) : ''; l.append(sel); f.append(l);
+  }
+}
+async function saveRules(apply) {
+  const rules = {}; for (const i of $('grules').elements) if (i.name) rules[i.name] = i.value ? Number(i.value) : null;
+  const r = await api('PUT', '/v1/bikes/garmin/rules' + R(), { rules, weight: $('gweight').checked, apply });
+  $('gmsg').textContent = 'Saved.' + (apply ? ' ' + r.given + ' rides given a bike.' : ''); await load();
+}
+$('grulesgo').onclick = () => guard(() => saveRules(false), $('gmsg'));
+$('grulesapply').onclick = () => guard(() => saveRules(true), $('gmsg'));
+$('gkey').onsubmit = e => { e.preventDefault(); guard(async () => {
+  const r = await api('PUT', '/v1/bikes/garmin/key' + R(), { value: $('gkeyv').value, expires: $('gexp').value || null });
+  $('gkeyv').value = ''; $('gmsg').textContent = r.message + '. Syncing now...';
+  const s = await api('POST', '/v1/bikes/garmin/sync' + R());
+  $('gmsg').textContent = r.message + '. ' + (s.skipped || ('Read ' + s.rides + ' rides: ' + s.added + ' new.')); await load(); }, $('gmsg')); };
+$('gsync').onclick = () => guard(async () => { $('gmsg').textContent = 'Syncing...';
+  const s = await api('POST', '/v1/bikes/garmin/sync' + R()); $('gmsg').textContent = 'Read ' + s.rides + ' rides: ' + s.added + ' new, ' + s.updated + ' changed, ' + s.removed + ' deleted in Garmin.'; await load(); }, $('gmsg'));
+$('gforget').onclick = () => guard(async () => { if (!confirm('Forget the Garmin key saved for this rider? Rides already here stay.')) return;
+  await api('DELETE', '/v1/bikes/garmin/key' + R()); await load(); }, $('gmsg'));
 async function start() {
   cat = cat || await api('GET', '/v1/bikes/catalogue');
   if (!$('btype').options.length) { for (const [k, v] of Object.entries(cat.types)) $('btype').append(new Option(v, k)); answers();
