@@ -91,9 +91,16 @@ def bike(cfg: dict[str, Any], label: str = "bike") -> str:
     fb = (front[0] - (GEOMETRY["road"]["wb"] - GEOMETRY["road"]["cs"]), 0.0) if tandem else (0.0, 0.0)
     h_top = (fb[0] + gm["reach"], gm["stack"])
     h_low = (h_top[0] + gm["ht"] * math.cos(rad(gm["hta"])), h_top[1] - gm["ht"] * math.sin(rad(gm["hta"])))
-    s_top = (-gm["st"] * math.cos(rad(gm["sta"])), gm["st"] * math.sin(rad(gm["sta"])))
+    st = (gm["stack"] - 15) / math.sin(rad(gm["sta"])) if tandem else gm["st"]  # a tandem's top tube: level
+    s_top = (-st * math.cos(rad(gm["sta"])), st * math.sin(rad(gm["sta"])))
     cap_bb = fb if tandem else None
-    cap_top = (fb[0] + s_top[0], s_top[1]) if tandem else None
+    cap_top = None
+    if tandem:  # the captain's seat tube meets the one straight top tube, head tube to the stoker's seat tube
+        ux, uy = s_top[0], s_top[1]  # the seat tube's direction (from its bottom bracket)
+        dx, dy = s_top[0] - h_top[0], s_top[1] - h_top[1]  # the top tube's
+        den = ux * dy - uy * dx
+        tt = ((h_top[0] - fb[0]) * dy - (h_top[1] - fb[1]) * dx) / den if den else 1.0
+        cap_top = (fb[0] + ux * tt, fb[1] + uy * tt)
     xs = [rear[0] - gm["r"], front[0] + gm["r"], h_top[0] - 60]
     width_mm = max(xs) - min(xs)
     top_mm = max(h_top[1], s_top[1]) + 230
@@ -115,7 +122,7 @@ def bike(cfg: dict[str, Any], label: str = "bike") -> str:
         out.append(_wheel(round(cx, 1), round(cy, 1), round(r, 1), round(tyre, 1), disc(end), t == "tt"))
     frame = [f"M{P(h_top)} L{P(h_low)}", f"M{P(h_low)} L{P(fb)}", f"M{P((0, 0))} L{P(s_top)}"]
     if tandem:  # top tubes over both seat tubes, the boom between the bottom brackets, the captain's seat tube
-        frame += [f"M{P(h_top)} L{P(cap_top)} L{P(s_top)}", f"M{P(fb)} L{P((0, 0))}", f"M{P(fb)} L{P(cap_top)}",  # type: ignore[arg-type]
+        frame += [f"M{P(h_top)} L{P(s_top)}", f"M{P(fb)} L{P((0, 0))}", f"M{P(fb)} L{P(cap_top)}",  # type: ignore[arg-type]
                   f"M{P(h_low)} L{P((0, 0))}"]  # the long diagonal: head tube to the stoker's bottom bracket
     else:
         frame.append(f"M{P(h_top)} L{P((s_top[0] * 0.93, s_top[1] * 0.93))}")
@@ -146,9 +153,9 @@ def bike(cfg: dict[str, Any], label: str = "bike") -> str:
         post = 3.4 if cfg.get("dropper", "none") != "none" else 2
         out.append(f'<path d="M{P(top)} L{P(sat)}" stroke-width="{post}"/>'  # type: ignore[arg-type]
                    f'<path d="M{P((sat[0] - 120, sat[1] + 5))} Q{P((sat[0], sat[1] + 22))} {P((sat[0] + 125, sat[1] + 12))}" stroke-width="3.4"/>')
-    if tandem:  # the stoker's bars, clamped to the captain's seat post
-        sp = (cap_top[0] - 120 * math.cos(rad(gm["sta"])) + 40, cap_top[1] + 120 * math.sin(rad(gm["sta"])))  # type: ignore[index]
-        out.append(f'<path d="M{P((sp[0] - 40, sp[1]))} L{P((sp[0] + 70, sp[1] + 10))} l1.5 5" stroke-width="2"/>')
+    if tandem:  # the stoker's bars: clamped to the captain's seat post under the saddle, reaching back for the stoker
+        sp = (cap_top[0] - 110 * math.cos(rad(gm["sta"])), cap_top[1] + 110 * math.sin(rad(gm["sta"])))  # type: ignore[index]
+        out.append(f'<path d="M{P(sp)} L{P((sp[0] - 150, sp[1] + 15))} L{P((sp[0] - 175, sp[1] - 25))}" stroke-width="2.4"/>')
     # stem and bars: drops on road-ish bikes, aero extensions on a time-trial bike, flat or riser bars on the rest
     stem_end = (h_top[0] + 95, h_top[1] + 20)
     out.append(f'<path d="M{P(h_top)} L{P((h_top[0] - 5, h_top[1] + 25))} L{P(stem_end)}" stroke-width="2.8"/>')
