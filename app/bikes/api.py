@@ -249,7 +249,7 @@ def _check(cfg: dict[str, Any]) -> None:
             raise HTTPException(422, f"{k} must be one of {', '.join(allowed)}")
     if cfg.get("model") and cfg["model"] not in MODELS:
         raise HTTPException(422, f"model must be one of {', '.join(MODELS)}")
-    for k in ("paint", "paint2"):
+    for k in ("paint", "paint2", "pinstripe"):
         if cfg.get(k) and cfg[k] not in PAINTS:
             raise HTTPException(422, f"{k} must be one of {', '.join(PAINTS)}")
 

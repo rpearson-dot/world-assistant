@@ -715,6 +715,7 @@ function answersInto(f, t, d) {  // a bike's answers as a form: for a new bike (
   pick('model', 'Model (for its picture)', Object.entries(cat.models || {}).filter(([, m]) => m.type === t).map(([k, m]) => [k, m.name]), d.model, 'a typical ' + (cat.types[t] || t).toLowerCase());
   pick('paint', 'Frame colour', Object.entries(cat.paints || {}), d.paint, "the theme's colour");
   pick('paint2', 'Second colour (fork and stays; the rear triangle on full suspension)', Object.entries(cat.paints || {}), d.paint2, 'the same');
+  pick('pinstripe', 'Pinstripes', Object.entries(cat.paints || {}), d.pinstripe, 'none');
 }
 async function load() {
   if (!rider()) return;

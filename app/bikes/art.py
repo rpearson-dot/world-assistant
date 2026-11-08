@@ -143,6 +143,9 @@ def bike(cfg: dict[str, Any], label: str = "bike") -> str:
     # a faint outline in the ink colour first, so a black frame shows on a dark page and a white one on a light page
     out.append(f'<path d="{" ".join(frame)}" stroke="currentColor" stroke-width="5.4" opacity="0.18"/>')
     out.append(f'<path d="{" ".join(main_tubes)}" stroke="{main}" stroke-width="3.6"/><path d="{" ".join(stays)}" stroke="{second}" stroke-width="3.2"/>')
+    stripe = paint(cfg.get("pinstripe"))
+    if stripe:  # thin lines of another colour along the tubes (a Trek 1.2's red on black)
+        out.append(f'<path d="{" ".join(frame)}" stroke="{stripe}" stroke-width="0.9"/>')
     if full:  # the shock: a black body on the top tube's end, a silver piston from the seatstays
         mid = (shock_a[0] + (shock_b[0] - shock_a[0]) * 0.42, shock_a[1] + (shock_b[1] - shock_a[1]) * 0.42)
         silver = paint("silver")
@@ -156,6 +159,8 @@ def bike(cfg: dict[str, Any], label: str = "bike") -> str:
     else:
         bend = (h_low[0] + (front[0] - h_low[0]) * 0.55 - 8, h_low[1] + (front[1] - h_low[1]) * 0.55)
         out.append(f'<path d="M{P(h_low)} Q{P(bend)} {P(front)}" stroke="{second}" stroke-width="3"/>')
+        if paint(cfg.get("pinstripe")):
+            out.append(f'<path d="M{P(h_low)} Q{P(bend)} {P(front)}" stroke="{paint(cfg.get("pinstripe"))}" stroke-width="0.9"/>')
     # seat post(s) up the seat tube's line, and saddle(s)
     for top in ([s_top, cap_top] if tandem else [s_top]):
         sat = (top[0] - 190 * math.cos(rad(gm["sta"])), top[1] + 190 * math.sin(rad(gm["sta"])))  # type: ignore[index]
