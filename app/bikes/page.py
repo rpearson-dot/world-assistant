@@ -52,34 +52,48 @@ button.small { padding: 3px 9px; font-size: 13px; }
   <details id="newrider"><summary class="small">Add a rider</summary>
     <form id="addrider" class="grid"><label>Name <input id="rname" maxlength="40" required></label>
     <label>Weight kg <input id="rkg" type="number" min="25" max="240" step="0.1" placeholder="for tyre pressures"></label>
-    <button class="primary">Add</button></form></details></div>
+    <label>Garmin key <input id="rkey" type="password" autocomplete="off" placeholder="optional: Personal API Key"></label>
+    <label>Key runs out on <input id="rexp" type="date"></label>
+    <button class="primary">Add</button></form>
+    <p class="dim small">The Garmin key is the rider's own: Garmin Connect on the web, Settings, then Personal API Key. It can be
+    added later too.</p></details></div>
   <p id="rmsg" class="err"></p>
-</div>
-
-<div class="card" id="garmincard" hidden><h2>Garmin Connect</h2>
-  <p id="gwarn" class="err"></p><p id="gstate" class="small"></p>
-  <div class="row"><button id="gsync" type="button">Sync now</button></div>
-  <details id="gkeybox"><summary class="small">Garmin key</summary>
-    <p class="dim small">Make one in Garmin Connect on the web: Settings, then Personal API Key. Copy it here: it is kept on this
-    server (the keys folder) and never shown again. Rides then come in every morning; the first sync reads your whole history.</p>
-    <form id="gkey" class="grid"><label>Key <input id="gkeyv" type="password" autocomplete="off" required></label>
-    <label>Runs out on <input id="gexp" type="date"></label><button class="primary">Save the key</button></form>
-    <div class="row"><button id="gforget" type="button" class="small">Forget the key</button></div></details>
-  <details id="grulebox"><summary class="small">Which bike each kind of ride goes to</summary>
-    <p class="dim small">For new rides from Garmin; you are still asked to confirm the bike of each recent ride.</p>
-    <form id="grules" class="grid"></form>
-    <label class="small"><input type="checkbox" id="gweight"> Take my weight from Garmin (for tyre pressures)</label>
-    <div class="row"><button id="grulesgo" type="button" class="primary small">Save</button>
-    <button id="grulesapply" type="button" class="small">Save, and give rides without a bike theirs</button></div></details>
-  <p id="gmsg" class="dim"></p>
+  <div id="garmincard" hidden>
+    <p id="gwarn" class="err"></p>
+    <div class="row"><span id="gstate" class="small"></span><button id="gsync" type="button" class="small">Sync now</button></div>
+    <details id="gkeybox"><summary class="small">This rider's Garmin key</summary>
+      <p class="dim small">Make one in Garmin Connect on the web: Settings, then Personal API Key. Copy it here: it is kept on this
+      server (the keys folder) and never shown again. Rides then come in every morning; the first sync reads the whole history.</p>
+      <form id="gkey" class="grid"><label>Key <input id="gkeyv" type="password" autocomplete="off" required></label>
+      <label>Runs out on <input id="gexp" type="date"></label><button class="primary">Save the key</button></form>
+      <div class="row"><button id="gforget" type="button" class="small">Forget the key</button></div></details>
+    <details id="grulebox"><summary class="small">Which bike each kind of Garmin ride goes to</summary>
+      <p class="dim small">For new rides from Garmin; you are still asked to confirm the bike of each recent ride. A ride Garmin
+      marks as a commute goes to the Commute bike first, whatever kind of ride it is.</p>
+      <form id="grules" class="grid"></form>
+      <label class="small"><input type="checkbox" id="gweight"> Take this rider's weight from Garmin (for tyre pressures)</label>
+      <div class="row"><button id="grulesgo" type="button" class="primary small">Save</button>
+      <button id="grulesapply" type="button" class="small">Save, and give rides without a bike theirs</button></div></details>
+    <p id="gmsg" class="dim"></p>
+  </div>
 </div>
 
 <div class="card" id="duecard" hidden><h2>Due</h2><ul class="parts" id="due"></ul></div>
 <div class="card" id="askcard" hidden><h2>Rides to confirm</h2>
   <p class="dim small">Which bike each ride was on (Garmin keeps the last one chosen, so it is often wrong), and whether it was wet:
   wet rides wear chains, cassettes and pads faster. The wet suggestion comes from the nearest rain gauge.</p>
+  <div class="edit"><div id="askcount" class="small"></div>
+    <div class="row"><button id="alldry" type="button" class="small">Mark every unanswered ride dry</button>
+    <label class="small"><input type="checkbox" id="keepwet" checked> except those the rain gauge says were wet</label></div>
+    <div class="row"><button id="allbikes" type="button" class="small">Keep every bike as it is</button></div>
+    <p id="bulkmsg" class="dim small"></p></div>
   <ul class="parts" id="ask"></ul></div>
-<div class="card" id="unassignedcard" hidden><h2>Rides without a bike</h2><ul class="parts" id="unassigned"></ul></div>
+<div class="card" id="unassignedcard" hidden><h2>Rides without a bike</h2>
+  <div class="edit"><div class="small"><b>By kind of ride</b> (Garmin's, from the sync or its CSV): choose a bike for each, and
+  every ride of that kind without a bike gets it. Kept as the rule for new Garmin rides too.</div>
+  <form id="bykind" class="grid"></form><div class="row"><button id="bykindgo" type="button" class="primary small">Give them these bikes</button></div>
+  <p id="bykindmsg" class="dim small"></p></div>
+  <ul class="parts" id="unassigned"></ul></div>
 
 <div id="bikes"></div>
 
@@ -111,6 +125,9 @@ button.small { padding: 3px 9px; font-size: 13px; }
   <p id="ridemsg" class="dim"></p>
   <details><summary class="small">Recent rides (delete one logged twice)</summary><ul class="parts" id="recentrides"></ul></details>
 </div>
+
+<div class="card" id="storecard" hidden><h2>Wheels in storage</h2>
+  <p class="dim small">Wheels off every bike: their parts keep their wear for when they go back on.</p><div id="store"></div></div>
 
 <div class="card" id="logcard" hidden><h2>Recent work</h2>
   <p class="dim small">What was logged, newest first. Undo puts the part's count back; undoing a replacement puts the old part
@@ -203,6 +220,12 @@ function partRow(p, bike) {
   acts.append(button(label, () => action === 'replaced' ? replaceForm(li, p) : service(p, action)));
   if (action !== 'replaced' && (cat.kinds[p.kind] || {}).km) acts.append(button('Replaced', () => replaceForm(li, p)));
   acts.append(button('Edit', () => editPart(li, p)));
+  if ((cat.kinds[p.kind] || {}).on === 'wheel') {  // onto another wheel (the cassette onto the new wheel, say)
+    const mv = el('select'); mv.append(new Option('Move to…', ''));
+    for (const [s, sb] of allWheels()) if (s.id !== p.set_id) mv.append(new Option(s.label + (sb ? ' (' + sb.label + ')' : ' (storage)'), s.id));
+    mv.onchange = () => { if (mv.value) guard(async () => { await api('POST', '/v1/bikes/fit', { item: 'part', id: p.id, set_id: Number(mv.value) }); await load(); }); };
+    acts.append(mv);
+  }
   li.append(mid, acts);
   if ((p.history || []).length) {
     const h = el('details', 'small'); h.style.gridColumn = '2 / -1'; h.append(el('summary', 'dim', 'History (' + p.history.length + ')'));
@@ -321,23 +344,66 @@ function bikeCard(b) {
   top.append(pic, info); card.append(top);
   const list = el('ul', 'parts'); (b.parts || []).forEach(p => list.append(partRow(p, b)));
   const d = el('details'); d.append(el('summary', 'small', 'Frame, drivetrain and brakes (' + (b.parts || []).length + ')'), list); card.append(d);
-  for (const s of b.sets || []) {
-    const w = el('div', 'wheel'), h4 = el('h4', null, s.label);
-    if (s.grp) h4.append(el('span', 'chip', s.grp));
-    const sel = el('select'); sel.append(new Option('Move to…', ''));
-    for (const other of g.bikes) if (other.id !== b.id && !other.retired_at) sel.append(new Option('onto ' + other.label, other.id));
-    sel.append(new Option('off (into storage)', 'off'));
-    if (s.grp) for (const other of g.bikes) if (other.id !== b.id && !other.retired_at) sel.append(new Option('whole set "' + s.grp + '" onto ' + other.label, 'g' + other.id));
-    sel.onchange = () => { const v = sel.value; if (!v) return; guard(async () => {
-      if (v[0] === 'g') await api('POST', '/v1/bikes/fit', { item: 'group', group: s.grp, rider: rider(), bike_id: Number(v.slice(1)) });
-      else await api('POST', '/v1/bikes/fit', { item: 'set', id: s.id, bike_id: v === 'off' ? null : Number(v) });
-      await load(); }); };
-    h4.append(sel, button('Rename', () => { const n = prompt('Name for ' + s.label, s.label); if (n) guard(async () => { await api('PATCH', '/v1/bikes/sets/' + s.id, { label: n }); await load(); }); }),
-      button('Set group', () => { const n = prompt('Group (wheels with the same group swap together), e.g. Winter wheels', s.grp || ''); if (n !== null) guard(async () => { await api('PATCH', '/v1/bikes/sets/' + s.id, { group: n }); await load(); }); }));
-    const ul = el('ul', 'parts'); (s.parts || []).forEach(p => ul.append(partRow(p, b)));
-    w.append(h4, ul); card.append(w);
-  }
+  for (const s of b.sets || []) card.append(wheelBlock(s, b));
+  const add = button('Add a wheel', () => wheelForm(card, b)); add.className = 'small'; card.append(el('div', 'row'), add);
   return card;
+}
+function allWheels() {  // every wheel: on a bike, or in storage
+  const out = []; for (const b of g.bikes.filter(x => !x.retired_at)) for (const s of b.sets || []) out.push([s, b]);
+  for (const s of g.loose_sets || []) out.push([s, null]); return out.filter(([s]) => s.kind === 'wheel');
+}
+function wheelBlock(s, b) {  // a wheel (or other set) with its parts: move it, rename it, group it, add parts
+  const w = el('div', 'wheel'), h4 = el('h4', null, s.label);
+  if (s.grp) h4.append(el('span', 'chip', s.grp));
+  const since = el('input'); since.type = 'date'; since.title = 'Since when (blank: now). Rides from then count on the wheel where it went.';
+  const at = () => since.value ? since.value + 'T00:00:00' : null;
+  const sel = el('select'); sel.append(new Option(b ? 'Move to…' : 'Fit to…', ''));
+  for (const other of g.bikes) if ((!b || other.id !== b.id) && !other.retired_at) sel.append(new Option('onto ' + other.label, other.id));
+  if (b) sel.append(new Option('off (into storage)', 'off'));
+  if (s.grp) for (const other of g.bikes) if ((!b || other.id !== b.id) && !other.retired_at) sel.append(new Option('whole set "' + s.grp + '" onto ' + other.label, 'g' + other.id));
+  sel.onchange = () => { const v = sel.value; if (!v) return; guard(async () => {
+    if (v[0] === 'g') await api('POST', '/v1/bikes/fit', { item: 'group', group: s.grp, rider: rider(), bike_id: Number(v.slice(1)), at: at() });
+    else await api('POST', '/v1/bikes/fit', { item: 'set', id: s.id, bike_id: v === 'off' ? null : Number(v), at: at() });
+    await load(); }); };
+  const sl = el('label', 'small dim', 'from '); sl.append(since);
+  h4.append(sel, sl, button('Rename', () => { const n = prompt('Name for ' + s.label, s.label); if (n) guard(async () => { await api('PATCH', '/v1/bikes/sets/' + s.id, { label: n }); await load(); }); }),
+    button('Set group', () => { const n = prompt('Group (wheels with the same group swap together), e.g. Winter wheels', s.grp || ''); if (n !== null) guard(async () => { await api('PATCH', '/v1/bikes/sets/' + s.id, { group: n }); await load(); }); }),
+    button('Add a part', () => partForm(w, s)));
+  const ul = el('ul', 'parts'); (s.parts || []).forEach(p => ul.append(partRow(p, b)));
+  w.append(h4, ul); return w;
+}
+function wheelForm(card, b) {  // a new wheel: for this bike (fitted now or kept as a spare), with its usual parts or none
+  if (card.querySelector('.wheelform')) { card.querySelector('.wheelform').remove(); return; }
+  const f = el('form', 'edit grid wheelform'), out = el('span', 'err');
+  const end = el('select'); end.append(new Option('Rear', 'rear'), new Option('Front', 'front'));
+  const name = el('input'); name.maxLength = 60; name.required = true; name.placeholder = 'e.g. Winter rear wheel';
+  const grp = el('input'); grp.maxLength = 60; grp.placeholder = 'e.g. Winter wheels';
+  const now = el('input'); now.type = 'checkbox'; const usual = el('input'); usual.type = 'checkbox'; usual.checked = true;
+  const when = el('input'); when.type = 'date';
+  const lab = (t, i) => { const l = el('label', null, t + ' '); l.append(i); return l; };
+  f.append(lab('Which', end), lab('Name', name), lab('Wheelset group', grp), lab('Since', when));
+  const l1 = el('label', 'small'); l1.append(now, document.createTextNode(' Fit it now (the ' + b.label + "'s current one goes into storage)"));
+  const l2 = el('label', 'small'); l2.append(usual, document.createTextNode(' With the usual parts for ' + b.label + ' (tyre, tube or sealant, rotor, cassette...)'));
+  f.append(l1, l2, el('button', 'primary small', 'Add the wheel'), out);
+  f.onsubmit = e => { e.preventDefault(); guard(async () => {
+    const r = await api('POST', '/v1/bikes/sets', { rider: rider(), label: name.value.trim(), kind: 'wheel', position: end.value, group: grp.value.trim() || null,
+      bike_id: now.checked ? b.id : null, parts: usual.checked, parts_from: b.id, fitted_at: when.value || null });
+    msg.textContent = 'Added ' + r.label + (r.parts.length ? ' with ' + r.parts.join(', ').toLowerCase() : '') + (r.took_off.length ? '; ' + r.took_off.join(', ') + ' into storage' : now.checked ? '' : ', in storage') + '.';
+    await load(); }, out); };
+  card.append(f);
+}
+function partForm(w, s) {  // a part straight onto a wheel (or set)
+  if (w.querySelector('.partform')) { w.querySelector('.partform').remove(); return; }
+  const f = el('form', 'edit grid partform'), out = el('span', 'err'), kind = el('select');
+  for (const [k, v] of Object.entries(cat.kinds)) if (s.kind !== 'wheel' || v.on === 'wheel') kind.append(new Option(v.name, k));
+  const field = (t, type) => { const l = el('label', null, t + ' '), i = el('input'); if (type) i.type = type; l.append(i); f.append(l); return i; };
+  const lk = el('label', null, 'Kind '); lk.append(kind); f.append(lk);
+  const brand = field('Brand'), model = field('Model'), price = field('Price £', 'number'); price.min = 0; price.step = '0.01';
+  f.append(el('button', 'primary small', 'Add'), out);
+  f.onsubmit = e => { e.preventDefault(); guard(async () => {
+    await api('POST', '/v1/bikes/parts', { rider: rider(), kind: kind.value, position: s.position || null, set_id: s.id, brand: brand.value || null,
+      model: model.value || null, price: price.value === '' ? null : Number(price.value) }); await load(); }, out); };
+  w.append(f);
 }
 function draw() {
   const due = g.due.filter(d => d.state === 'due' || d.share >= 0.75);
@@ -381,6 +447,16 @@ function draw() {
     if (r.wet == null && !r.indoor) acts.append(button('Wet', () => patch({ wet: true })), button('Dry', () => patch({ wet: false })));
     li.append(mid, acts); $('ask').append(li);
   }
+  const n = g.counts || {};
+  $('askcount').textContent = (n.to_confirm || 0) + ' rides to confirm (the latest 50 are below): ' + (n.unanswered_wet || 0) + ' not yet said wet or dry' +
+    (n.suggested_wet ? ' (' + n.suggested_wet + ' look wet by the rain gauge)' : '') + ', ' + (n.bike_unchecked || 0) + ' with a bike to confirm.';
+  $('alldry').hidden = !n.unanswered_wet; $('allbikes').hidden = !n.bike_unchecked;
+  const f = $('bykind'); f.replaceChildren();
+  const rules = (window.garminRules || {}), nice = k => k === 'default' ? 'Any other ride' : k === 'commute' ? 'Commute (any kind)' : k.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+  for (const [k, c] of Object.entries(n.kinds_without_bike || {}).sort((a, b) => b[1] - a[1])) {
+    const l = el('label', null, nice(k) + ' (' + c + ') '), sel = el('select'); sel.name = k; sel.append(new Option('leave', ''));
+    g.bikes.filter(b => !b.retired_at).forEach(b => sel.append(new Option(b.label, b.id))); if (rules[k] != null) sel.value = String(rules[k]); l.append(sel); f.append(l);
+  }
   $('unassignedcard').hidden = !g.unassigned_rides.length; $('unassigned').replaceChildren();
   for (const r of g.unassigned_rides.slice(-30).reverse()) {
     const li = el('li'); li.append(el('span', 'ic', '🚲'));
@@ -390,12 +466,13 @@ function draw() {
     li.append(sel); $('unassigned').append(li);
   }
   $('bikes').replaceChildren(...g.bikes.filter(b => !b.retired_at).map(bikeCard));
+  $('storecard').hidden = !(g.loose_sets || []).length; $('store').replaceChildren(...(g.loose_sets || []).map(s => wheelBlock(s, null)));
   $('logcard').hidden = !g.log.length; $('log').replaceChildren();
   for (const x of g.log) $('log').append(logRow(x, true));
   $('recentrides').replaceChildren();
   for (const r of g.recent_rides) {
     const li = el('li'); li.append(el('span', 'ic', '🚲'));
-    li.append(el('div', 'small', new Date(r.started).toLocaleDateString('en-GB') + ', ' + fmt(r.km) + ' km' + (r.bike ? ' on ' + r.bike : '') + (r.title ? ' (' + r.title + ')' : '') + (r.wet ? ', wet' : '')));
+    li.append(el('div', 'small', new Date(r.started).toLocaleDateString('en-GB') + ', ' + fmt(r.km) + ' km' + (r.bike ? ' on ' + r.bike : '') + (r.wheels && r.wheels.length ? ' with ' + r.wheels.join(' and ') : '') + (r.title ? ' (' + r.title + ')' : '') + (r.wet ? ', wet' : '')));
     li.append(button('Delete', () => { if (confirm('Delete this ride? Its wear comes off the parts.')) guard(async () => { await api('DELETE', '/v1/bikes/rides/' + encodeURIComponent(r.id)); await load(); }); }));
     $('recentrides').append(li);
   }
@@ -453,15 +530,15 @@ function answers() {
 async function load() {
   if (!rider()) return;
   g = await api('GET', '/v1/bikes?rider=' + encodeURIComponent(rider()));
+  await guard(garmin, $('gmsg'));  // first: the Garmin rules fill in the by-kind choices
   draw();
-  await guard(garmin, $('gmsg'));
 }
 const R = () => '?rider=' + encodeURIComponent(rider());
 async function garmin() {
-  const s = await api('GET', '/v1/bikes/garmin' + R());
+  const s = await api('GET', '/v1/bikes/garmin' + R()); window.garminRules = s.rules;
   $('garmincard').hidden = false; $('gwarn').textContent = s.warn || (s.error ? 'Last sync failed: ' + s.error : '');
   const lr = s.last_result || {};
-  $('gstate').textContent = !s.key_set ? 'No Garmin key saved yet: rides come only from the CSV import or by hand.'
+  $('gstate').textContent = !s.key_set ? 'No Garmin key for this rider yet: rides come only from the CSV import or by hand.'
     : !s.last_sync ? 'Key saved. The first sync reads your whole Garmin history.'
     : 'Last sync ' + new Date(s.last_sync).toLocaleString('en-GB') + ': ' + (lr.added || 0) + ' new rides, ' + (lr.updated || 0) + ' changed, ' +
       (lr.removed || 0) + ' deleted in Garmin' + (lr.from_csv ? ', ' + lr.from_csv + ' imported rides matched' : '') +
@@ -471,12 +548,26 @@ async function garmin() {
   const f = $('grules'); f.replaceChildren();
   const bikes = g.bikes.filter(b => !b.retired_at);
   for (const t of ['default', ...s.types]) {
-    const l = el('label', null, (t === 'default' ? 'Any other ride' : t.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())) + ' '), sel = el('select');
+    const l = el('label', null, (t === 'default' ? 'Any other ride' : t === 'commute' ? 'Commute (any kind)' : t.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())) + ' '), sel = el('select');
     sel.name = t; sel.append(new Option('ask me', ''));
     for (const b of bikes) sel.append(new Option(b.label, b.id));
     sel.value = s.rules[t] != null ? String(s.rules[t]) : ''; l.append(sel); f.append(l);
   }
 }
+$('alldry').onclick = () => guard(async () => {
+  const keep = $('keepwet').checked, n = g.counts || {}, count = (n.unanswered_wet || 0) - (keep ? (n.suggested_wet || 0) : 0);
+  if (!confirm('Mark ' + count + ' rides dry?' + (keep && n.suggested_wet ? ' The ' + n.suggested_wet + ' the rain gauge says were wet stay to answer.' : ''))) return;
+  const r = await api('POST', '/v1/bikes/rides/bulk', { rider: rider(), action: 'dry', keep_suggested_wet: keep });
+  await load(); $('bulkmsg').textContent = r.changed + ' rides marked dry.'; }, $('bulkmsg'));
+$('allbikes').onclick = () => guard(async () => {
+  if (!confirm('Keep the bike every ride has now (' + ((g.counts || {}).bike_unchecked || 0) + ' rides)?')) return;
+  const r = await api('POST', '/v1/bikes/rides/bulk', { rider: rider(), action: 'bikes_ok' });
+  await load(); $('bulkmsg').textContent = r.changed + ' rides kept on their bike.'; }, $('bulkmsg'));
+$('bykindgo').onclick = () => guard(async () => {
+  const rules = {}; for (const i of $('bykind').elements) if (i.name && i.value) rules[i.name] = Number(i.value);
+  if (!Object.keys(rules).length) throw new Error('Choose a bike for at least one kind of ride');
+  const r = await api('POST', '/v1/bikes/rides/bulk', { rider: rider(), action: 'bike_by_kind', rules });
+  await load(); $('bykindmsg').textContent = r.changed + ' rides given a bike.'; }, $('bykindmsg'));
 async function saveRules(apply) {
   const rules = {}; for (const i of $('grules').elements) if (i.name) rules[i.name] = i.value ? Number(i.value) : null;
   const r = await api('PUT', '/v1/bikes/garmin/rules' + R(), { rules, weight: $('gweight').checked, apply });
@@ -507,7 +598,14 @@ $('rider').onchange = () => { try { localStorage.setItem('wa_bike_rider', rider(
 $('btype').onchange = answers; $('bebike').onchange = answers;
 $('auth').onsubmit = e => { e.preventDefault(); try { sessionStorage.setItem('wa_token', tok.value); } catch (x) {} guard(start); };
 $('addrider').onsubmit = e => { e.preventDefault(); guard(async () => { const r = await api('POST', '/v1/bikes/riders', { name: $('rname').value, weight_kg: $('rkg').value ? Number($('rkg').value) : null });
-  $('rname').value = ''; await start(); $('rider').value = r.id; try { localStorage.setItem('wa_bike_rider', r.id); } catch (x) {} await load(); }, $('rmsg')); };
+  $('rname').value = ''; await start(); $('rider').value = r.id; try { localStorage.setItem('wa_bike_rider', r.id); } catch (x) {} await load();
+  if ($('rkey').value) {  // the rider's Garmin key, checked with Garmin; the rider is kept even if Garmin refuses it
+    const k = $('rkey').value; $('rkey').value = '';
+    try { const g = await api('PUT', '/v1/bikes/garmin/key?rider=' + encodeURIComponent(r.id), { value: k, expires: $('rexp').value || null });
+      $('gmsg').textContent = g.message + '. Syncing now...'; const s = await api('POST', '/v1/bikes/garmin/sync?rider=' + encodeURIComponent(r.id));
+      $('gmsg').textContent = g.message + '. ' + (s.skipped || ('Read ' + s.rides + ' rides: ' + s.added + ' new.'));
+    } catch (x) { $('rmsg').textContent = r.name + ' was added, but the Garmin key was not: ' + x.message; }
+    await load(); } }, $('rmsg')); };
 $('addbikego').onclick = () => guard(async () => {
   if (!rider()) throw new Error('Add yourself as a rider first');
   const cfg = {}; for (const i of $('answers').elements) if (i.name) cfg[i.name] = i.type === 'number' ? Number(i.value || 0) : i.value;

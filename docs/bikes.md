@@ -22,7 +22,7 @@ API gives), each ride's GPS track for rain along the route and saved routes, and
 
 ## Garmin Connect
 - **Your key:** in Garmin Connect on the web, Settings, then Personal API Key; choose how long it lasts (30 days to a
-  year). Paste it into the Garmin Connect card on the Bikes page, with the date it runs out. Garmin checks it before it
+  year). Paste it in with the rider (top of the Bikes page: when adding the rider, or under "This rider's Garmin key"), with the date it runs out. Garmin checks it before it
   is kept (a refused key is not saved); it goes in the keys folder as `garmin_<rider>.txt` and is never shown again.
   Each rider has their own. You can also put the file there yourself.
 - **The sync:** every morning at 06:50, and with Sync now. The first reads your whole history; later ones look back a
@@ -30,7 +30,8 @@ API gives), each ride's GPS track for rain along the route and saved routes, and
   kind, indoor and virtual too) are taken.
 - **Rides you imported from the CSV** are matched (start within five minutes, distance within 2%) and become the
   Garmin ride, keeping the bike and the wet answer you gave.
-- **Which bike:** choose a bike for each kind of Garmin ride (Gravel Cycling, Indoor Cycling, ...) and for any other.
+- **Which bike:** choose a bike for commutes, for each kind of Garmin ride (Gravel Cycling, Indoor Cycling, ...) and
+  for any other. A ride Garmin marks as a commute (its type, or its event type) goes to the Commute bike first.
   Recent rides are still asked about, as before; rides more than four weeks old are not.
 - **Weight:** your latest Garmin weight sets the tyre pressures (switch it off on the card).
 - **The key runs out:** a warning on the card a fortnight before; Garmin also emails a week before. A token that stops
@@ -39,6 +40,26 @@ API gives), each ride's GPS track for rain along the route and saved routes, and
   of a ride and its details (looking for gear, sensors and batteries), whether Garmin's gear can be read, the original
   file's GPS points, devices and developer fields (where tyre pressure sensors write), and weight. It only reads. It is
   part of the live check.
+
+## Wheels
+- **A new wheel:** on the bike, **Add a wheel**: front or rear, its name, its wheelset group (wheels in the same group
+  swap together, e.g. "Winter wheels"), since when, whether to fit it now (the bike's current one goes into storage)
+  and whether it comes with the usual parts for that bike (tyre, tube or sealant, tyre check, rotor, cassette, hub,
+  from the bike's answers). Without them, add its parts one by one with **Add a part** on the wheel.
+- **Moving a part between wheels** (the cassette onto the new wheel): the part's **Move to…** lists every wheel, on a
+  bike or in storage.
+- **Which wheels a ride was on** comes from when each wheel was put on: a ride counts against the wheels on its bike at
+  the time (Recent rides shows them). To put rides on other wheels, move the wheel (or the whole group) with a
+  **from** date: rides from that date until the next move count on it, and every part's wear is worked out again.
+- **Wheels in storage** are listed with their parts, which keep their wear for when they go back on.
+
+## Many rides at once
+- **Rides to confirm** says how many there are, and has **Mark every unanswered ride dry** (leaving, if ticked, the
+  ones the rain gauge says were wet for you to answer) and **Keep every bike as it is**.
+- **Rides without a bike** lists the kinds of ride among them, with how many of each (Garmin's kinds, from the sync or
+  its CSV: "Road Cycling" in the CSV is the same kind as the sync's Road Biking). Choose a bike for each and **Give
+  them these bikes**: every ride of that kind without a bike gets it, taken as confirmed, and the choice is kept as the
+  rule for new Garmin rides.
 
 ## What it shows
 - **Due**: parts at 90% of their life or close to its end (within 300 km, 10 hours or a fortnight, for lives well over

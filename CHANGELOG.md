@@ -2,6 +2,24 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.43.0] - 2026-11-08
+
+### Changed
+- **Bikes:** a rider's Garmin key, sync and bike rules are in the rider box at the top of the page (no separate Garmin
+  Connect card), and a new rider can be given their Garmin key as they are added.
+
+### Added
+- **Commute** as a kind of Garmin ride for choosing its bike: a ride Garmin marks as a commute goes to that bike first,
+  whatever kind of ride it is. The Garmin probe counts rides by event type and commutes.
+- **Many rides at once:** Rides to confirm has "Mark every unanswered ride dry" (optionally leaving the ones the rain
+  gauge says were wet) and "Keep every bike as it is", with how many there are. Rides without a bike are grouped by
+  kind of ride (Garmin's names from the sync and its CSV taken as the same kinds): a bike for each kind gives them all
+  theirs, and becomes the rule for new rides. `POST /v1/bikes/rides/bulk`.
+- **Wheels:** Add a wheel on a bike (front or rear, wheelset group, fitted now or kept in storage, with the bike's
+  usual wheel parts or none); Add a part on a wheel; a wheel part's Move to… onto any other wheel; a Wheels in storage
+  card; moves can be dated in the past (rides since then count on the wheels moved); Recent rides shows each ride's
+  wheels.
+
 ## [0.42.0] - 2026-11-08
 
 ### Added
