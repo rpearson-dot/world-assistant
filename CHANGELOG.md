@@ -2,6 +2,12 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Bikes:** a rider's Garmin key, sync and bike rules are in the rider box at the top of the page (no separate Garmin
+  Connect card), and a new rider can be given their Garmin key as they are added.
+
 ## [0.42.0] - 2026-11-08
 
 ### Added
