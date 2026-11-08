@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.43.0] - 2026-11-08
 
 ### Changed
 - **Bikes:** a rider's Garmin key, sync and bike rules are in the rider box at the top of the page (no separate Garmin
