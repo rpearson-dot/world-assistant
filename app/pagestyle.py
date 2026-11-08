@@ -4,39 +4,30 @@ from __future__ import annotations
 
 from starlette.requests import HTTPConnection
 
+from app import themes
 from app.localnet import PAGE_SNIPPET, page_without_token
 
-BASE_CSS = """
-  :root {
-    color-scheme: light dark;
-    --bg: #f5f6f8; --card: #ffffff; --ink: #1c2330; --dim: #667085; --line: #e3e6ec;
-    --accent: #1f6feb; --good: #1a7f4b; --good-bg: #e6f4ec; --warn: #b54708; --warn-bg: #fdf0e1;
-    --bad: #b42318; --bad-bg: #fde8e6; --chip: #eef1f6;
-  }
-  @media (prefers-color-scheme: dark) { :root {
-    --bg: #12161d; --card: #1b212b; --ink: #e8ecf3; --dim: #98a2b3; --line: #2b3340;
-    --accent: #6ea8fe; --good: #5fd39a; --good-bg: #17352a; --warn: #f4b26a; --warn-bg: #3a2a14;
-    --bad: #ff8b82; --bad-bg: #3d1c19; --chip: #252d3a; } }
+BASE_CSS = themes.css() + """
   [hidden] { display: none !important; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font); }
   main { max-width: 960px; margin: 0 auto; padding: 16px; }
-  h1 { font-size: 22px; margin: 4px 0 12px; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 0 0 10px; font-weight: 600; }
+  h1, h2, h3 { font-family: var(--font-head); } h1 { font-size: 22px; margin: 4px 0 12px; font-weight: var(--head-weight); }
+  h2 { font-size: 13px; text-transform: var(--h2-case); letter-spacing: var(--h2-track); color: var(--dim); margin: 0 0 10px; font-weight: 600; }
   .bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
   input, select, button, textarea { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line);
-    border-radius: 8px; padding: 8px 10px; }
+    border-radius: var(--radius-sm); padding: 8px 10px; }
   input[type=password] { flex: 1 1 220px; min-width: 0; }
-  button { cursor: pointer; } button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button { cursor: pointer; } button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
   button.link { border: 0; background: none; color: var(--accent); padding: 0 4px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
   .hero { display: flex; gap: 14px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
   .hero .say { font-size: 20px; font-weight: 650; line-height: 1.3; flex: 1 1 320px; }
-  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--chip); color: var(--dim); }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: var(--pill); font-size: 13px; font-weight: 600; background: var(--chip); color: var(--dim); }
   .pill.on { background: var(--good-bg); color: var(--good); }
   .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
   .next { display: flex; flex-wrap: wrap; gap: 10px; }
-  .stop { flex: 1 1 130px; background: var(--chip); border-radius: 12px; padding: 10px 12px; }
+  .stop { flex: 1 1 130px; background: var(--chip); border-radius: var(--radius); padding: 10px 12px; }
   .stop .name { font-size: 13px; color: var(--dim); } .stop .mins { font-size: 26px; font-weight: 700; line-height: 1.15; }
   .stop .more { font-size: 13px; color: var(--dim); }
   table { width: 100%; border-collapse: collapse; } th { text-align: left; font-size: 12px; color: var(--dim); font-weight: 600; }
@@ -51,7 +42,7 @@ BASE_CSS = """
   .form { display: grid; gap: 12px; } .form label { display: grid; gap: 4px; font-weight: 600; font-size: 14px; }
   .form label span.hint { font-weight: 400; color: var(--dim); font-size: 13px; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .row > * { flex: 0 1 auto; }
-  .chips { display: flex; gap: 6px; flex-wrap: wrap; } .chip { background: var(--chip); border-radius: 999px; padding: 2px 6px 2px 12px; font-size: 14px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; } .chip { background: var(--chip); border-radius: var(--pill); padding: 2px 6px 2px 12px; font-size: 14px; }
   textarea { width: 100%; font: 13px/1.4 ui-monospace, monospace; min-height: 160px; }
   details > summary { cursor: pointer; font-weight: 600; } .hidden { display: none; }
   /* app shell: a top bar with every page on wide screens; a bottom tab bar and a More sheet on phones */
@@ -59,21 +50,21 @@ BASE_CSS = """
     padding: calc(8px + env(safe-area-inset-top)) 16px 8px; background: color-mix(in srgb, var(--bg) 88%, transparent);
     backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
   .brand { display: flex; align-items: center; gap: 8px; color: var(--ink); text-decoration: none; font-weight: 700; white-space: nowrap; }
-  .brand img { border-radius: 7px; }
+  .brand img { border-radius: var(--radius-sm); }
   nav.tabs { display: flex; gap: 2px; flex-wrap: wrap; flex: 1; }
   nav.tabs a, nav.tabs button { display: flex; align-items: center; gap: 6px; color: var(--dim); text-decoration: none; padding: 5px 10px;
-    border-radius: 999px; font-size: 14px; font-weight: 600; border: 0; background: none; }
+    border-radius: var(--pill); font-size: 14px; font-weight: 600; border: 0; background: none; }
   nav.tabs svg { width: 18px; height: 18px; }
   nav.tabs a:hover { background: var(--chip); } nav.tabs a.here { background: var(--chip); color: var(--ink); }
   nav.tabs .more { display: none; }
   nav.subtabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 12px; }
-  nav.subtabs a { padding: 6px 14px; border-radius: 999px; color: var(--dim); text-decoration: none; background: var(--card);
+  nav.subtabs a { padding: 6px 14px; border-radius: var(--pill); color: var(--dim); text-decoration: none; background: var(--card);
     border: 1px solid var(--chip); font-size: 14px; }
   nav.subtabs a.here { background: var(--chip); color: var(--ink); font-weight: 600; }
-  .sheet { position: fixed; inset: 0; z-index: 30; background: rgb(0 0 0 / .35); display: flex; align-items: flex-end; }
-  .sheet-grid { width: 100%; background: var(--card); border-radius: 18px 18px 0 0; padding: 14px 12px calc(84px + env(safe-area-inset-bottom));
+  .sheet { position: fixed; inset: 0; z-index: 30; background: var(--overlay); display: flex; align-items: flex-end; }
+  .sheet-grid { width: 100%; background: var(--card); border-radius: var(--radius) var(--radius) 0 0; padding: 14px 12px calc(84px + env(safe-area-inset-bottom));
     display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .sheet-grid a { display: grid; justify-items: center; gap: 4px; padding: 12px 4px; border-radius: 12px; color: var(--ink);
+  .sheet-grid a { display: grid; justify-items: center; gap: 4px; padding: 12px 4px; border-radius: var(--radius); color: var(--ink);
     text-decoration: none; font-size: 13px; font-weight: 600; text-align: center; }
   .sheet-grid a.here, .sheet-grid a:active { background: var(--chip); }
   @media (max-width: 760px) {
@@ -89,7 +80,7 @@ BASE_CSS = """
     nav.tabs .more { display: flex; align-items: center; }
     nav.tabs a.here { background: none; color: var(--accent); }
     h1 { font-size: 20px; }
-    .card { padding: 14px; border-radius: 12px; }
+    .card { padding: 14px; }
     input, select, button, textarea { font-size: 16px; }  /* no zoom-on-focus on iPhone */
     th, td { padding: 6px 4px; }
   }
@@ -105,7 +96,7 @@ BASE_CSS = """
   .cmp p { margin: 3px 0; } .cmp .big { font-weight: 650; }
   form.row { margin: 0 0 8px; }
   td button { padding: 3px 10px; font-size: 13px; }
-  pre { background: var(--chip); padding: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; border-radius: 8px; }
+  pre { background: var(--chip); padding: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; border-radius: var(--radius-sm); }
 """
 
 # Every page, in the order the navigation shows them. "main" ones are on the phone's bottom tab bar; the rest
@@ -206,11 +197,11 @@ NAV = (
 )
 
 HEAD = (
-    '<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#14231a">'
+    '<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="' + themes.BRAND + '">'
     '<link rel="icon" href="/static/app/icon-192.png"><link rel="apple-touch-icon" href="/static/app/apple-touch-icon.png">'
     '<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">'
     '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
-    '<meta name="apple-mobile-web-app-title" content="World Assistant">'
+    '<meta name="apple-mobile-web-app-title" content="World Assistant">' + themes.HEAD_SCRIPT
 )
 
 

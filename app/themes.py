@@ -1,0 +1,148 @@
+"""World Assistant's look: every colour and the design language (type, corners, headings), as named themes.
+
+Pages never write a colour themselves: they use the tokens here (`var(--accent)`, `var(--series-3)`...), and scripts
+that draw (the map, the graph, charts) read them with `getComputedStyle`. A test keeps it that way.
+
+Each theme has a light and a dark set of colours. Which theme and which mode (automatic, light or dark) is chosen on
+each device (Settings, Look) and kept in that browser; the head script puts it on the page before it is drawn, as
+`data-theme`, `data-mode` and `data-dark` on <html>.
+
+To add a theme: add it to THEMES with what differs from Standard (anything left out is Standard's).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+BRAND = "#14231a"  # the app icon's green: the phone's status bar and the installed app's splash
+
+# --- Standard: the colours World Assistant has always had ----------------------------------------------------------
+_LIGHT = {
+    "bg": "#f5f6f8", "card": "#ffffff", "ink": "#1c2330", "dim": "#667085", "line": "#e3e6ec", "chip": "#eef1f6",
+    "accent": "#1f6feb", "on-accent": "#ffffff",
+    "good": "#187847", "good-bg": "#e6f4ec", "warn": "#b54708", "warn-bg": "#fdf0e1",
+    "bad": "#b42318", "bad-bg": "#fde8e6", "severe": "#7a0c0c",
+    "shadow": "rgb(0 0 0 / .14)", "overlay": "rgb(0 0 0 / .35)", "edge": "rgb(128 128 128 / .35)", "knob": "#ffffff",
+    # graded levels (pollen today): 1 is good-bg; 2 to 4 rising
+    "lv2": "#f6e7b4", "lv2-ink": "#4a3b00", "lv3": "#f4c28f", "lv3-ink": "#4a2300", "lv4": "#eba0a0", "lv4-ink": "#4a0000",
+    # twelve colours for things that are told apart by colour alone (map layers, graph nodes, chart lines)
+    "series-1": "#1f6feb", "series-2": "#9333ea", "series-3": "#0891b2", "series-4": "#187847", "series-5": "#d9480f",
+    "series-6": "#ca8a04", "series-7": "#c11574", "series-8": "#0e9384", "series-9": "#4f46e5", "series-10": "#b54708",
+    "series-11": "#6b7280", "series-12": "#2f9e44",
+}  # fmt: skip
+_DARK = {
+    "bg": "#12161d", "card": "#1b212b", "ink": "#e8ecf3", "dim": "#98a2b3", "line": "#2b3340", "chip": "#252d3a",
+    "accent": "#6ea8fe", "on-accent": "#0b1220",
+    "good": "#5fd39a", "good-bg": "#17352a", "warn": "#f4b26a", "warn-bg": "#3a2a14",
+    "bad": "#ff8b82", "bad-bg": "#3d1c19", "severe": "#ff5c5c",
+    "shadow": "rgb(0 0 0 / .45)", "overlay": "rgb(0 0 0 / .55)", "edge": "rgb(160 160 160 / .3)", "knob": "#ffffff",
+    "lv2": "#4a3f12", "lv2-ink": "#f6e7b4", "lv3": "#4f3216", "lv3-ink": "#f4c28f", "lv4": "#4f1f1f", "lv4-ink": "#f3b4b4",
+    "series-1": "#6ea8fe", "series-2": "#c084fc", "series-3": "#22d3ee", "series-4": "#5fd39a", "series-5": "#ff8f5a",
+    "series-6": "#facc15", "series-7": "#f472b6", "series-8": "#2dd4bf", "series-9": "#818cf8", "series-10": "#f4b26a",
+    "series-11": "#9ca3af", "series-12": "#86efac",
+}  # fmt: skip
+_DESIGN = {
+    "font": 'system-ui, -apple-system, "Segoe UI", sans-serif',
+    "font-head": "inherit",
+    "radius": "14px",  # cards
+    "radius-sm": "8px",  # inputs, buttons, small boxes
+    "pill": "999px",  # chips, pills, tabs
+    "h2-case": "uppercase",  # card headings
+    "h2-track": ".06em",
+    "head-weight": "650",
+}
+
+THEMES: dict[str, dict[str, Any]] = {
+    "standard": {"name": "Standard", "about": "Blue on grey: World Assistant's own look",
+                 "light": {}, "dark": {}, "design": {}},
+    "forest": {"name": "Forest", "about": "The app icon's greens",
+               "light": {"bg": "#f3f5f1", "card": "#ffffff", "ink": "#14231a", "dim": "#5d6b60", "line": "#dde4dc",
+                         "chip": "#e8efe6", "accent": "#2e7d4f", "good": "#1f7a45", "series-1": "#2e7d4f",
+                         "series-4": "#1f6feb"},
+               "dark": {"bg": "#0f1a13", "card": "#16241b", "ink": "#e6efe7", "dim": "#9aab9e", "line": "#26392c",
+                        "chip": "#1e3025", "accent": "#6fcf97", "on-accent": "#0f1a13", "good": "#7ee0a6",
+                        "good-bg": "#183a26", "series-1": "#6fcf97", "series-4": "#6ea8fe"},
+               "design": {"radius": "16px"}},
+    "contrast": {"name": "High contrast", "about": "Black and white with strong colours, for bright light or tired eyes",
+                 "light": {"bg": "#ffffff", "card": "#ffffff", "ink": "#000000", "dim": "#333333", "line": "#6b6b6b",
+                           "chip": "#ececec", "accent": "#0040c0", "good": "#006b2e", "good-bg": "#d9f2e2",
+                           "warn": "#8a3c00", "warn-bg": "#ffe9cc", "bad": "#a10000", "bad-bg": "#ffdcdc",
+                           "edge": "rgb(0 0 0 / .5)"},
+                 "dark": {"bg": "#000000", "card": "#0a0a0a", "ink": "#ffffff", "dim": "#d0d0d0", "line": "#9a9a9a",
+                          "chip": "#262626", "accent": "#8fb8ff", "on-accent": "#000000", "good": "#7ee2a8",
+                          "good-bg": "#0b3320", "warn": "#ffc078", "warn-bg": "#3d2600", "bad": "#ff9c94",
+                          "bad-bg": "#470c0c", "edge": "rgb(255 255 255 / .45)"},
+                 "design": {"head-weight": "750"}},
+    "paper": {"name": "Paper", "about": "Warm paper, serif headings and squarer corners",
+              "light": {"bg": "#f7f3ea", "card": "#fffdf8", "ink": "#2b2620", "dim": "#706558", "line": "#e6dccb",
+                        "chip": "#f0e8d8", "accent": "#a3471d", "good": "#456b22", "good-bg": "#eaf1dc",
+                        "warn": "#8f5106", "warn-bg": "#f8ead2", "bad": "#a12a1d", "bad-bg": "#f7e0da"},
+              "dark": {"bg": "#1c1915", "card": "#25211b", "ink": "#efe7da", "dim": "#b3a796", "line": "#3a332a",
+                       "chip": "#2f2a22", "accent": "#e2895f", "on-accent": "#1c1915", "good": "#9bc76b",
+                       "good-bg": "#26301a", "warn": "#e8a95a", "warn-bg": "#382813", "bad": "#f08c7c",
+                       "bad-bg": "#3d1e19"},
+              "design": {"font-head": '"Iowan Old Style", Palatino, Georgia, serif', "radius": "6px", "radius-sm": "4px",
+                         "pill": "6px", "h2-case": "none", "h2-track": "0", "head-weight": "600"}},
+}  # fmt: skip
+DEFAULT = "standard"
+MODES = {"auto": "Automatic (as the device)", "light": "Light", "dark": "Dark"}
+
+# Colours that are not ours to change: published scales and other people's marks. The same in every theme.
+FIXED = {
+    # the pollen allergy-risk scale, none to very high, as the pollen services draw it
+    "pollen-0": "#ffffff", "pollen-1": "#8cc700", "pollen-2": "#f5e400", "pollen-3": "#f7a600", "pollen-4": "#e63a10",
+    "w3w": "#e11f26",  # what3words' red, for its ///words
+}  # fmt: skip
+# The pollen map is a picture of its own (an SVG image file, not part of a page): drawn the same in every theme
+IMAGE = {"sea": "#a8c8e0", "land": "#d9d9d9", "frame": "#999999", "paper": "#ffffff", "ink": "#222222", "small": "#555555"}
+
+
+def tokens(theme: str, mode: str) -> dict[str, str]:
+    """A theme's full set of colours for a mode, Standard's filling in what it leaves out."""
+    t = THEMES.get(theme, THEMES[DEFAULT])
+    base = _DARK if mode == "dark" else _LIGHT
+    return {**base, **t[mode]}
+
+
+def design(theme: str) -> dict[str, str]:
+    return {**_DESIGN, **THEMES.get(theme, THEMES[DEFAULT])["design"]}
+
+
+def _block(selector: str, values: dict[str, str], scheme: str | None = None) -> str:
+    body = " ".join(f"--{k}: {v};" for k, v in values.items())
+    return f"  {selector} {{ {('color-scheme: ' + scheme + '; ') if scheme else ''}{body} }}\n"
+
+
+def css() -> str:
+    """Every theme's tokens. The page's <html> says which theme (data-theme) and whether it is dark (data-dark);
+    without the head script (no JavaScript), Standard follows the device."""
+    out = _block(":root", {**FIXED, **_DESIGN, **_LIGHT}, "light")
+    out += "  @media (prefers-color-scheme: dark) {\n" + _block(":root:not([data-mode])", _DARK, "dark") + "  }\n"
+    out += _block(":root[data-dark]", _DARK, "dark")
+    for tid, t in THEMES.items():
+        if tid == DEFAULT:
+            continue
+        sel = f':root[data-theme="{tid}"]'
+        out += _block(sel, {**_DESIGN, **t["design"], **tokens(tid, "light")}, "light")
+        out += _block(sel + "[data-dark]", tokens(tid, "dark"), "dark")
+    return out
+
+
+# Before the page is drawn: the theme and mode this device chose, and whether that comes out dark (following the
+# device when automatic). window.waTheme(theme, mode) changes them (Settings, Look).
+HEAD_SCRIPT = (
+    "<script>(()=>{const r=document.documentElement,q=matchMedia('(prefers-color-scheme: dark)');"
+    "let t='" + DEFAULT + "',m='auto';try{t=localStorage.getItem('wa_theme')||t;m=localStorage.getItem('wa_mode')||m}catch(e){}"
+    "const set=()=>{r.dataset.theme=t;r.dataset.mode=m;r.toggleAttribute('data-dark',m==='dark'||(m==='auto'&&q.matches));"
+    "dispatchEvent(new Event('wa-theme'))};"
+    "window.waTheme=(a,b)=>{t=a||t;m=b||m;try{localStorage.setItem('wa_theme',t);localStorage.setItem('wa_mode',m)}catch(e){}set()};"
+    "q.addEventListener('change',set);set()})()</script>"
+)
+
+
+def catalogue() -> list[dict[str, Any]]:
+    """The themes, with a few of their colours to show (Settings, Look)."""
+    keys = ("bg", "card", "accent", "good", "warn", "bad")
+    return [{"id": tid, "name": t["name"], "about": t["about"],
+             "light": {k: tokens(tid, "light")[k] for k in keys}, "dark": {k: tokens(tid, "dark")[k] for k in keys}}
+            for tid, t in THEMES.items()]  # fmt: skip

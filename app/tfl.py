@@ -249,8 +249,8 @@ PAGE = """<!doctype html>
 <style>
 /*BASE_CSS*/
   .closure { margin: 6px 0 8px; padding: 8px 10px; border-radius: 10px; font-size: 14px; }
-  .closure.lift { background: var(--bad-bg, #fef3f2); color: var(--bad, #b42318); }
-  .closure.other { background: var(--chip, #f2f4f7); color: var(--dim, #475467); }
+  .closure.lift { background: var(--bad-bg); color: var(--bad); }
+  .closure.other { background: var(--chip); color: var(--dim); }
 </style></head><body><main>
 <!--NAV-->
 <h1>Trains</h1>

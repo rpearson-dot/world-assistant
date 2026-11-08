@@ -21,13 +21,13 @@ PAGE = """<!doctype html>
 .tot .card { flex: 1 1 200px; margin: 0; }
 .why { font-size: 12px; padding: 1px 7px; border-radius: 9px; background: var(--chip); white-space: nowrap; }
 .why.usual { background: var(--good-bg); color: var(--good); }
-.why.missing { background: #fde8e8; color: #9b1c1c; }
+.why.missing { background: var(--bad-bg); color: var(--bad); }
 .cands { margin: 6px 0 0; padding: 0; list-style: none; }
 .cands li { margin: 3px 0; }
 td.p { white-space: nowrap; text-align: right; }
 .prod { font-size: 13px; }
 .slots li { margin: 2px 0; }
-.shot img { max-width: 100%; border: 1px solid var(--line, #ddd); border-radius: 8px; display: block; margin: 6px 0; }
+.shot img { max-width: 100%; border: 1px solid var(--line); border-radius: var(--radius-sm); display: block; margin: 6px 0; }
 .shot { margin: 10px 0 0; }
 .warn { font-weight: 600; }
 .tot .big { font-size: 24px; font-weight: 650; margin: 2px 0 6px; }

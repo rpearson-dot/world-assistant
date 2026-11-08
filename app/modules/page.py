@@ -15,7 +15,7 @@ PAGE = """<!doctype html>
   .mod:first-of-type { border-top: 0; }
   .mod h3 { margin: 0; font-size: 15px; } .mod p { margin: 2px 0 0; font-size: 13px; color: var(--dim); }
   .mod .why { color: var(--ink); } .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); }
-  .tag.ok { color: #1a7f4b; border-color: #1a7f4b; } .tag.bad { color: #d92d20; border-color: #d92d20; } .tag.warn { color: #b54708; border-color: #b54708; }
+  .tag.ok { color: var(--good); border-color: var(--good); } .tag.bad { color: var(--bad); border-color: var(--bad); } .tag.warn { color: var(--warn); border-color: var(--warn); }
   .actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
   .switch { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
   .row2 { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }

@@ -26,7 +26,7 @@ PAGE = """<!doctype html>
 form.save, form.pc { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
 form.pc { margin-top: 10px; }
 form.pc input { width: 14em; }
-.w3w { margin: 0 0 4px; } .w3w a { color: #e11f26; font-weight: 600; text-decoration: none; }
+.w3w { margin: 0 0 4px; } .w3w a { color: var(--w3w); font-weight: 600; text-decoration: none; }
 </style></head><body><main>
 <!--NAV-->
 <h1>Here</h1>

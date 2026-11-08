@@ -11,14 +11,15 @@ from html import escape
 from typing import Any
 
 from app.pollen_grid import km, on_land
+from app.themes import FIXED, IMAGE
 
 LAT0, LAT1, LON0, LON1 = 49.8, 59.0, -8.3, 2.0
 CELL = 0.1  # degrees: the size of a patch of colour
 PX_PER_DEG = 78  # vertical; horizontal is scaled by cos(latitude) so shapes look right
 COS = math.cos(math.radians(54.5))
-SEA, LAND_UNKNOWN = "#a8c8e0", "#d9d9d9"
-COLOURS = {"none": "#ffffff", "low": "#8cc700", "moderate": "#f5e400", "high": "#f7a600", "very high": "#e63a10",
-           "unknown": LAND_UNKNOWN}  # fmt: skip
+SEA, LAND_UNKNOWN = IMAGE["sea"], IMAGE["land"]  # a picture of its own: the same in every theme
+COLOURS = {"none": FIXED["pollen-0"], "low": FIXED["pollen-1"], "moderate": FIXED["pollen-2"], "high": FIXED["pollen-3"],
+           "very high": FIXED["pollen-4"], "unknown": LAND_UNKNOWN}  # fmt: skip
 LEGEND = [("None", "none"), ("Low", "low"), ("Medium", "moderate"), ("High", "high"), ("Very high", "very high"),
           ("No forecast", "unknown")]  # fmt: skip
 CREDIT = "Allergy risk today. Austrian Pollen Information Service, www.polleninformation.at"
@@ -90,13 +91,13 @@ def render_svg(points: list[dict[str, Any]]) -> str:
             lat -= CELL
         for p in points:
             x, y = _xy(p["lat"], p["lon"])
-            out.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.2" fill="none" stroke="#222" stroke-width="1"/>')
+            out.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.2" fill="none" stroke="{IMAGE["ink"]}" stroke-width="1"/>')
     lx = w - 104
-    out.append(f'<rect x="{lx - 6}" y="6" width="100" height="{18 * len(LEGEND) + 8}" fill="#fff" stroke="#999"/>')
+    out.append(f'<rect x="{lx - 6}" y="6" width="100" height="{18 * len(LEGEND) + 8}" fill="{IMAGE["paper"]}" stroke="{IMAGE["frame"]}"/>')
     for i, (name, key) in enumerate(LEGEND):
         y = 14 + i * 18
-        out.append(f'<rect x="{lx}" y="{y}" width="14" height="12" fill="{COLOURS[key]}" stroke="#999"/>')
-        out.append(f'<text x="{lx + 20}" y="{y + 10}" font-family="sans-serif" font-size="11" fill="#222">{escape(name)}</text>')
-    out.append(f'<text x="6" y="{h + 15}" font-family="sans-serif" font-size="10" fill="#555">{escape(CREDIT)}</text>')
+        out.append(f'<rect x="{lx}" y="{y}" width="14" height="12" fill="{COLOURS[key]}" stroke="{IMAGE["frame"]}"/>')
+        out.append(f'<text x="{lx + 20}" y="{y + 10}" font-family="sans-serif" font-size="11" fill="{IMAGE["ink"]}">{escape(name)}</text>')
+    out.append(f'<text x="6" y="{h + 15}" font-family="sans-serif" font-size="10" fill="{IMAGE["small"]}">{escape(CREDIT)}</text>')
     out.append("</svg>")
     return "".join(out)

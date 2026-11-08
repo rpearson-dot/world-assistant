@@ -96,14 +96,16 @@ async function api(path, opts) {
   if (!r.ok) { const err = new Error((d && d.detail) || r.status); err.status = r.status; throw err; }
   return d;
 }
-const COLORS = { Place: '#1a7f4b', Trip: '#1f6feb', Corridor: '#7c3aed', RoadEvent: '#d92d20', Station: '#dc6803', Location: '#0e9384',
-  Vehicle: '#667085', BusTracker: '#4f46e5', BusStop: '#ca8a04', FloodWarning: '#0891b2',
-  Area: '#b54708', Disruption: '#c11574', LocalEvent: '#2e90fa', Venue: '#1570ef', RailStation: '#0019a8', Entrance: '#6b7280', Line: '#e32017', StationClosure: '#b42318' , PowerCut: '#f04438', StreetWork: '#f79009', Substation: '#6941c6', ChargeSite: '#0e9f6e' };
+// each kind of node's colour: a token of the theme (a colour chosen in View settings wins)
+const COLORS = { Place: 'series-4', Trip: 'series-1', Corridor: 'series-2', RoadEvent: 'bad', Station: 'series-5', Location: 'series-8',
+  Vehicle: 'series-11', BusTracker: 'series-9', BusStop: 'series-6', FloodWarning: 'series-3',
+  Area: 'series-10', Disruption: 'series-7', LocalEvent: 'series-12', Venue: 'series-1', RailStation: 'series-9', Entrance: 'dim', Line: 'bad', StationClosure: 'bad', PowerCut: 'severe', StreetWork: 'warn', Substation: 'series-2', ChargeSite: 'good' };
+const shade = n => getComputedStyle(document.documentElement).getPropertyValue('--' + n).trim();
 const DEFAULT_VIEW = { hiddenLabels: [], hiddenTypes: [], colors: {}, size: 'fixed', names: 'zoom', edgeNames: true, scale: 1, spread: 1 };
 let V = Object.assign({}, DEFAULT_VIEW);
 try { Object.assign(V, JSON.parse(localStorage.getItem('wa_graph_view') || '{}')); } catch (e) {}
 function saveView() { try { localStorage.setItem('wa_graph_view', JSON.stringify(V)); } catch (e) {} }
-const color = l => V.colors[l] || COLORS[l] || '#98a2b3';
+const color = l => V.colors[l] || shade(COLORS[l] || 'dim');
 const shown = n => !V.hiddenLabels.includes(n.label);
 const linkShown = e => !V.hiddenTypes.includes(e.type);
 
@@ -162,14 +164,14 @@ function loop() {
 function toScreen(x, y) { return [(x * view.k + view.x) * dpr + cv.width / 2, (y * view.k + view.y) * dpr + cv.height / 2]; }
 function toWorld(px, py) { return [((px * dpr - cv.width / 2) / dpr - view.x) / view.k, ((py * dpr - cv.height / 2) / dpr - view.y) / view.k]; }
 function draw() {
-  const css = getComputedStyle(document.body), ink = css.getPropertyValue('--ink').trim() || '#1c2330', dim = css.getPropertyValue('--dim').trim() || '#667085';
+  const ink = shade('ink'), dim = shade('dim'), edge = shade('edge');
   ctx.clearRect(0, 0, cv.width, cv.height);
   ctx.lineWidth = 1.2 * dpr; ctx.font = (11 * dpr) + 'px system-ui, sans-serif';
   for (const e of edges.values()) {
     const a = nodes.get(e.from), b = nodes.get(e.to); if (!a || !b || !shown(a) || !shown(b) || !linkShown(e)) continue;
     const [x1, y1] = toScreen(a.x, a.y), [x2, y2] = toScreen(b.x, b.y);
     const hot = sel && (sel.key === a.key || sel.key === b.key);
-    ctx.strokeStyle = hot ? dim : 'rgba(128,128,128,.35)'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.strokeStyle = hot ? dim : edge; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     if (V.edgeNames && (view.k > 0.9 || hot)) { ctx.fillStyle = dim; ctx.textAlign = 'center'; ctx.fillText(e.type, (x1 + x2) / 2, (y1 + y2) / 2 - 3 * dpr); }
   }
   for (const n of nodes.values()) {
@@ -235,7 +237,7 @@ function select(n) {
   const h = document.createElement('h2'); h.textContent = 'Details'; d.append(h);
   if (!n) { const p = document.createElement('p'); p.className = 'dim'; p.textContent = 'Tap a node to see what it is.'; d.append(p); return; }
   const t = document.createElement('div'); t.innerHTML = '<span class="badge"></span> <b></b>';
-  t.querySelector('.badge').textContent = n.label; t.querySelector('.badge').style.background = color(n.label); t.querySelector('.badge').style.color = '#fff';
+  t.querySelector('.badge').textContent = n.label; t.querySelector('.badge').style.background = color(n.label); t.querySelector('.badge').style.color = shade('on-accent');
   t.querySelector('b').textContent = n.name; d.append(t);
   const tbl = document.createElement('table');
   for (const [k, v] of Object.entries(n.props || {})) {
@@ -294,6 +296,7 @@ $('vNames').onchange = () => { V.names = $('vNames').value; saveView(); draw(); 
 $('vEdgeNames').onchange = () => { V.edgeNames = $('vEdgeNames').checked; saveView(); draw(); };
 $('vScale').oninput = () => { V.scale = +$('vScale').value; saveView(); draw(); };
 $('vSpread').oninput = () => { V.spread = +$('vSpread').value; saveView(); alpha = 0.6; loop(); };
+addEventListener('wa-theme', () => { if (typeof cv !== 'undefined' && cv) { legend(); draw(); } });
 $('vReset').onclick = () => { V = Object.assign({}, DEFAULT_VIEW, { hiddenLabels: [], hiddenTypes: [], colors: {} }); saveView(); buildView(knownLabels); legend(); alpha = 0.6; loop(); };
 let knownLabels = Object.keys(COLORS);
 

@@ -135,8 +135,8 @@ PAGE = """<!doctype html>
 <title>World Assistant pollen</title>
 <style>
 /*BASE_CSS*/
-  .lv0 { background: var(--chip); } .lv1 { background: var(--good-bg); } .lv2 { background: #f6e7b4; color: #4a3b00; }
-  .lv3 { background: #f4c28f; color: #4a2300; } .lv4 { background: #eba0a0; color: #4a0000; }
+  .lv0 { background: var(--chip); } .lv1 { background: var(--good-bg); } .lv2 { background: var(--lv2); color: var(--lv2-ink); }
+  .lv3 { background: var(--lv3); color: var(--lv3-ink); } .lv4 { background: var(--lv4); color: var(--lv4-ink); }
   .days { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .days div { border-radius: 8px; padding: 8px; text-align: center; font-size: 14px; }
   .days small { display: block; opacity: .75; }
@@ -194,7 +194,7 @@ function row(title, dates, levels, labels, extra) {
   c.append(g); return c;
 }
 
-const COLORS = ['#1f6feb', '#d9480f', '#2f9e44', '#9c36b5', '#e8a200', '#0c8599', '#c2255c', '#6b7280'];
+const COLORS = [1, 5, 12, 2, 6, 3, 7, 11].map(n => 'var(--series-' + n + ')');  // the theme's
 const NS = 'http:' + '//www.w3.org/2000/svg';  // an XML namespace name, not a request
 function sv(tag, attrs, text) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; return e; }
 function chart(box, days, lines, ymax) {
