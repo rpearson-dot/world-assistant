@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.39.0] - 2026-11-08
 
 ### Added
 - **Bike garage** (`/bikes`, `docs/bikes.md`), stage 1: riders (anyone can add themselves), bikes of every type (road,
