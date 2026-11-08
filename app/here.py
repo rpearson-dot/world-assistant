@@ -139,6 +139,24 @@ def _blank(part: str, d: dict[str, Any]) -> bool:
     return part in ("stations", "roads") and not (d.get("stations") or d.get("disruptions"))
 
 
+AT_PLACE_KM = 0.15  # within this of a saved place, Here is "at" it
+
+
+def saved_place(places: list[dict[str, Any]], lat: float, lon: float) -> dict[str, Any] | None:
+    """The nearest saved place within AT_PLACE_KM of the point, if any."""
+    from app.integrations.fuelfinder.queries import haversine_km
+
+    best = None
+    for p in places:
+        try:
+            km = haversine_km((lat, lon), (float(p["lat"]), float(p["lon"])))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if km <= AT_PLACE_KM and (best is None or km < best["km"]):
+            best = {"id": p.get("id"), "name": p.get("name") or p.get("id"), "kind": p.get("kind"), "km": round(km, 3)}
+    return best
+
+
 # In-process calls ignore httpx's timeout, so each part has its own deadline: one slow outside source must not hold up
 # the rest (or the page). Kept well inside the 30 seconds callers such as the smoke check wait.
 AREA_S = 5.0
@@ -159,6 +177,11 @@ async def gather(request: Request, lat: float, lon: float) -> dict[str, Any]:
         except (httpx.HTTPError, ValueError, TimeoutError):
             pass
         postcode = (out["area"] or {}).get("postcode") or ""
+        try:  # one of your saved places? Then Here says so (everything is still asked for the point)
+            places = (await asyncio.wait_for(c.get("/v1/places"), AREA_S)).json()
+            out["place"] = saved_place(places if isinstance(places, list) else [], lat, lon)
+        except (httpx.HTTPError, ValueError, TimeoutError):
+            out["place"] = None
 
         async def one(part: str, title: str, path: str, extra: dict[str, Any]) -> dict[str, Any]:
             q = {"lat": lat, "lon": lon, **{k: (postcode if v == "{pc}" else v) for k, v in extra.items()}}

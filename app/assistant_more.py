@@ -684,6 +684,8 @@ async def here_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
     d = await gather(request, float(lat), float(lon))
     a = d.get("area") or {}
     head = f"Around {a['postcode']}" + (f", {a['district']}" if a.get("district") else "") if a.get("postcode") else f"Around {d['lat']}, {d['lon']}"
+    if d.get("place"):
+        head = f"At {d['place']['name']} (a saved place). " + head
     w3 = d.get("what3words") or {}
     if w3.get("words"):
         head += f" (what3words ///{w3['words']})"

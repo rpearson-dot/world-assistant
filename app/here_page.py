@@ -43,6 +43,7 @@ form.pc input { width: 14em; }
 <button>Look up</button></form>
 <p id="where" class="dim">Everything World Assistant knows about where you are now, without saving it as a place.</p>
 <p id="area" class="area"></p>
+<p id="atplace" class="dim" hidden></p>
 <p id="w3w" class="w3w" hidden></p>
 <p id="hmsg" class="err"></p>
 </div>
@@ -85,7 +86,10 @@ function crimeExtras(c, d) {  // each month's count as small bars, the police te
 function show(d) {
   point = { lat: d.lat, lon: d.lon };
   const a = d.area;
-  $('area').textContent = a ? a.postcode + (a.ward ? ', ' + a.ward : '') + (a.district ? ', ' + a.district : '') : d.lat + ', ' + d.lon;
+  $('area').textContent = (d.place ? d.place.name + ' · ' : '') + (a ? a.postcode + (a.ward ? ', ' + a.ward : '') + (a.district ? ', ' + a.district : '') : d.lat + ', ' + d.lon);
+  const pl = $('atplace'); pl.replaceChildren(); pl.hidden = !d.place;
+  if (d.place) { pl.append(document.createTextNode('This is ' + d.place.name + ', one of your saved places: ')); const m = el('a', null, 'on the map'); m.href = '/map';
+    const ps = el('a', null, 'Places'); ps.href = '/places'; pl.append(m, document.createTextNode(', '), ps, document.createTextNode('.')); }
   $('where').textContent = 'At ' + d.lat + ', ' + d.lon + '.';
   const w = d.what3words, wb = $('w3w'); wb.replaceChildren(); wb.hidden = !w;
   if (w && w.words) wb.append(Object.assign(el('a', null, '///' + w.words), { href: w.map, target: '_blank', rel: 'noopener noreferrer' }),
@@ -98,7 +102,7 @@ function show(d) {
   });
   const off = d.parts.filter(p => p.off).map(p => p.title);
   if (off.length) box.append(el('p', 'dim', 'Switched off: ' + off.join(', ') + '.'));
-  $('savecard').hidden = false; $('again').hidden = false;
+  $('savecard').hidden = !!d.place; $('again').hidden = false;  // already saved: nothing to keep
 }
 let last = null;  // how the last look was asked: again repeats it
 async function look() {
