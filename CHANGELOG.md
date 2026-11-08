@@ -2,6 +2,26 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Crime and police** on Here (and the `crime` tool): street-level crime within a mile over the last 12 months the
+  police have published (data.police.uk), worked out when you look and not stored: how many, about how many a month,
+  the main kinds, how often someone was dealt with, each month as small bars, and the neighbourhood police team with
+  its number, latest priority and coming events.
+- **Food standards** (`food` module, no key): hygiene ratings of the nearest food businesses on Here (and the
+  `food_hygiene` tool); the FSA's allergy alerts and product recalls read each morning and matched against the
+  KitchenOwl list and your usual products ("check this"), on `/v1/food/alerts`, the `food_alerts` tool and a Home
+  Assistant sensor.
+- **Tax and MOT** (`vehiclechecks` module): give a vehicle its registration on the Vehicles page; DVLA's Vehicle
+  Enquiry Service (tax and MOT status and dates) and DVSA's MOT History API (tests, mileage, advisories, recalls) are
+  asked each Monday and with Check now. Warnings 30 days before tax or MOT is due, Home Assistant sensors of days
+  left, and the `vehicle_checks` tool. New keys: `dvla_api_key`, and DVSA's `dvsa_mot_api_key`, `dvsa_mot_client_id`,
+  `dvsa_mot_client_secret` and `dvsa_mot_token_url`.
+- **A default theme for every device**: Settings, Look, "Make this the default for every device". A device that has
+  not chosen its own follows it; "Follow the server's default" forgets a device's own choice.
+- **Glass** theme: frosted, see-through cards over soft colour, rounder corners and the system font, light and dark.
+
 ## [0.41.0] - 2026-11-08
 
 ### Added

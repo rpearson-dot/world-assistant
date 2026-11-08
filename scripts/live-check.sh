@@ -184,6 +184,15 @@ if isinstance(riders, dict):
     for r in riders.get("riders") or []:
         get(f"Garmin sync state ({r['id']})", "/v1/bikes/garmin", show=1500, rider=r["id"])
 
+# 0.42.0: crime and police, food standards, tax and MOT
+run("Police probe (crime within a mile of home, the last 2 months; the police team)", "app.crime", str(lat), str(lon), module="crime")
+get("Crime near home (12 months)", "/v1/crime", show=2500, lat=lat, lon=lon)
+run("Food standards probe (hygiene near home, alerts of the last 30 days)", "app.food", str(lat), str(lon), module="food")
+get("Food alerts and matches", "/v1/food/alerts", show=2500, limit=5)
+checks = get("Tax and MOT", "/v1/vehicle-checks", show=3000)
+regs = [v.get("registration") for v in (checks or {}).get("vehicles") or []] if isinstance(checks, dict) else []
+run("DVLA and DVSA probe (the first registration)", "app.vehiclecheck", *(regs[:1] or [""]), module="vehiclechecks")
+
 head("Summary")
 for name, res in results:
     print(f"{res:<45} {name}")

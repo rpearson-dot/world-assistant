@@ -112,6 +112,11 @@ x-app: &app
     - datathistle_refresh_token
     - what3words_api_key
     - pollen_api_key
+    - dvla_api_key
+    - dvsa_mot_api_key
+    - dvsa_mot_client_id
+    - dvsa_mot_client_secret
+    - dvsa_mot_token_url
     - kitchenowl_token
     - sainsburys_email
     - sainsburys_password
@@ -268,6 +273,16 @@ secrets:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/redis_password.txt
   pollen_api_key:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/pollen_api_key.txt
+  dvla_api_key:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/dvla_api_key.txt
+  dvsa_mot_api_key:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/dvsa_mot_api_key.txt
+  dvsa_mot_client_id:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/dvsa_mot_client_id.txt
+  dvsa_mot_client_secret:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/dvsa_mot_client_secret.txt
+  dvsa_mot_token_url:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/dvsa_mot_token_url.txt
   kitchenowl_token:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/kitchenowl_token.txt
   sainsburys_email:

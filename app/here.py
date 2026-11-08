@@ -1,7 +1,7 @@
 """Here: what World Assistant knows about wherever you are, without saving it as a place first.
 
     GET  /v1/here?lat=&lon=          every source at once for a point: the area, buses and stations, fuel and chargers,
-                                     floods, air, rivers and rain, tides, pollen, events, roads and power cuts
+                                     floods, air, rivers and rain, tides, pollen, events, roads, power cuts, crime and food hygiene ratings
     POST /v1/here/save               keep the point as a saved place: {"lat", "lon", "name"}
 
 Each part is World Assistant's own endpoint, asked for that point inside the server, so every source works exactly as
@@ -52,6 +52,8 @@ PARTS: tuple[tuple[str, str, str, dict[str, Any]], ...] = (
     ("events", "Events, next 3 days", "/v1/events/near", {"radius_km": 8, "days": 3, "limit": 5}),
     ("roads", "Roads (London)", "/v1/roads/tfl/at", {"radius_m": 2000}),
     ("power", "Power cuts", "/v1/power/cuts", {"km": 5, "postcode": "{pc}"}),
+    ("crime", "Crime and police", "/v1/crime", {}),
+    ("hygiene", "Food hygiene", "/v1/food/hygiene", {"miles": 0.5, "limit": 6}),
 )
 
 
@@ -127,6 +129,8 @@ def words(part: str, d: dict[str, Any]) -> str:
         c = d.get("cuts") or []
         return (f"{len(c)} power cut{'s' if len(c) != 1 else ''} within 3 miles" + (f", {d['at_place']} here" if d.get("at_place") else "") + "."
                 if c else "No power cuts reported nearby.")  # fmt: skip
+    if part in ("crime", "hygiene"):
+        return str(d.get("text") or "")
     return ""
 
 

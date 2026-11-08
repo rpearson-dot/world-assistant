@@ -26,6 +26,11 @@ not legal advice.
 | **Octopus GraphQL API** (`api.backend.octopus.energy`) | Saving Sessions and whether you joined | Your API key (`octopus_api_key`) | Unofficial interface taken from the BottlecapDave Home Assistant integration; see [docs/energy.md](energy.md). |
 | **TfL Unified API: road disruptions** (`api.tfl.gov.uk/Road/all/Disruption`) | Current and planned works, closures and incidents on London roads, with their position | Optional app key (`tfl_app_key`) | Fetched every 15 minutes. Powered by TfL Open Data. See [docs/tfl-roads.md](tfl-roads.md). |
 | **Environment Agency flood monitoring** (`environment.data.gov.uk/flood-monitoring`) | Current flood alerts and warnings (England) and the boundary of each warned area | None | List updated every 15 minutes. Open Government Licence v3.0. No service guarantee; not a substitute for official warnings. See [docs/floods.md](floods.md). |
+| **data.police.uk** (`data.police.uk/api`) | Street-level crime within a mile of a point (12 months, added up when asked), outcomes, the neighbourhood police team, its priorities and events: on Here and the `crime` tool | None | 15 requests a second on average (bursts of 30). Monthly, about two months behind. England, Wales and Northern Ireland (Scotland: British Transport Police only). Not stored: kept in memory for a day. Open Government Licence v3.0, credited where shown. `python -m app.crime LAT LON` |
+| **FSA food hygiene ratings** (`api.ratings.food.gov.uk`, header `x-api-version: 2`) | Ratings of food businesses near a point: on Here and the `food_hygiene` tool | None | Looked up when asked, kept in memory six hours. Open Government Licence v3.0 |
+| **FSA food alerts** (`data.food.gov.uk/food-alerts`) | Allergy alerts and product recalls, read each morning and matched against the KitchenOwl list and usual products (`/v1/food/alerts`, the Home Assistant sensor "Food alerts to check") | None | A handful a week; the last 60 days kept. A match by name says "check this". `python -m app.food LAT LON` |
+| **DVLA Vehicle Enquiry Service** (`driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles`) | Each vehicle's tax status and due date, MOT status and expiry | Key (secret `dvla_api_key`, header `x-api-key`), applied for on DVLA's developer portal | Checked each Monday and with Check now; the answer is kept with the vehicle |
+| **DVSA MOT History API** (`history.mot.api.gov.uk`) | Each vehicle's MOT tests: result, mileage, advisories and defects; first MOT due; outstanding recalls | API key (`dvsa_mot_api_key`) plus a Microsoft Entra client (`dvsa_mot_client_id`, `dvsa_mot_client_secret`, `dvsa_mot_token_url`), all from DVSA's registration email | 15 requests a second, 500,000 a day; the client secret lasts two years, and an API key unused for 90 days is revoked (the weekly check keeps it alive). `python -m app.vehiclecheck REG` |
 | **OpenStreetMap** via Geofabrik extract | Map data for Valhalla | Download | Open Database Licence: credit "© OpenStreetMap contributors" wherever routes are shown to others. |
 
 ## Credits and licences
@@ -68,5 +73,4 @@ with a personal or non-commercial key, and keep within each provider's rate limi
 
 - Live-traffic journey times from a routing provider (terms for personal use unchecked).
 - Event calendars (race meetings, concerts) to predict heavy traffic.
-- DVSA MOT history and DVLA vehicle enquiry (access is application-based).
 - National Highways WebTRIS traffic counts.
