@@ -34,3 +34,33 @@ def test_the_app_can_be_installed() -> None:
     sw = client.get("/sw.js")
     assert sw.status_code == 200 and "javascript" in sw.headers["content-type"] and "/v1/" in sw.text  # never caches the API
     assert client.get("/", follow_redirects=False).status_code == 307
+
+
+def test_every_page_script_parses(tmp_path: "Path") -> None:  # noqa: F821
+    """Each page's scripts, as served, must parse: one bad line (a name declared twice) leaves the whole page dead,
+    as the map was in 0.40.0 to 0.42.0."""
+    import re
+    import subprocess
+
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    c = TestClient(app)
+    from pathlib import Path
+
+    found = {m for f in Path("app").rglob("*.py") for m in re.findall(r'page_router\.get\("(/[^"{]*)"', f.read_text())}
+    pages = sorted(found)
+    checked = 0
+    for path in pages:
+        r = c.get(path)
+        if r.status_code != 200 or "text/html" not in r.headers.get("content-type", ""):
+            continue
+        for i, js in enumerate(re.findall(r"<script>(.*?)</script\s*>", r.text, re.DOTALL | re.IGNORECASE)):
+            f = tmp_path / f"{path.strip('/').replace('/', '_') or 'root'}_{i}.js"
+            f.write_text(js)
+            p = subprocess.run(["node", "--check", str(f)], check=False, capture_output=True, text=True)
+            why = next((x for x in p.stderr.splitlines() if "Error" in x), p.stderr.strip()[:200])
+            assert p.returncode == 0, f"{path} script {i}: {why}"
+        checked += 1
+    assert checked >= 10 and "/map" in pages

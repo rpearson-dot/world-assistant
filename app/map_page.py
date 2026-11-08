@@ -64,7 +64,7 @@ async function api(method, path) {
 const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
 
 // How each layer is drawn. Colour carries the meaning; the popup carries the detail. Colours are the theme's tokens.
-const tok = n => getComputedStyle(document.documentElement).getPropertyValue('--' + n).trim();
+const shade = n => getComputedStyle(document.documentElement).getPropertyValue('--' + n).trim();
 const STYLE = {
   places:      { colour: 'series-1', label: 'Places' },
   locations:   { colour: 'series-2', label: 'People' },
@@ -115,14 +115,14 @@ function popup(key, p) {
 }
 
 function draw(key, collection, cheapest) {
-  const s = STYLE[key], group = L.layerGroup(), base = tok(s.colour), edge = tok('shadow');
+  const s = STYLE[key], group = L.layerGroup(), base = shade(s.colour), edge = shade('shadow');
   for (const f of collection.features) {
     const p = f.properties || {}, g = f.geometry || {};
     let shape;
     if (g.type === 'LineString') {
       shape = L.polyline(g.coordinates.map(c => [c[1], c[0]]), { color: base, weight: s.weight || 3, opacity: .85 });
     } else if (g.type === 'Polygon' || g.type === 'MultiPolygon') {
-      const c = FLOOD[p.level] ? tok(FLOOD[p.level]) : base;
+      const c = FLOOD[p.level] ? shade(FLOOD[p.level]) : base;
       shape = L.geoJSON(g, { style: { color: c, weight: 2, fillColor: c, fillOpacity: .25 } });
     } else if (g.type === 'Point') {
       let colour = s.colour, r = s.small ? 4 : 7;
@@ -131,7 +131,7 @@ function draw(key, collection, cheapest) {
       if (key === 'ev') colour = !p.total ? 'dim' : p.free ? 'good' : p.working ? 'warn' : 'bad';  // free, busy, none working
       if (key === 'fuel' && p.pence && cheapest) colour = p.pence <= cheapest + 2 ? 'good' : p.pence <= cheapest + 6 ? 'warn' : 'bad';
       shape = L.circleMarker([g.coordinates[1], g.coordinates[0]],
-        { radius: r, color: edge, weight: 1, fillColor: tok(colour), fillOpacity: .9 });
+        { radius: r, color: edge, weight: 1, fillColor: shade(colour), fillOpacity: .9 });
     } else continue;
     shape.bindPopup(popup(key, p));
     group.addLayer(shape);
