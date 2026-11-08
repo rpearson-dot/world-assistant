@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.40.0] - 2026-11-08
 
 ### Added
 - **Themes** (`docs/themes.md`): every colour and the design language (fonts, corners, headings) now come from
