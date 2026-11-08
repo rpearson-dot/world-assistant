@@ -119,6 +119,8 @@ class SetupIn(BaseModel):
         description="also track the way back (the other side of each stop), earliest bus; needs return_deadline",
     )
     return_deadline: str | None = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$", description="the way back: arrive by")
+    return_board: str | None = Field(None, description="the way back: the stop to get on at, where its name differs")
+    return_target: str | None = Field(None, description="the way back: the stop to get off at, where its name differs")
     source: Literal["tfl", "bods"] | None = Field(None, description="as reported when the stops were listed")
     operator: str | None = Field(None, pattern=r"^[A-Za-z0-9]{2,10}$", description="BODS only, as reported with the stops")
 
@@ -203,7 +205,8 @@ async def setup(request: Request, body: SetupIn) -> dict[str, Any]:
     back: dict[str, Any] | None = None
     if body.return_earliest and body.return_deadline:
         try:
-            back = return_config(body.line, seqs, body.board, body.target, body.return_earliest, body.return_deadline)
+            back = return_config(body.line, seqs, body.board, body.target, body.return_earliest, body.return_deadline,
+                                 body.return_board, body.return_target)
             if src["source"] == "bods":
                 back.update(source="bods", operator=src["operator"])
             TrackerConfig.model_validate(back)
