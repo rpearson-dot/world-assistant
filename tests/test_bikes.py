@@ -169,11 +169,12 @@ def garage(monkeypatch: pytest.MonkeyPatch) -> Any:
             conn.execute(sa.text(f"DROP TABLE IF EXISTS {t} CASCADE"))
         conn.execute(sa.text("CREATE TABLE place (id text primary key, kind text, lat float, lon float)"))
         conn.execute(sa.text("INSERT INTO place VALUES ('home', 'home', 51.37, -0.247)"))
-        spec = importlib.util.spec_from_file_location("m0044", Path("migrations/versions/0044_bikes.py"))
-        m = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
-        spec.loader.exec_module(m)  # type: ignore[union-attr]
-        with Operations.context(MigrationContext.configure(conn)):
-            m.upgrade()
+        for name in ("0044_bikes", "0046_bike_more"):
+            spec = importlib.util.spec_from_file_location(name, Path(f"migrations/versions/{name}.py"))
+            m = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+            spec.loader.exec_module(m)  # type: ignore[union-attr]
+            with Operations.context(MigrationContext.configure(conn)):
+                m.upgrade()
 
     async def no_rain(*a: Any, **kw: Any) -> tuple[bool | None, str]:
         return True, "3.2 mm at Ewell gauge (2 km) during and before the ride"

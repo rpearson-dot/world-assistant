@@ -88,10 +88,11 @@ async def service_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]
         spare = next((s for s in g["shelf"] if s["kind"] == part["kind"] and s["quantity"] > 0), None)
     body = A.ServiceIn(rider=rider, action=action, part_id=part["id"], cost=args.get("cost"), note=args.get("note"),
                        level_before=args.get("level_before"), spare_id=spare["id"] if spare else None,
+                       reading=args.get("reading"),
                        new={k: args[k] for k in ("brand", "model", "price") if args.get(k)} or None)  # fmt: skip
     out = await _wrap(A.service(request, body))
     said = {"replaced": "Replaced", "serviced": "Serviced", "checked": "Checked", "charged": "Charged", "topped_up": "Topped up",
-            "bled": "Bled", "measured_ok": "Measured and fine:", "cost": "Logged a cost for", "note": "Noted on",
+            "bled": "Bled", "measured_ok": "Measured and fine:", "measured": f"Logged {args.get('reading')}% for", "cost": "Logged a cost for", "note": "Noted on",
             "crash": "Logged a crash for"}.get(action, action)  # fmt: skip
     extra = f" with the spare from the shelf ({out.get('spares_left', 0)} left)" if spare else ""
     return {"text": f"{said} {part['name']}{extra}. Its count starts again from now." if action in A.RESETS else f"{said} {part['name']}.",
@@ -126,16 +127,18 @@ async def pressure_tool(request: Request, args: dict[str, Any]) -> dict[str, Any
         if b.get("retired_at") or (bike and bike not in b["label"].lower()):
             continue
         p = b["pressures"]
+        today = args.get("today") if args.get("today") in ("road", "gravel", "wet") else None
         if p:
-            ends = "; ".join(f"{e} {v['psi']:g} psi ({v['bar']:g} bar){'' if v['own'] else ' suggested'}"
-                             for e, v in sorted(p.items()))  # fmt: skip
+            ends = "; ".join(f"{e} {(v['today'][today] if today else v)['psi']:g} psi ({(v['today'][today] if today else v)['bar']:g} bar)"
+                             f"{'' if v['own'] else ' suggested'}" for e, v in sorted(p.items()))  # fmt: skip
+            ends += f" for {today} riding today" if today else ""
             out.append(f"{b['label']}: {ends}")
     if not out:
         raise ToolError("No bike with tyres to give pressures for.")
     return {"text": ". ".join(out) + ".", "data": {b["label"]: b["pressures"] for b in g["bikes"]}}
 
 
-ACTIONS = "replaced, serviced, checked, charged, topped_up, bled, measured_ok, cost, note or crash"
+ACTIONS = "replaced, serviced, checked, charged, topped_up, bled, measured_ok, measured (with reading), cost, note or crash"
 TOOLS: list[Tool] = [
     Tool("bikes", "The bike garage: each bike, what is due or coming up, and rides to confirm as wet or dry.",
          {"type": "object", "properties": _props(rider=("string", "the rider (needed when there is more than one)"))}, bikes_tool),
@@ -150,6 +153,7 @@ TOOLS: list[Tool] = [
           "properties": _props(action=("string", ACTIONS), part=("string", "the part's label or kind"),
                                bike=("string", "which bike, when the part is on more than one"), rider=("string", "the rider"),
                                level_before=("number", "a battery's charge (%) when it went on charge"),
+                               reading=("number", "with measured: a chain checker's stretch (%), e.g. 0.25"),
                                cost=("number", "what it cost, £"), note=("string", "a note"),
                                brand=("string", "a new part's brand"), model=("string", "a new part's model"),
                                price=("number", "a new part's price, £"))}, service_tool),
@@ -160,5 +164,6 @@ TOOLS: list[Tool] = [
                                wet=("boolean", "was it wet"), rider=("string", "the rider"))}, ride_tool),
     Tool("tyre_pressure", "Tyre pressures for each bike's fitted wheels: the starting ones from width, tubeless, the kind of "
          "riding and weight, or the ones set on the page.",
-         {"type": "object", "properties": _props(bike=("string", "one bike"), rider=("string", "the rider"))}, pressure_tool),
+         {"type": "object", "properties": _props(bike=("string", "one bike"), rider=("string", "the rider"),
+                                                 today=("string", "today's riding: road, gravel or wet"))}, pressure_tool),
 ]

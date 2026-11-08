@@ -43,16 +43,16 @@ GEOMETRY = {
 # differ), wheel and tyre size and bars. Figures from published geometry where there is any (bikeinsights.com: the
 # Reiver's M, the 2008 Trek 1 Series' 56 cm), otherwise typical of the bike and its year.
 MODELS: dict[str, dict[str, Any]] = {
-    "planet-x-reiver-2025": {"name": "Planet X Reiver (2025)", "type": "gravel", "dropped_stays": True,
+    "planet-x-reiver-2025": {"name": "Planet X Reiver (2025)", "maker": "Planet X", "type": "gravel", "dropped_stays": True,
                              "geometry": {"stack": 562, "reach": 379, "cs": 435, "drop": 69, "wb": 1036, "hta": 71, "sta": 73,
                                           "ht": 140, "st": 520, "r": 351, "tyre": 40}},
-    "yeti-asr-sl-2005": {"name": "Yeti ASR-SL (2004-5, 26-inch)", "type": "full_suspension",
+    "yeti-asr-sl-2005": {"name": "Yeti ASR-SL (2004-5, 26-inch)", "maker": "Yeti", "type": "full_suspension",
                          "geometry": {"stack": 560, "reach": 400, "cs": 425, "drop": 15, "wb": 1050, "hta": 71, "sta": 73,
                                       "ht": 105, "st": 380, "r": 333, "tyre": 55}},
-    "trek-1.2-2008": {"name": "Trek 1.2 (2008)", "type": "road",
+    "trek-1.2-2008": {"name": "Trek 1.2 (2008)", "maker": "Trek", "type": "road",
                       "geometry": {"stack": 576, "reach": 387, "cs": 410, "drop": 68, "wb": 983, "hta": 73.5, "sta": 73.6,
                                    "ht": 170, "st": 535, "r": 334, "tyre": 25}},
-    "viking-tandem-26": {"name": "Viking tandem (26-inch, Salerno style)", "type": "tandem", "bars": "flat", "rack": True,
+    "viking-tandem-26": {"name": "Viking tandem (26-inch, Salerno style)", "maker": "Viking", "type": "tandem", "bars": "flat", "rack": True,
                          "geometry": {"stack": 600, "reach": 360, "cs": 440, "drop": 55, "wb": 1700, "hta": 71, "sta": 72,
                                       "ht": 170, "st": 480, "r": 333, "tyre": 50}},
 }  # fmt: skip
@@ -260,6 +260,8 @@ ICONS = {
     "helmet": '<path d="M3 15a9 9 0 0 1 18 0zM3 15h18"/>',
     "shoe": '<path d="M3 16l1-8 6 2 4 4h5a2 2 0 0 1 2 2v1H3z"/>',
     "cleat": '<path d="M7 6h10l-2 12H9z"/>',
+    "lever": '<path d="M5 5h6a3 3 0 0 1 3 3v2l5 9"/><path d="M8 5v6"/>',
+    "derailleur": '<circle cx="9" cy="8" r="2.5"/><circle cx="14" cy="17" r="2.5"/><path d="M9 10.5l5 4M5 4l4 1.5"/>',
     "part": '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
 }
 

@@ -83,8 +83,18 @@ KINDS: dict[str, Kind] = {
     "helmet": Kind("Helmet", days=1825, on="rider", icon="helmet", measure="replace after any crash"),
     "shoes": Kind("Shoes", on="rider", icon="shoe"),
     "cleats": Kind("Pedal cleats", days=540, on="rider", icon="cleat"),
+    # the groupset and the rest of the bike: kept for their makes and models (and what goes with what), not worn out by
+    # a count; replaced when they break or are upgraded
+    "levers": Kind("Shift and brake levers", icon="lever"),
+    "shifters": Kind("Shifters", icon="lever"),
+    "brake_levers": Kind("Brake levers", icon="lever"),
+    "rear_derailleur": Kind("Rear derailleur", icon="derailleur"),
+    "front_derailleur": Kind("Front derailleur", icon="derailleur"),
+    "crankset": Kind("Crankset", icon="chainring"),
+    "calliper": Kind("Brake calliper", icon="pads"),
     "other": Kind("Other", icon="part"),
 }
+GROUP_KINDS = ("levers", "shifters", "brake_levers", "rear_derailleur", "front_derailleur", "crankset", "calliper")
 
 BIKE_TYPES = {
     "road": "Road", "gravel": "Gravel", "cyclocross": "Cyclocross", "hardtail": "Hardtail MTB",
@@ -105,8 +115,18 @@ CHOICES = {"type": BIKE_TYPES, "front_brake": BRAKES, "rear_brake": BRAKES, "fro
            "front_fluid": {"mineral": "Mineral oil", "dot": "DOT"}, "rear_fluid": {"mineral": "Mineral oil", "dot": "DOT"},
            "bottom_bracket": {"threaded": "Threaded", "pressfit": "Press-fit"},
            "pedals": {"clipless": "Clipless", "flat": "Flat"},
+           "bars": {"drop": "Drop bars", "flat": "Flat or riser bars"},
+           "wheel_size": {"622": "700c / 29-inch", "584": "650b / 27.5-inch", "571": "650c", "559": "26-inch",
+                          "507": "24-inch", "406": "20-inch"},
            "front_tyre": {"tubed": "Tubed (butyl)", "latex": "Tubed (latex)", "tubeless": "Tubeless"},
            "rear_tyre": {"tubed": "Tubed (butyl)", "latex": "Tubed (latex)", "tubeless": "Tubeless"}}  # fmt: skip
+
+# answers that are numbers (all optional): (lowest, highest, what it is)
+NUMBERS = {"speeds": (1, 14, "Gears at the back (speeds)"), "max_tyre_mm": (18, 130, "Widest tyre the frame takes (mm)"),
+           "front_rotor_mm": (120, 230, "Front rotor size the brake is set up for (mm)"),
+           "rear_rotor_mm": (120, 230, "Rear rotor size the brake is set up for (mm)")}  # fmt: skip
+DISC_BRAKES = {"hydraulic_disc", "cable_disc", "cable_hydraulic"}
+DROP_BARS = {"road", "gravel", "cyclocross", "tt", "tandem"}
 
 _BASE: dict[str, Any] = {"ebike": False, "drive": "derailleur", "shifting": "mechanical", "front_rings": 2,
                          "front_brake": "hydraulic_disc", "rear_brake": "hydraulic_disc", "front_fluid": "mineral",
@@ -189,6 +209,27 @@ def planned_parts(cfg: dict[str, Any]) -> list[Planned]:
         out.append(Planned("cassette", "rear", "rear", {"single_cog": True}))
     if drive == "derailleur" and c["shifting"] == "mechanical":
         out.append(Planned("gear_cables", "bike"))
+    from app.bikes.art import MODELS
+
+    model_bars = (MODELS.get(c.get("model") or "") or {}).get("bars")
+    drop = c.get("bars") or model_bars or ("drop" if c.get("type") in DROP_BARS else "flat")
+    drop = drop == "drop"
+    geared = drive in ("derailleur", "hub") and c["shifting"] != "none"
+    brakes = any(c[f"{e}_brake"] not in ("none", "drum") for e in ("front", "rear"))
+    if drop and (geared or brakes):
+        out.append(Planned("levers", "bike"))
+    if not drop and geared:
+        out.append(Planned("shifters", "bike"))
+    if not drop and brakes:
+        out.append(Planned("brake_levers", "bike"))
+    if drive == "derailleur":
+        out.append(Planned("rear_derailleur", "bike"))
+        if int(c.get("front_rings") or 1) > 1:
+            out.append(Planned("front_derailleur", "bike"))
+    out.append(Planned("crankset", "bike"))
+    for end in ("front", "rear"):
+        if c[f"{end}_brake"] not in ("none", "drum"):
+            out.append(Planned("calliper", "bike", end))
     if c["shifting"] == "axs":
         out += [Planned("coin_cells", "bike")]  # the derailleur takes a labelled AXS battery (rider kit)
     if c["shifting"] == "di2":
@@ -233,6 +274,23 @@ def life_of(kind: str, details: dict[str, Any] | None = None) -> dict[str, float
     if kind == "tyre_check" and d.get("every_days"):
         life["days"] = float(d["every_days"])
     return life
+
+
+# today's riding, against the bike type's usual: a gravel day lower for grip and comfort, a wet day a little lower for
+# grip (more rubber on the road)
+TODAY = {"usual": None, "road": 1.0, "gravel": 0.85, "wet": "wet"}
+WET = 0.93
+
+
+def today_pressure(psi: float, bike_type: str, today: str) -> float:
+    """A pressure (the suggested one or your own, for the bike's usual riding) for today's riding."""
+    usual = SURFACE.get(bike_type, 1.0)
+    f = TODAY.get(today)
+    if f is None:
+        return psi
+    if f == "wet":
+        return float(round(psi * WET))
+    return float(round(psi * float(f) / usual))
 
 
 def tyre_pressure(width_mm: float, tubeless: bool, bike_type: str, system_kg: float, end: str,
@@ -313,7 +371,14 @@ SPECS: dict[str, list[tuple[str, str]]] = {
              ("tubeless", "Tubeless (yes/no)"), ("max_psi", "Max psi (tyre or rim)")],
     "tube": [("tube", "Tube (butyl, latex, TPU)"), ("valve", "Valve (Presta, Schrader)")],
     "sealant": [("product", "Sealant"), ("ml", "Amount ml")],
-    "hub": [("bearings", "Bearings")],
+    "hub": [("bearings", "Bearings"), ("freehub", "Freehub (HG, XD, XDR, Microspline)"),
+            ("rotor_mount", "Rotor mount (6-bolt, Centre Lock)")],
+    "levers": [("speeds", "Speeds")],
+    "shifters": [("speeds", "Speeds")],
+    "rear_derailleur": [("speeds", "Speeds"), ("max_cog", "Biggest cog it takes")],
+    "front_derailleur": [("mount", "Mount (braze-on, clamp)")],
+    "crankset": [("teeth", "Rings (e.g. 50/34 or 42)"), ("length_mm", "Crank length mm"), ("spindle", "Spindle (24 mm, DUB...)")],
+    "calliper": [("mount", "Mount (flat, post, rim)"), ("pistons", "Pistons")],
     "bottom_bracket": [("standard", "Standard (BSA, T47, BB86, PF30...)"), ("spindle", "Spindle (24 mm, DUB, 30 mm)")],
     "headset": [("standard", "Standard (e.g. ZS44/EC44)")],
     "pedals": [("model", "Pedal system (SPD, SPD-SL, Look)")],
@@ -323,7 +388,7 @@ SPECS: dict[str, list[tuple[str, str]]] = {
     "fork_lowers": [("model", "Fork (e.g. Pike Ultimate 140 mm)")],
     "shock_air": [("model", "Shock (e.g. Deluxe Ultimate 210x55)")],
     "dropper_lower": [("travel_mm", "Travel mm")],
-    "axs_battery": [("bought", "Bought (month)")],
+    "axs_battery": [("bought", "Bought (month)"), ("sensor", "Derailleur serial in Garmin (when a bike has two)")],
     "helmet": [("size", "Size"), ("made", "Made (date on the label)")],
     "bar_tape": [("colour", "Colour")],
 }
