@@ -256,6 +256,25 @@ def rule_for(rules: dict[str, Any], type_key_: str, commute: bool) -> Any:
     return (rules.get("commute") if commute else None) or rules.get(type_key_) or rules.get("default")
 
 
+# Garmin's ride kinds by the words in their names: the API's type keys (road_biking) and the names its CSV export and
+# pages use ("Road Cycling", "Gravel/Unpaved Cycling"), so rides from either go to the same bike rule
+KINDS = (("e[-_ ]?bike.*mountain|e[-_ ]?mtb", "e_bike_mountain"), ("e[-_ ]?bike", "e_bike_fitness"),
+         ("enduro", "enduro_mtb"), ("downhill", "downhill_biking"), ("mountain|mtb", "mountain_biking"),
+         ("gravel|unpaved", "gravel_cycling"), ("cyclocross|\\bcx\\b", "cyclocross"), ("indoor|trainer", "indoor_cycling"),
+         ("virtual", "virtual_ride"), ("recumbent", "recumbent_cycling"), ("track", "track_cycling"), ("bmx", "bmx"),
+         ("hand", "hand_cycling"), ("road", "road_biking"))  # fmt: skip
+
+
+def kind_of(activity: str | None) -> tuple[str, bool]:
+    """A ride's Garmin kind (type key) and whether it was a commute, from what is stored as its activity."""
+    a = (activity or "").lower()
+    commute = bool(COMMUTE.search(a))
+    for pattern, key in KINDS:
+        if re.search(pattern, a):
+            return key, commute
+    return ("cycling" if a.strip() else ""), commute
+
+
 def same_ride(a: dict[str, Any], b: dict[str, Any]) -> bool:
     """A ride imported from the CSV (or logged by hand) that is this Garmin ride: within five minutes and 2%."""
     close = abs((a["started"] - b["started"]).total_seconds()) <= 300
@@ -493,17 +512,25 @@ async def put_rules(request: Request, body: RulesIn, rider: str = Query(...)) ->
     if body.weight is not None:
         g["weight"] = body.weight
     await _save_settings(engine, rider, g)
-    given = 0
-    if body.apply and g["rules"]:
-        async with engine.begin() as c:
-            for r in await c.execute(text("SELECT id, activity FROM bike_ride WHERE rider_id = :r AND bike_id IS NULL AND source = 'garmin'"),
-                                     {"r": rider}):  # fmt: skip
-                act = (r.activity or "").lower()
-                k = act.replace(" (commute)", "").replace(" ", "_")
-                b = rule_for(g["rules"], k, "commut" in act)
-                if b:
-                    given += (await c.execute(text("UPDATE bike_ride SET bike_id = :b WHERE id = :i"), {"b": b, "i": r.id})).rowcount
+    given = await assign_by_kind(engine, rider, g["rules"]) if body.apply and g["rules"] else 0
     return {**status({**row, "settings": {**(row.get("settings") or {}), "garmin": g}}), "given": given}
+
+
+async def assign_by_kind(engine: AsyncEngine, rider: str, rules: dict[str, Any]) -> int:
+    """Give every ride without a bike (from Garmin or its CSV) the bike its kind of ride goes to; those are taken as
+    confirmed, since you chose the rule. How many were given one."""
+    if not rules:
+        return 0
+    given = 0
+    async with engine.begin() as c:
+        mine = {r.id for r in await c.execute(text("SELECT id FROM bike WHERE rider_id = :r AND retired_at IS NULL"), {"r": rider})}
+        for r in await c.execute(text("SELECT id, activity FROM bike_ride WHERE rider_id = :r AND bike_id IS NULL"), {"r": rider}):
+            k, commute = kind_of(r.activity)
+            b = rule_for(rules, k, commute)
+            if b in mine:
+                given += (await c.execute(text("UPDATE bike_ride SET bike_id = :b, bike_checked = true WHERE id = :i"),
+                                          {"b": b, "i": r.id})).rowcount  # fmt: skip
+    return given
 
 
 # --- the probe -------------------------------------------------------------------------------------------------------

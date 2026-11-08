@@ -189,3 +189,33 @@ def test_the_fit_reader_finds_the_track_devices_and_developer_fields() -> None:
     with pytest.raises(fit.FitError):
         list(fit.messages(b"not a fit file at all"))
     assert fit.from_zip(b"raw") == ("activity", b"raw")
+
+
+@pytest.mark.skipif(not DB, reason="WA_TEST_DATABASE_URL not set")
+def test_many_rides_answered_at_once(garage: Any) -> None:  # noqa: F811
+    c = garage
+    c.post("/v1/bikes/riders", json={"name": "Kim"})
+    road = c.post("/v1/bikes/bikes", json={"rider": "kim", "label": "Road", "type": "road"}).json()["id"]
+    town = c.post("/v1/bikes/bikes", json={"rider": "kim", "label": "Town", "type": "hybrid"}).json()["id"]
+    csv = ("Activity Type,Date,Title,Distance,Moving Time\n"
+           "Road Cycling,2025-03-01 09:00:00,Sunday,60.0,02:00:00\nRoad Cycling,2025-03-08 09:00:00,Sunday,70.0,02:20:00\n"
+           "Cycling,2025-03-03 08:00:00,To work,8.0,00:30:00\nIndoor Cycling,2025-03-04 18:00:00,Trainer,20.0,01:00:00\n")  # fmt: skip
+    assert c.post("/v1/bikes/rides/import", json={"rider": "kim", "csv": csv}).json()["added"] == 4
+    g = c.get("/v1/bikes?rider=kim").json()["counts"]
+    assert g["without_bike"] == 4 and g["kinds_without_bike"] == {"road_biking": 2, "cycling": 1, "indoor_cycling": 1}
+    assert g["unanswered_wet"] == 3
+    r = c.post("/v1/bikes/rides/bulk", json={"rider": "kim", "action": "bike_by_kind", "rules": {"road_biking": road, "cycling": town}})
+    assert r.json()["changed"] == 3 and r.json()["rules"] == {"road_biking": road, "cycling": town}
+    assert c.get("/v1/bikes/garmin?rider=kim").json()["rules"] == {"road_biking": road, "cycling": town}  # the Garmin rule too
+    rides = {x["title"] + str(x["km"]): x for x in c.get("/v1/bikes/rides?rider=kim").json()["rides"]}
+    assert rides["Sunday60.0"]["bike_id"] == road and rides["To work8.0"]["bike_id"] == town and rides["Trainer20.0"]["bike_id"] is None
+    assert rides["Sunday60.0"]["bike_checked"]  # chosen by the rule: not asked again
+    assert c.post("/v1/bikes/rides/bulk", json={"rider": "kim", "action": "dry"}).json()["changed"] == 3
+    assert c.get("/v1/bikes?rider=kim").json()["counts"]["unanswered_wet"] == 0
+    assert c.post("/v1/bikes/rides/bulk", json={"rider": "kim", "action": "bike_by_kind", "rules": {"x": 99999}}).status_code == 422
+
+
+def test_garmin_and_csv_names_are_the_same_kinds() -> None:
+    assert G.kind_of("Road Biking") == G.kind_of("Road Cycling") == ("road_biking", False)
+    assert G.kind_of("Gravel/Unpaved Cycling")[0] == "gravel_cycling" and G.kind_of("Road Biking (Commute)") == ("road_biking", True)
+    assert G.kind_of("Cycling") == ("cycling", False) and G.kind_of(None) == ("", False)

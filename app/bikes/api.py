@@ -13,6 +13,7 @@ log, the due list, batteries, the spares shelf, running cost, and due parts onto
     POST /v1/bikes/service                       log a replacement, service, check, charge, top-up, cost or crash
     POST /v1/bikes/rides | PATCH /{id}           a ride by hand, or say whether it was wet / which bike
     POST /v1/bikes/rides/import                  Garmin Connect's activities CSV export
+    POST /v1/bikes/rides/bulk                    many rides at once: all dry, all bikes right, bikes by kind of ride
     POST /v1/bikes/parts/{id}/to-list            put a part on the Outdoors list
     GET|PUT /v1/bikes/settings?rider=            to the Outdoors list automatically, wet factor, weight...
     POST /v1/bikes/lookup                        a product page's name, brand and picture
@@ -792,6 +793,46 @@ async def change_ride(request: Request, ride_id: str, body: RidePatch) -> dict[s
     return {"id": ride_id, **vals}
 
 
+class BulkIn(BaseModel):
+    rider: str
+    action: Literal["dry", "bikes_ok", "bike_by_kind"]
+    keep_suggested_wet: bool = Field(True, description="dry: leave the rides the rain gauge says were wet, to answer")
+    rules: dict[str, int | None] = Field(default_factory=dict, description="bike_by_kind: kind of ride (or commute, "
+                                         "default): bike id; kept as the rider's Garmin rules too")
+
+
+@router.post("/rides/bulk")
+async def bulk_rides(request: Request, body: BulkIn) -> dict[str, Any]:
+    """Answer many rides at once: every unanswered outdoor ride dry; every bike as it is; or every ride without a bike
+    the bike its kind of ride (from Garmin, or its CSV) goes to."""
+    engine = request.app.state.engine
+    row = await _rider(engine, body.rider)
+    q = {"r": body.rider}
+    if body.action == "bike_by_kind":
+        from app.bikes import garmin as G
+
+        async with engine.connect() as c:
+            mine = {r.id for r in await c.execute(text("SELECT id FROM bike WHERE rider_id = :r"), q)}
+        if any(v is not None and v not in mine for v in body.rules.values()):
+            raise HTTPException(422, "Not one of this rider's bikes")
+        g = G._settings(row)
+        g["rules"] = {**(g.get("rules") or {}), **{k: v for k, v in body.rules.items() if v is not None}}
+        for k, v in body.rules.items():
+            if v is None:
+                g["rules"].pop(k, None)
+        await G._save_settings(engine, body.rider, g)
+        return {"changed": await G.assign_by_kind(engine, body.rider, g["rules"]), "rules": g["rules"]}
+    async with engine.begin() as c:
+        if body.action == "dry":
+            sql = "UPDATE bike_ride SET wet = false WHERE rider_id = :r AND wet IS NULL AND NOT indoor"
+            if body.keep_suggested_wet:
+                sql += " AND wet_suggested IS NOT TRUE"
+        else:
+            sql = "UPDATE bike_ride SET bike_checked = true WHERE rider_id = :r AND bike_id IS NOT NULL AND NOT bike_checked"
+        n = (await c.execute(text(sql), q)).rowcount
+    return {"changed": n}
+
+
 @router.delete("/rides/{ride_id:path}")
 async def delete_ride(request: Request, ride_id: str) -> dict[str, Any]:
     """Delete a ride (logged twice, or not a ride at all): its wear comes off the parts. An imported ride deleted here
@@ -991,6 +1032,13 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
             ask.append({**_out(r), "doubt": doubt[0] if doubt else None, "suggest_bike": doubt[1] if doubt else None,
                         "garmin_link": garmin_link(r)})  # fmt: skip
     unassigned = [_out(r) for r in rides if r["bike_id"] is None]
+    from app.bikes.garmin import kind_of
+
+    kinds: dict[str, int] = {}
+    for r in unassigned:
+        k, commute = kind_of(r.get("activity"))
+        for key in (["commute"] if commute else []) + [k or "default"]:
+            kinds[key] = kinds.get(key, 0) + 1
     labels = {b["id"]: b["label"] for b in rows["bikes"]}
     logged = {s["part_id"] for s in services if s.get("part_id")}
 
@@ -1023,6 +1071,10 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
                         "cost": by_bike.get(b["id"]), "history": hist[:100]})  # fmt: skip
     return {"rider": _out(rider), "settings": st, "bikes": list(bikes.values()), "loose_sets": loose, "shelf": shelf,
             "kit": kit, "due": due, "ask_wet": ask[-50:], "unassigned_rides": unassigned[-100:],
+            "counts": {"to_confirm": len(ask), "unanswered_wet": sum(1 for r in rides if r["wet"] is None and not r["indoor"]),
+                       "suggested_wet": sum(1 for r in rides if r["wet"] is None and not r["indoor"] and r.get("wet_suggested")),
+                       "bike_unchecked": sum(1 for r in rides if not r["bike_checked"] and r["bike_id"] is not None),
+                       "without_bike": len(unassigned), "kinds_without_bike": kinds},
             "log": log, "recent_rides": recent, "retired": retired, "costs": c}  # fmt: skip
 
 

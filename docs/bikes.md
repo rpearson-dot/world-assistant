@@ -41,6 +41,14 @@ API gives), each ride's GPS track for rain along the route and saved routes, and
   file's GPS points, devices and developer fields (where tyre pressure sensors write), and weight. It only reads. It is
   part of the live check.
 
+## Many rides at once
+- **Rides to confirm** says how many there are, and has **Mark every unanswered ride dry** (leaving, if ticked, the
+  ones the rain gauge says were wet for you to answer) and **Keep every bike as it is**.
+- **Rides without a bike** lists the kinds of ride among them, with how many of each (Garmin's kinds, from the sync or
+  its CSV: "Road Cycling" in the CSV is the same kind as the sync's Road Biking). Choose a bike for each and **Give
+  them these bikes**: every ride of that kind without a bike gets it, taken as confirmed, and the choice is kept as the
+  rule for new Garmin rides.
+
 ## What it shows
 - **Due**: parts at 90% of their life or close to its end (within 300 km, 10 hours or a fortnight, for lives well over
   twice that), first the things to replace, then services and checks. "Coming up" from 75%.

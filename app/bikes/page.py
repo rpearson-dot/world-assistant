@@ -82,8 +82,18 @@ button.small { padding: 3px 9px; font-size: 13px; }
 <div class="card" id="askcard" hidden><h2>Rides to confirm</h2>
   <p class="dim small">Which bike each ride was on (Garmin keeps the last one chosen, so it is often wrong), and whether it was wet:
   wet rides wear chains, cassettes and pads faster. The wet suggestion comes from the nearest rain gauge.</p>
+  <div class="edit"><div id="askcount" class="small"></div>
+    <div class="row"><button id="alldry" type="button" class="small">Mark every unanswered ride dry</button>
+    <label class="small"><input type="checkbox" id="keepwet" checked> except those the rain gauge says were wet</label></div>
+    <div class="row"><button id="allbikes" type="button" class="small">Keep every bike as it is</button></div>
+    <p id="bulkmsg" class="dim small"></p></div>
   <ul class="parts" id="ask"></ul></div>
-<div class="card" id="unassignedcard" hidden><h2>Rides without a bike</h2><ul class="parts" id="unassigned"></ul></div>
+<div class="card" id="unassignedcard" hidden><h2>Rides without a bike</h2>
+  <div class="edit"><div class="small"><b>By kind of ride</b> (Garmin's, from the sync or its CSV): choose a bike for each, and
+  every ride of that kind without a bike gets it. Kept as the rule for new Garmin rides too.</div>
+  <form id="bykind" class="grid"></form><div class="row"><button id="bykindgo" type="button" class="primary small">Give them these bikes</button></div>
+  <p id="bykindmsg" class="dim small"></p></div>
+  <ul class="parts" id="unassigned"></ul></div>
 
 <div id="bikes"></div>
 
@@ -385,6 +395,16 @@ function draw() {
     if (r.wet == null && !r.indoor) acts.append(button('Wet', () => patch({ wet: true })), button('Dry', () => patch({ wet: false })));
     li.append(mid, acts); $('ask').append(li);
   }
+  const n = g.counts || {};
+  $('askcount').textContent = (n.to_confirm || 0) + ' rides to confirm (the latest 50 are below): ' + (n.unanswered_wet || 0) + ' not yet said wet or dry' +
+    (n.suggested_wet ? ' (' + n.suggested_wet + ' look wet by the rain gauge)' : '') + ', ' + (n.bike_unchecked || 0) + ' with a bike to confirm.';
+  $('alldry').hidden = !n.unanswered_wet; $('allbikes').hidden = !n.bike_unchecked;
+  const f = $('bykind'); f.replaceChildren();
+  const rules = (window.garminRules || {}), nice = k => k === 'default' ? 'Any other ride' : k === 'commute' ? 'Commute (any kind)' : k.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+  for (const [k, c] of Object.entries(n.kinds_without_bike || {}).sort((a, b) => b[1] - a[1])) {
+    const l = el('label', null, nice(k) + ' (' + c + ') '), sel = el('select'); sel.name = k; sel.append(new Option('leave', ''));
+    g.bikes.filter(b => !b.retired_at).forEach(b => sel.append(new Option(b.label, b.id))); if (rules[k] != null) sel.value = String(rules[k]); l.append(sel); f.append(l);
+  }
   $('unassignedcard').hidden = !g.unassigned_rides.length; $('unassigned').replaceChildren();
   for (const r of g.unassigned_rides.slice(-30).reverse()) {
     const li = el('li'); li.append(el('span', 'ic', '🚲'));
@@ -457,12 +477,12 @@ function answers() {
 async function load() {
   if (!rider()) return;
   g = await api('GET', '/v1/bikes?rider=' + encodeURIComponent(rider()));
+  await guard(garmin, $('gmsg'));  // first: the Garmin rules fill in the by-kind choices
   draw();
-  await guard(garmin, $('gmsg'));
 }
 const R = () => '?rider=' + encodeURIComponent(rider());
 async function garmin() {
-  const s = await api('GET', '/v1/bikes/garmin' + R());
+  const s = await api('GET', '/v1/bikes/garmin' + R()); window.garminRules = s.rules;
   $('garmincard').hidden = false; $('gwarn').textContent = s.warn || (s.error ? 'Last sync failed: ' + s.error : '');
   const lr = s.last_result || {};
   $('gstate').textContent = !s.key_set ? 'No Garmin key for this rider yet: rides come only from the CSV import or by hand.'
@@ -481,6 +501,20 @@ async function garmin() {
     sel.value = s.rules[t] != null ? String(s.rules[t]) : ''; l.append(sel); f.append(l);
   }
 }
+$('alldry').onclick = () => guard(async () => {
+  const keep = $('keepwet').checked, n = g.counts || {}, count = (n.unanswered_wet || 0) - (keep ? (n.suggested_wet || 0) : 0);
+  if (!confirm('Mark ' + count + ' rides dry?' + (keep && n.suggested_wet ? ' The ' + n.suggested_wet + ' the rain gauge says were wet stay to answer.' : ''))) return;
+  const r = await api('POST', '/v1/bikes/rides/bulk', { rider: rider(), action: 'dry', keep_suggested_wet: keep });
+  await load(); $('bulkmsg').textContent = r.changed + ' rides marked dry.'; }, $('bulkmsg'));
+$('allbikes').onclick = () => guard(async () => {
+  if (!confirm('Keep the bike every ride has now (' + ((g.counts || {}).bike_unchecked || 0) + ' rides)?')) return;
+  const r = await api('POST', '/v1/bikes/rides/bulk', { rider: rider(), action: 'bikes_ok' });
+  await load(); $('bulkmsg').textContent = r.changed + ' rides kept on their bike.'; }, $('bulkmsg'));
+$('bykindgo').onclick = () => guard(async () => {
+  const rules = {}; for (const i of $('bykind').elements) if (i.name && i.value) rules[i.name] = Number(i.value);
+  if (!Object.keys(rules).length) throw new Error('Choose a bike for at least one kind of ride');
+  const r = await api('POST', '/v1/bikes/rides/bulk', { rider: rider(), action: 'bike_by_kind', rules });
+  await load(); $('bykindmsg').textContent = r.changed + ' rides given a bike.'; }, $('bykindmsg'));
 async function saveRules(apply) {
   const rules = {}; for (const i of $('grules').elements) if (i.name) rules[i.name] = i.value ? Number(i.value) : null;
   const r = await api('PUT', '/v1/bikes/garmin/rules' + R(), { rules, weight: $('gweight').checked, apply });

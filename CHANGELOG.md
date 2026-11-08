@@ -11,6 +11,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ### Added
 - **Commute** as a kind of Garmin ride for choosing its bike: a ride Garmin marks as a commute goes to that bike first,
   whatever kind of ride it is. The Garmin probe counts rides by event type and commutes.
+- **Many rides at once:** Rides to confirm has "Mark every unanswered ride dry" (optionally leaving the ones the rain
+  gauge says were wet) and "Keep every bike as it is", with how many there are. Rides without a bike are grouped by
+  kind of ride (Garmin's names from the sync and its CSV taken as the same kinds): a bike for each kind gives them all
+  theirs, and becomes the rule for new rides. `POST /v1/bikes/rides/bulk`.
 
 ## [0.42.0] - 2026-11-08
 
