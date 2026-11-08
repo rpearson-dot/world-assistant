@@ -251,12 +251,19 @@ def words(d: dict[str, Any]) -> str:
     done = (d.get("outcomes") or {}).get("someone dealt with")
     if d["total"] and done is not None:
         s += f" Someone was dealt with for {round(100 * done / d['total'])}%."
+    b = d.get("boroughs")
+    if b and not b.get("error"):
+        from app.crime_areas import words as borough_words
+
+        line = borough_words(b)
+        if line:
+            s += "\n" + line
     t = d.get("neighbourhood")
     if t:
         phone = (t.get("contact") or {}).get("telephone")
-        s += f" Police team: {t['name']} ({t['force_name']})" + (f", {phone}" if phone else "") + "."
+        s += f"\nPolice team: {t['name']} ({t['force_name']})" + (f", {phone}" if phone else "") + "."
         if t.get("priorities"):
-            s += f" Its latest priority: {t['priorities'][0]['issue'][:160]}."
+            s += f"\nIts latest priority: {t['priorities'][0]['issue'][:160]}."
     if d.get("note"):
         s = d["note"]
     return s
@@ -278,17 +285,37 @@ async def point_for(request: Request, postcode: str | None) -> tuple[float, floa
     return got.lat, got.lon
 
 
+BOROUGH_WAIT_S = 12.0
+_running: set[asyncio.Task[Any]] = set()
+
+
 @router.get("")
 async def crime(request: Request, lat: float | None = Query(None, ge=49.5, le=61.0), lon: float | None = Query(None, ge=-8.7, le=2.0),
                 postcode: str | None = Query(None, max_length=10),
-                months: int = Query(12, ge=1, le=12, description="how many months up to the latest published")) -> dict[str, Any]:  # fmt: skip
-    """Street-level crime within a mile and the local police team, for a point or a postcode."""
+                months: int = Query(12, ge=1, le=12, description="how many months up to the latest published"),
+                boroughs: bool = Query(True, description="compare the borough with the boroughs next to it")) -> dict[str, Any]:  # fmt: skip
+    """Street-level crime within a mile and the local police team, for a point or a postcode; and the borough's crime
+    rate (a year per 1,000 residents) against the boroughs next to it."""
     if lat is None or lon is None:
         lat, lon = await point_for(request, postcode)
     try:
         d = await look_up(lat, lon, months)
     except CrimeError as exc:
         raise HTTPException(502, str(exc)) from exc
+    if boroughs:
+        from app import crime_areas
+
+        # the first time for a borough can take a while (a request for each borough): it carries on after the answer,
+        # so the next asks are quick
+        task = asyncio.create_task(crime_areas.compare(request.app.state.engine, lat, lon))
+        _running.add(task)
+        task.add_done_callback(_running.discard)
+        try:
+            d["boroughs"] = await asyncio.wait_for(asyncio.shield(task), BOROUGH_WAIT_S)
+        except TimeoutError:
+            d["boroughs"] = {"error": "the borough comparison is still being worked out: ask again in a minute"}
+        except CrimeError as exc:
+            d["boroughs"] = {"error": str(exc)}
     return {**d, "text": words(d)}
 
 

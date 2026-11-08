@@ -72,3 +72,8 @@ see which parts of the map get looked at. By default they come from OpenStreetMa
 
 In dark mode the tiles are inverted in the browser so the map does not glare; your data keeps its
 own colours.
+
+## Where it opens
+
+The map opens on where you are, once the browser has your location. That needs the https (Tailscale) address and
+your permission. Otherwise it opens at home. It does not follow you as you move: **📍 Me** centres it again.

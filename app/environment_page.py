@@ -95,6 +95,20 @@ async function floods() {
       el('td', x.state === 'high' ? 'err' : null, (x.state || '') + ' ' + (ARROW[x.trend] || ''))); t.append(tr); }
     if (d.rivers.length) r.append(t); r.append(el('div', 'src', d.source));
   } catch (e) { failed(r, e); }
+  const f = card('River flow');
+  try {
+    const d = await api('/v1/environment/flows' + P() + '&km=12');
+    if (!d.flows.length) f.append(el('p', 'dim', 'No gauge measuring flow within 12 km.'));
+    const t = el('table', 'env'); t.innerHTML = '<tr><th>River</th><th>Flow</th><th>Usual (Q95–Q10)</th><th>Now</th></tr>';
+    for (const x of d.flows) { const tr = el('tr'), u = x.usual || {};
+      tr.append(el('td', null, (x.river || '') + ' at ' + x.station + ' (' + x.km + ' km)'),
+        el('td', null, x.flow_m3s == null ? '' : x.flow_m3s + ' m³/s' + (x.pct_of_mean != null ? ' (' + x.pct_of_mean + '% of mean)' : '')),
+        el('td', null, u.q95 != null && u.q10 != null ? u.q95 + '–' + u.q10 + ' m³/s' : ''),
+        el('td', /high/.test(x.state || '') ? 'err' : null, (x.state || '') + ' ' + (ARROW[x.trend] || ''))); t.append(tr); }
+    if (d.flows.length) f.append(t);
+    if (d.note) f.append(el('p', 'dim small', d.note));
+    f.append(el('p', 'dim small', 'Usual: the flow exceeded 95% of the time (a dry spell) to 10% of the time (after heavy rain), from the National River Flow Archive.'), el('div', 'src', d.source));
+  } catch (e) { failed(f, e); }
   const g = card('Rain');
   try {
     const d = await api('/v1/environment/rain' + P());

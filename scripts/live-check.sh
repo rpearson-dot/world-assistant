@@ -187,6 +187,9 @@ if isinstance(riders, dict):
 run("Recalls probe (GOV.UK product safety recalls for a few bike makers)", "app.bikes.recalls", "SRAM", "Shimano", "Yeti", module="bikes")
 # 0.42.0: crime and police, food standards, tax and MOT
 run("Police probe (crime within a mile of home, the last 2 months; the police team)", "app.crime", str(lat), str(lon), module="crime")
+run("Borough crime probe (home's borough against its neighbours: data.police.uk counts, Nomis populations)", "app.crime_areas", str(lat), str(lon),
+    module="crime", timeout=240)
+get("River flow near home (EA, with the NRFA's usual flows)", "/v1/environment/flows", show=3000, lat=lat, lon=lon)
 get("Crime near home (12 months)", "/v1/crime", show=2500, lat=lat, lon=lon)
 run("Food standards probe (hygiene near home, alerts of the last 30 days)", "app.food", str(lat), str(lon), module="food")
 get("Food alerts and matches", "/v1/food/alerts", show=2500, limit=5)

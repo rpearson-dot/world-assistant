@@ -279,7 +279,20 @@ async def river_levels_tool(request: Request, args: dict[str, Any]) -> dict[str,
     if rn["gauges"]:
         g = rn["gauges"][0]
         text_ += f" Rain at {g['gauge']}: {g['last_hour_mm']:g} mm in the last hour, {g['last_24h_mm']:g} mm in 24 hours."
-    return {"text": text_, "data": {"rivers": rv, "rain": rn}}
+    from app.environment import flows
+
+    try:
+        fl = await _wrap(flows(request, place=place, km=10))
+    except Exception:  # noqa: BLE001 - flow is extra: levels and rain still answer
+        fl = {"flows": []}
+    for x in fl["flows"][:2]:
+        if x["flow_m3s"] is None:
+            continue
+        text_ += f" Flow on the {x['river'] or x['station']} at {x['station']}: {x['flow_m3s']:g} m³/s"
+        if x.get("state"):
+            text_ += f", {x['state']} for there" + (f" ({x['pct_of_mean']}% of its mean)" if x.get("pct_of_mean") is not None else "")
+        text_ += f"{', ' + x['trend'] if x.get('trend') else ''}."
+    return {"text": text_, "data": {"rivers": rv, "rain": rn, "flows": fl}}
 
 
 async def tides_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
@@ -891,7 +904,8 @@ MORE: list[Tool] = [
          {"type": "object", "properties": _props(place=PLACE, km=("number", "how far to look for stations, default 20"))},
          air_quality_tool),
     Tool("river_levels", "River levels near a saved place (the level, whether it is low, normal or high for there, and rising "
-         "or falling), and the rain at the nearest gauge. England only.",
+         "or falling), river flow where measured (m³/s, compared with its usual flows), and the rain at the nearest gauge. "
+         "England only.",
          {"type": "object", "properties": _props(place=PLACE, km=("number", "how far to look for river gauges, default 5"))},
          river_levels_tool),
     Tool("tides", "The nearest tide gauge to a saved place: the measured level and whether it is rising or falling (not a "

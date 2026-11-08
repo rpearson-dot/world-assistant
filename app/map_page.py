@@ -42,6 +42,7 @@ PAGE = """<!doctype html>
 <h1>Map</h1>
 <div class="bar"><input id="t" type="password" placeholder="API token" autocomplete="current-password">
 <select id="place" aria-label="Centre"></select>
+<button id="me" type="button" title="Centre on where I am">📍 Me</button>
 <select id="radius" aria-label="Distance">
   <option value="5">5 km</option><option value="10" selected>10 km</option>
   <option value="25">25 km</option><option value="50">50 km</option><option value="0">Everywhere</option>
@@ -164,7 +165,8 @@ async function load() {
     const radius = Number($('radius').value), place = $('place').value;
     const q = ['layers=' + Object.keys(STYLE).join(',')];
     if (!radius) q.push('everywhere=true'); else q.push('radius_km=' + radius);
-    if (place && radius) q.push('place=' + encodeURIComponent(place));
+    if (place === ME && radius) { if (HERE) q.push('lat=' + HERE.lat, 'lon=' + HERE.lon); }  // where you are (else home)
+    else if (place && radius) q.push('place=' + encodeURIComponent(place));
     const body = await api('GET', '/v1/map/geojson?' + q.join('&'));
     ready();
     for (const g of Object.values(drawn)) map.removeLayer(g);
@@ -181,7 +183,8 @@ async function load() {
     const why = Object.entries(body.notes || {}).filter(([k]) => ON.has(k)).map(([k, v]) => STYLE[k].label + ': ' + v);
     if (body.centre) {
       map.setView([body.centre.lat, body.centre.lon], radius <= 5 ? 13 : radius <= 10 ? 12 : radius <= 25 ? 11 : 10);
-      $('note').textContent = ['Centred on ' + body.centre.name + ', within ' + body.centre.radius_km + ' km.'].concat(why).join(' ');
+      const at = place === ME && HERE ? 'where you are' : place === ME ? body.centre.name + ' (' + (WHY || 'your location is not available') + ')' : body.centre.name;
+      $('note').textContent = ['Centred on ' + at + ', within ' + body.centre.radius_km + ' km.'].concat(why).join(' ');
     } else {
       $('note').textContent = ['Everything, wherever it is.'].concat(why).join(' ');
       const b = L.latLngBounds([]);  // layer groups have no bounds of their own: ask each shape
@@ -194,18 +197,29 @@ async function load() {
 
 addEventListener('wa-theme', () => { if (Object.keys(drawn).length) load(); });
 
+// the map opens where you are (the browser asks once), else at home; it does not follow you: 📍 Me centres again
+const ME = '__me';
+let HERE = null, WHY = '';
+function locate() {
+  return new Promise(done => {
+    if (!navigator.geolocation || !isSecureContext) { WHY = 'location needs the https address'; HERE = null; return done(); }
+    navigator.geolocation.getCurrentPosition(p => { HERE = { lat: p.coords.latitude.toFixed(5), lon: p.coords.longitude.toFixed(5) }; WHY = ''; done(); },
+      e => { HERE = null; WHY = e.code === 1 ? 'location not allowed' : 'location not found'; done(); }, { timeout: 8000, maximumAge: 120000 });
+  });
+}
 async function places() {
   try {
     const list = await api('GET', '/v1/places'), keep = $('place').value;
-    $('place').replaceChildren(...list.map(p => new Option(p.name, p.id)));
-    if (keep && list.some(p => p.id === keep)) $('place').value = keep;
+    $('place').replaceChildren(new Option('Where I am', ME), ...list.map(p => new Option(p.name, p.id)));
+    if (keep && (keep === ME || list.some(p => p.id === keep))) $('place').value = keep;
   } catch (e) { /* the token may be wrong; load() will say so */ }
 }
+$('me').addEventListener('click', async () => { $('place').value = ME; if (!Number($('radius').value)) $('radius').selectedIndex = 0; await locate(); await load(); });
 
-$('go').addEventListener('click', async () => { await places(); await load(); });
+$('go').addEventListener('click', async () => { await places(); await locate(); await load(); });
 $('radius').addEventListener('change', load);
 $('place').addEventListener('change', load);
-if (tok.value) { places().then(load); }
+if (tok.value) { places().then(locate).then(load); }
 </script></main></body></html>"""
 
 

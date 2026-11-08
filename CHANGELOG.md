@@ -2,6 +2,27 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.49.0] - 2026-11-08
+
+### Added
+- **River flow** on Environment → Floods and rivers, in the assistant and as a Home Assistant sensor: the
+  Environment Agency's flow estimates (m³/s) where a gauge measures flow. Each is compared with that river's usual
+  flows from the National River Flow Archive, from very low (below Q95) to very high (above Q05), and as a share of
+  the mean.
+- **Muting events:** each event has a Mute button, and the Events page has a list of muted words. Muted events are
+  left out on the Events page, on Here, by the assistant, in Home Assistant and in the graph. "Show muted events"
+  brings them back, faded.
+- **Crime by borough:** the point's borough is compared with the boroughs next to it, in crimes a year per 1,000
+  residents. This uses the latest published month from data.police.uk, Boundary-Line districts and ONS population
+  estimates. It falls back to per km² when there is no population. The comparison is on Here and in the `crime` tool.
+
+### Changed
+- **Map** opens where you are (the https address, with your permission), else at home, and stays put. 📍 Me
+  centres it again.
+- **Here** shows each part as soon as it answers, waiting up to 45 seconds for each, with "No data yet" while
+  waiting. A part that fails says whether it was not set up, refused, or did not respond. Lists are one item to a
+  line, and events link to themselves on the Events page, which can now open at a point.
+
 ## [0.48.0] - 2026-11-08
 
 ### Added

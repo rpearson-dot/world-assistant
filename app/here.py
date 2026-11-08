@@ -13,11 +13,14 @@ address), not the plain address on the home network.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.auth import require_token
@@ -43,6 +46,7 @@ PARTS: tuple[tuple[str, str, str, dict[str, Any]], ...] = (
     ("floods", "Flood warnings", "/v1/floods/at", {"within_km": 3}),
     ("air", "Air quality", "/v1/environment/air", {"km": 20}),
     ("rivers", "Rivers", "/v1/environment/rivers", {"km": 5}),
+    ("flows", "River flow", "/v1/environment/flows", {"km": 10}),
     ("rain", "Rain", "/v1/environment/rain", {"km": 10}),
     ("tides", "Tide", "/v1/environment/tides", {"km": 20}),
     ("overflows", "Storm overflows", "/v1/environment/overflows", {"km": 3}),
@@ -74,27 +78,32 @@ def words(part: str, d: dict[str, Any]) -> str:
         for s in stops:
             name = s["name"] + (f" ({s['indicator']})" if s.get("indicator") else "")
             buses = s.get("buses") or []
-            parts.append(f"{name}, {round(s['km'] * 1000)} m: " + ("; ".join(bus(b) for b in buses[:4]) if buses else "nothing due"))
-        tail = f" Still looking up the timetable for {', '.join(d['loading'])}; ask again in a minute." if d.get("loading") else ""
-        return ". ".join(parts) + "." + tail
+            parts.append(f"{name}, {round(s['km'] * 1000)} m: " + (", ".join(bus(b) for b in buses[:4]) if buses else "nothing due"))
+        tail = f"\nStill looking up the timetable for {', '.join(d['loading'])}: ask again in a minute." if d.get("loading") else ""
+        return "\n".join(parts) + tail
     if part == "bus_disruptions":
         x = d.get("disruptions") or []
-        return " ".join(f"{i.get('summary') or 'Disruption'}" + (f" ({', '.join(i['lines'][:4])})" if i.get("lines") else "") + "."
-                        for i in x[:3]) if x else "No bus disruptions published within 2 km."  # fmt: skip
+        return "\n".join(f"{i.get('summary') or 'Disruption'}" + (f" ({', '.join(i['lines'][:4])})" if i.get("lines") else "")
+                         for i in x[:3]) if x else "No bus disruptions published within 2 km."  # fmt: skip
     if part == "stations":
         s = d.get("stations") or []
-        return "; ".join(f"{x['name']} ({_mi(x.get('km'))})" + (", closures reported" if x.get("closures") else "") for x in s) + "." if s else "No London stations within 2 km."
+        return "\n".join(f"{x['name']} ({_mi(x.get('km'))})" + (", closures reported" if x.get("closures") else "") for x in s) if s else "No London stations within 2 km."
     if part == "floods":
         w = d.get("warnings") or []
-        return " ".join(f"{x['severity']}: {x['area']}." for x in w[:3]) if w else "No flood warnings here."
+        return "\n".join(f"{x['severity']}: {x['area']}" for x in w[:3]) if w else "No flood warnings here."
     if part == "air":
         if d.get("index") is None:
             return "No air quality station near enough."
         return f"Index {d['index']} ({d.get('band', '').lower()})" + (f", worst {d['worst']}" if d.get("worst") else "") + "."
     if part == "rivers":
         r = d.get("rivers") or []
-        return "; ".join(f"{x.get('river') or x.get('station')}: {x.get('state') or 'level ' + str(x.get('level'))}"
-                         + (f", {x['trend']}" if x.get("trend") else "") for x in r[:3]) + "." if r else "No river gauge within 5 km."  # fmt: skip
+        return "\n".join(f"{x.get('river') or x.get('station')}: {x.get('state') or 'level ' + str(x.get('level_m'))}"
+                          + (f", {x['trend']}" if x.get("trend") else "") for x in r[:3]) if r else "No river gauge within 5 km."  # fmt: skip
+    if part == "flows":
+        f = d.get("flows") or []
+        return "\n".join(f"{x.get('river') or x.get('station')}: {x['flow_m3s']:g} m³/s" + (f", {x['state']} for there" if x.get("state") else "")
+                          + (f" ({x['pct_of_mean']}% of its mean)" if x.get("pct_of_mean") is not None else "")
+                          + (f", {x['trend']}" if x.get("trend") else "") for x in f[:3] if x.get("flow_m3s") is not None) or "No flow gauge within 10 km."  # fmt: skip
     if part == "rain":
         g = (d.get("gauges") or [None])[0]
         return (f"{g['last_hour_mm']} mm in the last hour, {g['last_24h_mm']} mm in 24 hours ({g['gauge']}, {_mi(g['km'])})."
@@ -113,18 +122,18 @@ def words(part: str, d: dict[str, Any]) -> str:
         return (f"Allergy risk {risk}. " if risk else "") + ("Today: " + ", ".join(high) + "." if high else "No pollen reported today.")
     if part == "fuel":
         s = d.get("stations") or []
-        return "Cheapest: " + "; ".join(f"{x.get('brand') or x.get('name')}, {x['pence']:.1f}p, {_mi(x.get('distance_km'))}" for x in s) + "." if s else "No E10 prices within 5 miles."
+        return "Cheapest:\n" + "\n".join(f"{x.get('brand') or x.get('name')}, {x['pence']:.1f}p, {_mi(x.get('distance_km'))}" for x in s) if s else "No E10 prices within 5 miles."
     if part == "chargers":
         s = d.get("sites") or []
-        return " ".join(x.get("summary") or x.get("name", "") for x in s) if s else "No GRIDSERVE chargers within 10 miles."
+        return "\n".join(x.get("summary") or x.get("name", "") for x in s) if s else "No GRIDSERVE chargers within 10 miles."
     if part == "events":
         e = d.get("events") or []
-        return ("; ".join(f"{x.get('name')}" + (f" at {x['venue']}" if x.get("venue") else "") + (f", {x['date']}" if x.get("date") else "") for x in e[:4])
-                + (f", and {d['total'] - 4} more" if (d.get("total") or 0) > 4 else "") + "."
-                + (" Listings include Data Thistle's." if d.get("attribution") else "")) if e else "Nothing listed nearby in the next 3 days."  # fmt: skip
+        return ("\n".join(f"{x.get('name')}" + (f" at {x['venue']}" if x.get("venue") else "") + (f", {x['date']}" if x.get("date") else "") for x in e[:5])
+                + (f"\nand {d['total'] - 5} more" if (d.get("total") or 0) > 5 else "")
+                + ("\nListings include Data Thistle's." if d.get("attribution") else "")) if e else "Nothing listed nearby in the next 3 days."  # fmt: skip
     if part == "roads":
         r = d.get("disruptions") or []
-        return "; ".join(f"{x.get('severity')}: {x.get('location') or x.get('category')}" for x in r[:3]) + "." if r else "No TfL road disruption within 2 km."
+        return "\n".join(f"{x.get('severity')}: {x.get('location') or x.get('category')}" for x in r[:3]) if r else "No TfL road disruption within 2 km."
     if part == "power":
         c = d.get("cuts") or []
         return (f"{len(c)} power cut{'s' if len(c) != 1 else ''} within 3 miles" + (f", {d['at_place']} here" if d.get("at_place") else "") + "."
@@ -137,6 +146,22 @@ def words(part: str, d: dict[str, Any]) -> str:
 def _blank(part: str, d: dict[str, Any]) -> bool:
     """Nothing worth showing: a part outside its area (London-only sources away from London)."""
     return part in ("stations", "roads") and not (d.get("stations") or d.get("disruptions"))
+
+
+REFUSED = re.compile(r"HTTP (401|403|429)\b|refused|forbidden|too many requests|not allowed|denied|unauthori", re.IGNORECASE)
+NO_ANSWER = re.compile(r"did not answer|timed? ?out|could not be reached|HTTP (502|503|504)\b|no answer|unavailable", re.IGNORECASE)
+
+
+def status_of(code: int, text: str) -> str:
+    """What a failed part's answer means: not_set_up (it needs a key), refused (the source said no: a key, a limit),
+    no_answer (it did not answer in time or at all), or error (anything else)."""
+    if "not set up" in text.lower() or "is set up" in text.lower():
+        return "not_set_up"
+    if code in (401, 403, 429) or REFUSED.search(text):
+        return "refused"
+    if code in (502, 503, 504) and NO_ANSWER.search(text) or code == 504:
+        return "no_answer"
+    return "error"
 
 
 AT_PLACE_KM = 0.15  # within this of a saved place, Here is "at" it
@@ -163,62 +188,98 @@ AREA_S = 5.0
 PART_S = 15.0
 
 
-async def gather(request: Request, lat: float, lon: float) -> dict[str, Any]:
-    """Every part for a point, asked at once inside the server."""
+STREAM_PART_S = 45.0  # the page shows each part as it comes, so it can wait longer for a slow one
+
+
+async def _head(c: httpx.AsyncClient, lat: float, lon: float) -> dict[str, Any]:
+    """The point's area (its postcode), the saved place it is (if any) and its three words."""
+    out: dict[str, Any] = {"lat": round(lat, 5), "lon": round(lon, 5), "area": None, "place": None}
+    try:
+        pc = await asyncio.wait_for(c.get("/v1/postcodes/near", params={"lat": lat, "lon": lon, "radius_km": 1, "limit": 1}),
+                                    AREA_S)  # fmt: skip
+        out["area"] = (pc.json().get("postcodes") or [None])[0]
+    except (httpx.HTTPError, ValueError, TimeoutError):
+        pass
+    try:  # one of your saved places? Then Here says so (everything is still asked for the point)
+        places = (await asyncio.wait_for(c.get("/v1/places"), AREA_S)).json()
+        out["place"] = saved_place(places if isinstance(places, list) else [], lat, lon)
+    except (httpx.HTTPError, ValueError, TimeoutError):
+        out["place"] = None
+    out["what3words"] = await _three_words(lat, lon)
+    return out
+
+
+async def _three_words(lat: float, lon: float) -> dict[str, Any] | None:
+    from app.integrations.what3words import client as W3W
+
+    if not get_settings().what3words_api_key:
+        return None
+    try:
+        return await asyncio.wait_for(W3W.to_words(lat, lon), AREA_S)
+    except TimeoutError:
+        return {"error": "what3words did not answer in time"}
+    except W3W.What3WordsError as exc:
+        return {"error": exc.brief, "detail": str(exc)}
+
+
+async def _one(c: httpx.AsyncClient, lat: float, lon: float, postcode: str, part: str, title: str, path: str,
+               extra: dict[str, Any], deadline: float) -> dict[str, Any]:  # fmt: skip
+    """One part, asked inside the server, with its status: ok, off, no_answer, refused or error."""
+    q = {"lat": lat, "lon": lon, **{k: (postcode if v == "{pc}" else v) for k, v in extra.items()}}
+    q = {k: v for k, v in q.items() if v != ""}
+    try:
+        r = await asyncio.wait_for(c.get(path, params=q), deadline)
+    except TimeoutError:
+        return {"part": part, "title": title, "ok": False, "slow": True, "status": "no_answer",
+                "text": f"No answer within {deadline:.0f} seconds: ask again in a minute."}  # fmt: skip
+    except httpx.HTTPError as exc:
+        return {"part": part, "title": title, "ok": False, "status": "no_answer", "text": f"Could not ask ({type(exc).__name__})."}
+    if r.status_code == 404 and "off" in r.text.lower():
+        return {"part": part, "title": title, "ok": False, "off": True, "status": "off", "text": "Switched off."}
+    try:
+        d = r.json()
+    except ValueError:
+        d = {}
+    if r.status_code >= 400:
+        detail = str((d.get("detail") if isinstance(d, dict) else None) or f"HTTP {r.status_code}")[:200]
+        st = status_of(r.status_code, detail)
+        lead = {"refused": "Refused: ", "no_answer": "No answer: "}.get(st, "")
+        return {"part": part, "title": title, "ok": False, "status": st, "text": lead + detail}
+    return {"part": part, "title": title, "ok": True, "status": "ok", "blank": _blank(part, d), "text": words(part, d), "data": d}
+
+
+def _client(request: Request) -> httpx.AsyncClient:
     token = get_settings().api_token
     headers = {"Authorization": f"Bearer {token}"} if token else {}
-    transport = httpx.ASGITransport(app=request.app)
-    out: dict[str, Any] = {"lat": round(lat, 5), "lon": round(lon, 5), "area": None, "parts": []}
-    async with httpx.AsyncClient(transport=transport, base_url="http://wa.internal", headers=headers, timeout=30) as c:
-        try:
-            pc = await asyncio.wait_for(c.get("/v1/postcodes/near", params={"lat": lat, "lon": lon, "radius_km": 1, "limit": 1}),
-                                        AREA_S)  # fmt: skip
-            out["area"] = (pc.json().get("postcodes") or [None])[0]
-        except (httpx.HTTPError, ValueError, TimeoutError):
-            pass
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=request.app), base_url="http://wa.internal", headers=headers, timeout=60)
+
+
+async def gather(request: Request, lat: float, lon: float, want: set[str] | None = None, deadline: float | None = None) -> dict[str, Any]:
+    """Every part for a point (or those in `want`), asked at once inside the server."""
+    deadline = deadline or PART_S
+    async with _client(request) as c:
+        out = await _head(c, lat, lon)
         postcode = (out["area"] or {}).get("postcode") or ""
-        try:  # one of your saved places? Then Here says so (everything is still asked for the point)
-            places = (await asyncio.wait_for(c.get("/v1/places"), AREA_S)).json()
-            out["place"] = saved_place(places if isinstance(places, list) else [], lat, lon)
-        except (httpx.HTTPError, ValueError, TimeoutError):
-            out["place"] = None
-
-        async def one(part: str, title: str, path: str, extra: dict[str, Any]) -> dict[str, Any]:
-            q = {"lat": lat, "lon": lon, **{k: (postcode if v == "{pc}" else v) for k, v in extra.items()}}
-            q = {k: v for k, v in q.items() if v != ""}
-            try:
-                r = await asyncio.wait_for(c.get(path, params=q), PART_S)
-            except TimeoutError:
-                return {"part": part, "title": title, "ok": False, "slow": True,
-                        "text": f"Did not answer within {PART_S:.0f} seconds; ask again in a minute."}  # fmt: skip
-            except httpx.HTTPError as exc:
-                return {"part": part, "title": title, "ok": False, "text": f"Could not ask ({type(exc).__name__})."}
-            if r.status_code == 404 and "off" in r.text.lower():
-                return {"part": part, "title": title, "ok": False, "off": True, "text": "Switched off."}
-            try:
-                d = r.json()
-            except ValueError:
-                d = {}
-            if r.status_code >= 400:
-                detail = d.get("detail") if isinstance(d, dict) else None
-                return {"part": part, "title": title, "ok": False, "text": str(detail or f"HTTP {r.status_code}")[:200]}
-            return {"part": part, "title": title, "ok": True, "blank": _blank(part, d), "text": words(part, d), "data": d}
-
-        async def three_words() -> dict[str, Any] | None:
-            from app.integrations.what3words import client as W3W
-
-            if not get_settings().what3words_api_key:
-                return None
-            try:
-                return await asyncio.wait_for(W3W.to_words(lat, lon), AREA_S)
-            except TimeoutError:
-                return {"error": "what3words did not answer in time"}
-            except W3W.What3WordsError as exc:
-                return {"error": exc.brief, "detail": str(exc)}
-
-        *parts, out["what3words"] = await asyncio.gather(*(one(*p) for p in PARTS), three_words())
-        out["parts"] = list(parts)
+        todo = [p for p in PARTS if want is None or p[0] in want]
+        out["parts"] = list(await asyncio.gather(*(_one(c, lat, lon, postcode, *p, deadline) for p in todo)))
     return out
+
+
+async def stream(request: Request, lat: float, lon: float) -> AsyncIterator[bytes]:
+    """The head first, then each part as soon as it answers (newline-delimited JSON), then "done"."""
+    async with _client(request) as c:
+        head = await _head(c, lat, lon)
+        yield (json.dumps({"type": "head", **head, "parts": [{"part": p[0], "title": p[1]} for p in PARTS],
+                           "wait_s": STREAM_PART_S}) + "\n").encode()  # fmt: skip
+        postcode = (head["area"] or {}).get("postcode") or ""
+        tasks = [asyncio.create_task(_one(c, lat, lon, postcode, *p, STREAM_PART_S)) for p in PARTS]
+        try:
+            for t in asyncio.as_completed(tasks):
+                yield (json.dumps({"type": "part", **await t}, default=str) + "\n").encode()
+        finally:
+            for t in tasks:
+                t.cancel()
+    yield b'{"type": "done"}\n'
 
 
 @router.get("")
@@ -228,7 +289,26 @@ async def here(request: Request, lat: float | None = Query(None, ge=49.5, le=61.
                words: str | None = Query(None, max_length=80, description="what3words, instead of lat and lon"),
                parts: str | None = Query(None, description="only these parts, comma-separated")) -> dict[str, Any]:  # fmt: skip
     """Everything World Assistant knows about a point in Great Britain (or a postcode's centre), each part with a
-    sentence and its data."""
+    sentence, its status (ok, off, no_answer, refused, error) and its data."""
+    lat, lon = await resolve(request, lat, lon, postcode, words)
+    want = {p.strip() for p in parts.split(",")} if parts else None
+    return await gather(request, lat, lon, want)
+
+
+@router.get("/stream")
+async def here_stream(request: Request, lat: float | None = Query(None, ge=49.5, le=61.0),
+                      lon: float | None = Query(None, ge=-8.7, le=2.0), postcode: str | None = Query(None, max_length=10),
+                      words: str | None = Query(None, max_length=80)) -> StreamingResponse:  # fmt: skip
+    """As /v1/here, but each part as soon as it answers (newline-delimited JSON: a "head", each "part", then "done"),
+    each waiting up to 45 seconds. The Here page uses this."""
+    lat, lon = await resolve(request, lat, lon, postcode, words)
+    return StreamingResponse(stream(request, lat, lon), media_type="application/x-ndjson", headers={"Cache-Control": "no-store",
+                                                                                                    "X-Accel-Buffering": "no"})
+
+
+async def resolve(request: Request, lat: float | None, lon: float | None, postcode: str | None,
+                  words: str | None) -> tuple[float, float]:  # fmt: skip
+    """The point asked about: lat and lon, a postcode's centre, or what3words' square."""
     from app.integrations.what3words import client as W3W
 
     if (lat is None or lon is None) and (words or W3W.words_in(postcode or "")):
@@ -257,11 +337,7 @@ async def here(request: Request, lat: float | None = Query(None, ge=49.5, le=61.
         lat, lon = got.lat, got.lon
         if not (49.5 <= lat <= 61.0 and -8.7 <= lon <= 2.0):
             raise HTTPException(422, "That postcode is outside Great Britain.")
-    out = await gather(request, lat, lon)
-    if parts:
-        want = {p.strip() for p in parts.split(",")}
-        out["parts"] = [p for p in out["parts"] if p["part"] in want]
-    return out
+    return lat, lon
 
 
 class SaveIn(BaseModel):

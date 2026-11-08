@@ -49,3 +49,15 @@ location for the page when the browser asks.
 - **Assistant:** the `here` tool, with `lat` and `lon` (a Siri shortcut can send the phone's location) or a postcode,
   and `about` to ask for just some parts ("air,fuel").
 - **API:** `GET /v1/here?lat=&lon=` (and `parts=` to choose), and `POST /v1/here/save {lat, lon, name}`.
+
+## As they arrive
+
+The page asks `GET /v1/here/stream`, which sends each part as soon as it answers, as newline-delimited JSON. It waits
+up to 45 seconds for each part. While a part is still out, its card says "No data yet". A part that fails says why:
+- **Not set up**: it needs a key;
+- **Refused**: the source said no, for example a missing or wrong key, or too many requests;
+- **Did not respond**: no answer in time, or no answer at all;
+- **Problem**: anything else.
+
+Lists are one item to a line. Each event links to that event on the Events page. `GET /v1/here` still answers
+everything at once, waiting up to 15 seconds for each part. The assistant and the live check use that.

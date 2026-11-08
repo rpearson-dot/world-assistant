@@ -10,6 +10,7 @@ schedule, or by hand:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import sys
 import time
@@ -280,6 +281,16 @@ async def read(
         out["flood_crosses"] = [tuple(r) for r in await conn.execute(text(FLOOD_CROSSES))]
         out["disruption_rows"] = [dict(r._mapping) for r in await conn.execute(text(DISRUPTIONS))]
         out["local_event_rows"] = [dict(r._mapping) for r in await conn.execute(text(LOCAL_EVENTS))]
+        try:  # muted events (by name or word, set on the Events page) are left out here too
+            from app.events import is_muted
+
+            async with conn.begin_nested():  # a savepoint: a missing table must not spoil the rest
+                row = (await conn.execute(text("SELECT value FROM app_setting WHERE key = 'events_mute'"))).first()
+            m = (json.loads(row[0]) if isinstance(row[0], str) else row[0]) if row else None
+            if m:
+                out["local_event_rows"] = [e for e in out["local_event_rows"] if not is_muted(e, m)]
+        except Exception:
+            logging.getLogger(__name__).debug("no event mutes", exc_info=True)
         out["venue_rows"] = [dict(r._mapping) for r in await conn.execute(text(VENUES))]
         kinds = {"kinds": area_kinds}
         out["area_rows"] = [dict(r._mapping) for r in await conn.execute(text(AREAS), kinds)]

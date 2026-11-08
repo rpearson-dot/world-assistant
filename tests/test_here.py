@@ -28,6 +28,8 @@ ANSWERS: dict[str, Any] = {
     "/v1/floods/at": {"warnings": []},
     "/v1/environment/air": {"index": 3, "band": "Low", "worst": "PM2.5"},
     "/v1/environment/rivers": {"rivers": [{"river": "Hogsmill", "state": "normal", "trend": "steady"}]},
+    "/v1/environment/flows": {"flows": [{"river": "Hogsmill", "station": "Ewell", "flow_m3s": 0.84, "state": "normal", "pct_of_mean": 92,
+                                         "trend": "falling"}]},
     "/v1/environment/rain": {"gauges": [{"gauge": "Epsom", "km": 2.0, "last_hour_mm": 0.2, "last_24h_mm": 4.1}]},
     "/v1/environment/tides": {"gauge": None},
     "/v1/environment/overflows": {"discharging": [{}], "recent": [], "count": 7},
@@ -65,20 +67,21 @@ async def test_every_part_for_a_point(monkeypatch: pytest.MonkeyPatch) -> None:
     d = await H.gather(req, 51.3343, -0.2678)
     by = {p["part"]: p for p in d["parts"]}
     assert d["area"]["postcode"] == "KT17 1AA" and len(d["parts"]) == len(H.PARTS)
-    assert by["buses"]["text"] == ("Epsom Station (Stop C), 120 m: 406 to Kingston in 4 min; 293 to Morden at 17:40, 18:10 "
-                                   "(timetable). High Street, 300 m: nothing due. Still looking up the timetable for E16; "
+    assert by["buses"]["text"] == ("Epsom Station (Stop C), 120 m: 406 to Kingston in 4 min, 293 to Morden at 17:40, 18:10 "
+                                   "(timetable)\nHigh Street, 300 m: nothing due\nStill looking up the timetable for E16: "
                                    "ask again in a minute.")  # fmt: skip
-    assert by["bus_disruptions"]["text"] == "Ashley Road closed (406, E10)."
+    assert by["bus_disruptions"]["text"] == "Ashley Road closed (406, E10)"
+    assert by["flows"]["text"] == "Hogsmill: 0.84 m³/s, normal for there (92% of its mean), falling"
     assert by["air"]["text"] == "Index 3 (low), worst PM2.5."
-    assert by["rivers"]["text"] == "Hogsmill: normal, steady."
+    assert by["rivers"]["text"] == "Hogsmill: normal, steady"
     assert by["rain"]["text"].startswith("0.2 mm in the last hour, 4.1 mm in 24 hours (Epsom")
     assert by["overflows"]["text"] == "1 discharging now (of 7 within 3 km)."
-    assert by["fuel"]["text"] == "Cheapest: Tesco, 135.9p, 1.0 mile."
+    assert by["fuel"]["text"] == "Cheapest:\nTesco, 135.9p, 1.0 mile"
     assert by["chargers"]["text"] == "MOTO Cobham: 4 of 6 free."
-    assert by["events"]["text"] == "Christmas market at Market Place, Sat 7 Nov."
+    assert by["events"]["text"] == "Christmas market at Market Place, Sat 7 Nov"
     assert by["stations"]["blank"] and by["roads"]["blank"]  # London-only, away from London: left off the page
     assert by["power"]["off"] and not by["power"]["ok"]  # switched off says so, and the rest still came
-    assert not by["tides"]["ok"] and "503" in by["tides"]["text"]  # a failing source, in words
+    assert not by["tides"]["ok"] and "503" in by["tides"]["text"] and by["tides"]["status"] == "no_answer"  # a failing source, in words
     q = dict(seen)
     assert q["/v1/power/cuts"]["postcode"] == "KT17 1AA" and q["/v1/fuel/near"]["lat"] == "51.3343"
     assert q["/v1/live-buses/departures"]["radius_m"] == "400" and q["/v1/bus-disruptions"]["within_km"] == "2"
@@ -99,7 +102,7 @@ async def test_the_tool_takes_a_point_or_a_postcode(monkeypatch: pytest.MonkeyPa
     req.app = fake_app(seen)
     req.app.state.engine = None
     r = await M.here_tool(req, {"postcode": "KT17 1AA", "about": "air,fuel"})
-    assert r["text"] == "Around KT17 1AA, Epsom and Ewell. Air quality: Index 3 (low), worst PM2.5. Fuel (E10): Cheapest: Tesco, 135.9p, 1.0 mile."
+    assert r["text"] == "Around KT17 1AA, Epsom and Ewell. Air quality: Index 3 (low), worst PM2.5. Fuel (E10): Cheapest:\nTesco, 135.9p, 1.0 mile"
     from app.assistant_base import ToolError
 
     with pytest.raises(ToolError, match="outside Great Britain"):
@@ -130,7 +133,7 @@ async def test_a_part_that_never_answers_does_not_hold_up_the_rest(monkeypatch: 
     req: Any = SimpleNamespace(app=slow)
     d = await asyncio.wait_for(H.gather(req, 51.3343, -0.2678), 5)
     by = {p["part"]: p for p in d["parts"]}
-    assert by["fuel"]["slow"] and not by["fuel"]["ok"] and "ask again" in by["fuel"]["text"]
+    assert by["fuel"]["slow"] and not by["fuel"]["ok"] and "ask again" in by["fuel"]["text"] and by["fuel"]["status"] == "no_answer"
     assert by["air"]["ok"] and d["area"]["postcode"] == "KT17 1AA"
 
 
@@ -141,7 +144,7 @@ async def test_a_postcode_instead_of_a_point(monkeypatch: pytest.MonkeyPatch) ->
     async def find(engine: Any, value: str) -> Located | None:
         return Located("KT17 1AA", 51.3343, -0.2678) if value.replace(" ", "").upper() == "KT171AA" else None
 
-    async def gathered(request: Any, lat: float, lon: float) -> dict[str, Any]:
+    async def gathered(request: Any, lat: float, lon: float, *a: Any, **kw: Any) -> dict[str, Any]:
         return {"lat": lat, "lon": lon, "area": None, "parts": []}
 
     monkeypatch.setattr(postcodes, "local_postcode", find)
@@ -169,3 +172,27 @@ def test_a_saved_place_is_named() -> None:
               {"id": "bad", "name": "No position"}]  # fmt: skip
     assert saved_place(places, 51.3348, -0.2680)["name"] == "Home"  # type: ignore[index]  # ~60 m away
     assert saved_place(places, 51.34, -0.2678) is None  # ~600 m away
+
+
+def test_what_a_failed_part_means() -> None:
+    assert H.status_of(502, "data.police.uk says too many requests") == "refused"
+    assert H.status_of(502, "nrfaapps.ceh.ac.uk answered HTTP 403") == "refused"
+    assert H.status_of(503, "pollen is not set up: add the pollen_api_key secret") == "not_set_up"
+    assert H.status_of(500, "something broke") == "error"
+    assert H.status_of(502, "Environment Agency did not answer (ConnectTimeout)") == "no_answer"
+    assert H.status_of(504, "") == "no_answer"
+
+
+async def test_the_stream_sends_the_head_then_each_part_as_it_answers(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+    import json
+
+    seen: list[tuple[str, dict[str, str]]] = []
+    monkeypatch.setattr(H, "STREAM_PART_S", 0.3)
+    req: Any = SimpleNamespace(app=fake_app(seen, hang="/v1/fuel/near"))
+    lines = [json.loads(b) async for b in H.stream(req, 51.3343, -0.2678)]
+    assert lines[0]["type"] == "head" and lines[0]["area"]["postcode"] == "KT17 1AA" and len(lines[0]["parts"]) == len(H.PARTS)
+    parts = [x for x in lines if x["type"] == "part"]
+    assert len(parts) == len(H.PARTS) and lines[-1] == {"type": "done"}
+    assert parts[-1]["part"] == "fuel" and parts[-1]["status"] == "no_answer"  # the slow one came last
+    assert asyncio  # used above
