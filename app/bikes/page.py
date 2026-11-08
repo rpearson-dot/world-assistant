@@ -114,9 +114,17 @@ button.small { padding: 3px 9px; font-size: 13px; }
   <p class="dim small">Drag a part or a wheel onto a bike, a wheel or a shelf; a spare dropped where there is one already replaces
   it. Tap one to see its odometer and wear. Services and checks stay on each bike's card below.</p>
   <div class="ws-bikes" id="wsbikes"></div>
-  <div class="shelf ws-drop" data-drop="shelf"><h4>Spares shelf</h4><div id="wsspares"></div></div>
+  <div class="shelf ws-drop" data-drop="shelf"><h4>Spares shelf <button type="button" class="small" id="wsaddspare">Add a spare</button></h4><div id="wsspares"></div></div>
   <div class="shelf ws-drop" data-drop="kit"><h4>Kit (batteries, helmet, shoes)</h4><div id="wskit"></div></div>
-  <div class="shelf ws-drop" data-drop="storage"><h4>Wheels in storage</h4><div id="wsstore"></div></div>
+  <div class="shelf ws-drop" data-drop="storage"><h4>Wheels in storage <button type="button" class="small" id="wsbuild">Build a wheel</button></h4>
+    <form id="wsbuildform" class="edit grid" hidden>
+      <label>Which <select id="wbend"><option value="rear">Rear</option><option value="front">Front</option></select></label>
+      <label>Name <input id="wbname" maxlength="60" required placeholder="e.g. Winter rear wheel"></label>
+      <label>Wheelset group <input id="wbgrp" maxlength="60" placeholder="e.g. Winter wheels"></label>
+      <label>Start it with <select id="wbfrom"></select></label>
+      <button class="primary small">Build it</button>
+      <p class="dim small" style="grid-column: 1 / -1">It goes into storage. Drag parts onto it from the spares shelf (or from another wheel), then drag it onto a bike.</p>
+    </form><div id="wsstore"></div></div>
   <div id="wsinfo" class="small"></div><p id="wsmsg" class="err small"></p>
 </div>
 
@@ -183,7 +191,7 @@ button.small { padding: 3px 9px; font-size: 13px; }
 <div class="card"><h2>Shelf and kit</h2>
   <p class="dim small">Spares on the shelf are used first when a part is due. Kit is yours, not a bike's: helmet, shoes, AXS batteries.</p>
   <ul class="parts" id="shelf"></ul><ul class="parts" id="kit"></ul>
-  <details><summary class="small">Add a spare or kit</summary>
+  <details id="addsparebox"><summary class="small">Add a spare or kit</summary>
     <form id="addspare" class="grid"><label>Kind <select id="skind"></select></label>
     <label>On <select id="sstatus"><option value="shelf">the shelf</option><option value="kit">my kit</option></select></label>
     <label>Label <input id="slabel" maxlength="60" placeholder="Battery A"></label>
@@ -482,6 +490,15 @@ function wsWheel(s) {
   for (const p of (s.parts || []).filter(wsThing)) z.append(wsChip(p));
   return z;
 }
+$('wsbuild').onclick = () => { const f = $('wsbuildform'); f.hidden = !f.hidden;
+  $('wbfrom').replaceChildren(new Option('nothing: I will add its parts', ''), ...g.bikes.filter(b => !b.retired_at).map(b => new Option('the usual wheel parts for ' + b.label, b.id))); };
+$('wsbuildform').onsubmit = e => { e.preventDefault(); guard(async () => {
+  const from = $('wbfrom').value, r = await api('POST', '/v1/bikes/sets', { rider: rider(), label: $('wbname').value.trim(), kind: 'wheel', position: $('wbend').value,
+    group: $('wbgrp').value.trim() || null, parts: !!from, parts_from: from ? Number(from) : null });
+  $('wsbuildform').hidden = true; $('wbname').value = ''; await load();
+  $('wsmsg').className = 'dim small'; $('wsmsg').textContent = 'Built ' + r.label + (r.parts.length ? ' with ' + r.parts.join(', ').toLowerCase() : '') + ': it is in storage. Drag parts onto it, then drag it onto a bike.';
+}, $('wsmsg')); };
+$('wsaddspare').onclick = () => { const d = $('addsparebox'); d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
 function workshop() {
   $('wscard').hidden = !g.bikes.some(b => !b.retired_at);
   const row = $('wsbikes'); row.replaceChildren();
@@ -514,7 +531,7 @@ function wsInfo(kind, id) {  // what a tap shows: the odometer and wear
     (it.bike ? ', on ' + it.bike.label + (it.set ? ', ' + it.set.label : '') : it.set ? ', ' + it.set.label + ' (storage)' : it.where === 'shelf' ? ', on the shelf' : ', in your kit')));
 }
 async function wsDrop(kind, id, target) {
-  const ix = wsIndex(), [tk, tv] = target.split(':'), say = $('wsmsg'); say.textContent = '';
+  const ix = wsIndex(), [tk, tv] = target.split(':'), say = $('wsmsg'); say.textContent = ''; say.className = 'err small';
   if (kind === 'set') {
     if (tk === 'storage') return api('POST', '/v1/bikes/fit', { item: 'set', id, bike_id: null });
     const bikeId = tk === 'bike' ? Number(tv) : tk === 'wheel' ? (ix.sets[tv] || {}).bike && ix.sets[tv].bike.id : null;

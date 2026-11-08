@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [Unreleased]
 
 ### Added
+- **Build a wheel in the workshop:** front or rear, a name and wheelset group, starting empty or with a bike's usual
+  wheel parts; it goes into storage, ready for parts to be dragged onto it and then for it to be dragged onto a bike.
+  The spares shelf has Add a spare.
 - **Folding on the Bikes page:** every card folds by its heading, Your bikes as a whole, and each bike (to its name,
   type, distance and how many parts are due), with Fold every bike and Open every bike; kept on each device.
 

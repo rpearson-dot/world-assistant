@@ -46,7 +46,8 @@ At the top of the Bikes page: your bikes in a row (each with its front and rear 
 each wheel), and shelves for spares, kit and wheels in storage. Drag with a mouse or a finger:
 - a part onto a wheel or the bike's frame: fitted, if it can go there (below); a spare dropped where there is one
   already replaces it (logged as the replacement, its count starting again);
-- a wheel onto a bike: it goes on, and the bike's wheel at that end goes into storage;
+- a wheel onto a bike: it goes on, and the bike's wheel at that end goes into storage. **Build a wheel** (on the storage
+  shelf) makes a new one there, empty or with a bike's usual wheel parts: drag its parts onto it, then drag it onto a bike;
 - anything onto a shelf: it comes off (spares onto the spares shelf, kit into your kit).
 Tap a part or wheel to see its odometer and wear. Services and checks are not shown there: they stay on each bike's card.
 
