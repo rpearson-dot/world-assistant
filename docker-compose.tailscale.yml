@@ -54,9 +54,33 @@ services:
       api:
         condition: service_healthy
 
+  # Notifications to your phone (docs/notifications.md): an ntfy server reached over the tailnet at
+  # https://<this device>.<tailnet>:8443 (port 8443 of the same Tailscale device, so no new auth key). World
+  # Assistant posts to it on the internal network. An iPhone gets instant alerts through ntfy.sh, which carries only
+  # a wake-up (the topic's hash), never the message; set WA_NTFY_UPSTREAM empty to turn that off.
+  ntfy:
+    image: binwiederhier/ntfy:${WA_NTFY_TAG:-v2.11.0}
+    restart: unless-stopped
+    command: ["serve"]
+    labels:
+      net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/world-assistant.png"
+    networks: [internal]
+    environment:
+      TZ: ${TZ:-Europe/London}
+      NTFY_BASE_URL: https://${WA_TAILSCALE_NAME:-world-assistant}.${WA_TAILNET:-ts.net}:8443
+      NTFY_LISTEN_HTTP: ":80"
+      NTFY_BEHIND_PROXY: "true"
+      NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
+      NTFY_CACHE_DURATION: 72h
+      NTFY_UPSTREAM_BASE_URL: ${WA_NTFY_UPSTREAM-https://ntfy.sh}
+    volumes:
+      - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/ntfy:/var/cache/ntfy
+
   api:
     environment:
       WA_TAILSCALE_PROXY: wa-tailscale
+      WA_NTFY_URL: http://ntfy:80
+      WA_NTFY_PUBLIC_URL: https://${WA_TAILSCALE_NAME:-world-assistant}.${WA_TAILNET:-ts.net}:8443
 
 secrets:
   tailscale_authkey:

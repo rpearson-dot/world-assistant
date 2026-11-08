@@ -138,6 +138,9 @@ due. Log **New battery** when you change it (a reading from before then no longe
 makes it due. Edit one to name it ("Reiver speed sensor") or say its battery (CR2032). AXS derailleurs are not here:
 their battery is the labelled AXS battery on the bike.
 
+Battery levels (sensors, AXS batteries, shifter coin cells, Di2) show as "--" until Garmin has reported one, then
+its status and level ("good (80%)"). A new battery goes back to "--" until its first reading.
+
 ## Rain and rough riding
 - **Wet or dry** is suggested from the Environment Agency rain gauges along a Garmin ride's route (the nearest gauge to
   points about 12 km apart), over the ride and the three hours before it: wet if any had as much rain as a wet ride.

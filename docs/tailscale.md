@@ -90,3 +90,8 @@ The MCP endpoint is `https://world-assistant.<your-tailnet>.ts.net/mcp`, with th
 - Pages ask for the token on the tailnet: the browser must be signed in to the tailnet through the Tailscale
   app (Tailscale passes the user's identity), and the stack must have been started with this file (it tells
   the app which container is its Tailscale front door).
+
+## Notifications (port 8443)
+
+The same Tailscale device also serves World Assistant's ntfy server on port 8443, for notifications to your phone
+(`https://<device>.<tailnet>:8443`). See [notifications.md](notifications.md).

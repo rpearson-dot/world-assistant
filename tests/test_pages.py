@@ -14,7 +14,8 @@ def test_every_page_is_themed_and_has_nav(path: str) -> None:
     assert r.status_code == 200
     assert "/*BASE_CSS*/" not in r.text and "<!--NAV-->" not in r.text
     assert "--accent" in r.text and '<nav class="tabs"' in r.text
-    assert 1 <= r.text.count('class="here"') <= 2  # in the tab bar, and in the More sheet on phones
+    sub = r.text.count('<nav class="subtabs"')  # a section's own tabs (Shopping, Environment) mark theirs too
+    assert 1 <= r.text.count('class="here"') - sub <= 2  # in the tab bar, and in the More sheet on phones
     assert 'rel="manifest"' in r.text and "viewport-fit=cover" in r.text
     assert "http://" not in r.text and "https://" not in r.text  # no external resources
 

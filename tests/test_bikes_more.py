@@ -225,7 +225,7 @@ def test_groupsets_checklists_measurements_batteries_and_records(garage: Any) ->
     eng.dispose()
     g = c.get("/v1/bikes", params={"rider": "rob"}).json()
     b = next(x for x in g["bikes"] if x["id"] == gravel)
-    assert b["batteries"][0]["reported"]["status"] == "low" and b["batteries"][0]["wear"]["state"] == "due"
+    assert b["batteries"][0]["reported"]["status"] == "low" and b["batteries"][0]["wear"]["state"] == "due" and b["batteries"][0]["level_text"] == "low (20%)"
     assert b["sensors"][0]["serial"] == 1021
 
     # spares to keep, and the records
@@ -294,10 +294,11 @@ def test_garmin_sensors_become_kit_with_their_batteries(garage: Any) -> None:  #
     hr = sens["Heart rate strap"]
     assert hr["reported"]["status"] == "low" and hr["reported"]["activity"] == "Running" and hr["wear"]["state"] == "due"
     assert sens["Speed sensor"]["reported"]["bike"] == "Reiver" and sens["Speed sensor"]["wear"]["state"] != "due"
+    assert hr["level"] == 20 and hr["level_text"] == "low (20%)"
     # a new battery: what Garmin said before it no longer counts; a later reading updates it
     c.post("/v1/bikes/service", json={"rider": "rob", "action": "serviced", "part_id": hr["id"]})
     hr = next(p for p in c.get("/v1/bikes", params={"rider": "rob"}).json()["kit"] if p["id"] == hr["id"])
-    assert "reported" not in hr and hr["wear"]["state"] == "ok"
+    assert "reported" not in hr and hr["wear"]["state"] == "ok" and hr["level"] is None and hr["level_text"] == "--"  # a new battery: unknown until Garmin says
     later = [{**readings[1], "status": "new", "level": 100, "at": (now + timedelta(minutes=5)).isoformat()}]
     assert asyncio.run(A.save_sensors(app.state.engine, "rob", later)) == {"added": 0, "updated": 1}
 

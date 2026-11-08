@@ -151,7 +151,9 @@ def summarise(data: bytes) -> Summary:
                 track.append((when(m.fields.get(253)), la * SEMICIRCLE, lo * SEMICIRCLE))
         elif m.num == DEVICE_INFO:
             f = m.fields
+            sw = f.get(5)
             devices.append({"index": f.get(0), "type": f.get(1), "manufacturer": f.get(2), "serial": f.get(3), "product": f.get(4),
+                            "software": round(sw / 100, 2) if isinstance(sw, int) and sw not in (0, 0xFFFF) else None,
                             "name": f.get(27), "battery_v": round(f[10] / 256, 2) if isinstance(f.get(10), int) else None,
                             "battery_status": f.get(11), "battery_level": f.get(32)})  # fmt: skip
         elif m.num == FIELD_DESCRIPTION:
@@ -216,3 +218,15 @@ def sensors(devices: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "serial": d.get("serial"), "status": status, "volts": d.get("battery_v"),
                     "level": d.get("battery_level") if isinstance(d.get("battery_level"), int) else LEVEL.get(status or "")})  # fmt: skip
     return out
+
+
+def firmware(devices: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each device's software version as the file last gives it (the head unit too): to notice an update."""
+    last: dict[Any, dict[str, Any]] = {}
+    for d in devices:
+        if d.get("software") is None or not d.get("serial"):
+            continue
+        last[d["serial"]] = d
+    return [{"serial": d["serial"], "maker": MAKERS.get(d.get("manufacturer") or -1, str(d.get("manufacturer") or "?")),
+             "type": "head unit" if d.get("index") == 0 else DEVICE_TYPES.get(d.get("type") or -1, str(d.get("type") or "?")),
+             "name": d.get("name"), "software": d["software"]} for d in last.values()]  # fmt: skip

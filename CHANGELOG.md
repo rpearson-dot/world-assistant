@@ -2,6 +2,27 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.48.0] - 2026-11-08
+
+### Added
+- **Notifications to your phone** through World Assistant's own ntfy server, reached over the tailnet on port 8443
+  of its Tailscale device (part of `docker-compose.tailscale.yml`; an iPhone wakes through ntfy.sh).
+  - What can be sent:
+    - bike batteries low, parts due and new sensors after each Garmin sync;
+    - firmware changes;
+    - environment warnings: floods, high air pollution, very high pollen;
+    - system alerts: a Garmin sync failing, a key running out, a safety recall.
+  - Set up in Settings → Notifications, with a switch for each kind, quiet hours, a test button and the last ones sent.
+  - Each notification is sent only once.
+  - See docs/notifications.md.
+- **Environment** replaces Pollen in the menu, with tabs: Air, Pollen, Floods and rivers, Tides, and Overflows,
+  for any of your places. `/pollen` still opens the Pollen tab.
+
+### Changed
+- **Battery levels** of AXS batteries, shifter coin cells, Di2 batteries and sensors show as reported by Garmin
+  ("good (80%)"), or "--" until there is a reading, on the Bikes page and in the Garage (where they stay grey until
+  then). The ride-hours estimate of an AXS battery's charge is shown beside it, as an estimate.
+
 ## [0.47.0] - 2026-11-08
 
 ### Added

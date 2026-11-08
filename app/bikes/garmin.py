@@ -318,6 +318,7 @@ async def read_files(api: Garmin, rides: list[dict[str, Any]], now: datetime) ->
         if not r["indoor"]:
             r["route"] = fit.route(got.track) or None
         r["sensors"] = fit.sensors(got.devices) or None
+        r["_firmware"] = fit.firmware(got.devices)
         await asyncio.sleep(FILE_GAP_S)
     return n
 
@@ -406,6 +407,7 @@ async def sync(engine: AsyncEngine, rider: str, client: httpx.AsyncClient | None
     readings = [{**x, "at": r["started"].isoformat(), "activity": r.get("activity") or r.get("title"), "bike_id": r.get("bike_id")}
                 for r in new for x in (r.get("sensors") or [])]  # fmt: skip
     done = list(g.get("sensor_files") or [])
+    versions = [{**x, "at": r["started"].isoformat()} for r in new for x in (r.pop("_firmware", None) or [])]
     for a in [a for a in acts if not is_ride(a) and a.get("activityId") is not None and str(a["activityId"]) not in done
               and (st := _started(a)) and now - st < timedelta(days=FILE_DAYS)][:OTHER_FILES_EACH_SYNC]:  # fmt: skip
         done.append(str(a["activityId"]))
@@ -419,12 +421,24 @@ async def sync(engine: AsyncEngine, rider: str, client: httpx.AsyncClient | None
         if got:
             readings += [{**x, "at": _started(a).isoformat(), "activity": type_key(a).replace("_", " ").title(), "bike_id": None}  # type: ignore[union-attr]
                          for x in fit.sensors(got.devices)]  # fmt: skip
+            versions += [{**x, "at": _started(a).isoformat()} for x in fit.firmware(got.devices)]  # type: ignore[union-attr]
         await asyncio.sleep(FILE_GAP_S)
     g["sensor_files"] = done[-300:]
     if readings:
         from app.bikes.api import save_sensors
 
         result["sensors"] = await save_sensors(engine, rider, readings)
+    known = dict(g.get("firmware") or {})
+    changes = []
+    for x in sorted(versions, key=lambda v: v["at"]):  # oldest first, so the latest version is kept
+        k = str(x["serial"])
+        was = (known.get(k) or {}).get("software")
+        if was is not None and was != x["software"]:
+            changes.append({**x, "was": was})
+        known[k] = {"software": x["software"], "maker": x["maker"], "type": x["type"], "name": x.get("name"), "at": x["at"]}
+    g["firmware"] = known
+    if changes:
+        result["firmware_changed"] = len(changes)
     fresh = [r for r in new if r.get("wet") is None and not r["indoor"] and now - r["started"] < timedelta(days=27)]
     if fresh:
         try:
@@ -447,6 +461,12 @@ async def sync(engine: AsyncEngine, rider: str, client: httpx.AsyncClient | None
                "from_csv": len(twins), "removed": len(gone), "weight_kg": weight}  # fmt: skip
     g |= {"last_sync": now.isoformat(), "last_result": result, "types": seen_types, "error": None}
     await _save_settings(engine, rider, g)
+    try:
+        from app.notify_jobs import after_sync
+
+        await after_sync(engine, rider, changes)
+    except Exception:
+        log.warning("notifications after %s's sync failed", rider, exc_info=True)
     return result
 
 
@@ -467,6 +487,12 @@ async def garmin_sync(ctx: dict[str, Any]) -> Any:
                 out[rider] = await sync(engine, rider)
             except GarminError as exc:
                 out[rider] = {"error": str(exc)}
+            try:
+                from app.notify_jobs import garmin_system
+
+                await garmin_system(engine, rider, out[rider].get("error"))
+            except Exception:
+                log.warning("Garmin notifications for %s failed", rider, exc_info=True)
         return out
 
     return await tracked(engine, "garmin_sync", run)
