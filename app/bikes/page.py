@@ -280,7 +280,8 @@ function partRow(p, bike) {
   const mid = el('div'), title = el('div');
   title.append(el('b', null, p.name), document.createTextNode(' '));
   if (p.describe) title.append(el('span', 'dim small', p.describe + ' '));
-  if (w.state !== 'untracked') title.append(el('span', 'chip ' + w.state, w.state === 'ok' ? Math.round(w.share * 100) + '%' : w.state === 'coming' ? 'coming up' : 'due'));
+  if (p.level_text !== undefined) title.append(el('span', 'chip ' + (p.level == null ? '' : p.level <= 20 ? 'due' : 'ok'), 'battery ' + p.level_text));  // a reading, or -- until one
+  else if (w.state !== 'untracked') title.append(el('span', 'chip ' + w.state, w.state === 'ok' ? Math.round(w.share * 100) + '%' : w.state === 'coming' ? 'coming up' : 'due'));
   mid.append(title);
   if (w.state !== 'untracked') { const m = el('div', 'meter'), i = el('i', w.state); i.style.width = Math.min(100, Math.round(w.share * 100)) + '%'; m.append(i); mid.append(m, el('div', 'dim small', wearText(w))); }
   if (p.measure && w.state !== 'ok') mid.append(el('div', 'dim small', 'Check: ' + p.measure));
@@ -853,8 +854,9 @@ function batteryBox(b) {  // the shifter (and dropper) batteries on this bike: f
   const wireless = cfg.shifting === 'axs' || cfg.dropper === 'wireless' || (b.batteries || []).length;
   for (const bat of b.batteries || []) {
     const line = el('div', 'row'), rp = bat.reported;
-    line.append(el('span', rp && rp.level != null && rp.level <= 20 ? 'err' : null, '🔋 ' + bat.name + ': ' + Math.round(bat.wear.share * 100) + '% of a charge used' +
-      (rp ? '; Garmin saw it ' + rp.status + (rp.volts ? ' (' + rp.volts + ' V)' : '') + ' on ' + new Date(rp.at).toLocaleDateString('en-GB') : '')));
+    line.append(el('span', rp && rp.level != null && rp.level <= 20 ? 'err' : null, '🔋 ' + bat.name + ': battery ' + (bat.level_text || '--') +
+      (rp ? ' (Garmin, ' + (rp.volts ? rp.volts + ' V, ' : '') + new Date(rp.at).toLocaleDateString('en-GB') + ')' : ' (no reading from Garmin yet)')));
+    if (bat.wear && bat.wear.state !== 'untracked') line.append(el('span', 'dim', 'by ride hours: about ' + Math.round(bat.wear.share * 100) + '% of a charge used'));
     line.append(button('Take off', () => guard(async () => { await api('POST', '/v1/bikes/fit', { item: 'part', id: bat.id, bike_id: null }); await load(); })));
     box.append(line);
   }

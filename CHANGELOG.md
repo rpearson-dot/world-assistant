@@ -2,6 +2,13 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Battery levels** of AXS batteries, shifter coin cells, Di2 batteries and sensors show as reported by Garmin
+  ("good (80%)"), or "--" until there is a reading, on the Bikes page and in the Garage (where they stay grey until
+  then). The ride-hours estimate of an AXS battery's charge is shown beside it, as an estimate.
+
 ## [0.47.0] - 2026-11-08
 
 ### Added

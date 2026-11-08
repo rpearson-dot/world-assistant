@@ -137,14 +137,16 @@ function wearCol(sh) {
   const x = Math.max(0, Math.min(1, sh));
   return x < 0.5 ? 'color-mix(in srgb, var(--warn) ' + Math.round(x * 200) + '%, var(--good))' : 'color-mix(in srgb, var(--bad) ' + Math.round((x - 0.5) * 200) + '%, var(--warn))';
 }
-const share = p => (p.wear && p.wear.state !== 'untracked') ? p.wear.share : null;
+// a battery's wear is its charge as Garmin reported it (none, so grey and "--", until then); anything else's, its life used
+const share = p => p.level_text !== undefined ? (p.level == null ? null : 1 - p.level / 100) : (p.wear && p.wear.state !== 'untracked') ? p.wear.share : null;
 const icon = kind => cat.icons[(cat.kinds[kind] || {}).icon] || cat.icons.part;
 function tile(p, opts) {  // a part as a tile, its wear as a fill rising from green to red
   const t = el('button', 'tile'); t.type = 'button'; const sh = share(p);
   t.style.setProperty('--w', sh == null ? 0 : Math.min(1, sh)); t.style.setProperty('--c', wearCol(sh));
   t.append(svgEl(icon(p.kind)), el('b', null, p.label || p.name));
   const mk = [p.brand, p.model].filter(Boolean).join(' '); if (mk && !p.label) t.append(el('span', 'mk', mk));
-  if (sh != null) t.append(el('span', 'pc', Math.round(sh * 100) + '%'));
+  if (p.level_text !== undefined) t.append(el('span', 'pc', '🔋 ' + (p.level == null ? '--' : p.level + '%')));
+  else if (sh != null) t.append(el('span', 'pc', Math.round(sh * 100) + '%'));
   if ((p.quantity || 1) > 1) t.append(el('span', 'q', '×' + p.quantity));
   t.dataset.part = p.id; t.dataset.kind = p.kind;
   if (!(opts && opts.still)) { t.onclick = () => (opts && opts.click ? opts.click() : showPart(p)); drag(t, p); }
@@ -244,9 +246,10 @@ async function showPart(p) {
   hero.append(tile(p, { still: true }), info);
   if (p.describe) info.append(el('div', 'small', p.describe));
   if (p.wheel) info.append(el('div', 'dim small', 'On the ' + p.wheel));
+  if (p.level_text !== undefined) info.append(el('div', null, 'Battery ' + p.level_text + (p.reported ? '' : ': no reading from Garmin yet')));
   if (sh != null) { const bar = el('div', 'wbar'), i = el('i'); i.style.width = Math.min(100, sh * 100) + '%'; bar.style.setProperty('--c', wearCol(sh)); bar.append(i);
-    info.append(el('div', null, Math.round(sh * 100) + '% worn' + (p.wear.state === 'due' ? ': due' : p.wear.state === 'coming' ? ': coming up' : '')), bar, el('div', 'dim small', wearLine(p))); }
-  else info.append(el('div', 'dim small', 'Not counted: kept for its make and model'));
+    info.append(el('div', null, (p.level_text !== undefined ? Math.round(sh * 100) + '% used' : Math.round(sh * 100) + '% worn') + (p.wear.state === 'due' ? ': due' : p.wear.state === 'coming' ? ': coming up' : '')), bar, el('div', 'dim small', wearLine(p))); }
+  else if (p.level_text === undefined) info.append(el('div', 'dim small', 'Not counted: kept for its make and model'));
   if (p.stretch) info.append(el('div', 'small', 'Chain checker: ' + p.stretch.latest + '% (worn out at ' + p.stretch.limit + '%)'));
   if (p.reported) info.append(el('div', 'small', 'Garmin: battery ' + p.reported.status + (p.reported.volts ? ' (' + p.reported.volts + ' V)' : '')));
   if (p.measure) info.append(el('div', 'dim small', 'Check: ' + p.measure));

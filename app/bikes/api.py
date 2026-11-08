@@ -1327,6 +1327,10 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
                 if last.get("level") is not None and last["level"] <= 20:
                     out["wear"]["state"] = "due"
                     out["wear"]["share"] = max(out["wear"]["share"], 1.0)
+        if p["kind"] in BATTERY_KINDS:  # its charge as Garmin last reported it; unknown ("--") until then
+            got = out.get("reported") or (reported(p, rides, pl, since, rows["parts"], now) if p["kind"] == "axs_battery" else None)
+            out["level"] = got.get("level") if got else None
+            out["level_text"] = (f"{got['status']}" + (f" ({got['level']}%)" if got.get("level") is not None else "")) if got and got.get("status") else "--"
         if p["kind"] == "axs_battery":
             rep_ = reported(p, rides, pl, since, rows["parts"], now)
             if rep_:
@@ -1832,6 +1836,7 @@ async def spares_to_list(request: Any, engine: AsyncEngine) -> dict[str, Any]:
     return {"added": added}
 
 
+BATTERY_KINDS = {"axs_battery", "coin_cells", "di2_battery", "sensor"}  # whose charge is shown as a level
 SENSOR_NAMES = {"heart rate": "Heart rate strap", "speed": "Speed sensor", "cadence": "Cadence sensor",
                 "speed and cadence": "Speed and cadence sensor", "power": "Power meter", "radar": "Radar",
                 "light": "Bike light", "trainer": "Trainer"}  # fmt: skip
