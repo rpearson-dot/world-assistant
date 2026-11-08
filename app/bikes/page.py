@@ -37,7 +37,11 @@ select { max-width: 100%; } .wheel h4 select { max-width: 220px; }
 details > summary { cursor: pointer; } .small { font-size: 13px; }
 form.grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); align-items: end; }
 .edit { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin: 6px 0; grid-column: 1 / -1; }
-.press { display: flex; gap: 14px; flex-wrap: wrap; font-size: 14px; }
+.press { display: flex; gap: 14px; flex-wrap: wrap; font-size: 14px; align-items: center; }
+.warns { border-left: 3px solid var(--warn); padding: 2px 8px; margin: 6px 0; }
+.warns ul { margin: 2px 0 0 1em; padding: 0; }
+label.check { display: block; padding: 3px 0; }
+.framepic { max-width: 220px; max-height: 160px; border-radius: 6px; }
 table.costs { border-collapse: collapse; width: 100%; font-size: 14px; } table.costs td, table.costs th { padding: 4px 6px; border-top: 1px solid var(--line); text-align: left; }
 button.small { padding: 3px 9px; font-size: 13px; }
 /* the workshop: bikes in a row, shelves below; parts and wheels dragged between them */
@@ -62,6 +66,16 @@ button.small { padding: 3px 9px; font-size: 13px; }
 .shelf h4 { margin: 0; font-size: 13px; color: var(--dim); }
 .shelf.over { background: var(--chip); }
 #wsinfo { margin-top: 8px; }
+/* folding: any card by its heading, the bikes as a whole, and each bike */
+.fold { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 8px; }
+.fold::before { content: '▾'; font-size: .8em; color: var(--dim); transition: transform .15s; }
+.shut > .fold::before, .shut .fold::before { transform: rotate(-90deg); }
+.card:not(.bikecard).shut > :not(.fold):not(h2) { display: none !important; }
+.sec { margin-bottom: 14px; } .sec > h2 { margin: 6px 2px 10px; } .sec.shut > :not(h2) { display: none !important; }
+.bikecard.shut > :not(.bike) { display: none !important; }
+.bikecard.shut .bike { grid-template-columns: 1fr; } .bikecard.shut .bike .pic { display: none; }
+.bikecard.shut .bike > div:not(.pic) > :not(h3) { display: none; }
+.foldall { float: right; }
 </style></head><body><main>
 <!--NAV-->
 <h1>Bikes</h1>
@@ -104,13 +118,24 @@ button.small { padding: 3px 9px; font-size: 13px; }
   <p class="dim small">Drag a part or a wheel onto a bike, a wheel or a shelf; a spare dropped where there is one already replaces
   it. Tap one to see its odometer and wear. Services and checks stay on each bike's card below.</p>
   <div class="ws-bikes" id="wsbikes"></div>
-  <div class="shelf ws-drop" data-drop="shelf"><h4>Spares shelf</h4><div id="wsspares"></div></div>
+  <div class="shelf ws-drop" data-drop="shelf"><h4>Spares shelf <button type="button" class="small" id="wsaddspare">Add a spare</button></h4><div id="wsspares"></div></div>
   <div class="shelf ws-drop" data-drop="kit"><h4>Kit (batteries, helmet, shoes)</h4><div id="wskit"></div></div>
-  <div class="shelf ws-drop" data-drop="storage"><h4>Wheels in storage</h4><div id="wsstore"></div></div>
+  <div class="shelf ws-drop" data-drop="storage"><h4>Wheels in storage <button type="button" class="small" id="wsbuild">Build a wheel</button></h4>
+    <form id="wsbuildform" class="edit grid" hidden>
+      <label>Which <select id="wbend"><option value="rear">Rear</option><option value="front">Front</option></select></label>
+      <label>Name <input id="wbname" maxlength="60" required placeholder="e.g. Winter rear wheel"></label>
+      <label>Wheelset group <input id="wbgrp" maxlength="60" placeholder="e.g. Winter wheels"></label>
+      <label>Start it with <select id="wbfrom"></select></label>
+      <button class="primary small">Build it</button>
+      <p class="dim small" style="grid-column: 1 / -1">It goes into storage. Drag parts onto it from the spares shelf (or from another wheel), then drag it onto a bike.</p>
+    </form><div id="wsstore"></div></div>
   <div id="wsinfo" class="small"></div><p id="wsmsg" class="err small"></p>
 </div>
 
-<div class="card" id="duecard" hidden><h2>Due</h2><ul class="parts" id="due"></ul></div>
+<div class="card" id="recallcard" hidden><h2>Safety recalls</h2>
+  <p class="dim small">Notices from the UK's Office for Product Safety and Standards naming a maker of your bikes or parts. Read each:
+  a match is the maker, not necessarily your model.</p><ul class="parts" id="recalls"></ul></div>
+<div class="card" id="duecard" hidden><h2>Due</h2><ul class="parts" id="due"></ul><ul class="parts" id="lowspares"></ul></div>
 <div class="card" id="askcard" hidden><h2>Rides to confirm</h2>
   <p class="dim small">Which bike each ride was on (Garmin keeps the last one chosen, so it is often wrong), and whether it was wet:
   wet rides wear chains, cassettes and pads faster. The wet suggestion comes from the nearest rain gauge.</p>
@@ -127,7 +152,7 @@ button.small { padding: 3px 9px; font-size: 13px; }
   <p id="bykindmsg" class="dim small"></p></div>
   <ul class="parts" id="unassigned"></ul></div>
 
-<div id="bikes"></div>
+<section class="sec" id="bikessec"><h2 class="fold" data-fold="bikes">Your bikes</h2><div id="bikes"></div></section>
 
 <div class="card"><h2>Add a bike</h2>
   <form id="addbike" class="grid">
@@ -173,7 +198,7 @@ button.small { padding: 3px 9px; font-size: 13px; }
 <div class="card"><h2>Shelf and kit</h2>
   <p class="dim small">Spares on the shelf are used first when a part is due. Kit is yours, not a bike's: helmet, shoes, AXS batteries.</p>
   <ul class="parts" id="shelf"></ul><ul class="parts" id="kit"></ul>
-  <details><summary class="small">Add a spare or kit</summary>
+  <details id="addsparebox"><summary class="small">Add a spare or kit</summary>
     <form id="addspare" class="grid"><label>Kind <select id="skind"></select></label>
     <label>On <select id="sstatus"><option value="shelf">the shelf</option><option value="kit">my kit</option></select></label>
     <label>Label <input id="slabel" maxlength="60" placeholder="Battery A"></label>
@@ -181,6 +206,11 @@ button.small { padding: 3px 9px; font-size: 13px; }
     <label>How many <input id="sqty" type="number" min="1" max="99" value="1"></label>
     <label>Price £ <input id="sprice" type="number" min="0" step="0.01"></label><button class="primary">Add</button></form></details>
 </div>
+
+<div class="card" id="sensorcard" hidden><h2>Sensors</h2>
+  <p class="dim small">Your Garmin sensors (speed, cadence, heart rate, power, radar), added the first time a ride's or run's file
+  shows them, with the battery each reported last. Low or critical is due: log New battery when you change it. Edit to
+  name one ("Reiver speed sensor") or say its battery (CR2032).</p><ul class="parts" id="sensors"></ul></div>
 
 <div class="card"><h2>Running cost</h2><div id="costs" class="small"></div></div>
 
@@ -191,7 +221,15 @@ button.small { padding: 3px 9px; font-size: 13px; }
     <label>A wet ride counts as <input id="wet_factor" type="number" min="1" max="3" step="0.1"> times</label>
     <label><input type="checkbox" id="trainer"> My trainer has its own cassette</label>
     <label>My weight kg <input id="weight" type="number" min="25" max="240" step="0.1"></label>
-    <button class="primary">Save</button></form><p id="smsg" class="dim"></p>
+    <label>A gravel ride wears the drivetrain, pads and tyres <input id="sf_gravel" type="number" min="1" max="3" step="0.1"> times</label>
+    <label>A mountain-bike ride <input id="sf_mtb" type="number" min="1" max="3" step="0.1"> times</label>
+    <button class="primary">Save</button></form>
+  <details><summary class="small">Spares to keep on the shelf</summary>
+    <p class="dim small">When the shelf has fewer, the part goes onto the Outdoors list (with "automatically" above) and shows under Due.</p>
+    <form id="minspares" class="grid"></form>
+    <div class="row"><select id="mskind"></select><button id="msadd" type="button" class="small">Add</button><button id="mssave" type="button" class="primary small">Save</button></div></details>
+  <div class="row"><button id="recallgo" type="button" class="small">Check for safety recalls now</button><span id="recallmsg" class="dim small"></span></div>
+  <p id="smsg" class="dim"></p>
 </div>
 
 <script>
@@ -233,7 +271,7 @@ function wearText(w) {
   return bits.join(' · ');
 }
 const LABEL = { replaced: 'Replaced', serviced: 'Serviced', checked: 'Checked', charged: 'Charged', topped_up: 'Topped up', bled: 'Bled' };
-const OWN = { tyre_check: 'Pumped', lube: 'Lubed' };
+const OWN = { tyre_check: 'Pumped', lube: 'Lubed', sensor: 'New battery' };
 const act = kind => { const a = (cat.kinds[kind] || {}).action || 'replaced'; return [a, OWN[kind] || LABEL[a]]; };
 function partRow(p, bike) {
   const li = el('li'), w = p.wear || { measures: {}, share: 0, state: 'untracked' };
@@ -247,11 +285,18 @@ function partRow(p, bike) {
   if (p.measure && w.state !== 'ok') mid.append(el('div', 'dim small', 'Check: ' + p.measure));
   if (p.health && p.health.charges) { const h = p.health; mid.append(el('div', 'dim small', h.charges + ' charges' + (h.learned_hours ? ', about ' + h.learned_hours + ' h a charge' : '') +
     (h.early ? '; ' + h.early + ' h when new, ' + h.recent + ' h now' + (h.wearing ? ' (wearing: replace soon)' : '') : ''))); }
+  if (p.stretch) { const st = p.stretch; mid.append(el('div', st.worn ? 'err small' : 'dim small', 'Stretch ' + st.latest + '% at ' + fmt(st.readings[st.readings.length - 1].km) + ' km (worn out at ' + st.limit + '%)' +
+    (st.life_km ? '; at this rate worn out at about ' + fmt(st.life_km) + ' km' : ''))); }
+  if (p.reported) { const r = p.reported, low = r.level != null && r.level <= 20; mid.append(el('div', low ? 'err small' : 'dim small', 'Garmin saw the battery ' + (r.status || 'with no status') +
+    (r.volts ? ' (' + r.volts + ' V)' : '') + ' after ' + (r.activity ? 'the ' + r.activity.toLowerCase() : 'the ride') + (r.bike ? ' on ' + r.bike : '') + ', ' + new Date(r.at).toLocaleDateString('en-GB') +
+    (low ? (p.kind === 'sensor' ? ': replace it' : ': charge it') : ''))); }
   const acts = el('div', 'row');
   const [action, label] = act(p.kind);
+  if (p.kind === 'chain' || p.kind === 'timing_chain') acts.append(button('Measure', () => measure(p)));
   acts.append(button(label, () => action === 'replaced' ? replaceForm(li, p) : service(p, action)));
   if (action !== 'replaced' && (cat.kinds[p.kind] || {}).km) acts.append(button('Replaced', () => replaceForm(li, p)));
   acts.append(button('Edit', () => editPart(li, p)));
+  acts.append(button('Remove', () => removePart(p, bike)));
   if ((cat.kinds[p.kind] || {}).on === 'wheel') {  // onto another wheel (the cassette onto the new wheel, say)
     const mv = el('select'); mv.append(new Option('Move to…', ''));
     for (const [s, sb] of allWheels()) if (s.id !== p.set_id) mv.append(new Option(s.label + (sb ? ' (' + sb.label + ')' : ' (storage)'), s.id));
@@ -311,6 +356,21 @@ async function service(p, action) {
   }
   await guard(async () => { await api('POST', '/v1/bikes/service', body); await load(); });
 }
+const ANSWER = { dropper_lower: 'dropper post', dropper_full: 'dropper post', fork_lowers: 'suspension fork', fork_damper: 'suspension fork',
+  susp_stem: 'suspension stem', shock_air: 'rear shock', shock_damper: 'rear shock', susp_post: 'suspension seatpost' };
+async function measure(p) {  // a chain checker's reading: its stretch, for when it will be worn out
+  const v = prompt('What does the chain checker read (% stretch, e.g. 0.25)?', ''); if (v === null || v.trim() === '') return;
+  const n = Number(v.replace('%', '')); if (!(n >= 0 && n <= 5)) { msg.textContent = 'A stretch like 0.25 (%)'; return; }
+  await guard(async () => { await api('POST', '/v1/bikes/service', { rider: rider(), action: 'measured', part_id: p.id, reading: n }); await load(); });
+}
+async function removePart(p, bike) {  // the bike does not have it: a dropper on a bike with a fixed seatpost, say
+  const whose = bike ? bike.label : 'the garage', what = ANSWER[p.kind];
+  const ask = what ? 'Does ' + whose + ' have no ' + what + '? Its ' + what + ' parts and services come off, and its answers change to say so.'
+    : 'Remove ' + p.name + (p.describe ? ' (' + p.describe + ')' : '') + ' from ' + whose + '? It is not added back. Anything logged for it stays in the history.';
+  if (!confirm(ask)) return;
+  await guard(async () => { const r = await api('POST', '/v1/bikes/parts/' + p.id + '/remove');
+    msg.textContent = 'Removed: ' + ((r.retired || []).join(', ') || p.name) + (r.added && r.added.length ? '; added: ' + r.added.join(', ') : ''); await load(); });
+}
 function editPart(li, p) {
   if (li.querySelector('.edit')) { li.querySelector('.edit').remove(); return; }
   const f = el('form', 'edit grid'), out = el('span', 'err');
@@ -325,7 +385,7 @@ function editPart(li, p) {
   field('Life hours', 'hours', life.hours != null ? life.hours : k.hours, 'number', { min: 0 });
   field('Life days', 'days', life.days != null ? life.days : k.days, 'number', { min: 0 });
   field('Distance before it was added (km)', 'start_km', p.start_km, 'number', { min: 0 });
-  if (p.kind === 'tyre') { field('Pressure psi (blank: suggested)', 'psi', (p.details || {}).psi, 'number', { min: 5, max: 160 }); field('Max psi (tyre or rim)', 'max_psi', (p.details || {}).max_psi, 'number', { min: 5, max: 200 }); field('Width mm', 'width_mm', (p.details || {}).width_mm, 'number', { min: 15, max: 130 }); }
+  if (p.kind === 'tyre') field('Pressure psi (blank: suggested)', 'psi', (p.details || {}).psi, 'number', { min: 5, max: 160 });
   const ph = el('label', null, 'Photo '), file = el('input'); file.type = 'file'; file.accept = 'image/*'; file.capture = 'environment'; ph.append(file); f.append(ph);
   const row = el('div', 'row');
   row.append(button('Look up the product page', () => guard(async () => {
@@ -344,7 +404,7 @@ function editPart(li, p) {
     const body = { label: v('label'), brand: v('brand'), model: v('model'), price: num('price'), url: v('url'), life: lifeOut, start_km: num('start_km') || 0 };
     if (f.dataset.photo) body.photo_url = f.dataset.photo;
     body.details = Object.assign({}, p.details || {}, specValues(f));
-    if (p.kind === 'tyre') Object.assign(body.details, { psi: num('psi'), max_psi: num('max_psi'), width_mm: num('width_mm') || (p.details || {}).width_mm });
+    if (p.kind === 'tyre') Object.assign(body.details, { psi: num('psi') });
     await api('PATCH', '/v1/bikes/parts/' + p.id, body);
     if (file.files[0]) await api('PUT', '/v1/bikes/parts/' + p.id + '/photo', { data_url: await shrink(file.files[0]) });
     await load();
@@ -358,20 +418,38 @@ function shrink(file) {  // a photo made small enough to keep: 1000 px on its lo
     ok(c.toDataURL('image/jpeg', 0.82)); }; img.onerror = () => no(new Error('That file is not a picture')); img.src = URL.createObjectURL(file); });
 }
 function bikeCard(b) {
-  const card = el('div', 'card'), top = el('div', 'bike'), pic = el('div', 'pic');
+  const card = el('div', 'card bikecard'), top = el('div', 'bike'), pic = el('div', 'pic');
+  card.dataset.foldkey = 'bike:' + b.id;
   if (b.has_photo) photo('/v1/bikes/bikes/' + b.id + '/photo', b.label).then(i => pic.replaceChildren(i)); else pic.append(svg(b.art));
   const info = el('div');
-  const h = el('h3', null, b.label + ' '); h.append(el('span', 'chip', (cat.types[(b.config || {}).type] || '') + ((b.config || {}).ebike ? ', e-bike' : '')));
+  const h = el('h3', 'fold', b.label + ' '); h.dataset.fold = 'bike:' + b.id;
+  h.append(el('span', 'chip', (cat.types[(b.config || {}).type] || '') + ((b.config || {}).ebike ? ', e-bike' : '')), el('span', 'chip', fmt(b.km) + ' km'));
+  const dueHere = g.due.filter(d => d.bike_id === b.id && d.state === 'due').length;
+  if (dueHere) h.append(el('span', 'chip due', dueHere + ' due'));
   info.append(h, el('p', 'dim small', fmt(b.km) + ' km logged'));
-  const pr = el('div', 'press');
-  for (const end of ['front', 'rear']) { const p = (b.pressures || {})[end]; if (p) pr.append(el('span', null, (end === 'front' ? 'Front ' : 'Rear ') + p.psi + ' psi (' + p.bar + ' bar)' + (p.own ? '' : ' suggested'))); }
+  const pr = el('div', 'press'), today = TODAY[b.id] || 'usual';
+  const daySel = el('select', 'small'); for (const [v, t] of [['usual', 'usual riding'], ['road', 'road today'], ['gravel', 'gravel today'], ['wet', 'wet today']]) daySel.append(new Option(t, v));
+  daySel.value = today; daySel.onchange = () => { TODAY[b.id] = daySel.value; try { localStorage.setItem('wa_bikes_today', JSON.stringify(TODAY)); } catch (e) {} draw(); };
+  for (const end of ['front', 'rear']) { const p = (b.pressures || {})[end]; if (!p) continue;
+    const t = today !== 'usual' && p.today ? p.today[today] : { psi: p.psi, bar: p.bar };
+    pr.append(el('span', null, (end === 'front' ? 'Front ' : 'Rear ') + t.psi + ' psi (' + t.bar + ' bar)' + (p.own ? '' : ' suggested') +
+    ' for ' + (p.size ? p.size + (p.wheel_size ? ' (' + p.wheel_size + ')' : '') : p.width_mm + ' mm') + (p.tubeless ? ' tubeless' : ''))); }
+  if (Object.keys(b.pressures || {}).length) pr.append(daySel);
   info.append(pr);
+  if ((b.warnings || []).length) { const w = el('div', 'warns small'); w.append(el('b', null, 'Does not go together:'));
+    const ul = el('ul'); for (const x of b.warnings) ul.append(el('li', null, x)); w.append(ul); info.append(w); }
+  const cl = b.checklists || {};
+  if (cl.pre) info.append(el('div', 'dim small', ['pre', 'service'].map(k => cl[k].name + ': ' + (cl[k].last ? new Date(cl[k].last).toLocaleDateString('en-GB') : 'not yet')).join(' · ')));
   info.append(batteryBox(b));
   const photoIn = el('input'); photoIn.type = 'file'; photoIn.accept = 'image/*'; photoIn.capture = 'environment'; photoIn.hidden = true;
   photoIn.onchange = () => guard(async () => { await api('PUT', '/v1/bikes/bikes/' + b.id + '/photo', { data_url: await shrink(photoIn.files[0]) }); await load(); });
   info.append(el('div', 'row'));
   info.lastChild.append(button('Photo', () => photoIn.click()), photoIn,
     button('Its answers', () => changeAnswers(card, b)),
+    button('Groupset', () => groupsetForm(card, b)),
+    button('Pre-ride check', () => checklistForm(card, b, 'pre')),
+    button('Service check', () => checklistForm(card, b, 'service')),
+    button('Records', () => recordsForm(card, b)),
     button('Retire', () => { if (confirm('Retire ' + b.label + '? Its rides, parts, history and cost are kept, and you can bring it back.')) guard(async () => { await api('PATCH', '/v1/bikes/bikes/' + b.id, { retired: true }); await load(); }); }));
   if (!b.km) info.lastChild.append(button('Delete', () => { if (confirm('Delete ' + b.label + ' and its parts and wheels? This is for a bike added by mistake; it cannot be undone.')) guard(async () => { await api('DELETE', '/v1/bikes/bikes/' + b.id); await load(); }); }));
   top.append(pic, info); card.append(top);
@@ -380,6 +458,65 @@ function bikeCard(b) {
   for (const s of b.sets || []) card.append(wheelBlock(s, b));
   const add = button('Add a wheel', () => wheelForm(card, b)); add.className = 'small'; card.append(el('div', 'row'), add);
   return card;
+}
+let TODAY = {}; try { TODAY = JSON.parse(localStorage.getItem('wa_bikes_today') || '{}') || {}; } catch (e) { TODAY = {}; }
+function formToggle(card, cls) {  // a form under the bike's picture and buttons (not below all its wheels)
+  const old = card.querySelector('.' + cls); if (old) { old.remove(); return null; }
+  const box = el('div', 'edit ' + cls), top = card.querySelector('.bike'); top.after(box); return box; }
+function groupsetForm(card, b) {  // a groupset as the starting point: the answers to match, then each part's make and model
+  const box = formToggle(card, 'gsform'); if (!box) return;
+  const cfg = b.config || {}, out = el('span', 'err'), sel = el('select');
+  box.append(el('div', 'small', 'Choose ' + b.label + "'s groupset: its shifting, rings and speeds are set to match (a front derailleur added or taken off), " +
+    'then each part gets its make, model and speeds. Bikes often come with a mix, so change any part afterwards.'));
+  sel.append(new Option('Choose a groupset…', ''));
+  for (const brand of [...new Set((cat.groupsets || []).map(x => x.brand))]) { const og = el('optgroup'); og.label = brand;
+    for (const x of cat.groupsets.filter(y => y.brand === brand)) og.append(new Option(x.name.replace(brand + ' ', '') + (x.year ? ' (' + x.year + ')' : ''), x.id)); sel.append(og); }
+  sel.value = cfg.groupset || '';
+  const only = el('input'); only.type = 'checkbox'; const ol = el('label', 'small'); ol.append(only, document.createTextNode(' Only fill in parts with no make or model yet'));
+  const go = button('Fit it', () => guard(async () => { if (!sel.value) throw new Error('Choose one');
+    const r = await api('POST', '/v1/bikes/bikes/' + b.id + '/groupset', { groupset: sel.value, only_empty: only.checked });
+    msg.textContent = b.label + ': ' + r.groupset + '. ' + (r.filled.length ? r.filled.length + ' parts filled in' : 'No parts changed') +
+      ((r.added || []).length ? '; added ' + r.added.join(', ') : '') + ((r.retired || []).length ? '; taken off ' + r.retired.join(', ') : '') + '.'; await load(); }, out), 'primary small');
+  box.append(el('div', 'row'), out); box.children[1].append(sel, ol, go);
+}
+function checklistForm(card, b, which) {  // tick a list off: logged, and its checks restart those parts' counts
+  const box = formToggle(card, 'clform'); if (!box) return;
+  const l = (b.checklists || {})[which], out = el('span', 'err'), f = el('form');
+  box.append(el('div', 'small', l.name + ' for ' + b.label + (l.last ? ' (last: ' + new Date(l.last).toLocaleDateString('en-GB') + (l.last_note ? ', ' + l.last_note : '') + ')' : '')));
+  for (const i of l.items) { const lab = el('label', 'check'), c = el('input'); c.type = 'checkbox'; c.name = i.id; lab.append(c, document.createTextNode(' ' + i.text)); f.append(lab); }
+  const note = el('input'); note.placeholder = 'A note (optional)'; note.maxLength = 300;
+  const own = el('input'); own.placeholder = 'Add an item of your own to this list'; own.maxLength = 120;
+  const done = button('Done', () => guard(async () => {
+    const r = await api('POST', '/v1/bikes/checklist', { rider: rider(), bike_id: b.id, list: which, done: [...f.elements].filter(x => x.checked).map(x => x.name), note: note.value || null });
+    msg.textContent = 'Logged: ' + r.note + (r.checked.length ? '; checked ' + r.checked.join(', ') : ''); await load(); }, out), 'primary small');
+  const add = button('Add item', () => guard(async () => { if (!own.value.trim()) return;
+    const mine = Object.assign({ pre: [], service: [] }, (b.config || {}).checklist); mine[which] = (mine[which] || []).concat(own.value.trim());
+    await api('PATCH', '/v1/bikes/bikes/' + b.id, { config: { checklist: mine } }); await load(); }, out));
+  const all = button('Tick all', () => [...f.elements].forEach(x => { x.checked = true; }));
+  box.append(f, note, el('div', 'row'), out); box.children[3].append(done, all, own, add);
+  if (((b.config || {}).checklist || {})[which] && b.config.checklist[which].length) box.children[3].append(button('Clear my own items', () => guard(async () => {
+    const mine = Object.assign({ pre: [], service: [] }, b.config.checklist); mine[which] = [];
+    await api('PATCH', '/v1/bikes/bikes/' + b.id, { config: { checklist: mine } }); await load(); }, out)));
+}
+const RECORDS = [['maker', 'Maker', 'text'], ['frame_number', 'Frame number', 'text'], ['bought', 'Bought on', 'date'], ['price', 'Price paid £', 'number'],
+  ['shop', 'Bought from', 'text'], ['receipt', 'Receipt or order number', 'text'], ['insurer', 'Insurer', 'text'], ['policy', 'Policy number', 'text'],
+  ['bikeregister', 'BikeRegister ID', 'text'], ['notes', 'Other marks (stickers, scratches, upgrades)', 'text']];
+function recordsForm(card, b) {  // frame number, purchase and insurance: for a claim, a warranty, or a stolen bike
+  const box = formToggle(card, 'recform'); if (!box) return;
+  const rec = b.records || {}, f = el('form', 'grid'), out = el('span', 'err');
+  box.append(el('div', 'small', 'Keep these for insurance, warranty claims and, if it is stolen, the police. The frame number is usually stamped under the bottom bracket.'));
+  for (const [k, lab, type] of RECORDS) { const l = el('label', null, lab + ' '), i = el('input'); i.name = k; i.type = type; i.value = rec[k] == null ? '' : rec[k]; i.maxLength = 200; if (type === 'number') { i.min = 0; i.step = 0.01; } l.append(i); f.append(l); }
+  const save = button('Save', () => guard(async () => { const r = Object.assign({}, rec);
+    for (const [k, , type] of RECORDS) { const v = f.elements[k].value.trim(); if (v === '') delete r[k]; else r[k] = type === 'number' ? Number(v) : v; }
+    await api('PATCH', '/v1/bikes/bikes/' + b.id, { records: r }); msg.textContent = b.label + "'s records saved."; await load(); }, out), 'primary small');
+  const pin = el('input'); pin.type = 'file'; pin.accept = 'image/*'; pin.capture = 'environment'; pin.hidden = true;
+  pin.onchange = () => guard(async () => { await api('PUT', '/v1/bikes/bikes/' + b.id + '/frame-photo', { data_url: await shrink(pin.files[0]) }); await load(); }, out);
+  const pics = el('div', 'row');
+  pics.append(button(b.has_frame_photo ? 'New frame number photo' : 'Photo of the frame number', () => pin.click()), pin);
+  if (b.has_frame_photo) { const holder = el('div'); photo('/v1/bikes/bikes/' + b.id + '/frame-photo', 'Frame number').then(i => { i.className = 'framepic'; holder.replaceChildren(i); });
+    pics.append(holder, button('Delete the photo', () => guard(async () => { await api('DELETE', '/v1/bikes/bikes/' + b.id + '/frame-photo'); await load(); }, out))); }
+  const reg = el('a', 'small', 'BikeRegister (the UK police-approved register): register it, or check a bike'); reg.href = 'https://www.bikeregister.com'; reg.target = '_blank'; reg.rel = 'noopener';
+  box.append(f, pics, el('div', 'row'), out); box.children[3].append(save, reg);
 }
 function allWheels() {  // every wheel: on a bike, or in storage
   const out = []; for (const b of g.bikes.filter(x => !x.retired_at)) for (const s of b.sets || []) out.push([s, b]);
@@ -468,6 +605,15 @@ function wsWheel(s) {
   for (const p of (s.parts || []).filter(wsThing)) z.append(wsChip(p));
   return z;
 }
+$('wsbuild').onclick = () => { const f = $('wsbuildform'); f.hidden = !f.hidden;
+  $('wbfrom').replaceChildren(new Option('nothing: I will add its parts', ''), ...g.bikes.filter(b => !b.retired_at).map(b => new Option('the usual wheel parts for ' + b.label, b.id))); };
+$('wsbuildform').onsubmit = e => { e.preventDefault(); guard(async () => {
+  const from = $('wbfrom').value, r = await api('POST', '/v1/bikes/sets', { rider: rider(), label: $('wbname').value.trim(), kind: 'wheel', position: $('wbend').value,
+    group: $('wbgrp').value.trim() || null, parts: !!from, parts_from: from ? Number(from) : null });
+  $('wsbuildform').hidden = true; $('wbname').value = ''; await load();
+  $('wsmsg').className = 'dim small'; $('wsmsg').textContent = 'Built ' + r.label + (r.parts.length ? ' with ' + r.parts.join(', ').toLowerCase() : '') + ': it is in storage. Drag parts onto it, then drag it onto a bike.';
+}, $('wsmsg')); };
+$('wsaddspare').onclick = () => { const d = $('addsparebox'); d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
 function workshop() {
   $('wscard').hidden = !g.bikes.some(b => !b.retired_at);
   const row = $('wsbikes'); row.replaceChildren();
@@ -500,7 +646,7 @@ function wsInfo(kind, id) {  // what a tap shows: the odometer and wear
     (it.bike ? ', on ' + it.bike.label + (it.set ? ', ' + it.set.label : '') : it.set ? ', ' + it.set.label + ' (storage)' : it.where === 'shelf' ? ', on the shelf' : ', in your kit')));
 }
 async function wsDrop(kind, id, target) {
-  const ix = wsIndex(), [tk, tv] = target.split(':'), say = $('wsmsg'); say.textContent = '';
+  const ix = wsIndex(), [tk, tv] = target.split(':'), say = $('wsmsg'); say.textContent = ''; say.className = 'err small';
   if (kind === 'set') {
     if (tk === 'storage') return api('POST', '/v1/bikes/fit', { item: 'set', id, bike_id: null });
     const bikeId = tk === 'bike' ? Number(tv) : tk === 'wheel' ? (ix.sets[tv] || {}).bike && ix.sets[tv].bike.id : null;
@@ -552,9 +698,29 @@ async function wsDrop(kind, id, target) {
   };
   document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end);
 })();
+// --- folding: each card by its heading, the bikes as a whole and each bike; kept on this device ------------------------
+const SHUT = new Set((() => { try { return JSON.parse(localStorage.getItem('wa_bikes_shut') || '[]'); } catch (e) { return []; } })());
+function folds() {
+  for (const c of document.querySelectorAll('main > .card')) { const h = c.querySelector(':scope > h2');
+    if (h && !h.dataset.fold) { h.classList.add('fold'); h.dataset.fold = c.id || h.textContent.trim(); } }
+  for (const h of document.querySelectorAll('.fold[data-fold]')) (h.closest('.bikecard') || h.parentElement).classList.toggle('shut', SHUT.has(h.dataset.fold));
+}
+function saveFolds() { try { localStorage.setItem('wa_bikes_shut', JSON.stringify([...SHUT])); } catch (e) {} }
+document.addEventListener('click', e => {
+  const h = e.target.closest('.fold[data-fold]'); if (!h || e.target.closest('button, select, input, a, .chip.due')) return;
+  SHUT.has(h.dataset.fold) ? SHUT.delete(h.dataset.fold) : SHUT.add(h.dataset.fold); saveFolds(); folds();
+});
+function foldBikes(shut) { for (const b of g.bikes) { const k = 'bike:' + b.id; shut ? SHUT.add(k) : SHUT.delete(k); } saveFolds(); folds(); }
 function draw() {
-  const due = g.due.filter(d => d.state === 'due' || d.share >= 0.75);
-  $('duecard').hidden = !due.length; $('due').replaceChildren();
+  const due = g.due.filter(d => d.state === 'due' || d.share >= 0.75), low = g.spares_low || [];
+  $('duecard').hidden = !due.length && !low.length; $('due').replaceChildren();
+  $('lowspares').replaceChildren(...low.map(x => { const li = el('li'); li.append(svg(cat.icons[(cat.kinds[x.kind] || {}).icon] || cat.icons.part, 'ic'));
+    li.append(el('div', null, 'Spare ' + x.name.toLowerCase() + ': ' + x.have + ' on the shelf, keeping ' + x.want + (g.settings.to_outdoors === 'auto' ? ' (goes onto the Outdoors list)' : ''))); return li; }));
+  const rc = (g.recalls || {}).matches || [];
+  $('recallcard').hidden = !rc.length; $('recalls').replaceChildren(...rc.map(x => { const li = el('li'); li.append(el('span', 'ic', '⚠'));
+    const mid = el('div'), a = el('a', null, x.title); a.href = x.link; a.target = '_blank'; a.rel = 'noopener';
+    mid.append(a, el('div', 'dim small', (x.date || '') + ' · ' + x.maker + (x.summary ? ': ' + x.summary : '')));
+    li.append(mid, button('Not mine', () => guard(async () => { await api('POST', '/v1/bikes/recalls/dismiss' + R(), { link: x.link }); await load(); }))); return li; }));
   for (const d of due) {
     const li = el('li'); li.append(svg(cat.icons[(cat.kinds[d.kind] || {}).icon] || cat.icons.part, 'ic'));
     const b = g.bikes.find(x => x.id === d.bike_id), mid = el('div');
@@ -613,7 +779,11 @@ function draw() {
     li.append(sel); $('unassigned').append(li);
   }
   $('bikes').replaceChildren(...g.bikes.filter(b => !b.retired_at).map(bikeCard));
+  if (!$('bikessec').querySelector('.foldall')) { const fa = el('span', 'foldall');
+    fa.append(button('Fold every bike', () => foldBikes(true)), document.createTextNode(' '), button('Open every bike', () => foldBikes(false)));
+    $('bikessec').querySelector('h2').append(fa); }
   workshop();
+  folds();
   $('storecard').hidden = !(g.loose_sets || []).length; $('store').replaceChildren(...(g.loose_sets || []).map(s => wheelBlock(s, null)));
   $('logcard').hidden = !g.log.length; $('log').replaceChildren();
   for (const x of g.log) $('log').append(logRow(x, true));
@@ -627,14 +797,27 @@ function draw() {
   $('retiredcard').hidden = !g.retired.length; $('retired').replaceChildren(...g.retired.map(retiredCard));
   for (const id of ['ridebike', 'importbike']) { const s = $(id), keep = s.value; s.replaceChildren(new Option(id === 'importbike' ? 'ask for each' : '—', '')); g.bikes.filter(b => !b.retired_at).forEach(b => s.append(new Option(b.label, b.id))); s.value = keep; }
   $('shelf').replaceChildren(...g.shelf.map(p => { const li = partRow(p); li.querySelector('b').textContent = p.name + ' × ' + p.quantity; return li; }));
-  $('kit').replaceChildren(...g.kit.map(p => partRow(p)));
+  $('kit').replaceChildren(...g.kit.filter(p => p.kind !== 'sensor').map(p => partRow(p)));
+  const sens = g.kit.filter(p => p.kind === 'sensor');
+  $('sensorcard').hidden = !sens.length; $('sensors').replaceChildren(...sens.map(p => partRow(p)));
   const c = g.costs, box = $('costs'); box.replaceChildren();
   const tbl = el('table', 'costs'), head = el('tr'); ['Bike', 'This year', 'km', '£ per km', 'All time'].forEach(x => head.append(el('th', null, x))); tbl.append(head);
   const year = String(new Date().getFullYear());
   for (const b of c.bikes) { const y = b.years[year] || {}, tr = el('tr'); [b.label, y.cost != null ? '£' + y.cost.toFixed(2) : '—', fmt(y.km), y.per_km != null ? '£' + y.per_km.toFixed(3) : '—', '£' + b.total.toFixed(2)].forEach(x => tr.append(el('td', null, x))); tbl.append(tr); }
   box.append(tbl);
   const kinds = Object.values(c.kinds); if (kinds.length) box.append(el('p', null, 'Per 1,000 km: ' + kinds.map(k => k.name + ' £' + k.per_1000km.toFixed(2)).join(', ')));
+  const sf = g.settings.surface_factors || {}; $('sf_gravel').value = sf.gravel || 1.3; $('sf_mtb').value = sf.mtb || 1.6;
+  if (!MS) MS = Object.assign({}, g.settings.min_spares || {}); drawSpares();
+  const rcs = g.recalls || {}; $('recallmsg').textContent = rcs.checked_at ? 'Last checked ' + new Date(rcs.checked_at).toLocaleDateString('en-GB') + (rcs.error ? ' (' + rcs.error + ')' : '') : 'Checked weekly';
   $('to_outdoors').value = g.settings.to_outdoors; $('wet_factor').value = g.settings.wet_factor; $('trainer').checked = !!g.settings.trainer_has_cassette; $('weight').value = g.rider.weight_kg || '';
+}
+let MS = null;
+function drawSpares() {  // the spares to keep: a number for each kind
+  const f = $('minspares'); f.replaceChildren();
+  for (const [k, n] of Object.entries(MS)) { const l = el('label', null, ((cat.kinds[k] || {}).name || k) + ' '), i = el('input'); i.type = 'number'; i.min = 0; i.max = 50; i.value = n;
+    i.onchange = () => { MS[k] = Number(i.value || 0); }; l.append(i); f.append(l); }
+  const sel = $('mskind'); if (!sel.options.length) { sel.append(new Option('A kind of part…', ''));
+    for (const [k, v] of Object.entries(cat.kinds)) if (v.bought && v.on !== 'rider' || k === 'tube') sel.append(new Option(v.name, k)); }
 }
 function logRow(x, undo) {
   const li = el('li'); li.append(el('span', 'ic', '🔧'));
@@ -668,10 +851,15 @@ function batteryBox(b) {  // the shifter (and dropper) batteries on this bike: f
   const box = el('div', 'small'), cfg = b.config || {};
   const wireless = cfg.shifting === 'axs' || cfg.dropper === 'wireless' || (b.batteries || []).length;
   for (const bat of b.batteries || []) {
-    const line = el('div', 'row'); line.append(el('span', null, '🔋 ' + bat.name + ': ' + Math.round(bat.wear.share * 100) + '% of a charge used'));
+    const line = el('div', 'row'), rp = bat.reported;
+    line.append(el('span', rp && rp.level != null && rp.level <= 20 ? 'err' : null, '🔋 ' + bat.name + ': ' + Math.round(bat.wear.share * 100) + '% of a charge used' +
+      (rp ? '; Garmin saw it ' + rp.status + (rp.volts ? ' (' + rp.volts + ' V)' : '') + ' on ' + new Date(rp.at).toLocaleDateString('en-GB') : '')));
     line.append(button('Take off', () => guard(async () => { await api('POST', '/v1/bikes/fit', { item: 'part', id: bat.id, bike_id: null }); await load(); })));
     box.append(line);
   }
+  const seen = (b.sensors || []).filter(x => x.type === 'shifting');
+  if (seen.length && !(b.batteries || []).some(x => x.reported)) box.append(el('div', 'dim', 'Garmin saw: ' + seen.map(x => x.maker + ' ' + x.type + ' ' + (x.serial || '') + ' ' + (x.status || '') + (x.volts ? ' ' + x.volts + ' V' : '')).join('; ') +
+    (seen.length > 1 || (b.batteries || []).length > 1 ? '. With two, put the derailleur serial in each battery\'s details (Edit) to tell them apart.' : '')));
   if (!wireless) return box;
   const spare = g.kit.filter(p => p.kind === 'axs_battery' && p.bike_id !== b.id), row = el('div', 'row');
   if (spare.length) { const sel = el('select'); sel.append(new Option('Fit a battery…', ''));
@@ -692,7 +880,7 @@ function changeAnswers(card, b) {  // change a bike's answers: parts it now need
   answersInto(f, cfg.type, Object.assign({}, cat.defaults[cfg.type], cfg));
   const save = el('button', 'primary small', 'Save'); save.type = 'button';
   save.onclick = () => guard(async () => {
-    const c = {}; for (const i of f.elements) if (i.name) c[i.name] = i.type === 'number' ? Number(i.value || 0) : i.value;
+    const c = {}; for (const i of f.elements) if (i.name) c[i.name] = i.type === 'number' ? (i.value === '' ? (i.dataset.opt ? null : 0) : Number(i.value)) : i.type === 'checkbox' ? i.checked : (i.value === '' && i.dataset.opt ? null : i.value);
     const r = await api('PATCH', '/v1/bikes/bikes/' + b.id, { config: c });
     const ch = r || {}; msg.textContent = b.label + ': ' + ((ch.added || []).length ? 'added ' + ch.added.join(', ') : 'nothing added') +
       ((ch.retired || []).length ? '; retired ' + ch.retired.join(', ') : '') + '.'; await load(); }, out);
@@ -708,6 +896,12 @@ function answersInto(f, t, d) {  // a bike's answers as a form: for a new bike (
     for (const [v, txt] of Object.entries(cat.choices[k])) s.append(new Option(txt, v)); s.value = d[k]; l.append(s); f.append(l); }
   for (const k of ['front_width', 'rear_width']) { const l = el('label', null, (k[0] === 'f' ? 'Front' : 'Rear') + ' tyre width mm '), i = el('input'); i.type = 'number'; i.name = k; i.min = 15; i.max = 130; i.value = d[k]; l.append(i); f.append(l); }
   { const l = el('label', null, 'Front chainrings '), i = el('input'); i.type = 'number'; i.name = 'front_rings'; i.min = 1; i.max = 3; i.value = d.front_rings; l.append(i); f.append(l); }
+  { const l = el('label', null, 'Bars '), sel = el('select'); sel.name = 'bars'; sel.dataset.opt = '1'; sel.append(new Option('as the type usually has', ''));
+    for (const [v, txt] of Object.entries(cat.choices.bars || {})) sel.append(new Option(txt, v)); sel.value = d.bars || ''; l.append(sel); f.append(l); }
+  { const l = el('label', null, 'Wheel size '), sel = el('select'); sel.name = 'wheel_size'; sel.dataset.opt = '1'; sel.append(new Option('not said', ''));
+    for (const [v, txt] of Object.entries(cat.choices.wheel_size || {})) sel.append(new Option(txt, v)); sel.value = d.wheel_size || ''; l.append(sel); f.append(l); }
+  for (const [k, n] of Object.entries(cat.numbers || {})) { const l = el('label', null, n.name + ' '), i = el('input'); i.type = 'number'; i.name = k; i.dataset.opt = '1';
+    i.min = n.min; i.max = n.max; i.value = d[k] == null ? '' : d[k]; i.placeholder = 'for the checks'; l.append(i); f.append(l); }
   if (t === 'tandem') { const l = el('label', null, 'Stoker weight kg '), i = el('input'); i.type = 'number'; i.name = 'stoker_kg'; i.min = 20; i.max = 200; l.append(i); f.append(l); }
   // for its picture: the model (its own frame shape), and its paint
   const pick = (name, lab, opts, value, none) => { const l = el('label', null, lab + ' '), sel = el('select'); sel.name = name;
@@ -715,6 +909,8 @@ function answersInto(f, t, d) {  // a bike's answers as a form: for a new bike (
   pick('model', 'Model (for its picture)', Object.entries(cat.models || {}).filter(([, m]) => m.type === t).map(([k, m]) => [k, m.name]), d.model, 'a typical ' + (cat.types[t] || t).toLowerCase());
   pick('paint', 'Frame colour', Object.entries(cat.paints || {}), d.paint, "the theme's colour");
   pick('paint2', 'Second colour (fork and stays; the rear triangle on full suspension)', Object.entries(cat.paints || {}), d.paint2, 'the same');
+  pick('pinstripe', 'Pinstripes', Object.entries(cat.paints || {}), d.pinstripe, 'none');
+  { const l = el('label', null, 'Fade into the second colour '), i = el('input'); i.type = 'checkbox'; i.name = 'fade'; i.checked = !!d.fade; l.append(i); f.append(l); }
 }
 async function load() {
   if (!rider()) return;
@@ -797,7 +993,7 @@ $('addrider').onsubmit = e => { e.preventDefault(); guard(async () => { const r 
     await load(); } }, $('rmsg')); };
 $('addbikego').onclick = () => guard(async () => {
   if (!rider()) throw new Error('Add yourself as a rider first');
-  const cfg = {}; for (const i of $('answers').elements) if (i.name) cfg[i.name] = i.type === 'number' ? Number(i.value || 0) : i.value;
+  const cfg = {}; for (const i of $('answers').elements) if (i.name) cfg[i.name] = i.type === 'number' ? Number(i.value || 0) : i.type === 'checkbox' ? i.checked : i.value;
   await api('POST', '/v1/bikes/bikes', { rider: rider(), label: $('blabel').value, type: $('btype').value, ebike: $('bebike').checked, config: cfg,
     fitted_at: $('bdate').value || null, weight_kg: $('bkg').value ? Number($('bkg').value) : null });
   $('blabel').value = ''; await load(); }, $('bmsg'));
@@ -815,8 +1011,13 @@ $('addspare').onsubmit = e => { e.preventDefault(); guard(async () => {
   for (const i of ['slabel', 'sbrand', 'smodel', 'sprice']) $(i).value = ''; await load(); }); };
 $('settings').onsubmit = e => { e.preventDefault(); guard(async () => {
   await api('PUT', '/v1/bikes/settings?rider=' + encodeURIComponent(rider()), { to_outdoors: $('to_outdoors').value, wet_factor: Number($('wet_factor').value),
-    trainer_has_cassette: $('trainer').checked, weight_kg: $('weight').value ? Number($('weight').value) : null });
+    trainer_has_cassette: $('trainer').checked, weight_kg: $('weight').value ? Number($('weight').value) : null,
+    surface_factors: { gravel: Number($('sf_gravel').value || 1), mtb: Number($('sf_mtb').value || 1) } });
   $('smsg').textContent = 'Saved.'; await load(); }, $('smsg')); };
+$('msadd').onclick = () => { const k = $('mskind').value; if (k && !(k in MS)) { MS[k] = 1; drawSpares(); } };
+$('mssave').onclick = () => guard(async () => { await api('PUT', '/v1/bikes/settings' + R(), { min_spares: MS }); MS = null; $('smsg').textContent = 'Spares saved.'; await load(); }, $('smsg'));
+$('recallgo').onclick = () => guard(async () => { $('recallmsg').textContent = 'Looking…'; const r = await api('POST', '/v1/bikes/recalls/check' + R());
+  $('recallmsg').textContent = r.matches.length + ' notices for ' + (r.makers || []).join(', ') + (r.error ? ' (' + r.error + ')' : ''); await load(); }, $('recallmsg'));
 guard(start);
 </script></main></body></html>"""
 

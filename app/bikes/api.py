@@ -44,14 +44,16 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.auth import require_token
 from app.bikes import defaults as D
+from app.bikes import groupsets as GS
 from app.bikes import wear as W
-from app.bikes.rain import home_point, suggest
+from app.bikes.rain import home_point, suggest, suggest_route
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/bikes", tags=["bikes"], dependencies=[Depends(require_token)])
 TZ = ZoneInfo("Europe/London")
 BIKE_KG = 10.0  # a bike's weight when none is given (for tyre pressures)
-SETTINGS = {"to_outdoors": "auto", "wet_factor": W.WET_FACTOR, "trainer_has_cassette": True}
+SETTINGS = {"to_outdoors": "auto", "wet_factor": W.WET_FACTOR, "trainer_has_cassette": True,
+            "surface_factors": dict(W.SURFACE_FACTORS), "min_spares": {}}
 
 
 def _slug(s: str) -> str:
@@ -94,7 +96,10 @@ def describe(p: dict[str, Any]) -> str:
     bits = [str(x) for x in (p.get("brand"), p.get("model")) if x]
     for key, _ in D.SPECS.get(p["kind"], []):
         v = d.get(key)
-        if v in (None, "", False):
+        if v in (None, "", False) or (key == "width_mm" and d.get("etrto")) or key == "max_psi":
+            continue
+        if v is True:  # a yes/no detail: its name ("Tubeless"), not "True"
+            bits.append(dict(D.SPECS[p["kind"]]).get(key, key).split(" (")[0])
             continue
         unit = {"teeth": "t", "diameter_mm": " mm", "width_mm": " mm", "travel_mm": " mm", "ml": " ml", "speeds": "-speed"}.get(key, "")
         bits.append(f"{v}{unit}" if unit else str(v))
@@ -124,7 +129,8 @@ async def catalogue() -> dict[str, Any]:
     return {"types": D.BIKE_TYPES, "choices": D.CHOICES,
             "models": {k: {"name": m["name"], "type": m["type"]} for k, m in MODELS.items()},
             "paints": {k: v[0] for k, v in PAINTS.items()}, "kinds": kinds, "icons": art.catalogue_icons(), "specs": D.SPECS,
-            "defaults": {t: D.defaults_for(t) for t in D.BIKE_TYPES}}  # fmt: skip
+            "numbers": {k: {"min": lo, "max": hi, "name": what} for k, (lo, hi, what) in D.NUMBERS.items()},
+            "groupsets": GS.catalogue(), "defaults": {t: D.defaults_for(t) for t in D.BIKE_TYPES}}  # fmt: skip
 
 
 # --- riders ----------------------------------------------------------------------------------------------------------
@@ -158,6 +164,8 @@ class SettingsIn(BaseModel):
     wet_factor: float | None = Field(None, ge=1, le=3)
     trainer_has_cassette: bool | None = None
     weight_kg: float | None = Field(None, gt=20, lt=250)
+    surface_factors: dict[Literal["gravel", "mtb"], float] | None = Field(None, description="each 1 to 3")
+    min_spares: dict[str, int] | None = Field(None, description="kind: how many to keep on the shelf (0 for none)")
 
 
 @router.get("/settings")
@@ -169,6 +177,12 @@ async def get_settings_(request: Request, rider: str = Query(...)) -> dict[str, 
 @router.put("/settings")
 async def put_settings(request: Request, body: SettingsIn, rider: str = Query(...)) -> dict[str, Any]:
     r = await _rider(request.app.state.engine, rider)
+    if body.surface_factors and not all(1 <= v <= 3 for v in body.surface_factors.values()):
+        raise HTTPException(422, "Each surface factor is from 1 to 3")
+    if body.min_spares and not all(k in D.KINDS and 0 <= n <= 50 for k, n in body.min_spares.items()):
+        raise HTTPException(422, "min_spares: a kind of part and how many (0 to 50)")
+    if body.min_spares is not None:
+        body.min_spares = {k: n for k, n in body.min_spares.items() if n}
     st = {**(r["settings"] or {}), **{k: v for k, v in body.model_dump().items() if v is not None and k != "weight_kg"}}
     async with request.app.state.engine.begin() as c:
         await c.execute(text("UPDATE bike_rider SET settings = CAST(:s AS jsonb), weight_kg = COALESCE(:w, weight_kg) WHERE id = :r"),
@@ -229,6 +243,8 @@ async def _check_place(c: Any, part: dict[str, Any], bike_id: int | None, set_id
 
 async def _new_part(c: Any, rider: str, kind: str, position: str | None, details: dict[str, Any], at: datetime | None,
                     status: str = "fitted", **more: Any) -> int:  # fmt: skip
+    if kind == "tyre":
+        details = D.tyre_details(details or {})
     return (await c.execute(text(
         "INSERT INTO bike_part (rider_id, kind, position, details, fitted_at, status, label, brand, model, url, photo_url, "
         "price, quantity, start_km, start_hours, life, notes) VALUES (:r, :k, :p, CAST(:d AS jsonb), :t, :st, :label, :brand, "
@@ -249,9 +265,19 @@ def _check(cfg: dict[str, Any]) -> None:
             raise HTTPException(422, f"{k} must be one of {', '.join(allowed)}")
     if cfg.get("model") and cfg["model"] not in MODELS:
         raise HTTPException(422, f"model must be one of {', '.join(MODELS)}")
-    for k in ("paint", "paint2"):
+    for k in ("paint", "paint2", "pinstripe"):
         if cfg.get(k) and cfg[k] not in PAINTS:
             raise HTTPException(422, f"{k} must be one of {', '.join(PAINTS)}")
+    for k, (lo, hi, what) in D.NUMBERS.items():
+        v = cfg.get(k)
+        if v is not None and v != "" and (not isinstance(v, int | float) or isinstance(v, bool) or not lo <= v <= hi):
+            raise HTTPException(422, f"{what}: a number from {lo} to {hi}")
+    if cfg.get("groupset") and cfg["groupset"] not in GS.GROUPSETS:
+        raise HTTPException(422, "No such groupset")
+    own = cfg.get("checklist")
+    if own is not None and (not isinstance(own, dict) or set(own) - {"pre", "service"}
+                            or not all(isinstance(v, list) and len(v) <= 30 for v in own.values())):  # fmt: skip
+        raise HTTPException(422, "checklist: {'pre': [...], 'service': [...]}, up to 30 items each")
 
 
 @router.post("/bikes", status_code=201)
@@ -329,6 +355,7 @@ async def change_bike(request: Request, bike_id: int, body: BikePatch) -> dict[s
             _check(cfg)
             await c.execute(text("UPDATE bike SET config = CAST(:c AS jsonb) WHERE id = :b"), {"c": json.dumps(cfg), "b": bike_id})
             changes = await _reconcile(c, b, cfg)
+            await _fluids(c, b, cfg)
     return {"id": bike_id, **changes}
 
 
@@ -356,10 +383,20 @@ async def delete_bike(request: Request, bike_id: int) -> dict[str, Any]:
     return {"id": bike_id, "deleted": True, "parts": len(parts), "sets": len(sets_)}
 
 
+async def _fluids(c: Any, b: dict[str, Any], cfg: dict[str, Any]) -> None:
+    """A brake's fluid answer changed (a SRAM groupset is DOT): its bleed part says the same."""
+    for p in await _parts_on(c, b["id"], b["rider_id"]):
+        want = cfg.get(f"{p['position']}_fluid") if p["kind"] == "brake_fluid" else None
+        if want and want != (b["config"] or {}).get(f"{p['position']}_fluid"):
+            d = {**(p["details"] or {}), "fluid": "DOT 5.1" if want == "dot" else "mineral"}
+            await c.execute(text("UPDATE bike_part SET details = CAST(:d AS jsonb) WHERE id = :p"), {"d": json.dumps(d), "p": p["id"]})
+
+
 async def _reconcile(c: Any, b: dict[str, Any], cfg: dict[str, Any]) -> dict[str, list[str]]:
     """Add the parts the new answers give that the bike lacks; retire those it has that they no longer give."""
     now = _now()
-    want = [(p.kind, p.position, p.on, p.details) for p in D.planned_parts(cfg)]
+    gone = set(cfg.get("removed") or [])  # parts taken off for good: not added back
+    want = [(p.kind, p.position, p.on, p.details) for p in D.planned_parts(cfg) if f"{p.kind}@{p.position or ''}" not in gone]
     have = await _parts_on(c, b["id"], b["rider_id"])
     wheels = {r.position: r.id for r in await c.execute(text(
         "SELECT s.id, s.position FROM bike_set s JOIN LATERAL (SELECT bike_id FROM bike_fit f WHERE f.item = 'set' AND "
@@ -378,8 +415,14 @@ async def _reconcile(c: Any, b: dict[str, Any], cfg: dict[str, Any]) -> dict[str
         added.append(name_of({"kind": kind, "position": pos}))
     for h in remaining:  # only kinds the answers give: a part of another kind you added yourself stays
         if h["kind"] in _ANY_DEFAULT:
-            await c.execute(text("UPDATE bike_part SET status = 'retired', retired_at = :t WHERE id = :p"), {"t": now, "p": h["id"]})
-            await _fit(c, "part", h["id"], now)
+            logged = (await c.execute(text("SELECT count(*) FROM bike_service WHERE part_id = :p"), {"p": h["id"]})).scalar_one()
+            if not logged and h.get("price") is None and not h.get("brand") and not h.get("model"):
+                # never anything but a default (the bike never had it): gone, not kept as history
+                await c.execute(text("DELETE FROM bike_fit WHERE item = 'part' AND item_id = :p"), {"p": h["id"]})
+                await c.execute(text("DELETE FROM bike_part WHERE id = :p"), {"p": h["id"]})
+            else:
+                await c.execute(text("UPDATE bike_part SET status = 'retired', retired_at = :t WHERE id = :p"), {"t": now, "p": h["id"]})
+                await _fit(c, "part", h["id"], now)
             retired.append(name_of(h))
     return {"added": added, "retired": retired}
 
@@ -537,8 +580,11 @@ class PartPatch(BaseModel):
 async def change_part(request: Request, part_id: int, body: PartPatch) -> dict[str, Any]:
     vals = body.model_dump(exclude_unset=True)
     async with request.app.state.engine.begin() as c:
-        if not (await c.execute(text("SELECT 1 FROM bike_part WHERE id = :p"), {"p": part_id})).first():
+        kind = (await c.execute(text("SELECT kind FROM bike_part WHERE id = :p"), {"p": part_id})).scalar()
+        if kind is None:
             raise HTTPException(404, "No such part")
+        if kind == "tyre" and vals.get("details"):
+            vals["details"] = D.tyre_details(vals["details"])
         for k, v in vals.items():
             if k in ("life", "details"):
                 await c.execute(text(f"UPDATE bike_part SET {k} = CAST(:v AS jsonb) WHERE id = :p"),
@@ -566,7 +612,103 @@ async def delete_part(request: Request, part_id: int) -> dict[str, Any]:
     return {"id": part_id, "deleted": True}
 
 
-async def _put_photo(request: Request, table: str, item_id: int, body: PhotoIn) -> dict[str, Any]:
+class GroupsetIn(BaseModel):
+    groupset: str
+    only_empty: bool = Field(False, description="fill in only the parts with no make or model yet")
+
+
+@router.post("/bikes/{bike_id}/groupset")
+async def fit_groupset(request: Request, bike_id: int, body: GroupsetIn) -> dict[str, Any]:
+    """A groupset as the starting point for a bike: its answers set to match (shifting, rings, speeds, bars, a
+    hydraulic brake's fluid), which adds or retires parts as any change of answers does (a front derailleur for two
+    rings), then the make, model and details of each of its parts filled in, wheels' too (the cassette, a rotor)."""
+    g = GS.GROUPSETS.get(body.groupset)
+    if not g:
+        raise HTTPException(422, f"No such groupset: one of {', '.join(GS.GROUPSETS)}")
+    async with request.app.state.engine.begin() as c:
+        b = (await c.execute(text("SELECT * FROM bike WHERE id = :b"), {"b": bike_id})).first()
+        if not b:
+            raise HTTPException(404, "No such bike")
+        b = _row(b)
+        old = b["config"] or {}
+        cfg = {**old, **GS.answers(g, old), "groupset": body.groupset}
+        _check(cfg)
+        await c.execute(text("UPDATE bike SET config = CAST(:c AS jsonb) WHERE id = :b"), {"c": json.dumps(cfg), "b": bike_id})
+        changes = await _reconcile(c, b, cfg)
+        await _fluids(c, b, cfg)
+        disc = any(cfg.get(f"{e}_brake") in D.DISC_BRAKES for e in ("front", "rear"))
+        parts = await _parts_on(c, bike_id, b["rider_id"])
+        rotor = GS.details_for(g, "rotor").get("mount")
+        filled = []
+        for p in parts:
+            model = GS.model_for(g, p["kind"], disc)
+            extra = GS.details_for(g, p["kind"])
+            if p["kind"] == "hub":
+                extra = {k: v for k, v in (("freehub", g.freehub if p["position"] == "rear" else None), ("rotor_mount", rotor)) if v}
+            d = dict(p["details"] or {})
+            sets_: dict[str, Any] = {}
+            if model and not (body.only_empty and (p["brand"] or p["model"])):
+                sets_ = {"brand": g.brand, "model": model}
+                d.update(extra)
+            else:
+                d.update({k: v for k, v in extra.items() if d.get(k) in (None, "")})
+            if not sets_ and d == (p["details"] or {}):
+                continue
+            await c.execute(text("UPDATE bike_part SET brand = COALESCE(:br, brand), model = COALESCE(:m, model), "
+                                 "details = CAST(:d AS jsonb) WHERE id = :p"),
+                            {"br": sets_.get("brand"), "m": sets_.get("model"), "d": json.dumps(d), "p": p["id"]})  # fmt: skip
+            if sets_:
+                filled.append(f"{name_of(p)}: {g.brand} {model}")
+    answered = {k: v for k, v in GS.answers(g, old).items() if k != "groupset" and old.get(k) != v}
+    return {"id": bike_id, "groupset": f"{g.brand} {g.name}", "answers": answered, "filled": filled, **changes}
+
+
+# a part that only exists because of one of the bike's answers: removing it is changing that answer, so its sibling
+# parts go too and it is not added back (a dropper's two services both go when the bike has no dropper)
+ANSWER_OF = {"dropper_lower": ("dropper", "none"), "dropper_full": ("dropper", "none"),
+             "fork_lowers": ("front_suspension", "none"), "fork_damper": ("front_suspension", "none"),
+             "susp_stem": ("front_suspension", "none"), "shock_air": ("rear_suspension", "none"),
+             "shock_damper": ("rear_suspension", "none"), "susp_post": ("rear_suspension", "none")}  # fmt: skip
+
+
+@router.post("/parts/{part_id}/remove")
+async def remove_part(request: Request, part_id: int) -> dict[str, Any]:
+    """Take a part off for good: the bike does not have it (a dropper listed on a bike with a fixed seatpost, say).
+    A part with no history is deleted; one with history is retired, which keeps it in the log and costs. A part one of
+    the bike's answers gives changes that answer (the dropper to none), so the parts that go with it go too; any other
+    part the answers give is remembered as removed, so changing the answers later does not add it back."""
+    async with request.app.state.engine.begin() as c:
+        p = (await c.execute(text("SELECT * FROM bike_part WHERE id = :p"), {"p": part_id})).first()
+        if not p:
+            raise HTTPException(404, "No such part")
+        p = _row(p)
+        fits = [_row(r) for r in await c.execute(text("SELECT f.* FROM bike_fit f JOIN bike_part q ON f.item = 'part' AND f.item_id = q.id "
+                                                      "WHERE q.rider_id = :r UNION ALL SELECT f.* FROM bike_fit f JOIN bike_set s ON "
+                                                      "f.item = 'set' AND f.item_id = s.id WHERE s.rider_id = :r"), {"r": p["rider_id"]})]  # fmt: skip
+        bike_id = W.Placer(fits).bike_of_part(part_id, _now() + timedelta(seconds=1)) if p["status"] == "fitted" else None
+        b = _row(r) if bike_id and (r := (await c.execute(text("SELECT * FROM bike WHERE id = :b"), {"b": bike_id})).first()) else None
+        answer = ANSWER_OF.get(p["kind"])
+        if b and answer and (b["config"] or {}).get(answer[0], answer[1]) != answer[1]:
+            cfg = {**b["config"], answer[0]: answer[1]}
+            await c.execute(text("UPDATE bike SET config = CAST(:c AS jsonb) WHERE id = :b"), {"c": json.dumps(cfg), "b": b["id"]})
+            changes = await _reconcile(c, b, cfg)
+            return {"id": part_id, "answer": {answer[0]: answer[1]}, **changes}
+        logged = (await c.execute(text("SELECT count(*) FROM bike_service WHERE part_id = :p"), {"p": part_id})).scalar_one()
+        if b and p["kind"] in _ANY_DEFAULT:  # not added back by the answers
+            gone = sorted({*((b["config"] or {}).get("removed") or []), f"{p['kind']}@{p['position'] or ''}"})
+            await c.execute(text("UPDATE bike SET config = CAST(:c AS jsonb) WHERE id = :b"),
+                            {"c": json.dumps({**b["config"], "removed": gone}), "b": b["id"]})  # fmt: skip
+        if not logged and p["start_km"] in (None, 0):
+            await c.execute(text("DELETE FROM bike_fit WHERE item = 'part' AND item_id = :p"), {"p": part_id})
+            await c.execute(text("DELETE FROM bike_part WHERE id = :p"), {"p": part_id})
+            return {"id": part_id, "deleted": True, "added": [], "retired": []}
+        now = _now()
+        await c.execute(text("UPDATE bike_part SET status = 'retired', retired_at = :t WHERE id = :p"), {"t": now, "p": part_id})
+        await _fit(c, "part", part_id, now)
+    return {"id": part_id, "deleted": False, "added": [], "retired": [name_of(p)]}
+
+
+async def _put_photo(request: Request, table: str, item_id: int, body: PhotoIn, col: str = "photo") -> dict[str, Any]:
     head, _, data = body.data_url.partition(",")
     if head not in ("data:image/jpeg;base64", "data:image/png;base64", "data:image/webp;base64") or not data:
         raise HTTPException(422, "Send a JPEG, PNG or WebP as a data: URL")
@@ -575,15 +717,15 @@ async def _put_photo(request: Request, table: str, item_id: int, body: PhotoIn) 
     except ValueError as exc:
         raise HTTPException(422, "That photo's data is not base64") from exc
     async with request.app.state.engine.begin() as c:
-        n = (await c.execute(text(f"UPDATE {table} SET photo = :b WHERE id = :i"), {"b": raw, "i": item_id})).rowcount
+        n = (await c.execute(text(f"UPDATE {table} SET {col} = :b WHERE id = :i"), {"b": raw, "i": item_id})).rowcount
     if not n:
         raise HTTPException(404, "Not found")
     return {"id": item_id, "bytes": len(raw)}
 
 
-async def _get_photo(request: Request, table: str, item_id: int) -> Response:
+async def _get_photo(request: Request, table: str, item_id: int, col: str = "photo") -> Response:
     async with request.app.state.engine.connect() as c:
-        raw = (await c.execute(text(f"SELECT photo FROM {table} WHERE id = :i"), {"i": item_id})).scalar()
+        raw = (await c.execute(text(f"SELECT {col} FROM {table} WHERE id = :i"), {"i": item_id})).scalar()
     if not raw:
         raise HTTPException(404, "No photo")
     kind = "png" if raw[:4] == b"\x89PNG" else "webp" if raw[8:12] == b"WEBP" else "jpeg"
@@ -608,6 +750,62 @@ async def put_bike_photo(request: Request, bike_id: int, body: PhotoIn) -> dict[
 @router.get("/bikes/{bike_id}/photo")
 async def bike_photo(request: Request, bike_id: int) -> Response:
     return await _get_photo(request, "bike", bike_id)
+
+
+@router.put("/bikes/{bike_id}/frame-photo")
+async def put_frame_photo(request: Request, bike_id: int, body: PhotoIn) -> dict[str, Any]:
+    """A photo of the frame number (under the bottom bracket, usually): for insurance, BikeRegister and the police
+    if it is stolen."""
+    return await _put_photo(request, "bike", bike_id, body, "frame_photo")
+
+
+@router.get("/bikes/{bike_id}/frame-photo")
+async def frame_photo(request: Request, bike_id: int) -> Response:
+    return await _get_photo(request, "bike", bike_id, "frame_photo")
+
+
+@router.delete("/bikes/{bike_id}/frame-photo")
+async def delete_frame_photo(request: Request, bike_id: int) -> dict[str, Any]:
+    async with request.app.state.engine.begin() as c:
+        await c.execute(text("UPDATE bike SET frame_photo = NULL WHERE id = :b"), {"b": bike_id})
+    return {"id": bike_id, "deleted": True}
+
+
+class ChecklistIn(BaseModel):
+    rider: str
+    bike_id: int
+    list: Literal["pre", "service"]
+    done: list[str] = Field(default_factory=list, max_length=60)
+    note: str | None = Field(None, max_length=300)
+
+
+@router.post("/checklist")
+async def tick_checklist(request: Request, body: ChecklistIn) -> dict[str, Any]:
+    """A bike's pre-ride or service check, ticked off: logged (which items were done), and the items that are the
+    garage's own checks (the tyre pressures, the hanger, the spokes, the timing chain) restart those parts' counts."""
+    from app.bikes import checklists as CL
+
+    now = _now()
+    async with request.app.state.engine.begin() as c:
+        b = (await c.execute(text("SELECT * FROM bike WHERE id = :b AND rider_id = :r"), {"b": body.bike_id, "r": body.rider})).first()
+        if not b:
+            raise HTTPException(404, "No such bike for this rider")
+        items = CL.lists(_row(b)["config"] or {})[body.list]
+        known = {i["id"] for i in items}
+        done = [d for d in body.done if d in known]
+        note = CL.summary(CL.NAMES[body.list], items, done) + (f". {body.note}" if body.note else "")
+        sid = (await c.execute(text("INSERT INTO bike_service (rider_id, bike_id, at, action, resets, note) VALUES "
+                                    "(:r, :b, :t, 'checklist', false, :n) RETURNING id"),
+                               {"r": body.rider, "b": body.bike_id, "t": now, "n": note})).scalar_one()  # fmt: skip
+        kinds = {i["checks"] for i in items if i["id"] in done and i["checks"]}
+        checked = []
+        for p in await _parts_on(c, body.bike_id, body.rider):
+            if p["kind"] in kinds:
+                await c.execute(text("INSERT INTO bike_service (rider_id, part_id, at, action, resets, note) VALUES "
+                                     "(:r, :p, :t, 'checked', true, :n)"),
+                                {"r": body.rider, "p": p["id"], "t": now, "n": CL.NAMES[body.list]})  # fmt: skip
+                checked.append(name_of(p))
+    return {"id": sid, "note": note, "checked": checked}
 
 
 # --- moving things ---------------------------------------------------------------------------------------------------
@@ -686,7 +884,9 @@ RESETS = {"replaced", "serviced", "checked", "charged", "topped_up", "bled"}  # 
 
 class ServiceIn(BaseModel):
     rider: str
-    action: Literal["replaced", "serviced", "checked", "charged", "topped_up", "bled", "measured_ok", "cost", "note", "crash"]
+    action: Literal["replaced", "serviced", "checked", "charged", "topped_up", "bled", "measured_ok", "measured", "cost",
+                    "note", "crash"]
+    reading: float | None = Field(None, ge=0, le=100, description="a measurement: a chain checker's stretch (%), say")
     part_id: int | None = None
     bike_id: int | None = None
     at: datetime | None = None
@@ -712,11 +912,16 @@ async def service(request: Request, body: ServiceIn) -> dict[str, Any]:
             part = _row(row)
         if body.action in RESETS and part is None:
             raise HTTPException(422, "Say which part")
-        sid = (await c.execute(text("INSERT INTO bike_service (rider_id, part_id, bike_id, at, action, resets, level_before, cost, note) "
-                                    "VALUES (:r, :p, :b, :t, :a, :x, :l, :c, :n) RETURNING id"),
+        if body.action == "measured" and (part is None or body.reading is None):
+            raise HTTPException(422, "Say which part and the reading")
+        note = body.note
+        if body.action == "measured" and not note and part and part["kind"] in ("chain", "timing_chain"):
+            note = f"{body.reading:g}% stretch (worn out at {W.stretch_limit(part):g}%)"
+        sid = (await c.execute(text("INSERT INTO bike_service (rider_id, part_id, bike_id, at, action, resets, level_before, cost, note, "
+                                    "reading) VALUES (:r, :p, :b, :t, :a, :x, :l, :c, :n, :rd) RETURNING id"),
                                {"r": body.rider, "p": body.part_id, "b": body.bike_id, "t": at, "a": body.action,
                                 "x": body.action in RESETS and body.action != "replaced", "l": body.level_before,
-                                "c": body.cost, "n": body.note})).scalar_one()  # fmt: skip
+                                "c": body.cost, "n": note, "rd": body.reading})).scalar_one()  # fmt: skip
         out: dict[str, Any] = {"id": sid, "action": body.action}
         if body.action == "replaced" and part:
             where = (await c.execute(text("SELECT bike_id, set_id FROM bike_fit WHERE item = 'part' AND item_id = :p ORDER BY at DESC, id DESC LIMIT 1"),
@@ -832,6 +1037,10 @@ async def _suggest_wet(request: Request, rides: list[dict[str, Any]]) -> None:
         for r in rides:
             if r["indoor"] or r.get("wet") is not None:
                 continue
+            if r.get("route") and len(r["route"]) > 1:  # along the way, not just where it started
+                r["wet_suggested"], r["wet_why"] = await suggest_route(client, r["route"], r["started"], r["hours"], now)
+                if r["wet_suggested"] is not None:
+                    continue
             pt = (r["lat"], r["lon"]) if r.get("lat") is not None and r.get("lon") is not None else home
             if not pt:
                 r["wet_why"] = "no place saved to look up the rain for"
@@ -850,11 +1059,13 @@ async def insert_rides(c: Any, rides: list[dict[str, Any]]) -> int:
     for r in rides:
         n += (await c.execute(text(
             "INSERT INTO bike_ride (id, rider_id, bike_id, started, km, hours, indoor, wet, wet_suggested, wet_why, lat, lon, "
-            "activity, title, source, garmin_bike, bike_checked) VALUES (:id, :rider, :bike_id, :started, :km, :hours, :indoor, "
-            ":wet, :wet_suggested, :wet_why, :lat, :lon, :activity, :title, :source, :garmin_bike, :bike_checked) "
-            "ON CONFLICT (id) DO NOTHING"),
+            "activity, title, source, garmin_bike, bike_checked, route, sensors) VALUES (:id, :rider, :bike_id, :started, :km, "
+            ":hours, :indoor, :wet, :wet_suggested, :wet_why, :lat, :lon, :activity, :title, :source, :garmin_bike, :bike_checked, "
+            "CAST(:route AS jsonb), CAST(:sensors AS jsonb)) ON CONFLICT (id) DO NOTHING"),
             {"wet_suggested": None, "wet_why": None, "lat": None, "lon": None, "activity": None, "title": None,
-             "garmin_bike": None, "bike_checked": False, **r})).rowcount  # fmt: skip
+             "garmin_bike": None, "bike_checked": False, **r,
+             "route": json.dumps(r["route"]) if r.get("route") else None,
+             "sensors": json.dumps(r["sensors"]) if r.get("sensors") else None})).rowcount  # fmt: skip
     return n
 
 
@@ -1043,6 +1254,7 @@ async def load(engine: AsyncEngine, rider: str) -> dict[str, Any]:
         }
     for b in out["bikes"]:
         b["has_photo"] = b.pop("photo", None) is not None
+        b["has_frame_photo"] = b.pop("frame_photo", None) is not None
     for p in out["parts"]:
         p["has_photo"] = p.pop("photo", None) is not None
     return out
@@ -1062,6 +1274,9 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
         if p["status"] == "shelf" and p["quantity"] > 0:
             spare_kinds.setdefault(p["kind"], []).append(p)
     battery_life: dict[int, float] = {}
+    use_kw = {"wet_factor": float(st["wet_factor"]), "trainer_has_cassette": bool(st["trainer_has_cassette"]),
+              "surface": {**W.SURFACE_FACTORS, **(st.get("surface_factors") or {})},
+              "bike_types": {b["id"]: (b.get("config") or {}).get("type") for b in rows["bikes"]}}  # fmt: skip
     parts_by_id = {p["id"]: p for p in rows["parts"]}
     replaced_by = {s["new_part_id"]: s for s in services if s.get("new_part_id")}
     retired_ids = {b["id"] for b in rows["bikes"] if b.get("retired_at")}
@@ -1093,8 +1308,31 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
             if health.get("learned_hours"):
                 battery_life[p["id"]] = health["learned_hours"]
                 p = {**p, "life": {"hours": health["learned_hours"]}}
-        use = W.use_of(p, rides, pl, since, float(st["wet_factor"]), bool(st["trainer_has_cassette"]))
+        stretch = W.chain_wear(p, services, rides, pl, **use_kw) if p["kind"] in ("chain", "timing_chain") else None
+        if stretch:
+            out["stretch"] = stretch
+            if stretch["life_km"]:  # measured: its own life, not the typical one
+                p = {**p, "life": {**(p.get("life") or D.life_of(p["kind"], p.get("details"))), "km": stretch["life_km"]}}
+        use = W.use_of(p, rides, pl, since, **use_kw)
         out["wear"] = W.state(p, use, since, now)
+        if stretch and stretch["worn"]:
+            out["wear"]["state"] = "due"
+        if p["kind"] == "sensor":
+            last = (p.get("details") or {}).get("last") or {}
+            fresh = [s_["at"] for s_ in services if s_.get("part_id") == p["id"] and s_.get("resets")]
+            since_ = max(fresh) if fresh else None  # a battery fitted after the reading: the reading says nothing
+            if last.get("at") and (since_ is None or datetime.fromisoformat(last["at"]) > since_):
+                out["reported"] = {**last, "bike": next((b["label"] for b in rows["bikes"] if b["id"] == last.get("bike_id")), None)}
+                if last.get("level") is not None and last["level"] <= 20:
+                    out["wear"]["state"] = "due"
+                    out["wear"]["share"] = max(out["wear"]["share"], 1.0)
+        if p["kind"] == "axs_battery":
+            rep_ = reported(p, rides, pl, since, rows["parts"], now)
+            if rep_:
+                out["reported"] = rep_
+                if rep_["level"] is not None and rep_["level"] <= 20:
+                    out["wear"]["state"] = "due"
+                    out["wear"]["share"] = max(out["wear"]["share"], 1.0)
         here = pl.now("part", p["id"])
         out["bike_id"] = pl.bike_of_part(p["id"], soon)
         out["set_id"] = here["set_id"] if here else None
@@ -1115,15 +1353,26 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
     for s in sets_.values():
         if s["bike_id"] in bikes and not s.get("retired_at"):
             bikes[s["bike_id"]]["sets"].append(s)
-    from app.bikes import art
+    from app.bikes import art, compat
+    from app.bikes import checklists as CL
 
     for b in bikes.values():
-        b["art"] = art.bike(b.get("config") or {}, b["label"])
+        cfg = b.get("config") or {}
+        b["art"] = art.bike(cfg, b["label"])
         b["pressures"] = pressures(b, rider)
+        on = [{**p, "end": None} for p in b["parts"]] + [{**p, "end": s.get("position")} for s in b["sets"] for p in s["parts"]]
+        b["warnings"] = compat.on_bike(on, cfg)
+        lists_ = CL.lists(cfg)
+        last = {k: next((s for s in reversed(services) if s["action"] == "checklist" and s.get("bike_id") == b["id"]
+                         and (s.get("note") or "").startswith(CL.NAMES[k])), None) for k in lists_}  # fmt: skip
+        b["checklists"] = {k: {"name": CL.NAMES[k], "items": v, "last": last[k]["at"].isoformat() if last[k] else None,
+                               "last_note": last[k].get("note") if last[k] else None} for k, v in lists_.items()}  # fmt: skip
+        b["sensors"] = sensors_on(b["id"], rides, now)
         b["km"] = round(sum(r["km"] for r in rides if r["bike_id"] == b["id"]), 1)
     for s in sets_.values():  # each wheel's odometer: the rides of the bike it was on at the time
         s["km"] = round(sum(r["km"] for r in rides if r["bike_id"] is not None and pl.bike_of_set(s["id"], r["started"]) == r["bike_id"]), 1)
     loose = [s for s in sets_.values() if s["bike_id"] is None and not s.get("retired_at")]
+    spares_low = low_spares(st.get("min_spares") or {}, rows["parts"])
     # things to replace first, then services and checks; within each, the most worn first
     due.sort(key=lambda d: (d["state"] != "due", not D.KINDS.get(d["kind"], D.KINDS["other"]).bought, -d["share"]))
     ask = []  # rides to confirm: was it wet, and was it really this bike (Garmin often keeps the last one); latest 50
@@ -1181,7 +1430,64 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
                        "suggested_wet": sum(1 for r in rides if r["wet"] is None and not r["indoor"] and r.get("wet_suggested")),
                        "bike_unchecked": sum(1 for r in rides if not r["bike_checked"] and r["bike_id"] is not None),
                        "without_bike": len(unassigned), "kinds_without_bike": kinds},
-            "log": log, "recent_rides": recent, "retired": retired, "costs": c}  # fmt: skip
+            "log": log, "recent_rides": recent, "retired": retired, "costs": c, "spares_low": spares_low,
+            "recalls": recall_view(st.get("recalls") or {})}  # fmt: skip
+
+
+def low_spares(want: dict[str, int], parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The kinds kept on the shelf below the number you want of them."""
+    out = []
+    for kind, n in sorted(want.items()):
+        have = sum(p["quantity"] for p in parts if p["kind"] == kind and p["status"] == "shelf")
+        if n and have < n:
+            like = next((p for p in reversed(parts) if p["kind"] == kind and (p.get("brand") or p.get("model"))), None)
+            out.append({"kind": kind, "name": D.KINDS.get(kind, D.KINDS["other"]).name, "have": have, "want": n,
+                        "buy": list_name(like) if like else D.KINDS.get(kind, D.KINDS["other"]).name})  # fmt: skip
+    return out
+
+
+def recall_view(r: dict[str, Any]) -> dict[str, Any]:
+    gone = set(r.get("dismissed") or [])
+    return {"checked_at": r.get("checked_at"), "error": r.get("error"),
+            "matches": [m for m in r.get("matches") or [] if m["link"] not in gone]}  # fmt: skip
+
+
+def sensors_on(bike_id: int, rides: list[dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
+    """The batteries Garmin last saw on this bike's devices (the latest reading of each, from the last 60 days)."""
+    out: dict[str, dict[str, Any]] = {}
+    for r in rides:
+        if r["bike_id"] != bike_id or not r.get("sensors") or now - r["started"] > timedelta(days=60):
+            continue
+        for x in r["sensors"]:
+            out[f"{x.get('maker')}:{x.get('serial')}:{x.get('type')}"] = {**x, "at": r["started"].isoformat(), "ride": r.get("title")}
+    return sorted(out.values(), key=lambda x: (x.get("type") != "shifting", str(x.get("maker"))))
+
+
+def reported(battery: dict[str, Any], rides: list[dict[str, Any]], pl: W.Placer, since: datetime | None,
+             parts: list[dict[str, Any]], now: datetime) -> dict[str, Any] | None:  # fmt: skip
+    """What Garmin last saw of an AXS battery: the status the derailleur it was in reported at the end of the latest
+    ride since its last charge. Matched by the derailleur's serial when the battery's details have one; otherwise only
+    when it is the bike's one AXS battery and the ride saw one AXS device (a battery that moves between the derailleurs
+    of a 2x bike needs the serial)."""
+    serial = str((battery.get("details") or {}).get("sensor") or "").strip()
+    for r in reversed(rides):
+        if since and r["started"] < since:
+            break
+        if not r.get("sensors") or r["bike_id"] is None or pl.bike_of_part(battery["id"], r["started"]) != r["bike_id"]:
+            continue
+        axs = [x for x in r["sensors"] if x.get("type") == "shifting"]
+        if serial:
+            axs = [x for x in axs if str(x.get("serial")) == serial]
+        else:
+            others = [p for p in parts if p["kind"] == "axs_battery" and p["id"] != battery["id"] and p["status"] == "kit"
+                      and pl.bike_of_part(p["id"], r["started"]) == r["bike_id"]]  # fmt: skip
+            if others or len(axs) != 1:
+                continue
+        if axs:
+            x = axs[0]
+            return {"status": x.get("status"), "level": x.get("level"), "volts": x.get("volts"), "serial": x.get("serial"),
+                    "at": r["started"].isoformat(), "ride": r.get("title")}  # fmt: skip
+    return None
 
 
 # What a ride's activity type says about the bike it was on (Garmin's types: "Mountain Biking", "Gravel Cycling",
@@ -1228,11 +1534,18 @@ def pressures(bike: dict[str, Any], rider: dict[str, Any]) -> dict[str, Any]:
             continue
         d = tyre.get("details") or {}
         width = float(d.get("width_mm") or cfg.get(f"{s['position']}_width") or 28)
+        bead = float(d.get("bead_mm") or 622)
         suggested = D.tyre_pressure(width, bool(d.get("tubeless")), cfg.get("type", "road"), system, s["position"],
-                                    d.get("max_psi"))  # fmt: skip
+                                    d.get("max_psi"), bead)  # fmt: skip
         psi = float(d["psi"]) if d.get("psi") else suggested
-        out[s["position"]] = {"wheel": s["label"], "psi": psi, "bar": D.bar(psi), "suggested": suggested,
-                              "own": bool(d.get("psi")), "width_mm": width, "tubeless": bool(d.get("tubeless"))}  # fmt: skip
+        today = {}
+        for t in ("road", "gravel", "wet"):
+            v = D.today_pressure(psi, cfg.get("type", "road"), t)
+            v = min(v, float(d["max_psi"])) if d.get("max_psi") else v
+            today[t] = {"psi": v, "bar": D.bar(v)}
+        out[s["position"]] = {"wheel": s["label"], "psi": psi, "bar": D.bar(psi), "suggested": suggested, "today": today,
+                              "own": bool(d.get("psi")), "width_mm": width, "tubeless": bool(d.get("tubeless")),
+                              "size": d.get("etrto") or d.get("size"), "wheel_size": d.get("wheel")}  # fmt: skip
     return out
 
 
@@ -1351,13 +1664,141 @@ async def due_to_list(request: Any, engine: AsyncEngine) -> dict[str, Any]:
 
 
 
+async def _save_recalls(engine: AsyncEngine, rider: str, rec: dict[str, Any]) -> None:
+    async with engine.begin() as c:
+        await c.execute(text("UPDATE bike_rider SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{recalls}', "
+                             "CAST(:g AS jsonb)) WHERE id = :r"), {"g": json.dumps(rec, default=str), "r": rider})  # fmt: skip
+
+
+async def check_recalls(engine: AsyncEngine, rider: dict[str, Any], client: Any = None) -> dict[str, Any]:
+    """Look for safety recalls of this rider's bikes' and parts' makers, and keep what was found (and what was
+    dismissed)."""
+    from app.bikes import recalls as RC
+
+    rows = await load(engine, rider["id"])
+    got = await RC.check(rows["bikes"], rows["parts"], client)
+    old = (rider.get("settings") or {}).get("recalls") or {}
+    got["dismissed"] = old.get("dismissed") or []
+    await _save_recalls(engine, rider["id"], got)
+    return got
+
+
+@router.post("/recalls/check")
+async def recalls_now(request: Request, rider: str = Query(...)) -> dict[str, Any]:
+    """Look for recalls now (the worker does it weekly)."""
+    r = await _rider(request.app.state.engine, rider)
+    got = await check_recalls(request.app.state.engine, r)
+    return {**recall_view(got), "makers": got.get("makers")}
+
+
+class DismissIn(BaseModel):
+    link: str = Field(max_length=500)
+
+
+@router.post("/recalls/dismiss")
+async def recalls_dismiss(request: Request, body: DismissIn, rider: str = Query(...)) -> dict[str, Any]:
+    """A notice read and not about your part: not shown again."""
+    r = await _rider(request.app.state.engine, rider)
+    rec = (r["settings"] or {}).get("recalls") or {}
+    rec["dismissed"] = sorted({*(rec.get("dismissed") or []), body.link})[-200:]
+    await _save_recalls(request.app.state.engine, rider, rec)
+    return recall_view(rec)
+
+
+async def spares_to_list(request: Any, engine: AsyncEngine) -> dict[str, Any]:
+    """Each rider whose setting is "auto": a kind of spare below the number to keep goes onto the Outdoors list, once
+    until the shelf is back up to it."""
+    added = []
+    async with engine.connect() as c:
+        riders_ = [_row(r) for r in await c.execute(text("SELECT * FROM bike_rider"))]
+    for r in riders_:
+        st = {**SETTINGS, **(r["settings"] or {})}
+        if st["to_outdoors"] != "auto" or not st.get("min_spares"):
+            continue
+        rows = await load(engine, r["id"])
+        low = low_spares(st["min_spares"], rows["parts"])
+        listed = dict(st.get("spares_listed") or {})
+        for k in list(listed):
+            if k not in {x["kind"] for x in low}:
+                listed.pop(k)  # back up to the number: can be listed again when it next runs low
+        for x in low:
+            if x["kind"] in listed:
+                continue
+            from app import shopping as S
+            from app.outdoors import the_list
+
+            try:
+                _, lid, _ = await the_list(request)
+                await S.add_item(request, x["buy"], f"spare: keep {x['want']}, {x['have']} on the shelf", list_id=lid)
+            except HTTPException:
+                break
+            listed[x["kind"]] = _now().date().isoformat()
+            added.append(f"{r['name']}: {x['buy']}")
+        async with engine.begin() as c:
+            await c.execute(text("UPDATE bike_rider SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{spares_listed}', "
+                                 "CAST(:g AS jsonb)) WHERE id = :r"), {"g": json.dumps(listed), "r": r["id"]})  # fmt: skip
+    return {"added": added}
+
+
+SENSOR_NAMES = {"heart rate": "Heart rate strap", "speed": "Speed sensor", "cadence": "Cadence sensor",
+                "speed and cadence": "Speed and cadence sensor", "power": "Power meter", "radar": "Radar",
+                "light": "Bike light", "trainer": "Trainer"}  # fmt: skip
+
+
+async def save_sensors(engine: AsyncEngine, rider: str, readings: list[dict[str, Any]]) -> dict[str, int]:
+    """Garmin's sensors (speed, cadence, heart rate, power, radar) as kit, one for each serial number, with the
+    battery each last reported: a new one is added the first time it is seen. AXS derailleurs are not: their battery
+    is the labelled AXS battery fitted to the bike."""
+    added = updated = 0
+    latest: dict[str, dict[str, Any]] = {}
+    for x in readings:
+        if x.get("type") == "shifting" or not x.get("serial"):
+            continue
+        k = str(x["serial"])
+        if k not in latest or x["at"] > latest[k]["at"]:
+            latest[k] = x
+    if not latest:
+        return {"added": 0, "updated": 0}
+    async with engine.begin() as c:
+        have = {str((r.details or {}).get("serial")): _row(r) for r in await c.execute(text(
+            "SELECT * FROM bike_part WHERE rider_id = :r AND kind = 'sensor' AND status <> 'retired'"), {"r": rider})}  # fmt: skip
+        for serial, x in latest.items():
+            last = {k: x.get(k) for k in ("status", "level", "volts", "at", "activity", "bike_id")}
+            p = have.get(serial)
+            if p is None:
+                name = SENSOR_NAMES.get(str(x.get("type")), f"{x.get('type') or 'Sensor'}".capitalize())
+                await _new_part(c, rider, "sensor", None, {"serial": serial, "maker": x.get("maker"), "type": x.get("type"),
+                                                                 "last": last}, _now(), status="kit", brand=x.get("maker"),
+                                      label=name)  # fmt: skip
+                added += 1
+            elif str(((p["details"] or {}).get("last") or {}).get("at") or "") < x["at"]:
+                d = {**(p["details"] or {}), "last": last}
+                await c.execute(text("UPDATE bike_part SET details = CAST(:d AS jsonb) WHERE id = :p"), {"d": json.dumps(d), "p": p["id"]})
+                updated += 1
+    return {"added": added, "updated": updated}
+
+
 async def bikes_check(ctx: dict[str, Any]) -> Any:
-    """The worker's daily check: due parts onto the Outdoors list for riders who chose that."""
+    """The worker's daily check: due parts and low spares onto the Outdoors list for riders who chose that, and once a
+    week the safety recalls."""
     from app.jobs import tracked
     from app.wishlist import _Req
 
     async def run() -> Any:
-        return await due_to_list(_Req(ctx["engine"]), ctx["engine"])
+        out = await due_to_list(_Req(ctx["engine"]), ctx["engine"])
+        out["spares"] = (await spares_to_list(_Req(ctx["engine"]), ctx["engine"]))["added"]
+        async with ctx["engine"].connect() as c:
+            riders_ = [_row(r) for r in await c.execute(text("SELECT * FROM bike_rider"))]
+        for r in riders_:
+            last = ((r["settings"] or {}).get("recalls") or {}).get("checked_at")
+            if last and _now() - datetime.fromisoformat(last) < timedelta(days=7):
+                continue
+            try:
+                got = await check_recalls(ctx["engine"], r)
+                out.setdefault("recalls", {})[r["id"]] = len(recall_view(got)["matches"])
+            except Exception as exc:  # noqa: BLE001 - one rider's check must not stop the job
+                out.setdefault("recall_errors", []).append(f"{r['id']}: {exc}")
+        return out
 
     return await tracked(ctx["engine"], "bikes_check", run)
 

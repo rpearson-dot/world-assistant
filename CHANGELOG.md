@@ -2,6 +2,58 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.46.0] - 2026-11-08
+
+### Added
+- **Groupsets:** fit a groupset to a bike (26 of them, Shimano and SRAM, from 2005's XT and 2010's Force to 2025's
+  13-speed Rival AXS E1 XPLR and NX Eagle): the bike's answers are set to match and each part gets its make, model,
+  speeds and freehub. Every bike now has its levers or shifters and brake levers, derailleurs, crankset and callipers.
+- **What goes together:** each bike's card says what does not: chain and cassette speeds, freehub bodies, rotor mounts
+  and sizes, mineral oil in a DOT brake, tyre width and wheel size. New answers: speeds, widest tyre, rotor sizes,
+  wheel size and bars. A brake's bleed part follows its fluid answer.
+- **Sensors:** your Garmin speed, cadence, heart rate, power and radar sensors become kit, with the battery each last
+  reported (from rides and from other activities, such as a run with the heart rate strap). Low is due; log a new
+  battery.
+- **AXS batteries from your rides:** each new Garmin ride's file gives the status and voltage the AXS derailleur
+  reported; a low battery is due to charge. The file also gives the ride's route.
+- **Rain along the route:** wet or dry is suggested from the rain gauges along the ride, not just where it started.
+- **Wear by surface:** gravel rides count 1.3 times and mountain-bike rides 1.6 times for the drivetrain, pads and
+  tyres (changeable in Settings).
+- **Chain measurements:** log a chain checker's reading; the readings predict the km the chain will be worn out at.
+- **Pre-ride and service checklists** for each bike, from its answers, with your own items; ticking the pressure,
+  hanger, spoke and timing chain checks restarts those counts.
+- **Records:** frame number, purchase, insurer and policy, BikeRegister ID, a photo of the frame number.
+- **Safety recalls:** a weekly search of GOV.UK's product safety recalls for your makers.
+- **Spares to keep:** a shelf below the number you want goes onto the Outdoors list.
+- **Today's tyre pressures** for road, gravel or wet riding.
+- **Remove a part the bike does not have:** every part has a Remove button. A dropper (or suspension) service on a bike
+  without one changes the bike's answers to say so and takes all of that thing's parts off; any other part comes off and
+  is not added back when the answers change. A part with nothing logged is deleted; one with history is retired.
+  Changing a bike's answers now deletes, rather than keeps as history, default parts that never had anything logged.
+- **Build a wheel in the workshop:** front or rear, a name and wheelset group, starting empty or with a bike's usual
+  wheel parts; it goes into storage, ready for parts to be dragged onto it and then for it to be dragged onto a bike.
+  The spares shelf has Add a spare.
+- **Folding on the Bikes page:** every card folds by its heading, Your bikes as a whole, and each bike (to its name,
+  type, distance and how many parts are due), with Fold every bike and Open every bike; kept on each device.
+
+### Changed (tyres)
+- **Tyre sizes:** a tyre's size as written on it (700x40c, 29x2.4, 650x47b, 26 x 2.10, or its ETRTO such as 40-622) gives
+  its width, ETRTO and wheel size, for its pressure and for buying the same again (the Outdoors list and the
+  replacement carry them). The suggested pressure now also allows for wheel size (a 26-inch a little higher than a
+  700c at the same width), and each bike shows the size it is for. Casing TPI and the tyre or rim's maximum psi are
+  among a tyre's details.
+
+### Fixed
+- A part's yes-or-no detail reads as its name ("Tubeless"), not "True".
+
+### Changed
+- **Bike pictures** from your photos: new paints Burnt orange (metallic copper) and Slate; **Pinstripes** (thin lines of
+  another colour along the tubes, as on a Trek 1.2) and **Fade into the second colour** (down the fork and stays, as on
+  a Planet X Reiver) in Its answers; one chainring and a bigger cassette on a 1x; the Reiver's dropped seatstays; a
+  full-suspension bike's brace from the seat tube to the top tube with the shock under it (black body, silver piston
+  from the seatstays' eye), as on a Yeti ASR; the Viking tandem's second long tube to the stoker's seat tube, its rear
+  rack, the stoker's bars reaching back, and the timing chain on the drive side.
+
 ## [0.45.0] - 2026-11-08
 
 ### Added

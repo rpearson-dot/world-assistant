@@ -184,6 +184,7 @@ if isinstance(riders, dict):
     for r in riders.get("riders") or []:
         get(f"Garmin sync state ({r['id']})", "/v1/bikes/garmin", show=1500, rider=r["id"])
 
+run("Recalls probe (GOV.UK product safety recalls for a few bike makers)", "app.bikes.recalls", "SRAM", "Shimano", "Yeti", module="bikes")
 # 0.42.0: crime and police, food standards, tax and MOT
 run("Police probe (crime within a mile of home, the last 2 months; the police team)", "app.crime", str(lat), str(lon), module="crime")
 get("Crime near home (12 months)", "/v1/crime", show=2500, lat=lat, lon=lon)

@@ -118,6 +118,7 @@ def test_the_sync_brings_rides_in_keeps_what_was_said_about_imported_ones_and_fo
     out = run()
     assert out["full"] and out["activities"] == 4 and out["rides"] == 3
     assert (out["added"], out["from_csv"], out["removed"], out["weight_kg"]) == (2, 1, 0, 81.2)
+    assert "GET /download-service/files/activity/4" in fake.calls  # the run's file: for its sensors' batteries
     rides = {x["id"]: x for x in c.get("/v1/bikes/rides?rider=sam-test").json()["rides"]}
     assert set(rides) == {"garmin:1", "garmin:2", "garmin:3"}  # the CSV ride became Garmin's
     assert rides["garmin:1"]["wet"] is True and rides["garmin:1"]["bike_id"] == bike  # what was said about it kept

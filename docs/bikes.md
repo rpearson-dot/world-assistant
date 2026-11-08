@@ -34,6 +34,11 @@ API gives), each ride's GPS track for rain along the route and saved routes, and
   for any other. A ride Garmin marks as a commute (its type, or its event type) goes to the Commute bike first.
   Recent rides are still asked about, as before; rides more than four weeks old are not.
 - **Weight:** your latest Garmin weight sets the tyre pressures (switch it off on the card).
+- **Each new ride's file** (rides from the last four weeks, up to 30 a sync): its route, as points about a kilometre
+  apart (for the rain along it), and the batteries its devices reported at the end of the ride. An SRAM AXS
+  derailleur's battery status (new, good, ok, low, critical) and voltage go onto the AXS battery fitted to that bike:
+  "low" or "critical" makes it due to charge. With two AXS batteries on a bike (a 2x bike's front and rear
+  derailleurs), put the derailleur's serial (shown on the bike's card) in each battery's details.
 - **The key runs out:** a warning on the card a fortnight before; Garmin also emails a week before. A token that stops
   early tells the page the key's end date, if you did not give it.
 - **The probe:** `python -m app.bikes.garmin [RIDER]` prints what your key gives: how far back the rides go, the fields
@@ -46,7 +51,8 @@ At the top of the Bikes page: your bikes in a row (each with its front and rear 
 each wheel), and shelves for spares, kit and wheels in storage. Drag with a mouse or a finger:
 - a part onto a wheel or the bike's frame: fitted, if it can go there (below); a spare dropped where there is one
   already replaces it (logged as the replacement, its count starting again);
-- a wheel onto a bike: it goes on, and the bike's wheel at that end goes into storage;
+- a wheel onto a bike: it goes on, and the bike's wheel at that end goes into storage. **Build a wheel** (on the storage
+  shelf) makes a new one there, empty or with a bike's usual wheel parts: drag its parts onto it, then drag it onto a bike;
 - anything onto a shelf: it comes off (spares onto the spares shelf, kit into your kit).
 Tap a part or wheel to see its odometer and wear. Services and checks are not shown there: they stay on each bike's card.
 
@@ -103,6 +109,68 @@ answers**.
 - **Running cost**: per bike this year and in total, the cost per km, and each kind of part's cost per 1,000 km once
   some have been used up. A spare's price counts when it is fitted, not when it is bought.
 
+## Sensors
+Your Garmin sensors with batteries (speed, cadence, heart rate strap, power meter, radar, lights) are added to the
+**Sensors** section the first time a ride's file shows them, one for each serial number. The files of your other
+recent activities (a run with the heart rate strap) are read too, for their sensors only (up to 10 a sync). Each shows
+the battery status and voltage it last reported, after which activity and on which bike; low or critical makes it
+due. Log **New battery** when you change it (a reading from before then no longer counts); a year without one also
+makes it due. Edit one to name it ("Reiver speed sensor") or say its battery (CR2032). AXS derailleurs are not here:
+their battery is the labelled AXS battery on the bike.
+
+## Rain and rough riding
+- **Wet or dry** is suggested from the Environment Agency rain gauges along a Garmin ride's route (the nearest gauge to
+  points about 12 km apart), over the ride and the three hours before it: wet if any had as much rain as a wet ride.
+  Rides without a route use the gauge nearest the start, as before.
+- **Gravel and mountain-bike rides** wear the chain, cassette, chainrings, jockey wheels, pads and tyres faster:
+  Garmin's Gravel Cycling (and cyclocross) counts 1.3 times, Mountain Biking (and enduro, downhill, e-MTB) 1.6
+  times, on top of the wet factor when it was also wet. A plain "Cycling" ride on a mountain bike counts as mountain
+  biking. Both factors are in Settings.
+
+## Groupsets and what goes together
+- **Groupset** (on a bike's card): choose the groupset it has (Shimano Sora to Ultegra Di2, GRX, Deore to XT including
+  2005's XT M760, SRAM Force 10-speed from about 2010, Apex, Rival and Force AXS including the 2025 13-speed Rival
+  AXS E1 XPLR, NX and GX Eagle). The bike's answers are set to match (shifting, one or two rings, speeds, drop or flat
+  bars, a SRAM hydraulic brake's DOT fluid), which adds or takes off parts (a front derailleur for two rings), then
+  each part gets its make, model and details: levers or shifters and brake levers, derailleurs, crankset, cassette
+  (with its freehub), chain, callipers, and for some builds the rotors. Bikes often come with a mix, so change any
+  part afterwards; "only fill in parts with no make or model yet" keeps what you have said.
+- **The parts** are on every bike now: shift and brake levers (drop bars) or shifters and brake levers (flat bars),
+  rear and front derailleurs, crankset and brake callipers. They have no life of their own (replace them when they
+  break or are upgraded) and are there for their makes and models.
+- **What goes together** is checked on each bike and shown on its card: a cassette and chain of different speeds, either
+  against the bike's speeds; a cassette whose freehub (HG, XD, XDR, Microspline) does not fit the rear hub's; a
+  Centre Lock rotor on a 6-bolt hub; a rotor size other than the brake is set up for; mineral oil in a DOT brake;
+  a tyre wider than the frame takes, or for another wheel size. Each needs both details known. The number answers
+  (speeds, widest tyre, rotor sizes) and wheel size are in Its answers.
+- **Remove** takes a part the bike does not have off for good (a dropper on a bike with a fixed seatpost changes its
+  answers to "no dropper").
+
+## Measuring a chain
+**Measure** on a chain (or a tandem's timing chain): the chain checker's reading. From the readings, a straight line
+from new says how fast it is stretching and the km it will be worn out at (0.5% for 11-speed and up, 0.75% for 10 and
+below), which becomes the chain's life instead of the typical 3,500 km. A reading at the limit makes it due.
+
+## Checklists
+**Pre-ride check** and **Service check** on each bike's card, made from its answers: AXS batteries charged on an AXS
+bike, sag on a suspension bike, the timing chain's tension on a tandem, sealant on a tubeless one, and so on; add items
+of your own. Tick them off and press Done: it is logged (with what was not done), the card shows when each was last
+done, and the items that are the garage's own checks (tyre pressures, the hanger, the spokes, the timing chain)
+restart those parts' counts.
+
+## Records and recalls
+- **Records** (on each bike's card): maker, frame number, when and where it was bought and for how much, the receipt
+  or order number, insurer and policy number, BikeRegister ID, other marks, and a photo of the frame number (kept on
+  your server). A link goes to BikeRegister, the UK's police-approved register, to register it or check a bike.
+- **Safety recalls**: once a week (and with "Check for safety recalls now" in Settings), GOV.UK's product safety
+  alerts, reports and recalls (from the Office for Product Safety and Standards) are searched for the makers of your
+  bikes and parts. Notices from the last three years that name a maker and are about bikes are shown at the top of
+  the page; "Not mine" hides one. A match is the maker, not necessarily your model: read the notice.
+
+## Spares to keep
+In Settings, say how many of each kind to keep on the shelf (two chains, four pairs of pads). When the shelf has
+fewer, it shows under Due and (with "automatically") goes onto the Outdoors list once, named as the last one you had.
+
 ## Doing things
 - **Replaced** (or Serviced, Checked, Pumped, Lubed, Topped up, Bled, Charged, depending on the part): logs it and
   starts its count again. A replacement retires the old part (its history stays) and fits a new one in the same place,
@@ -117,6 +185,9 @@ answers**.
 - **AXS batteries**: add each one to your kit with its label (Battery A, Battery B). Log "Charged" with the level it
   was at; after a few charges each battery's own hours per charge are used, and after six it is compared with its
   first charges: one giving 20% fewer hours is flagged as wearing.
+- **Today's riding**: the pressures on a bike's card are for its usual riding; choose road, gravel or wet today for
+  that day's (gravel about 15% lower than road, wet about 7% lower than usual, never over the tyre's maximum). The
+  choice is remembered on that device.
 
 ## Undo, delete and retire
 - **Recent work** lists what was logged, newest first, each with **Undo**: the part's count goes back to what it was.
@@ -131,7 +202,8 @@ answers**.
 
 ## Assistant
 `bikes` (the garage), `bike_due`, `bike_service` ("charged Battery A at 30%", "replaced the front pads"),
-`bike_ride` (log a ride), `tyre_pressure`.
+`bike_ride` (log a ride), `tyre_pressure` (also for today's road, gravel or wet riding). `bike_service` also logs a
+chain checker's reading ("the Reiver's chain measures 0.3%").
 
 Not sent to Home Assistant.
 

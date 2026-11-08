@@ -80,11 +80,23 @@ KINDS: dict[str, Kind] = {
     "di2_battery": Kind("Di2 battery", km=1000, icon="battery", action="charged"),
     "ebike_motor": Kind("E-bike motor service", days=365, icon="motor", action="serviced"),
     "ebike_battery": Kind("E-bike battery check", days=365, icon="battery", action="checked"),
+    "sensor": Kind("Sensor battery", days=365, on="rider", icon="sensor", action="serviced",
+                   measure="Garmin reports its battery after each ride or run that used it"),
     "helmet": Kind("Helmet", days=1825, on="rider", icon="helmet", measure="replace after any crash"),
     "shoes": Kind("Shoes", on="rider", icon="shoe"),
     "cleats": Kind("Pedal cleats", days=540, on="rider", icon="cleat"),
+    # the groupset and the rest of the bike: kept for their makes and models (and what goes with what), not worn out by
+    # a count; replaced when they break or are upgraded
+    "levers": Kind("Shift and brake levers", icon="lever"),
+    "shifters": Kind("Shifters", icon="lever"),
+    "brake_levers": Kind("Brake levers", icon="lever"),
+    "rear_derailleur": Kind("Rear derailleur", icon="derailleur"),
+    "front_derailleur": Kind("Front derailleur", icon="derailleur"),
+    "crankset": Kind("Crankset", icon="chainring"),
+    "calliper": Kind("Brake calliper", icon="pads"),
     "other": Kind("Other", icon="part"),
 }
+GROUP_KINDS = ("levers", "shifters", "brake_levers", "rear_derailleur", "front_derailleur", "crankset", "calliper")
 
 BIKE_TYPES = {
     "road": "Road", "gravel": "Gravel", "cyclocross": "Cyclocross", "hardtail": "Hardtail MTB",
@@ -105,8 +117,18 @@ CHOICES = {"type": BIKE_TYPES, "front_brake": BRAKES, "rear_brake": BRAKES, "fro
            "front_fluid": {"mineral": "Mineral oil", "dot": "DOT"}, "rear_fluid": {"mineral": "Mineral oil", "dot": "DOT"},
            "bottom_bracket": {"threaded": "Threaded", "pressfit": "Press-fit"},
            "pedals": {"clipless": "Clipless", "flat": "Flat"},
+           "bars": {"drop": "Drop bars", "flat": "Flat or riser bars"},
+           "wheel_size": {"622": "700c / 29-inch", "584": "650b / 27.5-inch", "571": "650c", "559": "26-inch",
+                          "507": "24-inch", "406": "20-inch"},
            "front_tyre": {"tubed": "Tubed (butyl)", "latex": "Tubed (latex)", "tubeless": "Tubeless"},
            "rear_tyre": {"tubed": "Tubed (butyl)", "latex": "Tubed (latex)", "tubeless": "Tubeless"}}  # fmt: skip
+
+# answers that are numbers (all optional): (lowest, highest, what it is)
+NUMBERS = {"speeds": (1, 14, "Gears at the back (speeds)"), "max_tyre_mm": (18, 130, "Widest tyre the frame takes (mm)"),
+           "front_rotor_mm": (120, 230, "Front rotor size the brake is set up for (mm)"),
+           "rear_rotor_mm": (120, 230, "Rear rotor size the brake is set up for (mm)")}  # fmt: skip
+DISC_BRAKES = {"hydraulic_disc", "cable_disc", "cable_hydraulic"}
+DROP_BARS = {"road", "gravel", "cyclocross", "tt", "tandem"}
 
 _BASE: dict[str, Any] = {"ebike": False, "drive": "derailleur", "shifting": "mechanical", "front_rings": 2,
                          "front_brake": "hydraulic_disc", "rear_brake": "hydraulic_disc", "front_fluid": "mineral",
@@ -189,6 +211,27 @@ def planned_parts(cfg: dict[str, Any]) -> list[Planned]:
         out.append(Planned("cassette", "rear", "rear", {"single_cog": True}))
     if drive == "derailleur" and c["shifting"] == "mechanical":
         out.append(Planned("gear_cables", "bike"))
+    from app.bikes.art import MODELS
+
+    model_bars = (MODELS.get(c.get("model") or "") or {}).get("bars")
+    drop = c.get("bars") or model_bars or ("drop" if c.get("type") in DROP_BARS else "flat")
+    drop = drop == "drop"
+    geared = drive in ("derailleur", "hub") and c["shifting"] != "none"
+    brakes = any(c[f"{e}_brake"] not in ("none", "drum") for e in ("front", "rear"))
+    if drop and (geared or brakes):
+        out.append(Planned("levers", "bike"))
+    if not drop and geared:
+        out.append(Planned("shifters", "bike"))
+    if not drop and brakes:
+        out.append(Planned("brake_levers", "bike"))
+    if drive == "derailleur":
+        out.append(Planned("rear_derailleur", "bike"))
+        if int(c.get("front_rings") or 1) > 1:
+            out.append(Planned("front_derailleur", "bike"))
+    out.append(Planned("crankset", "bike"))
+    for end in ("front", "rear"):
+        if c[f"{end}_brake"] not in ("none", "drum"):
+            out.append(Planned("calliper", "bike", end))
     if c["shifting"] == "axs":
         out += [Planned("coin_cells", "bike")]  # the derailleur takes a labelled AXS battery (rider kit)
     if c["shifting"] == "di2":
@@ -235,8 +278,25 @@ def life_of(kind: str, details: dict[str, Any] | None = None) -> dict[str, float
     return life
 
 
+# today's riding, against the bike type's usual: a gravel day lower for grip and comfort, a wet day a little lower for
+# grip (more rubber on the road)
+TODAY = {"usual": None, "road": 1.0, "gravel": 0.85, "wet": "wet"}
+WET = 0.93
+
+
+def today_pressure(psi: float, bike_type: str, today: str) -> float:
+    """A pressure (the suggested one or your own, for the bike's usual riding) for today's riding."""
+    usual = SURFACE.get(bike_type, 1.0)
+    f = TODAY.get(today)
+    if f is None:
+        return psi
+    if f == "wet":
+        return float(round(psi * WET))
+    return float(round(psi * float(f) / usual))
+
+
 def tyre_pressure(width_mm: float, tubeless: bool, bike_type: str, system_kg: float, end: str,
-                  max_psi: float | None = None) -> float:  # fmt: skip
+                  max_psi: float | None = None, bead_mm: float = 622) -> float:  # fmt: skip
     """A starting tyre pressure in psi, front or rear: wider tyres, tubeless and rough surfaces lower; more weight
     higher (about 45% of the rider and bike on the front, 55% on the rear). A starting point to adjust, calibrated to
     common calculators' figures for 90 kg together (rear, tubed: 85 psi at 25 mm, 72 at 28, 55 at 35)."""
@@ -247,8 +307,47 @@ def tyre_pressure(width_mm: float, tubeless: bool, bike_type: str, system_kg: fl
     if tubeless:
         psi *= 0.92
     psi *= SURFACE.get(bike_type, 1.0)
+    psi *= (622 / max(bead_mm, 300)) ** 0.5  # a smaller wheel (26-inch, 20-inch) a little higher
     psi = round(psi)
     return float(min(psi, max_psi) if max_psi else psi)
+
+
+# Bead seat diameters (ETRTO, mm) by the names on tyres
+BEADS = {"700": 622, "29": 622, "28": 622, "650b": 584, "27.5": 584, "650c": 571, "26": 559, "24": 507, "20": 406, "16": 349}
+WHEELS = {622: "700c / 29-inch", 584: "650b / 27.5-inch", 571: "650c", 559: "26-inch", 507: "24-inch", 406: "20-inch", 349: "16-inch"}
+
+
+def tyre_size(text: Any) -> dict[str, Any]:
+    """A tyre's size as written on it ("700x40c", "29x2.4", "650x47b", "26 x 2.10", "40-622") as its width in mm,
+    bead seat diameter, ETRTO and wheel size; {} when it cannot be read."""
+    import re
+
+    t = str(text or "").lower().replace(" ", "").replace("×", "x")
+    m = re.fullmatch(r"(\d{2,3})-(\d{3})", t)
+    if m:
+        w, bead = int(m[1]), int(m[2])
+    else:
+        m = re.fullmatch(r"(\d{2,3}(?:\.\d)?)x(\d{1,2}(?:\.\d+)?)([abc]?)", t)
+        if not m:
+            return {}
+        rim, width, letter = m[1], float(m[2]), m[3]
+        if rim == "650":
+            bead = 571 if letter == "c" else 584
+        else:
+            bead = BEADS.get(rim.rstrip(".0") if rim.endswith(".0") else rim, 0)
+        if not bead:
+            return {}
+        w = round(width * 25.4) if width < 5 else round(width)  # inches (2.4) or mm (40)
+    return {"width_mm": w, "bead_mm": bead, "etrto": f"{w}-{bead}", "wheel": WHEELS.get(bead, f"{bead} mm bead")}
+
+
+def tyre_details(details: dict[str, Any]) -> dict[str, Any]:
+    """A tyre's details with its width, ETRTO and wheel size worked out from its size as written (or its ETRTO), which
+    win over a width typed by hand; with neither, the details are as given."""
+    got = tyre_size(details.get("size")) or tyre_size(details.get("etrto"))
+    if not got:
+        return details
+    return {**details, "etrto": got["etrto"], "wheel": got["wheel"], "width_mm": got["width_mm"], "bead_mm": got["bead_mm"]}
 
 
 def bar(psi: float) -> float:
@@ -269,11 +368,19 @@ SPECS: dict[str, list[tuple[str, str]]] = {
     "rim_pads": [("compound", "Compound")],
     "rotor": [("diameter_mm", "Diameter mm"), ("mount", "Mount (6-bolt, Centre Lock)"), ("min_mm", "Minimum thickness mm")],
     "brake_fluid": [("fluid", "Fluid (mineral, DOT 4, DOT 5.1)")],
-    "tyre": [("size", "Size (e.g. 700x40c, 29x2.4)"), ("width_mm", "Width mm"), ("compound", "Compound or casing"),
-             ("tubeless", "Tubeless (yes/no)")],
+    "tyre": [("size", "Size (e.g. 700x40c, 29x2.4, 40-622)"), ("etrto", "ETRTO (width-bead, e.g. 40-622)"),
+             ("width_mm", "Width mm"), ("compound", "Compound or casing"), ("tpi", "Casing TPI"),
+             ("tubeless", "Tubeless (yes/no)"), ("max_psi", "Max psi (tyre or rim)")],
     "tube": [("tube", "Tube (butyl, latex, TPU)"), ("valve", "Valve (Presta, Schrader)")],
     "sealant": [("product", "Sealant"), ("ml", "Amount ml")],
-    "hub": [("bearings", "Bearings")],
+    "hub": [("bearings", "Bearings"), ("freehub", "Freehub (HG, XD, XDR, Microspline)"),
+            ("rotor_mount", "Rotor mount (6-bolt, Centre Lock)")],
+    "levers": [("speeds", "Speeds")],
+    "shifters": [("speeds", "Speeds")],
+    "rear_derailleur": [("speeds", "Speeds"), ("max_cog", "Biggest cog it takes")],
+    "front_derailleur": [("mount", "Mount (braze-on, clamp)")],
+    "crankset": [("teeth", "Rings (e.g. 50/34 or 42)"), ("length_mm", "Crank length mm"), ("spindle", "Spindle (24 mm, DUB...)")],
+    "calliper": [("mount", "Mount (flat, post, rim)"), ("pistons", "Pistons")],
     "bottom_bracket": [("standard", "Standard (BSA, T47, BB86, PF30...)"), ("spindle", "Spindle (24 mm, DUB, 30 mm)")],
     "headset": [("standard", "Standard (e.g. ZS44/EC44)")],
     "pedals": [("model", "Pedal system (SPD, SPD-SL, Look)")],
@@ -283,7 +390,8 @@ SPECS: dict[str, list[tuple[str, str]]] = {
     "fork_lowers": [("model", "Fork (e.g. Pike Ultimate 140 mm)")],
     "shock_air": [("model", "Shock (e.g. Deluxe Ultimate 210x55)")],
     "dropper_lower": [("travel_mm", "Travel mm")],
-    "axs_battery": [("bought", "Bought (month)")],
+    "axs_battery": [("bought", "Bought (month)"), ("sensor", "Derailleur serial in Garmin (when a bike has two)")],
+    "sensor": [("battery", "Battery (e.g. CR2032)"), ("serial", "Serial (from Garmin)"), ("type", "Kind (heart rate, speed...)")],
     "helmet": [("size", "Size"), ("made", "Made (date on the label)")],
     "bar_tape": [("colour", "Colour")],
 }

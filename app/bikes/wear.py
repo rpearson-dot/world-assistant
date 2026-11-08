@@ -20,6 +20,12 @@ DUE_SHARE = 0.9  # due at 90% of a life...
 DUE_LEFT = {"km": 300.0, "hours": 10.0, "days": 14.0}  # ...or within this of its end, whichever comes first
 COMING_SHARE = 0.75
 WET_FACTOR = 1.5
+# a gravel or mountain-bike ride wears the drivetrain, pads and tyres faster than a road ride (grit and mud), counted
+# like a wet one: its km times this (and times the wet factor too, when it was also wet)
+SURFACE_FACTORS = {"gravel": 1.3, "mtb": 1.6}
+ROUGH = {"tyre"}  # wears faster off-road though not in the wet; plus every kind that wears faster in the wet
+GRAVEL = {"gravel_cycling", "cyclocross"}
+MTB = {"mountain_biking", "enduro_mtb", "downhill_biking", "e_bike_mountain"}
 
 
 class Placer:
@@ -59,13 +65,29 @@ def is_wet(ride: dict[str, Any]) -> bool:
     return bool(ride["wet"]) if ride.get("wet") is not None else bool(ride.get("wet_suggested"))
 
 
+def surface_of(ride: dict[str, Any], bike_type: str | None = None) -> str:
+    """road, gravel or mtb: from Garmin's kind of ride ("Gravel Cycling", "Mountain Biking"); a plain "Cycling" on a
+    mountain bike is taken as off-road, on anything else as road."""
+    from app.bikes.garmin import kind_of
+
+    k, _ = kind_of(ride.get("activity"))
+    if k in GRAVEL:
+        return "gravel"
+    if k in MTB:
+        return "mtb"
+    if k in ("", "cycling") and bike_type in ("hardtail", "full_suspension"):
+        return "mtb"
+    return "road"
+
+
 @dataclass
 class Use:
     km: float = 0.0  # ridden
-    wear_km: float = 0.0  # with wet rides counted extra (for the kinds that wear faster in the wet)
+    wear_km: float = 0.0  # with wet and rough rides counted extra (for the kinds that wear faster for them)
     hours: float = 0.0
     rides: int = 0
     wet_rides: int = 0
+    rough_rides: int = 0  # gravel or mountain-bike rides
 
 
 def since_reset(part: dict[str, Any], services: list[dict[str, Any]]) -> datetime | None:
@@ -76,21 +98,29 @@ def since_reset(part: dict[str, Any], services: list[dict[str, Any]]) -> datetim
 
 
 def use_of(part: dict[str, Any], rides: list[dict[str, Any]], placer: Placer, since: datetime | None,
-           wet_factor: float = WET_FACTOR, trainer_has_cassette: bool = True) -> Use:  # fmt: skip
-    """The rides a part was on a bike for since `since`."""
+           wet_factor: float = WET_FACTOR, trainer_has_cassette: bool = True,
+           surface: dict[str, float] | None = None, bike_types: dict[int, str] | None = None,
+           until: datetime | None = None) -> Use:  # fmt: skip
+    """The rides a part was on a bike for since `since` (and before `until`)."""
     kind = KINDS.get(part["kind"], KINDS["other"])
+    rough_kind = kind.wet or part["kind"] in ROUGH
+    factors = SURFACE_FACTORS if surface is None else surface
     u = Use()
     counts_indoors = kind.indoor and not (part["kind"] == "cassette" and trainer_has_cassette)
     for r in rides:
         if since and r["started"] < since:
+            continue
+        if until and r["started"] >= until:
             continue
         if r["indoor"] and not counts_indoors:
             continue
         if r.get("bike_id") is None or placer.bike_of_part(part["id"], r["started"]) != r["bike_id"]:
             continue
         wet = is_wet(r) and not r["indoor"]
+        rough = 1.0 if r["indoor"] else float(factors.get(surface_of(r, (bike_types or {}).get(r["bike_id"])), 1.0))
         u.km += r["km"]
-        u.wear_km += r["km"] * (wet_factor if wet and kind.wet else 1.0)
+        u.wear_km += r["km"] * (wet_factor if wet and kind.wet else 1.0) * (rough if rough_kind else 1.0)
+        u.rough_rides += rough > 1.0
         u.hours += r["hours"] or 0.0
         u.rides += 1
         u.wet_rides += wet
@@ -121,7 +151,8 @@ def state(part: dict[str, Any], use: Use, since: datetime | None, now: datetime,
     st = "due" if is_due else "coming" if worst >= coming_share else "ok" if life else "untracked"
     return {"state": st, "share": round(worst, 3), "measures": measures, "km": round(use.km, 1),
             "wear_km": round(use.wear_km, 1), "hours": round(use.hours, 1), "rides": use.rides,
-            "wet_rides": use.wet_rides, "since": since.isoformat() if since else None}  # fmt: skip
+            "wet_rides": use.wet_rides, "rough_rides": use.rough_rides,
+            "since": since.isoformat() if since else None}  # fmt: skip
 
 
 def battery_health(part: dict[str, Any], services: list[dict[str, Any]], rides: list[dict[str, Any]],
@@ -151,4 +182,39 @@ def battery_health(part: dict[str, Any], services: list[dict[str, Any]], rides: 
     if cycles:  # its own figure, once it has one, instead of the groupset's
         recent3 = cycles[-3:]
         out["learned_hours"] = round(sum(c["hours_per_charge"] for c in recent3) / len(recent3), 1)
+    return out
+
+
+def stretch_limit(part: dict[str, Any]) -> float:
+    """When a chain is worn out (%): 0.5 for 11- and 12-speed (and a tandem's timing chain), 0.75 for 10 and below."""
+    try:
+        speeds = int(str((part.get("details") or {}).get("speeds") or 11).split()[0])
+    except ValueError:
+        speeds = 11
+    return 0.5 if speeds >= 11 or part["kind"] == "timing_chain" else 0.75
+
+
+def chain_wear(part: dict[str, Any], services: list[dict[str, Any]], rides: list[dict[str, Any]], placer: Placer,
+               **use: Any) -> dict[str, Any] | None:  # fmt: skip
+    """What a chain checker has said: each reading (%) at the km the chain had then (wet and rough rides counted extra,
+    as its wear is), and from them how fast it is stretching and the km it will be worn out at. None with no readings.
+    A straight line from new (0%) through the readings: chains stretch steadily once bedded in."""
+    since = part.get("fitted_at")
+    got = sorted((s for s in services if s.get("part_id") == part["id"] and s["action"] == "measured"
+                  and s.get("reading") is not None and (since is None or s["at"] >= since)), key=lambda s: s["at"])  # fmt: skip
+    if not got:
+        return None
+    limit = stretch_limit(part)
+    readings = []
+    for s in got:
+        km = (part.get("start_km") or 0.0) + use_of(part, rides, placer, since, until=s["at"], **use).wear_km
+        readings.append({"at": s["at"].isoformat(), "reading": float(s["reading"]), "km": round(km, 1)})
+    pts = [(r["km"], r["reading"]) for r in readings if r["km"] >= 200]
+    out: dict[str, Any] = {"limit": limit, "readings": readings, "latest": readings[-1]["reading"],
+                           "worn": readings[-1]["reading"] >= limit, "rate_per_1000km": None, "life_km": None}  # fmt: skip
+    sxx = sum(x * x for x, _ in pts)
+    if sxx and any(y > 0 for _, y in pts):
+        rate = sum(x * y for x, y in pts) / sxx  # % a km
+        out["rate_per_1000km"] = round(rate * 1000, 3)
+        out["life_km"] = round(limit / rate)
     return out

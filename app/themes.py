@@ -165,6 +165,7 @@ PAINTS = {
     "pink": ("Pink", "#f06aa8"), "barbie-pink": ("Barbie pink", "#e0218a"), "bronze": ("Bronze", "#a3693a"),
     "gold": ("Gold", "#c9a227"), "copper": ("Copper", "#b0643c"), "titanium": ("Raw titanium", "#9a9a94"),
     "polished-aluminium": ("Polished aluminium", "#d2d5da"),
+    "burnt-orange": ("Burnt orange (metallic copper)", "#c65a24"), "slate": ("Slate grey-blue", "#56606f"),
 }  # fmt: skip
 
 # The pollen map is a picture of its own (an SVG image file, not part of a page): drawn the same in every theme

@@ -50,6 +50,10 @@ SEARCH = "/activitylist-service/activities/search/activities"
 PAGE = 100
 WARN_DAYS = 14  # warn this long before a key runs out
 RECHECK_DAYS = 30  # each daily sync looks this far back again, for rides changed or deleted in Garmin
+FILE_DAYS = 27  # a new ride this recent has its file read: its route (for the rain along it) and its devices' batteries
+FILES_EACH_SYNC = 30
+FILE_GAP_S = 0.3  # between files: gently
+OTHER_FILES_EACH_SYNC = 10  # runs, walks...: read only for their sensors' batteries
 CYCLING = re.compile(r"cycl|biking|bike|ride|bmx", re.IGNORECASE)
 NOT_CYCLING = re.compile(r"motor|run|walk", re.IGNORECASE)
 INDOOR = re.compile(r"indoor|virtual|trainer", re.IGNORECASE)
@@ -159,6 +163,17 @@ class Garmin:
                 break
             await asyncio.sleep(0.5)
         return out
+
+    async def ride_file(self, activity_id: Any) -> fit.Summary | None:
+        """A ride's original file, read: its GPS track and the devices it saw. None when Garmin has none."""
+        r = await self.get(f"/download-service/files/activity/{activity_id}",
+                           accept="application/zip, application/x-zip-compressed, application/octet-stream")  # fmt: skip
+        if r.status_code == 429:
+            raise GarminError("Garmin says too many requests for now", 429)
+        if r.status_code >= 400 or not r.content:
+            return None
+        _, data = fit.from_zip(r.content)
+        return fit.summarise(data)
 
     async def weight(self, days: int = 120) -> float | None:
         """The latest weight in kg over the last `days`, if any is logged."""
@@ -282,6 +297,31 @@ def same_ride(a: dict[str, Any], b: dict[str, Any]) -> bool:
 
 
 # --- the sync --------------------------------------------------------------------------------------------------------
+async def read_files(api: Garmin, rides: list[dict[str, Any]], now: datetime) -> int:
+    """Each new ride from the last four weeks gets its route (outdoors) and the batteries its devices reported (an AXS
+    derailleur's, say) from its original file; how many files were read. A file that cannot be read is skipped."""
+    want = [r for r in rides if now - r["started"] < timedelta(days=FILE_DAYS) and not r.get("route")][:FILES_EACH_SYNC]
+    if not want:
+        return 0
+    n = 0
+    for r in want:
+        try:
+            got = await api.ride_file(r["id"].split(":", 1)[1])
+        except GarminError:
+            break  # too many requests: the rest another day
+        except (httpx.HTTPError, fit.FitError, ValueError, KeyError, struct.error) as exc:
+            log.info("ride file %s not read: %s", r["id"], exc)
+            continue
+        if got is None:
+            continue
+        n += 1
+        if not r["indoor"]:
+            r["route"] = fit.route(got.track) or None
+        r["sensors"] = fit.sensors(got.devices) or None
+        await asyncio.sleep(FILE_GAP_S)
+    return n
+
+
 def _settings(rider_row: dict[str, Any]) -> dict[str, Any]:
     return dict((rider_row.get("settings") or {}).get("garmin") or {})
 
@@ -309,8 +349,9 @@ async def sync(engine: AsyncEngine, rider: str, client: httpx.AsyncClient | None
         return {"skipped": "no Garmin key saved for this rider"}
     first = full or not g.get("last_sync")
     since = None if first else (now - timedelta(days=RECHECK_DAYS)).date()
-    own = client is None
-    client = client or httpx.AsyncClient(timeout=30)
+    if client is None:
+        async with httpx.AsyncClient(timeout=30) as own:
+            return await sync(engine, rider, own, full, now)
     result: dict[str, Any] = {"at": now.isoformat(), "full": first}
     try:
         api = Garmin(key, client)
@@ -328,9 +369,6 @@ async def sync(engine: AsyncEngine, rider: str, client: httpx.AsyncClient | None
               "error_at": now.isoformat()}  # fmt: skip
         await _save_settings(engine, rider, g)
         raise GarminError(g["error"], getattr(exc, "status", None)) from exc
-    finally:
-        if own:
-            await client.aclose()
     rides = [r for a in acts if (r := to_ride(a, rider))]
     seen_types = sorted({r["type_key"] for r in rides} | set(g.get("types") or []))
     rules = {k: v for k, v in (g.get("rules") or {}).items() if v}
@@ -361,6 +399,32 @@ async def sync(engine: AsyncEngine, rider: str, client: httpx.AsyncClient | None
         floor = datetime.combine(since, datetime.min.time(), UTC) if since else min(x["started"] for x in rides)
         ids = {r["id"] for r in rides}
         gone = [h["id"] for h in have.values() if h["source"] == "garmin" and h["id"] not in ids and h["started"] >= floor]
+    files = await read_files(api, new, now)
+    if files:
+        result["files_read"] = files
+    # every sensor's battery: from the rides' files, and from other activities' (a heart rate strap worn running)
+    readings = [{**x, "at": r["started"].isoformat(), "activity": r.get("activity") or r.get("title"), "bike_id": r.get("bike_id")}
+                for r in new for x in (r.get("sensors") or [])]  # fmt: skip
+    done = list(g.get("sensor_files") or [])
+    for a in [a for a in acts if not is_ride(a) and a.get("activityId") is not None and str(a["activityId"]) not in done
+              and (st := _started(a)) and now - st < timedelta(days=FILE_DAYS)][:OTHER_FILES_EACH_SYNC]:  # fmt: skip
+        done.append(str(a["activityId"]))
+        try:
+            got = await api.ride_file(a["activityId"])
+        except GarminError:
+            break
+        except (httpx.HTTPError, fit.FitError, ValueError, KeyError, struct.error) as exc:
+            log.info("activity file %s not read: %s", a["activityId"], exc)
+            continue
+        if got:
+            readings += [{**x, "at": _started(a).isoformat(), "activity": type_key(a).replace("_", " ").title(), "bike_id": None}  # type: ignore[union-attr]
+                         for x in fit.sensors(got.devices)]  # fmt: skip
+        await asyncio.sleep(FILE_GAP_S)
+    g["sensor_files"] = done[-300:]
+    if readings:
+        from app.bikes.api import save_sensors
+
+        result["sensors"] = await save_sensors(engine, rider, readings)
     fresh = [r for r in new if r.get("wet") is None and not r["indoor"] and now - r["started"] < timedelta(days=27)]
     if fresh:
         try:

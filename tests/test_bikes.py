@@ -169,11 +169,12 @@ def garage(monkeypatch: pytest.MonkeyPatch) -> Any:
             conn.execute(sa.text(f"DROP TABLE IF EXISTS {t} CASCADE"))
         conn.execute(sa.text("CREATE TABLE place (id text primary key, kind text, lat float, lon float)"))
         conn.execute(sa.text("INSERT INTO place VALUES ('home', 'home', 51.37, -0.247)"))
-        spec = importlib.util.spec_from_file_location("m0044", Path("migrations/versions/0044_bikes.py"))
-        m = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
-        spec.loader.exec_module(m)  # type: ignore[union-attr]
-        with Operations.context(MigrationContext.configure(conn)):
-            m.upgrade()
+        for name in ("0044_bikes", "0046_bike_more"):
+            spec = importlib.util.spec_from_file_location(name, Path(f"migrations/versions/{name}.py"))
+            m = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+            spec.loader.exec_module(m)  # type: ignore[union-attr]
+            with Operations.context(MigrationContext.configure(conn)):
+                m.upgrade()
 
     async def no_rain(*a: Any, **kw: Any) -> tuple[bool | None, str]:
         return True, "3.2 mm at Ewell gauge (2 km) during and before the ride"
@@ -605,7 +606,9 @@ def test_each_model_and_paint_draws_and_bad_ones_are_refused() -> None:
         assert svg.startswith("<svg") and PAINTS["bronze"][1] in svg and PAINTS["red"][1] in svg
     assert "var(--accent)" in art.bike(D.defaults_for("road"))  # no paint: the theme's colour
     _check({"model": "planet-x-reiver-2025", "paint": "barbie-pink"})
-    for bad in ({"model": "penny-farthing"}, {"paint": "#ff00ff"}):
+    _check({"pinstripe": "red", "fade": True, "paint": "burnt-orange", "paint2": "slate"})
+    assert "linearGradient" in art.bike({**D.defaults_for("gravel"), "paint": "burnt-orange", "paint2": "slate", "fade": True}, "r")
+    for bad in ({"model": "penny-farthing"}, {"paint": "#ff00ff"}, {"pinstripe": "tartan"}):
         with pytest.raises(HTTPException):
             _check(bad)
 
@@ -617,3 +620,43 @@ def test_a_tandem_has_a_long_timing_chain_its_rings_and_an_eccentric_bottom_brac
     assert ("chainrings", "bike", "stoker") not in t  # the drive rings are the stoker's: the bike's chainrings
     timing = next(p for p in D.planned_parts(D.defaults_for("tandem")) if p.kind == "timing_chain")
     assert "two chains" in timing.details["links"]
+
+
+def test_a_tyre_size_as_written_gives_its_width_etrto_and_wheel_and_the_pressure_follows() -> None:
+    assert D.tyre_size("29x2.4") == {"width_mm": 61, "bead_mm": 622, "etrto": "61-622", "wheel": "700c / 29-inch"}
+    assert D.tyre_size("650x47b")["etrto"] == "47-584" and D.tyre_size("26 x 2.10")["etrto"] == "53-559"
+    assert D.tyre_size("nonsense") == {}
+    d = D.tyre_details({"size": "700x40c", "width_mm": 35, "tubeless": True})
+    assert d["width_mm"] == 40 and d["etrto"] == "40-622" and d["tubeless"]  # the size as written wins
+    assert D.tyre_details({"compound": "soft"}) == {"compound": "soft"}
+    big, small = D.tyre_pressure(50, False, "hybrid", 90, "rear"), D.tyre_pressure(50, False, "hybrid", 90, "rear", bead_mm=559)
+    assert small > big  # a 26-inch wheel a little higher than a 700c at the same width
+
+
+@pytest.mark.skipif(not DB, reason="WA_TEST_DATABASE_URL not set")
+def test_removing_a_part_the_bike_does_not_have(garage: Any) -> None:
+    c = garage
+    c.post("/v1/bikes/riders", json={"name": "Rob", "weight_kg": 80})
+    yeti = c.post("/v1/bikes/bikes", json={"rider": "rob", "label": "Yeti", "type": "full_suspension"}).json()["id"]
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    dropper = _part(g, "dropper_lower")
+    # a fixed seatpost: removing the dropper's service says so in the answers, and both dropper services go
+    r = c.post(f"/v1/bikes/parts/{dropper['id']}/remove").json()
+    assert r["answer"] == {"dropper": "none"} and len(r["retired"]) == 2
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    b = next(x for x in g["bikes"] if x["id"] == yeti)
+    assert b["config"]["dropper"] == "none" and not [p for p in b["parts"] if p["kind"].startswith("dropper")]
+    # any other part: off, and not added back when the answers change
+    hanger = _part(g, "hanger")
+    assert c.post(f"/v1/bikes/parts/{hanger['id']}/remove").json()["deleted"] is True
+    c.patch(f"/v1/bikes/bikes/{yeti}", json={"config": {"front_tyre": "tubed"}})
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    b = next(x for x in g["bikes"] if x["id"] == yeti)
+    assert "hanger@" in b["config"]["removed"] and not [p for p in b["parts"] if p["kind"] == "hanger"]
+    # a part with history is retired, keeping it
+    chain = _part(g, "chain")
+    c.post("/v1/bikes/service", json={"rider": "rob", "action": "replaced", "part_id": chain["id"]})
+    chain = _part(c.get("/v1/bikes", params={"rider": "rob"}).json(), "chain")
+    c.post("/v1/bikes/service", json={"rider": "rob", "action": "checked", "part_id": chain["id"]})
+    assert c.post(f"/v1/bikes/parts/{chain['id']}/remove").json()["deleted"] is False
+    assert c.post("/v1/bikes/parts/99999/remove").status_code == 404

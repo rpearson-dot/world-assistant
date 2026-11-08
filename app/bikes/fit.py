@@ -8,6 +8,7 @@ here is specific to one device: each message comes back as its global message nu
 from __future__ import annotations
 
 import io
+import itertools
 import struct
 import zipfile
 from collections.abc import Iterator
@@ -150,7 +151,7 @@ def summarise(data: bytes) -> Summary:
                 track.append((when(m.fields.get(253)), la * SEMICIRCLE, lo * SEMICIRCLE))
         elif m.num == DEVICE_INFO:
             f = m.fields
-            devices.append({"index": f.get(0), "type": f.get(1), "manufacturer": f.get(2), "product": f.get(4),
+            devices.append({"index": f.get(0), "type": f.get(1), "manufacturer": f.get(2), "serial": f.get(3), "product": f.get(4),
                             "name": f.get(27), "battery_v": round(f[10] / 256, 2) if isinstance(f.get(10), int) else None,
                             "battery_status": f.get(11), "battery_level": f.get(32)})  # fmt: skip
         elif m.num == FIELD_DESCRIPTION:
@@ -163,3 +164,55 @@ def summarise(data: bytes) -> Summary:
     for d in dev_fields:
         d["readings"] = dev_seen.get((d["developer"], d["field"]), 0)
     return Summary(counts, track, devices, dev_fields, sport)
+
+
+# FIT's manufacturer numbers and ANT+ device types worth naming (the FIT profile's lists)
+MAKERS = {1: "Garmin", 41: "Shimano", 268: "SRAM", 32: "Wahoo", 69: "Stages", 263: "Favero", 289: "Hammerhead"}
+DEVICE_TYPES = {34: "shifting", 11: "power", 120: "heart rate", 121: "speed and cadence", 123: "speed", 122: "cadence",
+                35: "light", 40: "radar", 16: "trainer", 17: "fitness equipment"}  # fmt: skip
+# FIT's battery_status, and a rough charge for each (it says no more than this)
+STATUS = {1: "new", 2: "good", 3: "ok", 4: "low", 5: "critical", 6: "charging", 7: "unknown"}
+LEVEL = {"new": 100, "good": 80, "ok": 50, "low": 20, "critical": 5}
+
+
+def route(track: list[tuple[datetime | None, float, float]], every_km: float = 1.0, most: int = 200) -> list[list[float]]:
+    """A ride's route as points about `every_km` apart (the first and last always), at most `most` of them: enough
+    to look up the weather along it, small enough to keep."""
+    import math
+
+    if not track:
+        return []
+    out = [[round(track[0][1], 5), round(track[0][2], 5)]]
+    since = 0.0
+    for (_, la0, lo0), (_, la1, lo1) in itertools.pairwise(track):
+        dy = (la1 - la0) * 111.32
+        dx = (lo1 - lo0) * 111.32 * math.cos(math.radians((la0 + la1) / 2))
+        since += math.hypot(dx, dy)
+        if since >= every_km:
+            out.append([round(la1, 5), round(lo1, 5)])
+            since = 0.0
+    last = [round(track[-1][1], 5), round(track[-1][2], 5)]
+    if out[-1] != last:
+        out.append(last)
+    if len(out) > most:  # thinned evenly, keeping the ends
+        step = (len(out) - 1) / (most - 1)
+        out = [out[round(i * step)] for i in range(most)]
+    return out
+
+
+def sensors(devices: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The batteries of the devices a ride saw other than the head unit (index 0): the last reading of each (a
+    device's first can be from before it woke), with its maker, kind and status."""
+    last: dict[Any, dict[str, Any]] = {}
+    for d in devices:
+        if d.get("index") in (0, None) or not (d.get("battery_status") or d.get("battery_v") or d.get("battery_level")):
+            continue
+        last[d["index"]] = d
+    out = []
+    for d in last.values():
+        status = STATUS.get(d.get("battery_status") or 0)
+        out.append({"maker": MAKERS.get(d.get("manufacturer") or -1, str(d.get("manufacturer") or "?")),
+                    "type": DEVICE_TYPES.get(d.get("type") or -1, str(d.get("type") or "?")),
+                    "serial": d.get("serial"), "status": status, "volts": d.get("battery_v"),
+                    "level": d.get("battery_level") if isinstance(d.get("battery_level"), int) else LEVEL.get(status or "")})  # fmt: skip
+    return out
