@@ -79,6 +79,7 @@ button.small { padding: 3px 9px; font-size: 13px; }
 </style></head><body><main>
 <!--NAV-->
 <h1>Bikes</h1>
+<p class="small"><a href="/bikes/garage">Open the Garage</a>: one bike at a time, its parts by wear, the shelf, bin and shop counter.</p>
 <form id="auth" class="bar"><input id="t" type="password" placeholder="API token" autocomplete="current-password">
 <button class="primary">Load</button></form>
 <p id="msg" class="err"></p>
@@ -1028,3 +1029,11 @@ page_router = APIRouter()
 async def bikes_page(request: Request) -> str:
     """The page holds no data itself; it calls /v1/bikes."""
     return themed(PAGE, "bikes", request)
+
+
+@page_router.get("/bikes/garage", response_class=HTMLResponse, include_in_schema=False)
+async def garage_page(request: Request) -> str:
+    """The garage as a game's tuning screen (see app.bikes.garage_page)."""
+    from app.bikes.garage_page import GARAGE
+
+    return themed(GARAGE, "bikes", request)

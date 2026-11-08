@@ -35,7 +35,9 @@ def test_every_token_a_page_uses_is_defined() -> None:
         used |= set(re.findall(r"colour: '([a-z0-9-]+)'", s))  # the map's layers
     graph = (APP / "graph_page.py").read_text()
     used |= set(re.findall(r"[A-Za-z]+: '([a-z]+(?:-[0-9]+)?)'", graph[graph.index("const COLORS"):graph.index("const shade")]))
-    local: set[str] = set()
+    local: set[str] = set()  # a page's own properties, set by its script (a tile's wear, --w, and its colour, --c)
+    for p in _sources():
+        local |= set(re.findall(r"setProperty\('--([a-z0-9-]+)'", p.read_text()))
     missing = sorted(u for u in used - known - local if not u.endswith('-'))  # 'series-' + n: built in the page
     assert not missing, missing
 
