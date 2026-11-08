@@ -46,7 +46,10 @@ def test_each_theme_is_complete_and_readable(theme: str, mode: str) -> None:
     assert set(t) == set(T.tokens("standard", mode))
     assert set(T.THEMES[theme][mode]) <= set(t), "a token Standard does not have"
     for k, v in t.items():
-        assert HEX.match(v) or v.startswith("rgb("), (k, v)
+        if k in T.SURFACES:  # bevels, mixes and references to other tokens
+            assert v == "none" or v.startswith(("var(--", "color-mix(", "inset ")) or HEX.match(v), (k, v)
+        else:
+            assert HEX.match(v) or v.startswith("rgb("), (k, v)
     # the graph's colour picker takes #rrggbb: the colours it starts from must be that
     for k in [*(f"series-{n}" for n in range(1, 13)), "good", "warn", "bad", "severe", "dim"]:
         assert HEX.match(t[k]), (theme, mode, k)
@@ -63,7 +66,10 @@ def test_each_theme_is_complete_and_readable(theme: str, mode: str) -> None:
     for fg, bg, need in (("ink", "bg", 7), ("ink", "card", 7), ("dim", "card", 4.5), ("dim", "bg", 4.5),
                          ("on-accent", "accent", 4.5), ("good", "good-bg", 4.5), ("warn", "warn-bg", 4.5),
                          ("bad", "bad-bg", 4.5), ("accent", "card", 3), ("lv2-ink", "lv2", 4.5),
-                         ("lv3-ink", "lv3", 4.5), ("lv4-ink", "lv4", 4.5)):  # fmt: skip
+                         ("lv3-ink", "lv3", 4.5), ("lv4-ink", "lv4", 4.5), ("bar-ink", "bar", 7), ("bar-dim", "bar", 4.5),
+                         ("bar-ink", "bar-here", 4.5), ("link", "card", 4.5), ("link-done", "card", 4.5), ("ink", "field", 7)):  # fmt: skip
+        if not (HEX.match(t[fg]) and HEX.match(t[bg])):
+            continue  # made from other tokens, checked as those
         assert ratio(t[fg], t[bg]) >= need, f"{theme} {mode}: {fg} on {bg} is {ratio(t[fg], t[bg]):.2f}, needs {need}"
 
 

@@ -6,7 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Added
 - **Themes** (`docs/themes.md`): every colour and the design language (fonts, corners, headings) now come from
-  `app/themes.py` as named tokens, with four themes (Standard, Forest, High contrast, Paper), each light and dark.
+  `app/themes.py` as named tokens, with five themes (Standard, Forest, High contrast, Paper, and Windows 95: grey metal, bevelled buttons and
+  navy title bars, its dark side High Contrast Black), each light and dark.
   Choose one on **Settings, Look**, with Automatic, Light or Dark; each device keeps its own. The map, graph and
   pollen charts draw in the theme's colours and redraw when it changes. A test keeps raw colours out of pages and
   checks every theme's contrast.

@@ -29,6 +29,10 @@ _LIGHT = {
     "series-1": "#1f6feb", "series-2": "#9333ea", "series-3": "#0891b2", "series-4": "#187847", "series-5": "#d9480f",
     "series-6": "#ca8a04", "series-7": "#c11574", "series-8": "#0e9384", "series-9": "#4f46e5", "series-10": "#b54708",
     "series-11": "#6b7280", "series-12": "#2f9e44",
+    # surfaces: bevels (raised buttons and cards, sunken fields), fields, the title bar, links. Plain in Standard
+    "raise": "none", "sink": "none", "field": "var(--card)", "bar": "color-mix(in srgb, var(--bg) 88%, transparent)",
+    "bar-solid": "var(--bg)", "bar-ink": "var(--ink)", "bar-dim": "var(--dim)", "bar-here": "var(--chip)",
+    "link": "var(--accent)", "link-done": "var(--accent)",
 }  # fmt: skip
 _DARK = {
     "bg": "#12161d", "card": "#1b212b", "ink": "#e8ecf3", "dim": "#98a2b3", "line": "#2b3340", "chip": "#252d3a",
@@ -40,7 +44,12 @@ _DARK = {
     "series-1": "#6ea8fe", "series-2": "#c084fc", "series-3": "#22d3ee", "series-4": "#5fd39a", "series-5": "#ff8f5a",
     "series-6": "#facc15", "series-7": "#f472b6", "series-8": "#2dd4bf", "series-9": "#818cf8", "series-10": "#f4b26a",
     "series-11": "#9ca3af", "series-12": "#86efac",
+    # surfaces: bevels (raised buttons and cards, sunken fields), fields, the title bar, links. Plain in Standard
+    "raise": "none", "sink": "none", "field": "var(--card)", "bar": "color-mix(in srgb, var(--bg) 88%, transparent)",
+    "bar-solid": "var(--bg)", "bar-ink": "var(--ink)", "bar-dim": "var(--dim)", "bar-here": "var(--chip)",
+    "link": "var(--accent)", "link-done": "var(--accent)",
 }  # fmt: skip
+SURFACES = ("raise", "sink", "field", "bar", "bar-solid", "bar-ink", "bar-dim", "bar-here", "link", "link-done")
 _DESIGN = {
     "font": 'system-ui, -apple-system, "Segoe UI", sans-serif',
     "font-head": "inherit",
@@ -50,6 +59,7 @@ _DESIGN = {
     "h2-case": "uppercase",  # card headings
     "h2-track": ".06em",
     "head-weight": "650",
+    "frame": "1px",  # the width of the line round cards, fields and buttons
 }
 
 THEMES: dict[str, dict[str, Any]] = {
@@ -83,6 +93,33 @@ THEMES: dict[str, dict[str, Any]] = {
                        "bad-bg": "#3d1e19"},
               "design": {"font-head": '"Iowan Old Style", Palatino, Georgia, serif', "radius": "6px", "radius-sm": "4px",
                          "pill": "6px", "h2-case": "none", "h2-track": "0", "head-weight": "600"}},
+    "win95": {"name": "Windows 95", "about": "Flat grey metal, bevelled buttons and navy title bars, as everything looked in 1995. "
+                                           "Dark is its High Contrast Black",
+              "light": {"bg": "#c0c0c0", "card": "#c0c0c0", "ink": "#000000", "dim": "#404040", "line": "#808080",
+                        "chip": "#dfdfdf", "accent": "#000080", "on-accent": "#ffffff", "good": "#005a00",
+                        "good-bg": "#c8e6c8", "warn": "#6b3a00", "warn-bg": "#ffffe1", "bad": "#800000",
+                        "bad-bg": "#ffd0d0", "severe": "#800000", "edge": "#808080", "lv2": "#ffffe1",
+                        "lv3": "#ffd8a8", "lv4": "#ffb0b0", "series-1": "#000080", "series-2": "#800080",
+                        "series-3": "#008080", "series-4": "#008000", "series-5": "#ff0000", "series-6": "#808000",
+                        "series-7": "#ff00ff", "series-8": "#00a0a0", "series-9": "#0000ff", "series-10": "#800000",
+                        "series-11": "#808080", "series-12": "#00c000",
+                        "raise": "inset -1px -1px #0a0a0a, inset 1px 1px #ffffff, inset -2px -2px #808080, inset 2px 2px #dfdfdf",
+                        "sink": "inset -1px -1px #ffffff, inset 1px 1px #0a0a0a, inset -2px -2px #dfdfdf, inset 2px 2px #808080",
+                        "field": "#ffffff", "bar": "#000080", "bar-solid": "#000080", "bar-ink": "#ffffff",
+                        "bar-dim": "#dfdfdf", "bar-here": "#0e70b4", "link": "#0000ee", "link-done": "#551a8b"},
+              "dark": {"bg": "#000000", "card": "#000000", "ink": "#ffffff", "dim": "#c0c0c0", "line": "#ffffff",
+                       "chip": "#303030", "accent": "#00ffff", "on-accent": "#000000", "good": "#00ff00",
+                       "good-bg": "#003000", "warn": "#ffff00", "warn-bg": "#303000", "bad": "#ff6060",
+                       "bad-bg": "#400000", "severe": "#ff0000", "edge": "#c0c0c0",
+                       "series-1": "#00ffff", "series-2": "#ff00ff", "series-3": "#00c0c0", "series-4": "#00ff00",
+                       "series-5": "#ff8040", "series-6": "#ffff00", "series-7": "#ff80ff", "series-8": "#80ffc0",
+                       "series-9": "#8080ff", "series-10": "#ffc000", "series-11": "#c0c0c0", "series-12": "#c0ff80",
+                       "raise": "inset -1px -1px #ffffff, inset 1px 1px #ffffff, inset -2px -2px #808080, inset 2px 2px #808080", "sink": "inset -1px -1px #ffffff, inset 1px 1px #ffffff, inset -2px -2px #808080, inset 2px 2px #808080",
+                       "field": "#000000", "bar": "#800080", "bar-solid": "#800080", "bar-ink": "#ffffff",
+                       "bar-dim": "#ffffff", "bar-here": "#000000", "link": "#ffff00", "link-done": "#00ff00"},
+              "design": {"font": 'Tahoma, "MS Sans Serif", "Microsoft Sans Serif", Arial, sans-serif',
+                         "radius": "0", "radius-sm": "0", "pill": "0", "h2-case": "none", "h2-track": "0",
+                         "head-weight": "700", "frame": "0px"}},
 }  # fmt: skip
 DEFAULT = "standard"
 MODES = {"auto": "Automatic (as the device)", "light": "Light", "dark": "Dark"}

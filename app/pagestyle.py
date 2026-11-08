@@ -15,12 +15,13 @@ BASE_CSS = themes.css() + """
   h1, h2, h3 { font-family: var(--font-head); } h1 { font-size: 22px; margin: 4px 0 12px; font-weight: var(--head-weight); }
   h2 { font-size: 13px; text-transform: var(--h2-case); letter-spacing: var(--h2-track); color: var(--dim); margin: 0 0 10px; font-weight: 600; }
   .bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-  input, select, button, textarea { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line);
-    border-radius: var(--radius-sm); padding: 8px 10px; }
+  a { color: var(--link); } a:visited { color: var(--link-done); }
+  input, select, button, textarea { font: inherit; color: inherit; background: var(--field); border: var(--frame) solid var(--line);
+    box-shadow: var(--sink); border-radius: var(--radius-sm); padding: 8px 10px; }
   input[type=password] { flex: 1 1 220px; min-width: 0; }
-  button { cursor: pointer; } button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
-  button.link { border: 0; background: none; color: var(--accent); padding: 0 4px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+  button { cursor: pointer; background: var(--card); box-shadow: var(--raise); } button:active { box-shadow: var(--sink); } button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  button.link { border: 0; background: none; color: var(--accent); padding: 0 4px; box-shadow: none; }
+  .card { background: var(--card); border: var(--frame) solid var(--line); box-shadow: var(--raise); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
   .hero { display: flex; gap: 14px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
   .hero .say { font-size: 20px; font-weight: 650; line-height: 1.3; flex: 1 1 320px; }
   .pill { display: inline-block; padding: 2px 10px; border-radius: var(--pill); font-size: 13px; font-weight: 600; background: var(--chip); color: var(--dim); }
@@ -47,15 +48,15 @@ BASE_CSS = themes.css() + """
   details > summary { cursor: pointer; font-weight: 600; } .hidden { display: none; }
   /* app shell: a top bar with every page on wide screens; a bottom tab bar and a More sheet on phones */
   .appbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px; margin: -16px -16px 12px;
-    padding: calc(8px + env(safe-area-inset-top)) 16px 8px; background: color-mix(in srgb, var(--bg) 88%, transparent);
+    padding: calc(8px + env(safe-area-inset-top)) 16px 8px; background: var(--bar); color: var(--bar-ink);
     backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
-  .brand { display: flex; align-items: center; gap: 8px; color: var(--ink); text-decoration: none; font-weight: 700; white-space: nowrap; }
+  .brand { display: flex; align-items: center; gap: 8px; color: var(--bar-ink); text-decoration: none; font-weight: 700; white-space: nowrap; }
   .brand img { border-radius: var(--radius-sm); }
   nav.tabs { display: flex; gap: 2px; flex-wrap: wrap; flex: 1; }
-  nav.tabs a, nav.tabs button { display: flex; align-items: center; gap: 6px; color: var(--dim); text-decoration: none; padding: 5px 10px;
+  nav.tabs a, nav.tabs button { display: flex; align-items: center; gap: 6px; color: var(--bar-dim); box-shadow: none; text-decoration: none; padding: 5px 10px;
     border-radius: var(--pill); font-size: 14px; font-weight: 600; border: 0; background: none; }
   nav.tabs svg { width: 18px; height: 18px; }
-  nav.tabs a:hover { background: var(--chip); } nav.tabs a.here { background: var(--chip); color: var(--ink); }
+  nav.tabs a:hover { background: var(--bar-here); } nav.tabs a.here { background: var(--bar-here); color: var(--bar-ink); }
   nav.tabs .more { display: none; }
   nav.subtabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 12px; }
   nav.subtabs a { padding: 6px 14px; border-radius: var(--pill); color: var(--dim); text-decoration: none; background: var(--card);
@@ -70,7 +71,7 @@ BASE_CSS = themes.css() + """
   @media (max-width: 760px) {
     body.app main { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
     /* a backdrop filter would make the header the box the fixed tab bar is placed in: keep it plain here */
-    .appbar { justify-content: center; backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--bg); }
+    .appbar { justify-content: center; backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--bar-solid); }
     .brand span { font-size: 16px; }
     nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; flex-wrap: nowrap; justify-content: space-around; gap: 0;
       background: var(--card); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
@@ -78,6 +79,7 @@ BASE_CSS = themes.css() + """
     nav.tabs svg { width: 22px; height: 22px; }
     nav.tabs a:not([data-main]) { display: none; }
     nav.tabs .more { display: flex; align-items: center; }
+    nav.tabs a, nav.tabs .more { color: var(--dim); } nav.tabs a:hover { background: none; }
     nav.tabs a.here { background: none; color: var(--accent); }
     h1 { font-size: 20px; }
     .card { padding: 14px; }

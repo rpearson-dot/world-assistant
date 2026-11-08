@@ -14,14 +14,17 @@ theme is missing a colour or is hard to read.
 | Forest | The app icon's greens |
 | High contrast | Black and white with strong colours |
 | Paper | Warm paper, serif headings, squarer corners |
+| Windows 95 | Flat grey metal, bevelled buttons, sunken white fields, navy title bars, blue and purple links; dark is its High Contrast Black |
 
 ## Tokens
 - **Colours** (each with a light and a dark value): `bg`, `card`, `ink`, `dim`, `line`, `chip`, `accent`, `on-accent`,
   `good`/`good-bg`, `warn`/`warn-bg`, `bad`/`bad-bg`, `severe`, `shadow`, `overlay`, `edge`, `knob`, graded levels
   `lv2`..`lv4` with their `-ink`, and `series-1`..`series-12` for things told apart by colour (map layers, graph
   nodes, chart lines).
+- **Surfaces** (light and dark): `raise` and `sink` (bevels, as box shadows; none in Standard), `field` (inputs),
+  `bar`, `bar-solid`, `bar-ink`, `bar-dim`, `bar-here` (the title bar and its tabs), `link`, `link-done`.
 - **Design**: `font`, `font-head`, `radius` (cards), `radius-sm` (inputs, buttons), `pill`, `h2-case`, `h2-track`,
-  `head-weight`.
+  `head-weight`, `frame` (the width of the line round cards, fields and buttons).
 - **Fixed** (the same in every theme, not ours to change): the pollen risk scale `pollen-0`..`pollen-4`, and
   what3words' red `w3w`. The pollen map picture uses `IMAGE`.
 
