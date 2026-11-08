@@ -127,10 +127,15 @@ def bike(cfg: dict[str, Any], label: str = "bike") -> str:
     else:
         frame.append(f"M{P(h_top)} L{P((s_top[0] * 0.93, s_top[1] * 0.93))}")
     seat_join = (s_top[0] * 0.9, s_top[1] * 0.9)
-    if full:  # the rear triangle pivots above the bottom bracket; a link to the seat tube drives the shock
-        pivot, link = (30, 90), (s_top[0] * 0.6, s_top[1] * 0.6)
-        frame += [f"M{P(rear)} L{P(pivot)}", f"M{P(rear)} L{P((link[0] + 40, link[1] - 10))} L{P(link)}"]
-        shock_a, shock_b = (h_low[0] * 0.45, h_low[1] * 0.45), (link[0] + 40, link[1] - 10)
+    if full:
+        # the rear triangle: chainstays to a pivot just above the bottom bracket, seatstays up past the seat tube to the
+        # shock, which runs forward to the top tube just in front of the seat post (as on a Yeti ASR)
+        pivot = (35, 75)
+        stay_top = (s_top[0] * 0.78 - 45, s_top[1] * 0.78)
+        tt_from, tt_to = (s_top[0] * 0.93, s_top[1] * 0.93), h_top
+        shock_b = (tt_from[0] + (tt_to[0] - tt_from[0]) * 0.28, tt_from[1] + (tt_to[1] - tt_from[1]) * 0.28)
+        shock_a = stay_top
+        frame += [f"M{P(rear)} L{P(pivot)}", f"M{P(rear)} L{P(stay_top)}"]
     else:
         frame += [f"M{P(rear)} L{P((0, 0))}", f"M{P(rear)} L{P(seat_join)}"]
     stays = [f for f in frame if f.startswith(f"M{P(rear)}")]
@@ -138,8 +143,12 @@ def bike(cfg: dict[str, Any], label: str = "bike") -> str:
     # a faint outline in the ink colour first, so a black frame shows on a dark page and a white one on a light page
     out.append(f'<path d="{" ".join(frame)}" stroke="currentColor" stroke-width="5.4" opacity="0.18"/>')
     out.append(f'<path d="{" ".join(main_tubes)}" stroke="{main}" stroke-width="3.6"/><path d="{" ".join(stays)}" stroke="{second}" stroke-width="3.2"/>')
-    if full:
-        out.append(f'<path d="M{P(shock_a)} L{P(shock_b)}" stroke-width="5"/><path d="M{P(shock_a)} L{P(shock_b)}" stroke-width="1.5" stroke="var(--card)"/>')
+    if full:  # the shock: a black body on the top tube's end, a silver piston from the seatstays
+        mid = (shock_a[0] + (shock_b[0] - shock_a[0]) * 0.42, shock_a[1] + (shock_b[1] - shock_a[1]) * 0.42)
+        silver = paint("silver")
+        out.append(f'<path d="M{P(shock_a)} L{P(mid)}" stroke="{silver}" stroke-width="2.4"/>'
+                   f'<path d="M{P(mid)} L{P(shock_b)}" stroke="{paint("black")}" stroke-width="6"/>'
+                   f'<circle cx="{xy(shock_a)[0]:.1f}" cy="{xy(shock_a)[1]:.1f}" r="1.8" fill="{silver}" stroke="none"/>')
     # the fork: rigid (in the frame's colour), or suspension: stanchions sliding into thicker lowers
     if mtb or cfg.get("front_suspension") == "fork":
         mid = (h_low[0] + (front[0] - h_low[0]) * 0.45, h_low[1] + (front[1] - h_low[1]) * 0.45)
