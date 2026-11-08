@@ -4,6 +4,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- **Folding on the Bikes page:** every card folds by its heading, Your bikes as a whole, and each bike (to its name,
+  type, distance and how many parts are due), with Fold every bike and Open every bike; kept on each device.
+
+### Fixed
+- A part's yes-or-no detail reads as its name ("Tubeless"), not "True".
+
 ### Changed
 - **Bike pictures** from your photos: new paints Burnt orange (metallic copper) and Slate; **Pinstripes** (thin lines of
   another colour along the tubes, as on a Trek 1.2) and **Fade into the second colour** (down the fork and stays, as on

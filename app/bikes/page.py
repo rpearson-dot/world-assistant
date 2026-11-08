@@ -62,6 +62,16 @@ button.small { padding: 3px 9px; font-size: 13px; }
 .shelf h4 { margin: 0; font-size: 13px; color: var(--dim); }
 .shelf.over { background: var(--chip); }
 #wsinfo { margin-top: 8px; }
+/* folding: any card by its heading, the bikes as a whole, and each bike */
+.fold { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 8px; }
+.fold::before { content: '▾'; font-size: .8em; color: var(--dim); transition: transform .15s; }
+.shut > .fold::before, .shut .fold::before { transform: rotate(-90deg); }
+.card:not(.bikecard).shut > :not(.fold):not(h2) { display: none !important; }
+.sec { margin-bottom: 14px; } .sec > h2 { margin: 6px 2px 10px; } .sec.shut > :not(h2) { display: none !important; }
+.bikecard.shut > :not(.bike) { display: none !important; }
+.bikecard.shut .bike { grid-template-columns: 1fr; } .bikecard.shut .bike .pic { display: none; }
+.bikecard.shut .bike > div:not(.pic) > :not(h3) { display: none; }
+.foldall { float: right; }
 </style></head><body><main>
 <!--NAV-->
 <h1>Bikes</h1>
@@ -127,7 +137,7 @@ button.small { padding: 3px 9px; font-size: 13px; }
   <p id="bykindmsg" class="dim small"></p></div>
   <ul class="parts" id="unassigned"></ul></div>
 
-<div id="bikes"></div>
+<section class="sec" id="bikessec"><h2 class="fold" data-fold="bikes">Your bikes</h2><div id="bikes"></div></section>
 
 <div class="card"><h2>Add a bike</h2>
   <form id="addbike" class="grid">
@@ -358,10 +368,14 @@ function shrink(file) {  // a photo made small enough to keep: 1000 px on its lo
     ok(c.toDataURL('image/jpeg', 0.82)); }; img.onerror = () => no(new Error('That file is not a picture')); img.src = URL.createObjectURL(file); });
 }
 function bikeCard(b) {
-  const card = el('div', 'card'), top = el('div', 'bike'), pic = el('div', 'pic');
+  const card = el('div', 'card bikecard'), top = el('div', 'bike'), pic = el('div', 'pic');
+  card.dataset.foldkey = 'bike:' + b.id;
   if (b.has_photo) photo('/v1/bikes/bikes/' + b.id + '/photo', b.label).then(i => pic.replaceChildren(i)); else pic.append(svg(b.art));
   const info = el('div');
-  const h = el('h3', null, b.label + ' '); h.append(el('span', 'chip', (cat.types[(b.config || {}).type] || '') + ((b.config || {}).ebike ? ', e-bike' : '')));
+  const h = el('h3', 'fold', b.label + ' '); h.dataset.fold = 'bike:' + b.id;
+  h.append(el('span', 'chip', (cat.types[(b.config || {}).type] || '') + ((b.config || {}).ebike ? ', e-bike' : '')), el('span', 'chip', fmt(b.km) + ' km'));
+  const dueHere = g.due.filter(d => d.bike_id === b.id && d.state === 'due').length;
+  if (dueHere) h.append(el('span', 'chip due', dueHere + ' due'));
   info.append(h, el('p', 'dim small', fmt(b.km) + ' km logged'));
   const pr = el('div', 'press');
   for (const end of ['front', 'rear']) { const p = (b.pressures || {})[end]; if (p) pr.append(el('span', null, (end === 'front' ? 'Front ' : 'Rear ') + p.psi + ' psi (' + p.bar + ' bar)' + (p.own ? '' : ' suggested'))); }
@@ -552,6 +566,19 @@ async function wsDrop(kind, id, target) {
   };
   document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end);
 })();
+// --- folding: each card by its heading, the bikes as a whole and each bike; kept on this device ------------------------
+const SHUT = new Set((() => { try { return JSON.parse(localStorage.getItem('wa_bikes_shut') || '[]'); } catch (e) { return []; } })());
+function folds() {
+  for (const c of document.querySelectorAll('main > .card')) { const h = c.querySelector(':scope > h2');
+    if (h && !h.dataset.fold) { h.classList.add('fold'); h.dataset.fold = c.id || h.textContent.trim(); } }
+  for (const h of document.querySelectorAll('.fold[data-fold]')) (h.closest('.bikecard') || h.parentElement).classList.toggle('shut', SHUT.has(h.dataset.fold));
+}
+function saveFolds() { try { localStorage.setItem('wa_bikes_shut', JSON.stringify([...SHUT])); } catch (e) {} }
+document.addEventListener('click', e => {
+  const h = e.target.closest('.fold[data-fold]'); if (!h || e.target.closest('button, select, input, a, .chip.due')) return;
+  SHUT.has(h.dataset.fold) ? SHUT.delete(h.dataset.fold) : SHUT.add(h.dataset.fold); saveFolds(); folds();
+});
+function foldBikes(shut) { for (const b of g.bikes) { const k = 'bike:' + b.id; shut ? SHUT.add(k) : SHUT.delete(k); } saveFolds(); folds(); }
 function draw() {
   const due = g.due.filter(d => d.state === 'due' || d.share >= 0.75);
   $('duecard').hidden = !due.length; $('due').replaceChildren();
@@ -613,7 +640,11 @@ function draw() {
     li.append(sel); $('unassigned').append(li);
   }
   $('bikes').replaceChildren(...g.bikes.filter(b => !b.retired_at).map(bikeCard));
+  if (!$('bikessec').querySelector('.foldall')) { const fa = el('span', 'foldall');
+    fa.append(button('Fold every bike', () => foldBikes(true)), document.createTextNode(' '), button('Open every bike', () => foldBikes(false)));
+    $('bikessec').querySelector('h2').append(fa); }
   workshop();
+  folds();
   $('storecard').hidden = !(g.loose_sets || []).length; $('store').replaceChildren(...(g.loose_sets || []).map(s => wheelBlock(s, null)));
   $('logcard').hidden = !g.log.length; $('log').replaceChildren();
   for (const x of g.log) $('log').append(logRow(x, true));

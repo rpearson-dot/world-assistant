@@ -96,6 +96,9 @@ def describe(p: dict[str, Any]) -> str:
         v = d.get(key)
         if v in (None, "", False):
             continue
+        if v is True:  # a yes/no detail: its name ("Tubeless"), not "True"
+            bits.append(dict(D.SPECS[p["kind"]]).get(key, key).split(" (")[0])
+            continue
         unit = {"teeth": "t", "diameter_mm": " mm", "width_mm": " mm", "travel_mm": " mm", "ml": " ml", "speeds": "-speed"}.get(key, "")
         bits.append(f"{v}{unit}" if unit else str(v))
     return " ".join(bits)
