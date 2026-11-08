@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.41.0] - 2026-11-08
 
 ### Added
 - **Bike garage stage 2, first part: rides from Garmin Connect** (`docs/bikes.md`, "Garmin Connect"). Each rider saves
