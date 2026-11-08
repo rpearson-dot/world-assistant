@@ -239,11 +239,14 @@ BUILTIN: tuple[Module, ...] = (
            tools=("wishlist", "wish_add", "wish_remove", "wishlist_check")),
     Module("bikes", "Bike garage", "Every bike's parts and how worn they are, from your rides: what is due, tyre pressures, "
            "batteries, spares and running cost",
-           category="home", jobs=("bikes_check",),
-           note="Add yourself as a rider on the Bikes page, then your bikes. Rides come from Garmin Connect "
-                "(its activities CSV export for now). Due parts go onto the Outdoors list when that is set up",
-           routers=("app.bikes.api:router", "app.bikes.page:page_router"), prefixes=("/v1/bikes", "/bikes"),
-           worker=(Job("app.bikes.api:bikes_check", {"hour": {7}, "minute": {40}, "timeout": 300, "max_tries": 1}),),
+           category="home", jobs=("bikes_check", "garmin_sync"),
+           note="Add yourself as a rider on the Bikes page, then your bikes. Rides come from Garmin Connect: save "
+                "your Garmin Personal API key on the Bikes page (or import its activities CSV). Due parts go onto the "
+                "Outdoors list when that is set up",
+           routers=("app.bikes.api:router", "app.bikes.garmin:router", "app.bikes.page:page_router"),
+           prefixes=("/v1/bikes", "/bikes"),
+           worker=(Job("app.bikes.garmin:garmin_sync", {"hour": {6}, "minute": {50}, "timeout": 900, "max_tries": 1}),
+                   Job("app.bikes.api:bikes_check", {"hour": {7}, "minute": {40}, "timeout": 300, "max_tries": 1})),
            tools=("bikes", "bike_due", "bike_service", "bike_ride", "tyre_pressure")),
     Module("outdoors", "Outdoors", "A KitchenOwl list of outdoor gear, priced every day at GO Outdoors and Decathlon, with price drops",
            category="home", keys=("kitchenowl_token",), needs=("shopping",), jobs=("outdoors_check",),

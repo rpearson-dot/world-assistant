@@ -741,15 +741,20 @@ async def _suggest_wet(request: Request, rides: list[dict[str, Any]]) -> None:
 
 async def _save_rides(request: Request, rides: list[dict[str, Any]]) -> int:
     async with request.app.state.engine.begin() as c:
-        n = 0
-        for r in rides:
-            n += (await c.execute(text(
-                "INSERT INTO bike_ride (id, rider_id, bike_id, started, km, hours, indoor, wet, wet_suggested, wet_why, lat, lon, "
-                "activity, title, source, garmin_bike, bike_checked) VALUES (:id, :rider, :bike_id, :started, :km, :hours, :indoor, "
-                ":wet, :wet_suggested, :wet_why, :lat, :lon, :activity, :title, :source, :garmin_bike, :bike_checked) "
-                "ON CONFLICT (id) DO NOTHING"),
-                {"wet_suggested": None, "wet_why": None, "lat": None, "lon": None, "activity": None, "title": None,
-                 "garmin_bike": None, "bike_checked": False, **r})).rowcount  # fmt: skip
+        return await insert_rides(c, rides)
+
+
+async def insert_rides(c: Any, rides: list[dict[str, Any]]) -> int:
+    """Add rides (one already here is left as it is); how many were new."""
+    n = 0
+    for r in rides:
+        n += (await c.execute(text(
+            "INSERT INTO bike_ride (id, rider_id, bike_id, started, km, hours, indoor, wet, wet_suggested, wet_why, lat, lon, "
+            "activity, title, source, garmin_bike, bike_checked) VALUES (:id, :rider, :bike_id, :started, :km, :hours, :indoor, "
+            ":wet, :wet_suggested, :wet_why, :lat, :lon, :activity, :title, :source, :garmin_bike, :bike_checked) "
+            "ON CONFLICT (id) DO NOTHING"),
+            {"wet_suggested": None, "wet_why": None, "lat": None, "lon": None, "activity": None, "title": None,
+             "garmin_bike": None, "bike_checked": False, **r})).rowcount  # fmt: skip
     return n
 
 
@@ -1023,7 +1028,7 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
 
 # What a ride's activity type says about the bike it was on (Garmin's types: "Mountain Biking", "Gravel Cycling",
 # "Road Cycling", "E-Bike Mountain"...): the bike types that fit it, and whether it had a motor
-FITS = (("e-?bike|e-?mountain", None, True), ("mountain|mtb|trail|enduro|downhill", {"hardtail", "full_suspension"}, None),
+FITS = (("e[- ]?bike|e[- ]?mountain", None, True), ("mountain|mtb|trail|enduro|downhill", {"hardtail", "full_suspension"}, None),
         ("gravel|cyclocross|cx", {"gravel", "cyclocross"}, None), ("road", {"road", "tt", "gravel", "cyclocross", "tandem"}, None))  # fmt: skip
 
 
