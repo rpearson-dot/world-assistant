@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.44.0] - 2026-11-08
 
 ### Fixed
 - **Bikes:** an AXS battery put on a bike became an ordinary part of it, so it no longer showed as a battery; it
