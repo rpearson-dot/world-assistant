@@ -53,15 +53,52 @@ def _fresh(key: tuple[Any, ...], ttl: float) -> Any:
     return got[1] if got and time.time() - got[0] < ttl else None
 
 
+GAP_S = 0.15  # at most about 7 requests a second from here: well inside the 15 a second the API allows
+_pace: dict[str, Any] = {"lock": None, "loop": None, "last": 0.0}
+
+
+async def _turn() -> None:
+    """Wait for our turn: requests go one after another, GAP_S apart."""
+    loop = asyncio.get_running_loop()
+    if _pace["loop"] is not loop:  # a lock belongs to one event loop
+        _pace.update(lock=asyncio.Lock(), loop=loop)
+    async with _pace["lock"]:
+        wait = _pace["last"] + GAP_S - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        _pace["last"] = time.monotonic()
+
+
+def _ua() -> str:
+    from app.version import VERSION
+
+    return f"WorldAssistant/{VERSION} (a self-hosted home assistant)"
+
+
 async def _get(client: httpx.AsyncClient, path: str, params: dict[str, Any] | None = None) -> Any:
-    try:
-        r = await client.get(BASE + path, params=params, headers={"Accept": "application/json"})
-    except httpx.HTTPError as exc:
-        raise CrimeError(f"data.police.uk could not be reached ({type(exc).__name__})") from exc
+    """One request, paced; a 429 is waited out (its Retry-After, up to 5 s) and tried again, three times in all."""
+    r = None
+    for attempt in range(3):
+        await _turn()
+        try:
+            r = await client.get(BASE + path, params=params, headers={"Accept": "application/json", "User-Agent": _ua()})
+        except httpx.HTTPError as exc:
+            raise CrimeError(f"data.police.uk could not be reached ({type(exc).__name__})") from exc
+        if r.status_code != 429:
+            break
+        try:
+            wait = min(5.0, float(r.headers.get("retry-after") or 1 + attempt))
+        except ValueError:
+            wait = 1.0 + attempt
+        log.info("data.police.uk said too many requests (%s); waiting %.1f s", path, wait)
+        await asyncio.sleep(wait)
+    assert r is not None
     if r.status_code == 404:
         return None
     if r.status_code == 429:
-        raise CrimeError("data.police.uk says too many requests: try again in a moment")
+        why = (r.headers.get("retry-after") and f"; try again in {r.headers['retry-after']} s") or ""
+        raise CrimeError(f"data.police.uk says too many requests{why or ': try again in a moment'} "
+                         f"({r.text.strip()[:80] or 'no reason given'})")  # fmt: skip
     if r.status_code >= 400:
         raise CrimeError(f"data.police.uk answered HTTP {r.status_code}")
     return r.json() if r.content else None
@@ -179,7 +216,7 @@ async def look_up(lat: float, lon: float, months: int = 12, client: httpx.AsyncC
         last = await latest_month(client)
         names = await categories(client)
         want = months_back(last, months)
-        sem = asyncio.Semaphore(4)
+        sem = asyncio.Semaphore(2)
 
         async def one(m: str) -> list[dict[str, Any]]:
             async with sem:

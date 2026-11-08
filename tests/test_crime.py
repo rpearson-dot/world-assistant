@@ -107,3 +107,39 @@ def test_the_api_route_and_errors(monkeypatch: Any) -> None:
     r = c.get("/v1/crime", params={"lat": 51.4, "lon": -0.25}, headers={"Authorization": "Bearer s3cret"})
     assert r.status_code == 502 and "HTTP 500" in r.json()["detail"]
     assert c.get("/v1/crime", headers={"Authorization": "Bearer s3cret"}).status_code == 422
+
+
+def test_too_many_requests_is_waited_out(monkeypatch: Any) -> None:
+    C._cache.clear()
+    monkeypatch.setattr(C, "GAP_S", 0)
+    slept: list[float] = []
+
+    async def nap(s: float) -> None:
+        slept.append(s)
+
+    monkeypatch.setattr(C.asyncio, "sleep", nap)
+    n = {"calls": 0}
+
+    def fake(req: httpx.Request) -> httpx.Response:
+        n["calls"] += 1
+        if n["calls"] == 1:
+            return httpx.Response(429, headers={"Retry-After": "2"}, text="Too Many Requests")
+        return httpx.Response(200, json={"date": "2026-09-01"})
+
+    async def go() -> str:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(fake)) as c:
+            return await C.latest_month(c)
+
+    assert asyncio.run(go()) == "2026-09" and slept == [2.0] and n["calls"] == 2
+
+    def always(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, text="slow down")
+
+    async def go2() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(always)) as c:
+            await C._get(c, "/crime-categories")
+
+    import pytest
+
+    with pytest.raises(C.CrimeError, match="too many requests.*slow down"):
+        asyncio.run(go2())

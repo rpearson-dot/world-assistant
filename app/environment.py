@@ -181,11 +181,11 @@ async def probe(lat: float, lon: float) -> None:
             except C.EnvError as exc:
                 print(f"FAILED: {exc}")
         near = '{"center":{"type":"Point","coordinates":[%s,%s]},"radius":20}' % (lon, lat)  # noqa: UP031
-        print("\n== UK-AIR stations, raw (first two)")
+        print("\n== UK-AIR stations, raw (first two, by its nearby search)")
         try:
             print(json.dumps((await C._json(c, f"{C.UKAIR}/stations", {"near": near}))[:2], indent=2)[:2000])
-        except (C.EnvError, TypeError) as exc:
-            print(f"FAILED: {exc}")
+        except (C.EnvError, TypeError) as exc:  # not used since 0.38.1 (it fails): only noted, not a failure
+            print(f"Note: UK-AIR's nearby search still fails ({exc}); World Assistant reads its full station list instead")
         print("\n== Thames Water overflows, raw (first one within 3 km)")
         try:
             raw = await C._json(c, C.OVERFLOW_FEEDS["Thames Water"], {
