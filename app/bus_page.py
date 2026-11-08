@@ -60,6 +60,9 @@ PAGE = """<!doctype html>
       <div class="row hidden" id="backtimes">
         <label>Earliest bus back <input id="bearliest" type="time" value="15:00"></label>
         <label>I must be back by <input id="bdeadline" type="time" value="17:30"></label>
+        <label>Get on at <select id="bboard"></select></label>
+        <label>Get off at <select id="btarget"></select></label>
+        <p id="backnote" class="hint"></p>
       </div>
       <div class="row"><button id="save" class="primary" type="button">Start tracking</button></div>
       <p id="setupmsg" class="dim"></p>
@@ -209,7 +212,7 @@ function fillTarget() {
   const d = o.dataset.dir, pos = stops[d].stops.findIndex(s => s.id === o.value), after = stops[d].stops.slice(pos + 1);
   $('target').replaceChildren(...after.map(s => new Option(s.name, s.id)));
   $('watch').replaceChildren(...after.slice(0, -1).map(s => new Option(s.name, s.id)));
-  watched.clear(); drawChips();
+  watched.clear(); drawChips(); fillBack();
 }
 function drawChips() {
   const c = $('watched'); c.replaceChildren();
@@ -227,14 +230,27 @@ $('load').onclick = async () => {
   catch (e) { msg.textContent = e.message; }
 };
 $('board').onchange = fillTarget;
-$('back').onchange = () => $('backtimes').classList.toggle('hidden', !$('back').checked);
+$('back').onchange = () => { $('backtimes').classList.toggle('hidden', !$('back').checked); fillBack(); };
+$('target').onchange = fillBack;
+const same = s => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+function fillBack() {  // the way back: the other side of the road, found by name; choose where the names differ
+  const o = $('board').selectedOptions[0], t = $('target').selectedOptions[0]; if (!o || !t || !stops) return;
+  const other = dirs().find(x => x !== o.dataset.dir), list = other ? stops[other].stops : [];
+  const fill = (id, want) => { const sel = $(id); sel.replaceChildren(new Option('choose…', ''), ...list.map(s => new Option(s.name, s.id)));
+    const hit = list.find(s => same(s.name) === same(want)); sel.value = hit ? hit.id : ''; return !!hit; };
+  const from = (stops[o.dataset.dir].stops.find(s => s.id === o.value) || {}).name || '';
+  const a = fill('bboard', t.textContent), b = fill('btarget', from);
+  $('backnote').textContent = (a && b) ? 'Found on the other side of the road by name; change them if they are wrong.'
+    : 'No stop on the way back has the same name as ' + [!a && t.textContent, !b && from].filter(Boolean).join(' or ') + ': choose the stop across the road.';
+}
 $('addwatch').onclick = () => { const o = $('watch').selectedOptions[0]; if (o) { watched.set(o.value, o.textContent); drawChips(); } };
 $('save').onclick = async () => {
   try {
     const r = await api('POST', '/v1/bus/setup', { line: $('line').value.trim(), board: $('board').value, target: $('target').value,
       watch: [...watched.keys()], earliest: $('earliest').value, deadline: $('deadline').value,
       name: $('name').value.trim() || $('line').value.trim().toLowerCase(), source: src.source, operator: src.operator,
-      ...($('back').checked ? { return_earliest: $('bearliest').value, return_deadline: $('bdeadline').value } : {}) });
+      ...($('back').checked ? { return_earliest: $('bearliest').value, return_deadline: $('bdeadline').value,
+        return_board: $('bboard').value || null, return_target: $('btarget').value || null } : {}) });
     $('setupmsg').className = 'ok'; $('setupmsg').textContent = 'Tracking ' + r.stops_tracked.join(', ') + '.' +
       (r.return_side_found ? ' The opposite-side stop at your destination was found automatically.' : '') +
       (r.return_tracker ? ' The way back (' + r.return_tracker.board + ' to ' + r.return_tracker.target + ', ' + r.return_tracker.earliest + ' to ' + r.return_tracker.deadline + ') is tracked as "' + r.return_tracker.id + '".' : '');

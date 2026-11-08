@@ -287,6 +287,12 @@ async def get_hygiene(request: Request, lat: float | None = Query(None, ge=49.5,
 @router.get("/alerts")
 async def get_alerts(request: Request, limit: int = Query(20, ge=1, le=100)) -> dict[str, Any]:
     st = await _get_state(request.app.state.engine)
+    if not st.get("checked_at"):  # never checked yet (the worker's first is the next morning): check now
+        try:
+            await check(request)
+            st = await _get_state(request.app.state.engine)
+        except FoodError as exc:
+            st = {"shopping_note": f"not checked yet: {exc}"}
     alerts = st.get("alerts") or []
     return {"checked_at": st.get("checked_at"), "alerts": alerts[:limit], "matched": [a for a in alerts if a.get("matches")],
             "shopping_note": st.get("shopping_note"), "text": alerts_words(st), "attribution": ATTRIBUTION}  # fmt: skip

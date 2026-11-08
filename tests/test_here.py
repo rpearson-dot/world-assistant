@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException, Request
 from app import here as H
 
 ANSWERS: dict[str, Any] = {
+    "/v1/places": [{"id": "home", "name": "Home", "kind": "home", "lat": 51.0, "lon": 0.0}],
     "/v1/food/hygiene": {"text": "Nearest rated: Corner Cafe: 5."},
     "/v1/crime": {"text": "4 crimes reported within a mile in September 2026."},
     "/v1/postcodes/near": {"postcodes": [{"postcode": "KT17 1AA", "district": "Epsom and Ewell", "ward": "Town"}]},
@@ -159,3 +160,12 @@ async def test_a_postcode_instead_of_a_point(monkeypatch: pytest.MonkeyPatch) ->
     with pytest.raises(HTTPException) as e:
         await H.here(req, lat=None, lon=None, postcode=None, words=None, parts=None)
     assert e.value.status_code == 422
+
+
+def test_a_saved_place_is_named() -> None:
+    from app.here import saved_place
+
+    places = [{"id": "home", "name": "Home", "lat": 51.3343, "lon": -0.2678}, {"id": "work", "name": "Work", "lat": 51.5, "lon": -0.1},
+              {"id": "bad", "name": "No position"}]  # fmt: skip
+    assert saved_place(places, 51.3348, -0.2680)["name"] == "Home"  # type: ignore[index]  # ~60 m away
+    assert saved_place(places, 51.34, -0.2678) is None  # ~600 m away

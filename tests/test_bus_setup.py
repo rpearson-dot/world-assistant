@@ -112,3 +112,20 @@ def test_the_way_back_must_be_fully_specified_and_workable(client: TestClient, m
 
 async def _async(value: Any) -> Any:
     return value
+
+
+def test_the_way_back_takes_chosen_stops_where_the_names_differ() -> None:
+    from app.integrations.bus.setup import return_config, return_stops
+
+    seqs = {**SEQS, "inbound": [{"id": "INB00001", "name": "Terminus"}, {"id": "INB00002", "name": "School Close (stop K)"},
+                                {"id": "INB00003", "name": "Beta Lane"}, {"id": "INB00004", "name": "Station Road"},
+                                {"id": "INB00005", "name": "Depot"}]}  # fmt: skip
+    found = return_stops(seqs, "OUT00002", "OUT00005")
+    assert found["board"] is None and found["target"] == "INB00004" and found["board_for"] == "School Close"
+    assert [c["id"] for c in found["choices"]][:2] == ["INB00001", "INB00002"]
+    with pytest.raises(SetupError, match="no stop called School Close on the way back: choose"):
+        return_config("213", seqs, "OUT00002", "OUT00005", "15:00", "17:30")
+    cfg = return_config("213", seqs, "OUT00002", "OUT00005", "15:00", "17:30", back_board="INB00002")
+    m = TrackerConfig.model_validate(cfg)
+    by = {s.key: s.sid for s in m.stops}
+    assert by[m.target.board] == "INB00002" and by[m.target.alight] == "INB00004"  # type: ignore[union-attr]

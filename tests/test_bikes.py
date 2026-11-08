@@ -537,3 +537,21 @@ def test_a_wheel_swap_dated_in_the_past_puts_the_rides_since_on_those_wheels(gar
     assert on[30.0] == ["Road front wheel", "Winter rear"] and on[50.0] == ["Road front wheel", "Road rear wheel"]
     tyre = next(p for s in g["bikes"][0]["sets"] if s["label"] == "Winter rear" for p in s["parts"] if p["kind"] == "tyre")
     assert tyre["wear"]["km"] == 30
+
+
+@pytest.mark.skipif(not DB, reason="WA_TEST_DATABASE_URL not set")
+def test_one_bike_changed_to_axs_takes_batteries_and_they_come_off_again(garage: Any) -> None:
+    c = garage
+    c.post("/v1/bikes/riders", json={"name": "Bo"})
+    road = c.post("/v1/bikes/bikes", json={"rider": "bo", "label": "Road", "type": "road"}).json()["id"]
+    c.post("/v1/bikes/bikes", json={"rider": "bo", "label": "Town", "type": "hybrid"})
+    r = c.patch(f"/v1/bikes/bikes/{road}", json={"config": {"shifting": "axs"}}).json()
+    assert "Coin cells" in " ".join(r["added"]) or r["added"]  # the AXS bike's own parts
+    bat = c.post("/v1/bikes/parts", json={"rider": "bo", "kind": "axs_battery", "status": "kit", "label": "Battery A"}).json()["id"]
+    assert c.post("/v1/bikes/fit", json={"item": "part", "id": bat, "bike_id": road}).status_code == 200
+    g = c.get("/v1/bikes?rider=bo").json()
+    on = {b["label"]: [x["id"] for x in b["batteries"]] for b in g["bikes"]}
+    assert on == {"Road": [bat], "Town": []}
+    assert c.post("/v1/bikes/fit", json={"item": "part", "id": bat, "bike_id": None}).status_code == 200
+    g = c.get("/v1/bikes?rider=bo").json()
+    assert all(not b["batteries"] for b in g["bikes"]) and any(k["id"] == bat for k in g["kit"])

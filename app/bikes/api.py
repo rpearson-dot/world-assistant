@@ -599,7 +599,8 @@ async def fit(request: Request, body: FitIn) -> dict[str, Any]:
                 raise HTTPException(404, "No such part")
             p = _row(row)
             await _fit(c, "part", p["id"], at, bike_id=body.bike_id, set_id=body.set_id)
-            status = "fitted" if (body.bike_id or body.set_id) else ("kit" if D.KINDS.get(p["kind"], D.KINDS["other"]).on == "rider" else "shelf")
+            kit = D.KINDS.get(p["kind"], D.KINDS["other"]).on == "rider"  # rider kit (an AXS battery) stays kit on a bike
+            status = "kit" if kit else ("fitted" if (body.bike_id or body.set_id) else "shelf")
             await c.execute(text("UPDATE bike_part SET status = :s, fitted_at = CASE WHEN :s = 'fitted' AND status <> 'fitted' "
                                  "THEN :t ELSE fitted_at END WHERE id = :p"), {"s": status, "t": at, "p": p["id"]})  # fmt: skip
             return {"moved": [name_of(p)], "at": at.isoformat()}

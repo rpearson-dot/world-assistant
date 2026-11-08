@@ -2,6 +2,27 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.44.0] - 2026-11-08
+
+### Fixed
+- **Bikes:** an AXS battery put on a bike became an ordinary part of it, so it no longer showed as a battery; it
+  stays your kit.
+- **The map page** had not worked since 0.40.0 (a name declared twice stopped its script). A new test parses every
+  page's scripts.
+- **Police:** data.police.uk answered "too many requests" on the first live check. Requests now go one after another,
+  at most about seven a second, with a 429 waited out (its Retry-After, up to 5 s) and tried again.
+- **Buses:** setting up the way back failed when a stop on the other side of the road has another name, with no way to
+  choose. The way back's stops are now shown to choose from, found by name where they match.
+- **Food alerts** are checked the first time they are looked at, rather than only the next morning.
+- The air and water probe no longer counts UK-AIR's nearby search (broken since 7 November, not used since 0.38.1) as a
+  failure.
+
+### Changed
+- **Bikes:** each bike's card has **Its answers**, to change what the bike has after adding it (SRAM AXS shifting,
+  a wireless dropper, brakes...): parts it now needs are added, ones it no longer has retired. A bike with AXS shifting
+  or a wireless dropper shows its batteries, with Fit a battery (from your kit), Add a battery and Take off.
+- **Here** says when the point is one of your saved places (within 150 m), and does not offer to keep it again.
+
 ## [0.43.0] - 2026-11-08
 
 ### Changed
