@@ -66,6 +66,17 @@ def paint(name: Any) -> str | None:
 
 
 def bike(cfg: dict[str, Any], label: str = "bike") -> str:
+    """The bike's drawing (see `_draw`)."""
+    return _draw(cfg, label)[0]
+
+
+def spots(cfg: dict[str, Any]) -> dict[str, list[float]]:
+    """Where each part of the bike is on its drawing, as fractions of its width and height (the garage puts each part's
+    marker there): the wheels and tyres, the brakes, chain, cassette, derailleurs, crank, bars, saddle, fork, shock."""
+    return _draw(cfg, "bike")[1]
+
+
+def _draw(cfg: dict[str, Any], label: str = "bike") -> tuple[str, dict[str, list[float]]]:
     """A side view of a bike of this type, drawn from typical frame geometry for it (so a road bike, a gravel bike and
     a trail bike each look like one): spoked wheels with tyres as wide as the type's, the frame in the theme's accent
     colour, fork (suspension when it has one), bars, saddle and seat post (a dropper's thicker), crank, chain and rear
@@ -235,7 +246,22 @@ def bike(cfg: dict[str, Any], label: str = "bike") -> str:
                    f'L{rx_:.1f} {ry_:.1f}" stroke-width="1.6"/>')
     w = width_mm * k + 2 * pad
     h = (top_mm - bottom_mm) * k + 2 * pad
-    return _SVG.format(vb=f"0 0 {w:.0f} {h:.0f}", w=2, label=label, body="".join(out))
+    sat0 = (s_top[0] - 190 * math.cos(rad(gm["sta"])), s_top[1] + 190 * math.sin(rad(gm["sta"])))
+    at = {"rear_wheel": rear, "front_wheel": front,
+          "rear_tyre": (rear[0] - gm["r"] * 0.72, rear[1] - gm["r"] * 0.72), "front_tyre": (front[0] + gm["r"] * 0.72, front[1] - gm["r"] * 0.72),
+          "rear_rim": (rear[0] - gm["r"] * 0.66, rear[1] + gm["r"] * 0.66), "front_rim": (front[0] + gm["r"] * 0.66, front[1] + gm["r"] * 0.66),
+          "rear_brake": (rear[0] + gm["r"] * 0.45, rear[1] + gm["r"] * 0.5), "front_brake": (front[0] - gm["r"] * 0.15, front[1] + gm["r"] * 0.55),
+          "cassette": (rear[0] + 105, rear[1] + 35), "rear_derailleur": (rear[0] + 30, rear[1] - 140),
+          "chain": (rear[0] * 0.5, rear[1] * 0.5 - 95), "crank": (0, 0), "front_derailleur": (s_top[0] * 0.2, s_top[1] * 0.2),
+          "bars": stem_end, "headset": h_top, "fork": ((h_low[0] + front[0]) / 2, (h_low[1] + front[1]) / 2),
+          "saddle": sat0, "seatpost": ((s_top[0] + sat0[0]) / 2, (s_top[1] + sat0[1]) / 2),
+          "frame": ((h_low[0] * 0.5 + s_top[0] * 0.25), (h_low[1] * 0.5 + s_top[1] * 0.4))}  # fmt: skip
+    if full:
+        at["shock"] = ((shock_a[0] + shock_b[0]) / 2, (shock_a[1] + shock_b[1]) / 2)
+    if tandem:
+        at["timing"] = cap_bb  # type: ignore[assignment]
+    out_spots = {k_: [round(xy(v)[0] / w, 3), round(xy(v)[1] / h, 3)] for k_, v in at.items()}
+    return _SVG.format(vb=f"0 0 {w:.0f} {h:.0f}", w=2, label=label, body="".join(out)), out_spots
 
 
 ICONS = {

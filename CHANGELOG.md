@@ -2,6 +2,16 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **The Garage** (`/bikes/garage`): one bike at a time with its parts marked on its drawing, ringed green to amber
+  to red by wear; the spares shelf, a bin and a shop counter always on screen. Tap a part for its card and a dynamic
+  list of what could replace it (spares that fit, things to buy that match its speeds, freehub and calliper); drag
+  spares onto the bike or anything into the bin; jobs (replace, service, bin, buy) go onto a service list done in
+  one go, the buys onto the Outdoors list. New routes: `GET /v1/bikes/parts/{id}/options`, `POST /v1/bikes/jobs`;
+  each bike has `spots` (where its parts are on its drawing) and each part its `spot`.
+
 ## [0.46.0] - 2026-11-08
 
 ### Added

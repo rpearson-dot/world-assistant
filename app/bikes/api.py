@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.auth import require_token
 from app.bikes import defaults as D
+from app.bikes import garage as GR
 from app.bikes import groupsets as GS
 from app.bikes import wear as W
 from app.bikes.rain import home_point, suggest, suggest_route
@@ -1362,6 +1363,12 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
         b["pressures"] = pressures(b, rider)
         on = [{**p, "end": None} for p in b["parts"]] + [{**p, "end": s.get("position")} for s in b["sets"] for p in s["parts"]]
         b["warnings"] = compat.on_bike(on, cfg)
+        b["spots"] = art.spots(cfg)
+        for p in b["parts"]:
+            p["spot"] = GR.spot_of(p, None, b["spots"])
+        for st_ in b["sets"]:
+            for p in st_["parts"]:
+                p["spot"] = GR.spot_of(p, st_.get("position"), b["spots"])
         lists_ = CL.lists(cfg)
         last = {k: next((s for s in reversed(services) if s["action"] == "checklist" and s.get("bike_id") == b["id"]
                          and (s.get("note") or "").startswith(CL.NAMES[k])), None) for k in lists_}  # fmt: skip
@@ -1601,6 +1608,91 @@ async def garage(request: Request, rider: str = Query(...)) -> dict[str, Any]:
     batteries, the shelf, kit, rides to confirm as wet or not, tyre pressures and running cost."""
     r = await _rider(request.app.state.engine, rider)
     return build(await load(request.app.state.engine, rider), r, _now())
+
+
+@router.get("/parts/{part_id}/options")
+async def part_options(request: Request, part_id: int, rider: str = Query(...)) -> dict[str, Any]:
+    """What could replace a part: the spares on the shelf (those that fit first, each with why not and what would not
+    go with the rest of the bike) and things to buy (the same again, the bike's groupset's, others that fit)."""
+    r = await _rider(request.app.state.engine, rider)
+    g = build(await load(request.app.state.engine, rider), r, _now())
+    for b in g["bikes"]:
+        on = [{**p, "end": None} for p in b["parts"]] + [{**p, "end": s_.get("position")} for s_ in b["sets"] for p in s_["parts"]]
+        for p in on:
+            if p["id"] == part_id:
+                wheel = next((s_ for s_ in b["sets"] if any(q["id"] == part_id for q in s_["parts"])), None)
+                return {"part": p, "bike": {"id": b["id"], "label": b["label"]}, "wheel": wheel and {"id": wheel["id"], "label": wheel["label"]},
+                        "spares": GR.spare_options(p, g["shelf"], b, wheel, on), "buy": GR.buy_options(p, b.get("config") or {}, on)}  # fmt: skip
+    p = next((x for x in g["shelf"] + g["kit"] if x["id"] == part_id), None)
+    if not p:
+        raise HTTPException(404, "No such part for this rider")
+    return {"part": p, "bike": None, "wheel": None, "spares": GR.spare_options(p, [x for x in g["shelf"] if x["id"] != part_id], None, None, []),
+            "buy": GR.buy_options(p, {}, [])}  # fmt: skip
+
+
+LABELS = {"serviced": "serviced", "checked": "checked", "charged": "charged", "topped_up": "topped up", "bled": "bled"}
+
+
+class Job(BaseModel):
+    op: Literal["replace", "service", "bin", "buy"]
+    part_id: int | None = None
+    spare_id: int | None = Field(None, description="replace: with this spare from the shelf (none: a new one)")
+    action: str | None = Field(None, description="service: what was done (serviced, checked, charged...)")
+    text: str | None = Field(None, max_length=200, description="buy: the shopping list line")
+    note: str | None = Field(None, max_length=200)
+    brand: str | None = Field(None, max_length=80)
+    model: str | None = Field(None, max_length=120)
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class JobsIn(BaseModel):
+    rider: str
+    jobs: list[Job] = Field(min_length=1, max_length=60)
+
+
+@router.post("/jobs")
+async def do_jobs(request: Request, body: JobsIn) -> dict[str, Any]:
+    """A service list done in one go: replacements (with a spare, or a new part, its make and model if bought), services
+    and checks, parts binned (retired: off the bike or shelf, kept in the history and costs), and things to buy onto
+    the Outdoors list. Each job's result; one failing does not stop the rest."""
+    await _rider(request.app.state.engine, body.rider)
+    out = []
+    for j in body.jobs:
+        try:
+            if j.op in ("replace", "service", "bin") and j.part_id is None:
+                raise HTTPException(422, "Say which part")
+            if j.op == "replace":
+                new = {"brand": j.brand, "model": j.model, "details": j.details} if j.spare_id is None and (j.brand or j.model) else None
+                r = await service(request, ServiceIn(rider=body.rider, action="replaced", part_id=j.part_id, spare_id=j.spare_id,
+                                                     note=j.note, new=new))  # fmt: skip
+                out.append({"op": j.op, "ok": True, "said": "replaced" + (f" ({r['note']})" if r.get("note") else " with the spare" if j.spare_id else "")})
+            elif j.op == "service":
+                action = j.action or "serviced"
+                if action not in ServiceIn.model_fields["action"].annotation.__args__:  # type: ignore[union-attr]
+                    raise HTTPException(422, f"Not an action: {action}")
+                r = await service(request, ServiceIn(rider=body.rider, action=action, part_id=j.part_id, note=j.note))  # type: ignore[arg-type]
+                out.append({"op": j.op, "ok": True, "said": LABELS.get(action, action)})
+            elif j.op == "bin":
+                now = _now()
+                async with request.app.state.engine.begin() as c:
+                    p = (await c.execute(text("SELECT * FROM bike_part WHERE id = :p AND rider_id = :r"), {"p": j.part_id, "r": body.rider})).first()
+                    if not p:
+                        raise HTTPException(404, "No such part")
+                    await c.execute(text("UPDATE bike_part SET status = 'retired', retired_at = :t WHERE id = :p"), {"t": now, "p": j.part_id})
+                    await _fit(c, "part", j.part_id, now)  # type: ignore[arg-type]
+                out.append({"op": j.op, "ok": True, "said": f"binned {name_of(_row(p))}"})
+            else:
+                if not j.text:
+                    raise HTTPException(422, "Say what to buy")
+                from app import shopping as S
+                from app.outdoors import the_list
+
+                _, lid, lname = await the_list(request)
+                await S.add_item(request, j.text, j.note or "bike garage", list_id=lid)
+                out.append({"op": j.op, "ok": True, "said": f"{j.text} onto {lname}"})
+        except HTTPException as exc:
+            out.append({"op": j.op, "ok": False, "said": str(exc.detail)})
+    return {"done": sum(x["ok"] for x in out), "failed": sum(not x["ok"] for x in out), "results": out}
 
 
 @router.get("/costs")

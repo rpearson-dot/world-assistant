@@ -109,6 +109,26 @@ answers**.
 - **Running cost**: per bike this year and in total, the cost per km, and each kind of part's cost per 1,000 km once
   some have been used up. A spare's price counts when it is fitted, not when it is bought.
 
+## The Garage
+The Garage (`/bikes/garage`, linked from the top of the Bikes page) is the garage as a game's tuning screen. Choose a
+bike along the top and only that bike shows, with a marker on its drawing where each part is (chain, cassette,
+derailleur, crank, brakes, tyres, rims, hubs, bars, saddle, fork, shock), ringed green to amber to red by the most
+worn part there; a due one pulses. The spares shelf, the bin and the shop counter stay along the bottom of the screen;
+each spare is a tile filled from the bottom in the same green to red.
+
+- **Tap a marker** for its parts, then one for its card: what it is, how worn (km, hours or days of its life), the last
+  thing done to it, and buttons. **Replace** opens what could take its place, worked out for that bike: the spares on
+  the shelf (those that fit first, with anything that would not go with the rest of the bike), and things to buy (the
+  same again, the bike's groupset's, others with the same speeds and freehub; pads for the calliper on the bike).
+  **Fit this** uses a spare, **Fit new** a new one of that make and model, **Buy** puts it in the shop basket.
+- **Drag** a spare from the shelf onto a marker to fit it in place of the part of its kind there, or a part or spare
+  onto the bin to bin it (retired: kept in the history and costs).
+- **The shop counter** shows the basket and what you might need: spares below the number you keep, and the first thing
+  to buy for each worn part without a spare on the shelf.
+- **The service list** collects every job (replace, service, bin, buy) and does them all with **Do them all**; anything
+  that could not be done stays on the list with why. Bought things go onto the Outdoors list; nothing is ordered or
+  paid for. The list is kept in that browser until it is done.
+
 ## Sensors
 Your Garmin sensors with batteries (speed, cadence, heart rate strap, power meter, radar, lights) are added to the
 **Sensors** section the first time a ride's file shows them, one for each serial number. The files of your other

@@ -300,3 +300,74 @@ def test_garmin_sensors_become_kit_with_their_batteries(garage: Any) -> None:  #
     assert "reported" not in hr and hr["wear"]["state"] == "ok"
     later = [{**readings[1], "status": "new", "level": 100, "at": (now + timedelta(minutes=5)).isoformat()}]
     assert asyncio.run(A.save_sensors(app.state.engine, "rob", later)) == {"added": 0, "updated": 1}
+
+
+def test_parts_have_a_place_on_the_drawing() -> None:
+    from app.bikes import art
+    from app.bikes import garage as GR
+
+    sp = art.spots({"type": "full_suspension"})
+    assert "shock" in sp and all(0 <= v <= 1 for xy in sp.values() for v in xy) and sp["rear_wheel"][0] < sp["front_wheel"][0]
+    assert GR.spot_of({"kind": "tyre"}, "front", sp) == "front_tyre" and GR.spot_of({"kind": "disc_pads", "position": "rear"}, None, sp) == "rear_brake"
+    assert GR.spot_of({"kind": "shock_air"}, None, art.spots({"type": "road"})) == "frame"  # no shock drawn: the frame
+    assert "timing" in art.spots({"type": "tandem"})
+
+
+def test_what_to_buy_fits_the_bike() -> None:
+    from app.bikes import garage as GR
+
+    cfg = {"groupset": "sram-rival-axs-e1-xplr", "speeds": 13, "front_brake": "hydraulic_disc", "rear_brake": "hydraulic_disc"}
+    chain = {"id": 1, "kind": "chain", "brand": "SRAM", "model": "Rival AXS E1", "details": {"speeds": 13}}
+    got = GR.buy_options(chain, cfg, [])
+    assert got[0] == {"text": "SRAM Rival AXS E1 chain", "brand": "SRAM", "model": "Rival AXS E1", "why": "the same again", "details": {"speeds": 13}}
+    assert all("13" in x["why"] or x["why"] == "the same again" or "groupset" in x["why"] for x in got)
+    cas = {"id": 2, "kind": "cassette", "details": {"speeds": 12}}
+    hub = {"id": 3, "kind": "hub", "end": "rear", "details": {"freehub": "HG"}}
+    texts = [x["text"] for x in GR.buy_options(cas, {"speeds": 12}, [hub])]
+    assert texts and all("XG-" not in t for t in texts) and any("CS-R7101" in t or "PG-1230" in t for t in texts)  # HG only
+    pads = {"id": 4, "kind": "disc_pads", "position": "front"}
+    cal = {"id": 5, "kind": "calliper", "position": "front", "brand": "SRAM", "model": "Rival AXS E1 HRD flat mount"}
+    assert GR.buy_options(pads, {}, [cal])[0]["text"] == "SRAM pads for Rival AXS E1 HRD flat mount"
+    assert GR.buy_options({"id": 6, "kind": "saddle"}, {}, [])[0]["text"] == "Saddle"
+
+
+@pytest.mark.skipif(not DB, reason="WA_TEST_DATABASE_URL not set")
+def test_a_service_list_done_in_one_go(garage: Any, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
+    c = garage
+    c.post("/v1/bikes/riders", json={"name": "Rob", "weight_kg": 80})
+    bike = c.post("/v1/bikes/bikes", json={"rider": "rob", "label": "Reiver", "type": "gravel"}).json()["id"]
+    spare = c.post("/v1/bikes/parts", json={"rider": "rob", "kind": "chain", "status": "shelf", "brand": "SRAM", "model": "Rival", "quantity": 2}).json()
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    b = g["bikes"][0]
+    assert b["spots"]["chain"] and _part(g, "chain")["spot"] == "chain" and _part(g, "tyre", "front")["spot"] == "front_tyre"
+    chain, lube, pads = _part(g, "chain"), _part(g, "lube"), _part(g, "disc_pads", "front")
+    opts = c.get(f"/v1/bikes/parts/{chain['id']}/options", params={"rider": "rob"}).json()
+    assert opts["bike"]["label"] == "Reiver" and opts["spares"][0]["id"] == spare["id"] and opts["spares"][0]["problems"] == []
+    assert c.get("/v1/bikes/parts/99999/options", params={"rider": "rob"}).status_code == 404
+
+    bought: list[str] = []
+
+    async def fake_list(request: Any) -> Any:
+        return None, 7, "Outdoors"
+
+    async def fake_add(request: Any, text: str, why: str, list_id: Any = None) -> Any:
+        bought.append(text)
+        return {}
+
+    from app import outdoors, shopping
+
+    monkeypatch.setattr(outdoors, "the_list", fake_list)
+    monkeypatch.setattr(shopping, "add_item", fake_add)
+    r = c.post("/v1/bikes/jobs", json={"rider": "rob", "jobs": [
+        {"op": "replace", "part_id": chain["id"], "spare_id": spare["id"]},
+        {"op": "service", "part_id": lube["id"], "action": "serviced"},
+        {"op": "replace", "part_id": pads["id"], "brand": "SRAM", "model": "Organic pads"},
+        {"op": "bin", "part_id": spare["id"]},
+        {"op": "buy", "text": "SRAM Rival chain"},
+        {"op": "service", "part_id": lube["id"], "action": "nonsense"},
+        {"op": "bin"}]}).json()  # fmt: skip
+    assert (r["done"], r["failed"]) == (5, 2) and bought == ["SRAM Rival chain"]
+    g = c.get("/v1/bikes", params={"rider": "rob"}).json()
+    assert _part(g, "chain")["model"] == "Rival" and _part(g, "disc_pads", "front")["model"] == "Organic pads"
+    assert not [p for p in g["shelf"] if p["kind"] == "chain"]  # one fitted, the other binned
+    assert bike
