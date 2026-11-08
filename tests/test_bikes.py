@@ -555,3 +555,56 @@ def test_one_bike_changed_to_axs_takes_batteries_and_they_come_off_again(garage:
     assert c.post("/v1/bikes/fit", json={"item": "part", "id": bat, "bike_id": None}).status_code == 200
     g = c.get("/v1/bikes?rider=bo").json()
     assert all(not b["batteries"] for b in g["bikes"]) and any(k["id"] == bat for k in g["kit"])
+
+
+def test_what_cannot_go_where() -> None:
+    from app.bikes.placement import problems
+
+    road = {"id": 1, "label": "Road", "config": {**D.defaults_for("road"), "front_brake": "rim", "rear_brake": "rim"}}
+    gravel = {"id": 2, "label": "Gravel", "config": D.defaults_for("gravel")}
+    front, rear = {"id": 10, "label": "Front wheel", "kind": "wheel", "position": "front"}, {"id": 11, "label": "Rear wheel", "kind": "wheel", "position": "rear"}
+    part = lambda kind, pos=None: {"id": None, "kind": kind, "position": pos}
+    assert problems(part("cassette"), wheel=front, wheel_bike=gravel) == ["A cassette only goes on a rear wheel"]
+    assert problems(part("cassette"), wheel=rear, wheel_bike=gravel) == []
+    assert "goes on the bike, not on a wheel" in problems(part("chain"), wheel=rear)[0]
+    assert "goes on a wheel" in problems(part("tyre"), bike=gravel)[0]
+    assert "rotor needs a disc brake" in problems(part("rotor"), wheel=front, wheel_bike=road)[0]
+    assert problems(part("rotor"), wheel=front, wheel_bike=gravel) == []
+    assert problems(part("rotor"), wheel=front) == []  # in storage: no bike to check against
+    assert "AXS" in problems(part("axs_battery"), bike=gravel)[0]
+    assert problems(part("axs_battery"), bike={**gravel, "config": {**gravel["config"], "shifting": "axs"}}) == []
+    assert "already a tyre" in problems(part("tyre"), wheel=front, there=[{"id": 5, "kind": "tyre", "position": "front"}])[0]
+    assert problems(part("disc_pads", "rear"), bike=gravel, there=[{"id": 6, "kind": "disc_pads", "position": "front"}]) == []
+    assert "already" in problems(part("disc_pads", "front"), bike=gravel, there=[{"id": 6, "kind": "disc_pads", "position": "front"}])[0]
+    assert "sealant is for a tubeless tyre" in problems(part("sealant"), wheel=rear, wheel_bike={**gravel, "config": {**gravel["config"], "rear_tyre": "tubed"}})[0].lower()
+
+
+@pytest.mark.skipif(not DB, reason="WA_TEST_DATABASE_URL not set")
+def test_a_cassette_cannot_go_on_a_front_wheel(garage: Any) -> None:
+    c = garage
+    c.post("/v1/bikes/riders", json={"name": "Cy"})
+    bike = c.post("/v1/bikes/bikes", json={"rider": "cy", "label": "Gravel", "type": "gravel"}).json()
+    r = c.post("/v1/bikes/parts", json={"rider": "cy", "kind": "cassette", "set_id": bike["wheels"]["front"]})
+    assert r.status_code == 422 and "rear wheel" in r.json()["detail"]
+    r = c.post("/v1/bikes/parts", json={"rider": "cy", "kind": "cassette", "set_id": bike["wheels"]["rear"]})
+    assert r.status_code == 422 and "already a cassette" in r.json()["detail"]  # the bike came with one
+    spare = c.post("/v1/bikes/parts", json={"rider": "cy", "kind": "cassette", "status": "shelf"}).json()["id"]
+    r = c.post("/v1/bikes/fit", json={"item": "part", "id": spare, "set_id": bike["wheels"]["front"]})
+    assert r.status_code == 422
+
+
+def test_each_model_and_paint_draws_and_bad_ones_are_refused() -> None:
+    from fastapi import HTTPException
+
+    from app.bikes import art
+    from app.bikes.api import _check
+    from app.themes import PAINTS
+
+    for key, m in art.MODELS.items():
+        svg = art.bike({**D.defaults_for(m["type"]), "model": key, "paint": "bronze", "paint2": "red"}, key)
+        assert svg.startswith("<svg") and PAINTS["bronze"][1] in svg and PAINTS["red"][1] in svg
+    assert "var(--accent)" in art.bike(D.defaults_for("road"))  # no paint: the theme's colour
+    _check({"model": "planet-x-reiver-2025", "paint": "barbie-pink"})
+    for bad in ({"model": "penny-farthing"}, {"paint": "#ff00ff"}):
+        with pytest.raises(HTTPException):
+            _check(bad)

@@ -156,6 +156,16 @@ FIXED = {
     "pollen-0": "#ffffff", "pollen-1": "#8cc700", "pollen-2": "#f5e400", "pollen-3": "#f7a600", "pollen-4": "#e63a10",
     "w3w": "#e11f26",  # what3words' red, for its ///words
 }  # fmt: skip
+# A bike's own paint, chosen by name for its picture (Bikes, Its answers): real colours, the same in every theme
+PAINTS = {
+    "black": ("Black", "#1d1d1f"), "white": ("White", "#f4f4f2"), "silver": ("Silver", "#b8bcc2"), "grey": ("Grey", "#6b7078"),
+    "red": ("Red", "#c8102e"), "orange": ("Orange", "#f06a14"), "yellow": ("Yellow", "#f5c400"), "green": ("Green", "#2e8b57"),
+    "racing-green": ("Racing green", "#0f4d2f"), "blue": ("Blue", "#1f5fbf"), "metallic-blue": ("Metallic blue", "#2f5d9e"),
+    "navy": ("Navy", "#1b2a4a"), "turquoise": ("Turquoise", "#21a5a5"), "purple": ("Purple", "#6c3fa0"),
+    "pink": ("Pink", "#f06aa8"), "barbie-pink": ("Barbie pink", "#e0218a"), "bronze": ("Bronze", "#a3693a"),
+    "gold": ("Gold", "#c9a227"), "copper": ("Copper", "#b0643c"), "titanium": ("Raw titanium", "#9a9a94"),
+}  # fmt: skip
+
 # The pollen map is a picture of its own (an SVG image file, not part of a page): drawn the same in every theme
 IMAGE = {"sea": "#a8c8e0", "land": "#d9d9d9", "frame": "#999999", "paper": "#ffffff", "ink": "#222222", "small": "#555555"}
 

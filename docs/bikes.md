@@ -41,6 +41,26 @@ API gives), each ride's GPS track for rain along the route and saved routes, and
   file's GPS points, devices and developer fields (where tyre pressure sensors write), and weight. It only reads. It is
   part of the live check.
 
+## Workshop
+At the top of the Bikes page: your bikes in a row (each with its front and rear wheel, and an odometer for the bike and
+each wheel), and shelves for spares, kit and wheels in storage. Drag with a mouse or a finger:
+- a part onto a wheel or the bike's frame: fitted, if it can go there (below); a spare dropped where there is one
+  already replaces it (logged as the replacement, its count starting again);
+- a wheel onto a bike: it goes on, and the bike's wheel at that end goes into storage;
+- anything onto a shelf: it comes off (spares onto the spares shelf, kit into your kit).
+Tap a part or wheel to see its odometer and wear. Services and checks are not shown there: they stay on each bike's card.
+
+**What can go where** (refused, with the reason): a cassette or hub gear only on a rear wheel; wheel parts on wheels and
+bike parts on bikes; a rotor or disc pads only with a disc brake at that end, rim pads with a rim brake, sealant on a
+tubeless tyre and a tube on a tubed one; a chain or belt as the drive is, gear cables, coin cells or a Di2 battery as
+the shifting is; suspension services as the bike has; an AXS battery only on a bike with AXS shifting or a wireless
+dropper; and never a second tyre, cassette, chain and so on where there is one already. A wheel whose parts do not suit
+the bike it goes onto is fitted, with a warning. If a refusal is wrong, the bike's answers are: change them with **Its
+answers**.
+
+**Pictures:** each bike is drawn from typical frame geometry for its type, facing right so the drivetrain shows. In
+**Its answers**, choose its Model (where listed: its own geometry) and its frame and second colour.
+
 ## Wheels
 - **A new wheel:** on the bike, **Add a wheel**: front or rear, its name, its wheelset group (wheels in the same group
   swap together, e.g. "Winter wheels"), since when, whether to fit it now (the bike's current one goes into storage)

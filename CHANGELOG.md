@@ -2,6 +2,32 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Workshop** on the Bikes page: your bikes in a row, each with its front and rear wheel and an odometer, and shelves
+  below for spares, kit and wheels in storage. Drag (mouse or finger) a part onto a wheel or a bike, a wheel onto a
+  bike, or either onto a shelf; a spare dropped where there is one already replaces it (logged, its count starting
+  again). Tap a part or wheel for its odometer and wear. One off a pile of spares can be fitted.
+- **Checks on where a part can go:** a cassette or hub gear only on a rear wheel; wheel parts on wheels and bike parts
+  on bikes; a rotor or disc pads need a disc brake at that end, rim pads a rim brake, sealant a tubeless tyre, a tube a
+  tubed one; a chain or a belt as the drive is; gear cables, coin cells, a Di2 battery as the shifting is; suspension
+  services as the bike has; an AXS battery only on a bike with AXS shifting or a wireless dropper; and no second
+  tyre, cassette, chain (and so on) where there is one already. A wheel moved onto a bike whose answers do not suit its
+  parts is fitted with a warning.
+- **Each wheel's odometer:** the distance of the rides of the bikes it was on.
+
+### Changed
+- **Bike pictures** redrawn from real frame geometry for each type (stack, reach, angles, chainstay, wheelbase, wheel
+  and tyre size), facing right so the drivetrain shows: spoked wheels, suspension forks and a full-suspension linkage
+  and shock, disc rotors, drops, aero or flat bars, crank, chain and rear mech, a dropper post, an e-bike's battery and
+  motor, a tandem's double-diamond frame (two seat tubes, the boom and the long diagonal) with stoker bars, a hybrid's
+  mudguards and rack. **Its answers** now has a Model (its own geometry: Planet X Reiver 2025, Yeti ASR-SL 2005, Trek
+  1.2 2006, a 26-inch Viking tandem) and a frame and second colour (twenty named paints, Bronze and Barbie pink among
+  them); without them the frame takes the theme's colour.
+- **Deploy** restarts the Tailscale container once the new api is healthy (after 0.44.0 the tailnet address stopped
+  reaching the api until it was restarted).
+
 ## [0.44.0] - 2026-11-08
 
 ### Fixed
