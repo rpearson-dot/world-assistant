@@ -112,6 +112,12 @@ for _ in $(seq 1 40); do
       exit 1
     fi
     docker compose exec -T api python -m app.secretsctl check || true
+    # The tailnet's https address reaches the api through the Tailscale container, which went on running while the api
+    # was replaced: after 0.44.0 it stopped passing requests on until restarted. Restart it with every update.
+    if [ -n "$(docker compose ps --status running -q wa-tailscale 2>/dev/null)" ]; then
+      echo "Restarting the Tailscale container, so the tailnet address reaches the new api..."
+      docker compose restart wa-tailscale >/dev/null 2>&1 || echo "Could not restart wa-tailscale: run  docker compose restart wa-tailscale"
+    fi
     # Read-only comfort check: every page and endpoint answers, nothing returns a 500.
     echo "Checking every page and endpoint..."
     if docker compose exec -T api python -m app.smoke; then
