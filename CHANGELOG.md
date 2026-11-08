@@ -5,6 +5,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 ## [Unreleased]
 
 ### Fixed
+- **Bikes:** an AXS battery put on a bike became an ordinary part of it, so it no longer showed as a battery; it
+  stays your kit.
 - **The map page** had not worked since 0.40.0 (a name declared twice stopped its script). A new test parses every
   page's scripts.
 - **Police:** data.police.uk answered "too many requests" on the first live check. Requests now go one after another,
@@ -16,6 +18,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   failure.
 
 ### Changed
+- **Bikes:** each bike's card has **Its answers**, to change what the bike has after adding it (SRAM AXS shifting,
+  a wireless dropper, brakes...): parts it now needs are added, ones it no longer has retired. A bike with AXS shifting
+  or a wireless dropper shows its batteries, with Fit a battery (from your kit), Add a battery and Take off.
 - **Here** says when the point is one of your saved places (within 150 m), and does not offer to keep it again.
 
 ## [0.43.0] - 2026-11-08

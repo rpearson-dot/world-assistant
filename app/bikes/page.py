@@ -334,11 +334,12 @@ function bikeCard(b) {
   const pr = el('div', 'press');
   for (const end of ['front', 'rear']) { const p = (b.pressures || {})[end]; if (p) pr.append(el('span', null, (end === 'front' ? 'Front ' : 'Rear ') + p.psi + ' psi (' + p.bar + ' bar)' + (p.own ? '' : ' suggested'))); }
   info.append(pr);
-  for (const bat of b.batteries || []) info.append(el('p', 'small', 'Battery fitted: ' + bat.name + ' (' + Math.round(bat.wear.share * 100) + '% of a charge used)'));
+  info.append(batteryBox(b));
   const photoIn = el('input'); photoIn.type = 'file'; photoIn.accept = 'image/*'; photoIn.capture = 'environment'; photoIn.hidden = true;
   photoIn.onchange = () => guard(async () => { await api('PUT', '/v1/bikes/bikes/' + b.id + '/photo', { data_url: await shrink(photoIn.files[0]) }); await load(); });
   info.append(el('div', 'row'));
   info.lastChild.append(button('Photo', () => photoIn.click()), photoIn,
+    button('Its answers', () => changeAnswers(card, b)),
     button('Retire', () => { if (confirm('Retire ' + b.label + '? Its rides, parts, history and cost are kept, and you can bring it back.')) guard(async () => { await api('PATCH', '/v1/bikes/bikes/' + b.id, { retired: true }); await load(); }); }));
   if (!b.km) info.lastChild.append(button('Delete', () => { if (confirm('Delete ' + b.label + ' and its parts and wheels? This is for a bike added by mistake; it cannot be undone.')) guard(async () => { await api('DELETE', '/v1/bikes/bikes/' + b.id); await load(); }); }));
   top.append(pic, info); card.append(top);
@@ -516,9 +517,44 @@ function retiredCard(b) {
   if (b.history.length) { box.append(el('h4', null, 'History')); const ul = el('ul', 'parts'); for (const x of b.history) ul.append(logRow(x, false)); box.append(ul); }
   return box;
 }
+function batteryBox(b) {  // the shifter (and dropper) batteries on this bike: fit one from your kit, add one, take one off
+  const box = el('div', 'small'), cfg = b.config || {};
+  const wireless = cfg.shifting === 'axs' || cfg.dropper === 'wireless' || (b.batteries || []).length;
+  for (const bat of b.batteries || []) {
+    const line = el('div', 'row'); line.append(el('span', null, '🔋 ' + bat.name + ': ' + Math.round(bat.wear.share * 100) + '% of a charge used'));
+    line.append(button('Take off', () => guard(async () => { await api('POST', '/v1/bikes/fit', { item: 'part', id: bat.id, bike_id: null }); await load(); })));
+    box.append(line);
+  }
+  if (!wireless) return box;
+  const spare = g.kit.filter(p => p.kind === 'axs_battery' && p.bike_id !== b.id), row = el('div', 'row');
+  if (spare.length) { const sel = el('select'); sel.append(new Option('Fit a battery…', ''));
+    for (const p of spare) sel.append(new Option(p.name + (p.bike_id ? ' (now on ' + ((g.bikes.find(x => x.id === p.bike_id) || {}).label || 'another bike') + ')' : ''), p.id));
+    sel.onchange = () => { if (sel.value) guard(async () => { await api('POST', '/v1/bikes/fit', { item: 'part', id: Number(sel.value), bike_id: b.id }); await load(); }); };
+    row.append(sel); }
+  row.append(button('Add a battery', () => guard(async () => {
+    const n = prompt('A label for the battery (written on it), e.g. Battery A', 'Battery ' + String.fromCharCode(65 + g.kit.filter(p => p.kind === 'axs_battery').length)); if (!n) return;
+    const r = await api('POST', '/v1/bikes/parts', { rider: rider(), kind: 'axs_battery', status: 'kit', label: n });
+    await api('POST', '/v1/bikes/fit', { item: 'part', id: r.id, bike_id: b.id }); await load(); })));
+  box.append(row); return box;
+}
+function changeAnswers(card, b) {  // change a bike's answers: parts it now needs are added, ones it no longer has retired
+  if (card.querySelector('.answersform')) { card.querySelector('.answersform').remove(); return; }
+  const box = el('div', 'edit answersform'), f = el('form', 'grid'), out = el('span', 'err'), cfg = b.config || {};
+  box.append(el('div', 'small', 'What ' + b.label + ' has. Parts it now needs are added; ones it no longer has are retired (their history is kept). ' +
+    'SRAM AXS shifting, or a wireless dropper, takes AXS batteries: fit them on the card.'));
+  answersInto(f, cfg.type, Object.assign({}, cat.defaults[cfg.type], cfg));
+  const save = el('button', 'primary small', 'Save'); save.type = 'button';
+  save.onclick = () => guard(async () => {
+    const c = {}; for (const i of f.elements) if (i.name) c[i.name] = i.type === 'number' ? Number(i.value || 0) : i.value;
+    const r = await api('PATCH', '/v1/bikes/bikes/' + b.id, { config: c });
+    const ch = r || {}; msg.textContent = b.label + ': ' + ((ch.added || []).length ? 'added ' + ch.added.join(', ') : 'nothing added') +
+      ((ch.retired || []).length ? '; retired ' + ch.retired.join(', ') : '') + '.'; await load(); }, out);
+  box.append(f, save, out); card.append(box);
+}
 function findPart(id) { for (const b of g.bikes) for (const p of b.parts.concat(...b.sets.map(s => s.parts), b.batteries)) if (p.id === id) return p; return g.kit.find(p => p.id === id); }
-function answers() {
-  const f = $('answers'), t = $('btype').value, d = Object.assign({}, cat.defaults[t], { ebike: $('bebike').checked }); f.replaceChildren();
+function answers() { answersInto($('answers'), $('btype').value, Object.assign({}, cat.defaults[$('btype').value], { ebike: $('bebike').checked })); }
+function answersInto(f, t, d) {  // a bike's answers as a form: for a new bike (the type's defaults) or one to change
+  f.replaceChildren();
   const names = { drive: 'Drive', shifting: 'Shifting', front_brake: 'Front brake', rear_brake: 'Rear brake', front_fluid: 'Front brake fluid', rear_fluid: 'Rear brake fluid',
     front_suspension: 'Front suspension', rear_suspension: 'Rear suspension', dropper: 'Dropper post', front_tyre: 'Front tyre', rear_tyre: 'Rear tyre', bottom_bracket: 'Bottom bracket', pedals: 'Pedals' };
   for (const [k, lab] of Object.entries(names)) { const l = el('label', null, lab + ' '), s = el('select'); s.name = k;
