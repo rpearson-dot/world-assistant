@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.42.0] - 2026-11-08
 
 ### Added
 - **Crime and police** on Here (and the `crime` tool): street-level crime within a mile over the last 12 months the
