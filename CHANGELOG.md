@@ -9,6 +9,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   does, grouped by area. `docs/architecture.md` has new diagrams of the stack, the data and an update.
   `docs/README.md` is an index of every page. `docs/api.md` lists every endpoint and is written from the code
   (`python scripts/api-doc.py`), with a test that keeps it current. The data sources page lists every source.
+- **Contributing a module:** `docs/contributing-a-module.md` explains how to add a new area as a pull request, step by
+  step, and how an outside package can add one, with what it cannot do yet.
 
 ## [0.51.0] - 2026-11-09
 

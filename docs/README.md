@@ -15,6 +15,7 @@ New here? Read the [project README](../README.md) first: what World Assistant is
 | [Security](security.md) | Who needs a token, what is protected, the supply chain |
 | [Themes](themes.md) | The look of every page, light and dark |
 | [Modules](modules.md) | Switching whole areas off |
+| [Contributing a module](contributing-a-module.md) | Adding a new area: a pull request, or your own package |
 | [Moving to PostgreSQL 18](postgres-upgrade.md) | A one-time database upgrade for older installs |
 
 ## Each area
