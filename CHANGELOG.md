@@ -2,6 +2,14 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Update now** in Settings (Backups and updates): installs the newest signed release straight away. It works the
+  same way as the nightly update (backup, checks, and rollback if they fail), whether automatic updates are on or
+  off. The page follows it through: waiting, updating, restarting, and the result. It needs a one-minute User
+  Script on the server (runbook, "Update now").
+
 ## [0.50.0] - 2026-11-09
 
 ### Added

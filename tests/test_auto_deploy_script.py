@@ -32,14 +32,15 @@ esac
 
 FAKE_CURL = r"""#!/usr/bin/env bash
 echo "curl $*" >> "$T/calls"
-body=""; method=GET
+body=""; method=GET; url=""
 while [ $# -gt 0 ]; do
-  case "$1" in -X) method=$2; shift ;; -d) body=$2; shift ;; esac
+  case "$1" in -X) method=$2; shift ;; -d) body=$2; shift ;; -H|--max-time) shift ;; -*) ;; *) url=$1 ;; esac
   shift
 done
-if [ "$method" = POST ]; then echo "$body" >> "$T/reports"; exit 0; fi
 [ -z "${FAKE_API_DOWN:-}" ] || exit 7
-printf '{"enabled":%s,"running":{"version":"%s","commit":"x"},"last_run":null}' "$SWITCH" "$RUNNING"
+case "$url" in *"/request/claim") echo claimed >> "$T/claims"; [ -z "${FAKE_CLAIM_FAIL:-}" ]; exit ;; esac
+if [ "$method" = POST ]; then echo "$body" >> "$T/reports"; exit 0; fi
+printf '{"enabled":%s,"running":{"version":"%s","commit":"x"},"last_run":null,"request":null,"pending":%s}' "$SWITCH" "$RUNNING" "${PENDING:-false}"
 """
 
 FAKE_DEPLOY = r"""#!/usr/bin/env bash
@@ -278,3 +279,23 @@ def test_a_dry_run_on_a_checkout_does_not_sync(box: Box) -> None:
     r = box.run("--dry-run")
     assert "move the project files to v0.6.0" in r.stdout
     assert not any(c.startswith(("sync", "deploy")) for c in box.calls)
+
+
+def test_every_minute_does_nothing_unless_update_now_was_pressed(box: Box) -> None:
+    r = box.run("--if-requested", PENDING="false")
+    assert r.returncode == 0 and r.stdout == "" and box.calls == [c for c in box.calls if c.startswith("curl")]
+    assert not (box.t / "claims").exists() and box.reports == []
+    assert box.run("--if-requested", FAKE_API_DOWN="1").returncode == 0  # the api restarting: try again next minute
+
+
+def test_update_now_is_claimed_then_runs_like_now_even_switched_off(box: Box) -> None:
+    box.dot_env(f"WA_IMAGE={OLD}\n")
+    r = box.run("--if-requested", PENDING="true", SWITCH="false", WA_IMAGE=OLD)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (box.t / "claims").read_text().count("claimed") == 1 and "Update now was pressed" in r.stdout
+    assert box.reports[-1]["result"] == "updated" and any(c.startswith("deploy") for c in box.calls)
+
+
+def test_update_now_claimed_elsewhere_is_left_alone(box: Box) -> None:
+    r = box.run("--if-requested", PENDING="true", FAKE_CLAIM_FAIL="1")
+    assert r.returncode == 0 and not any(c.startswith("docker") for c in box.calls) and box.reports == []

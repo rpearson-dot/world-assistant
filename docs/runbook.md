@@ -223,6 +223,25 @@ than in your folder), the job refuses and says so on the status page; update the
    (with the switch off it says so; switch it on in Settings and it says what it would do).
 5. Turn the switch on in Settings (Backups and updates). The log is `auto-deploy.log` in the data folder.
 
+### Update now (the button in Settings)
+
+**Update now** in Settings (Backups and updates) runs the same update as `--now`, whether the switch is on or off.
+That is the signature check, backup, page and endpoint check, and rollback. The api cannot start it itself, so a
+second User Script looks for a press every minute. It does nothing else: one call to the api, and no log lines
+unless a press is waiting.
+
+1. Settings > User Scripts > Add New Script, name it `world-assistant-update-now`, and paste:
+   ```bash
+   #!/bin/bash
+   cd /mnt/user/projects/world-assistant && bash scripts/auto-deploy.sh --if-requested >> /mnt/user/appdata/world-assistant/auto-deploy.log 2>&1
+   ```
+2. Set its schedule to Custom with `* * * * *`, and Apply.
+
+The page shows when the press was picked up and the result. While the api restarts, the page says so and waits.
+A press can be cancelled until the server picks it up. If a run dies without reporting, the press is dropped
+after 45 minutes, so the button does not stay stuck. Only one update runs at a time, so a press during the
+nightly run waits for it to finish.
+
 If a rollback cannot undo a database change, or the previous version will not start, the job stops and the
 status page names the backup to restore ([backup.md](backup.md)); nothing else is touched.
 

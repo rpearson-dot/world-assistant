@@ -4,6 +4,7 @@
 #   bash scripts/auto-deploy.sh             # what the nightly schedule runs
 #   bash scripts/auto-deploy.sh --dry-run   # say what it would do; change nothing
 #   bash scripts/auto-deploy.sh --now       # update now, even with the switch off (the same checks and rollback)
+#   bash scripts/auto-deploy.sh --if-requested   # every minute: the --now update, only when "Update now" was pressed
 #
 # When the switch is on it: finds the newest release image, verifies its signature, refuses if the
 # release needs newer compose files than this folder has (unless the folder is a git checkout, in which
@@ -16,9 +17,10 @@ cd "$(dirname "$0")/.."
 # The whole script is one function, read in full before anything runs: this job replaces files in the
 # project folder (including this one) part-way through, and bash must not be reading the old file then.
 auto_deploy_main() {
-  DRY_RUN=0 NOW=0
+  DRY_RUN=0 NOW=0 ASKED=0
   [ "${1:-}" = "--dry-run" ] && DRY_RUN=1
   [ "${1:-}" = "--now" ] && NOW=1
+  [ "${1:-}" = "--if-requested" ] && ASKED=1
 
   if [ -f .env ]; then
     set -a
@@ -41,7 +43,7 @@ auto_deploy_main() {
   # One run at a time.
   mkdir -p "$DATA" 2>/dev/null || true
   exec 9>"$DATA/auto-deploy.lock"
-  flock -n 9 || { log "Another update is running; stopping."; exit 0; }
+  flock -n 9 || { [ "$ASKED" = 1 ] || log "Another update is running; stopping."; exit 0; }
 
   TOKEN="$(cat "$SECRETS/api_token.txt" 2>/dev/null || true)"
   [ -n "$TOKEN" ] || { log "No api_token.txt in $SECRETS; cannot talk to the api."; exit 1; }
@@ -61,7 +63,13 @@ auto_deploy_main() {
     return 0
   }
 
-  state="$(call "$API/v1/auto-deploy")" || { log "The api did not answer at $API."; exit 1; }
+  state="$(call "$API/v1/auto-deploy")" || { [ "$ASKED" = 1 ] && exit 0; log "The api did not answer at $API."; exit 1; }
+  if [ "$ASKED" = 1 ]; then  # every minute: quiet unless "Update now" was pressed
+    printf '%s' "$state" | grep -q '"pending":true' || exit 0
+    call -X POST "$API/v1/auto-deploy/request/claim" >/dev/null || exit 0
+    log "Update now was pressed on the Settings page."
+    NOW=1
+  fi
   if [ "$NOW" = 0 ] && ! printf '%s' "$state" | grep -q '"enabled":true'; then
     log "Automatic updates are switched off (status page); nothing to do."
     exit 0
