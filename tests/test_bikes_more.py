@@ -294,6 +294,14 @@ def test_garmin_sensors_become_kit_with_their_batteries(garage: Any) -> None:  #
     hr = sens["Heart rate strap"]
     assert hr["reported"]["status"] == "low" and hr["reported"]["activity"] == "Running" and hr["wear"]["state"] == "due"
     assert sens["Speed sensor"]["reported"]["bike"] == "Reiver" and sens["Speed sensor"]["wear"]["state"] != "due"
+    rb = next(b for b in g["bikes"] if b["id"] == reiver)
+    pw = {i["name"]: i for i in rb["power"]["items"]}
+    assert pw["Speed sensor"]["text"] == "good (80%)" and pw["Heart rate strap"]["low"] and pw["Heart rate strap"]["worn"]
+    assert rb["power"]["ready"] is False and rb["power"]["say"] == "Charge or replace first: Heart rate strap"
+    other = c.post("/v1/bikes/bikes", json={"rider": "rob", "label": "Trek", "type": "road"}).json()["id"]
+    tb = next(b for b in c.get("/v1/bikes", params={"rider": "rob"}).json()["bikes"] if b["id"] == other)
+    assert [i["name"] for i in tb["power"]["items"]] == ["Heart rate strap"] and tb["power"]["ready"] is False  # the strap is low
+    assert tb["last_ride"] is None and tb["rides"] == 0 and g["garmin"] == {"last_sync": None, "last_result": None, "error": None}
     assert hr["level"] == 20 and hr["level_text"] == "low (20%)"
     # a new battery: what Garmin said before it no longer counts; a later reading updates it
     c.post("/v1/bikes/service", json={"rider": "rob", "action": "serviced", "part_id": hr["id"]})

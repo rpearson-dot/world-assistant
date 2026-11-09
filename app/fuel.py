@@ -24,6 +24,7 @@ from app.integrations.nationalhighways.store import load_corridors
 from app.pagestyle import themed
 from app.places import place_or_default
 from app.vehicles import get_vehicle, net_saving_pence
+from app.whereami import WHERE_JS
 
 router = APIRouter(prefix="/v1/fuel", tags=["fuel"], dependencies=[Depends(require_token)])
 
@@ -252,7 +253,7 @@ async function loadVehicles() {
   } catch (e) {}  // the Vehicles module is off, or none saved: every fuel is offered
   fillFuels();
 }
-const homeId = ps => (ps.find(p => p.kind === 'home') || ps.find(p => p.id === 'home') || ps[0] || {}).id;
+/*WHERE*/
 let chosen = new Set(), superOn = false;
 try { chosen = new Set(JSON.parse(localStorage.getItem('wa_fuel_brands') || '[]')); superOn = localStorage.getItem('wa_fuel_super') === '1'; } catch (e) {}
 function saveChoice() { try { localStorage.setItem('wa_fuel_brands', JSON.stringify([...chosen])); localStorage.setItem('wa_fuel_super', superOn ? '1' : '0'); } catch (e) {} }
@@ -305,10 +306,9 @@ async function get(url) {
   if (!r.ok) throw new Error(url.split('?')[0] + ' returned ' + r.status);
   return r.json();
 }
-function fillWhere() {
-  const list = $('mode').value === 'place' ? places : corridors;
-  $('where').replaceChildren(...list.map(x => new Option(x.name, x.id)));
-  if ($('mode').value === 'place') $('where').value = homeId(places) || '';
+async function fillWhere() {
+  if ($('mode').value === 'place') await waFill($('where'), places);
+  else $('where').replaceChildren(...corridors.map(x => new Option(x.name, x.id)));
   $('distl').firstChild.textContent = $('mode').value === 'place' ? 'Radius km' : 'Within km';
   $('dist').value = $('mode').value === 'place' ? 5 : 2;
 }
@@ -319,7 +319,7 @@ async function load() {
     await loadVehicles();
     places = await get('/v1/places');
     corridors = (await get('/v1/status')).corridors;
-    fillWhere();
+    await fillWhere();
     const s = await get('/v1/fuel/summary');
     $('note').textContent = s.stations + ' stations, ' + s.prices + ' prices, last update ' + (s.prices_observed_at || 'never');
   } catch (e) { msg.textContent = e.message; }
@@ -332,7 +332,7 @@ async function search() {
   if (chosen.size) p.set('brands', [...chosen].join(','));
   if (superOn) p.set('supermarkets', 'true');
   let url;
-  if ($('mode').value === 'place') { p.set('place', $('where').value); p.set('radius_km', $('dist').value); url = '/v1/fuel/near?'; }
+  if ($('mode').value === 'place') { for (const [k, x] of await waWhere($('where'))) p.set(k, x); p.set('radius_km', $('dist').value); url = '/v1/fuel/near?'; }
   else { p.set('within_km', $('dist').value); url = '/v1/fuel/along/' + encodeURIComponent($('where').value) + '?'; }
   try {
     const d = await get(url + p);
@@ -365,4 +365,4 @@ page_router = APIRouter()
 @page_router.get("/fuel", response_class=HTMLResponse, include_in_schema=False)
 async def fuel_page(request: Request) -> str:
     """The page holds no data; it asks for the token and calls /v1/fuel."""
-    return themed(PAGE, "fuel", request)
+    return themed(PAGE.replace("/*WHERE*/", WHERE_JS), "fuel", request)

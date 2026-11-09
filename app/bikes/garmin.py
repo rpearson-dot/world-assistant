@@ -401,13 +401,31 @@ async def sync(engine: AsyncEngine, rider: str, client: httpx.AsyncClient | None
         ids = {r["id"] for r in rides}
         gone = [h["id"] for h in have.values() if h["source"] == "garmin" and h["id"] not in ids and h["started"] >= floor]
     files = await read_files(api, new, now)
+    # rides synced before their files were read (from before 0.46.0): read once, for their routes and batteries
+    tried = set(g.get("files_tried") or [])
+    seen_rides = new
+    new_ids = {r["id"] for r in new}
+    older = [dict(h) for h in have.values() if h["source"] == "garmin" and h["id"] not in new_ids and h["id"] not in tried
+             and h.get("sensors") is None and h.get("route") is None and now - h["started"] < timedelta(days=FILE_DAYS)]  # fmt: skip
+    older = sorted(older, key=lambda h: h["started"], reverse=True)[:FILES_EACH_SYNC]
+    if older:
+        files += await read_files(api, older, now)
+        async with engine.begin() as c:
+            for h in older:
+                tried.add(h["id"])
+                if h.get("route") or h.get("sensors"):
+                    await c.execute(text("UPDATE bike_ride SET route = CAST(:ro AS jsonb), sensors = CAST(:se AS jsonb) WHERE id = :i"),
+                                    {"ro": json.dumps(h["route"]) if h.get("route") else None,
+                                     "se": json.dumps(h["sensors"]) if h.get("sensors") else None, "i": h["id"]})  # fmt: skip
+        g["files_tried"] = sorted(tried)[-500:]
+    seen_rides = new + [h for h in older if h.get("sensors") or h.get("_firmware")]  # their readings count below
     if files:
         result["files_read"] = files
     # every sensor's battery: from the rides' files, and from other activities' (a heart rate strap worn running)
     readings = [{**x, "at": r["started"].isoformat(), "activity": r.get("activity") or r.get("title"), "bike_id": r.get("bike_id")}
-                for r in new for x in (r.get("sensors") or [])]  # fmt: skip
+                for r in seen_rides for x in (r.get("sensors") or [])]  # fmt: skip
     done = list(g.get("sensor_files") or [])
-    versions = [{**x, "at": r["started"].isoformat()} for r in new for x in (r.pop("_firmware", None) or [])]
+    versions = [{**x, "at": r["started"].isoformat()} for r in seen_rides for x in (r.pop("_firmware", None) or [])]
     for a in [a for a in acts if not is_ride(a) and a.get("activityId") is not None and str(a["activityId"]) not in done
               and (st := _started(a)) and now - st < timedelta(days=FILE_DAYS)][:OTHER_FILES_EACH_SYNC]:  # fmt: skip
         done.append(str(a["activityId"]))

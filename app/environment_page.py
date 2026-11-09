@@ -15,6 +15,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from app.pagestyle import themed
+from app.whereami import WHERE_JS
 
 page_router = APIRouter(include_in_schema=False)
 
@@ -55,7 +56,9 @@ async function api(path) {
 }
 const TAB = (location.pathname.split('/')[2] || 'air');
 const TITLES = { air: 'Air quality', floods: 'Floods and rivers', tides: 'Tides', overflows: 'Storm overflows' };
-const P = () => '?place=' + encodeURIComponent($('place').value);
+/*WHERE*/
+let QS = '';
+const P = () => QS;
 const when = iso => iso ? new Date(iso).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 const ARROW = { rising: '↑ rising', falling: '↓ falling', steady: '→ steady' };
 function card(title) { const c = el('div', 'card'); if (title) c.append(el('h2', null, title)); $('out').append(c); return c; }
@@ -142,18 +145,18 @@ async function overflows() {
 }
 async function show() {
   $('out').replaceChildren(); $('h').textContent = TITLES[TAB] || 'Environment';
-  try { localStorage.setItem('wa_env_place', $('place').value); } catch (e) {}
+  QS = '?' + await waWhere($('place'));
   await ({ air, floods, tides, overflows }[TAB] || air)();
 }
 async function start() {
   const ps = await api('/v1/places'), sel = $('place'), list = ps.places || ps;
-  sel.replaceChildren(...list.map(p => new Option(p.name, p.id)));
-  if (!list.length) { $('auth').hidden = true; msg.textContent = 'No places yet: add your home on the Places page.'; return; }
+  await waFill(sel, list, null);
+  if (!sel.value) { $('auth').hidden = true; msg.textContent = 'No places yet: add your home on the Places page.'; return; }
   let keep = null; try { keep = localStorage.getItem('wa_env_place'); } catch (e) {}
-  if (keep && list.some(p => p.id === keep)) sel.value = keep;
+  if (keep && keep !== sel.value) await waFill(sel, list, keep);
   $('auth').hidden = true; await show();
 }
-$('place').onchange = () => show();
+$('place').onchange = () => { try { localStorage.setItem('wa_env_place', $('place').value); } catch (e) {} show(); };
 $('auth').onsubmit = e => { e.preventDefault(); try { sessionStorage.setItem('wa_token', tok.value); } catch (x) {} start().catch(e => { msg.textContent = e.message; }); };
 if (tok.value) start().catch(e => { msg.textContent = e.message; });
 </script></main></body></html>"""
@@ -163,7 +166,7 @@ TABS = {"": "environment", "floods": "floods", "tides": "env-tides", "overflows"
 
 @page_router.get("/environment", response_class=HTMLResponse)
 async def environment_page(request: Request) -> str:
-    return themed(PAGE, "environment", request)
+    return themed(PAGE.replace("/*WHERE*/", WHERE_JS), "environment", request)
 
 
 @page_router.get("/environment/{tab}", response_class=HTMLResponse)
@@ -172,4 +175,4 @@ async def environment_tab(request: Request, tab: str) -> str:
 
     if tab not in TABS:
         raise HTTPException(404, "No such tab")
-    return themed(PAGE, TABS[tab], request)
+    return themed(PAGE.replace("/*WHERE*/", WHERE_JS), TABS[tab], request)

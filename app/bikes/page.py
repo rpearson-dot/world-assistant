@@ -38,6 +38,10 @@ details > summary { cursor: pointer; } .small { font-size: 13px; }
 form.grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); align-items: end; }
 .edit { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin: 6px 0; grid-column: 1 / -1; }
 .press { display: flex; gap: 14px; flex-wrap: wrap; font-size: 14px; align-items: center; }
+.power { margin: 6px 0; font-size: 13px; } .power.ready b { color: var(--good); } .power.notready b { color: var(--bad); }
+.pitems { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.pitem { background: var(--chip); border-radius: var(--pill); padding: 1px 8px; } .pitem.low { background: var(--bad-bg); color: var(--bad); font-weight: 600; }
+.pitem.unk { color: var(--dim); }
 .warns { border-left: 3px solid var(--warn); padding: 2px 8px; margin: 6px 0; }
 .warns ul { margin: 2px 0 0 1em; padding: 0; }
 label.check { display: block; padding: 3px 0; }
@@ -83,6 +87,7 @@ button.small { padding: 3px 9px; font-size: 13px; }
 <form id="auth" class="bar"><input id="t" type="password" placeholder="API token" autocomplete="current-password">
 <button class="primary">Load</button></form>
 <p id="msg" class="err"></p>
+<p id="gseen" class="dim small"></p>
 
 <div class="card">
   <div class="row"><label>Rider <select id="rider"></select></label>
@@ -419,6 +424,18 @@ function shrink(file) {  // a photo made small enough to keep: 1000 px on its lo
     c.width = Math.round(img.width * s); c.height = Math.round(img.height * s); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
     ok(c.toDataURL('image/jpeg', 0.82)); }; img.onerror = () => no(new Error('That file is not a picture')); img.src = URL.createObjectURL(file); });
 }
+function dayOf(iso) {  // Today, Yesterday, or Sun 8 Nov (with the year when not this year)
+  const d = new Date(iso), now = new Date(), day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const n = Math.round((day(now) - day(d)) / 86400000);
+  return n === 0 ? 'today' : n === 1 ? 'yesterday' : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) });
+}
+function lastRide(b) { return b.last_ride ? 'Last ride ' + dayOf(b.last_ride) : 'No rides yet'; }
+function garminSeen(gm) {
+  if (!gm || !gm.last_sync) return gm && gm.error ? 'Garmin sync failed: ' + gm.error : 'Garmin: not synced yet';
+  const t = new Date(gm.last_sync), r = gm.last_result || {};
+  return 'Garmin last synced ' + dayOf(gm.last_sync) + ' at ' + t.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) +
+    ': ' + (r.added ? r.added + ' new ride' + (r.added === 1 ? '' : 's') : 'no new rides') + (gm.error ? ' (the latest try failed: ' + gm.error + ')' : '');
+}
 function bikeCard(b) {
   const card = el('div', 'card bikecard'), top = el('div', 'bike'), pic = el('div', 'pic');
   card.dataset.foldkey = 'bike:' + b.id;
@@ -428,7 +445,7 @@ function bikeCard(b) {
   h.append(el('span', 'chip', (cat.types[(b.config || {}).type] || '') + ((b.config || {}).ebike ? ', e-bike' : '')), el('span', 'chip', fmt(b.km) + ' km'));
   const dueHere = g.due.filter(d => d.bike_id === b.id && d.state === 'due').length;
   if (dueHere) h.append(el('span', 'chip due', dueHere + ' due'));
-  info.append(h, el('p', 'dim small', fmt(b.km) + ' km logged'));
+  info.append(h, el('p', 'dim small', fmt(b.km) + ' km logged · ' + lastRide(b)));
   const pr = el('div', 'press'), today = TODAY[b.id] || 'usual';
   const daySel = el('select', 'small'); for (const [v, t] of [['usual', 'usual riding'], ['road', 'road today'], ['gravel', 'gravel today'], ['wet', 'wet today']]) daySel.append(new Option(t, v));
   daySel.value = today; daySel.onchange = () => { TODAY[b.id] = daySel.value; try { localStorage.setItem('wa_bikes_today', JSON.stringify(TODAY)); } catch (e) {} draw(); };
@@ -438,6 +455,7 @@ function bikeCard(b) {
     ' for ' + (p.size ? p.size + (p.wheel_size ? ' (' + p.wheel_size + ')' : '') : p.width_mm + ' mm') + (p.tubeless ? ' tubeless' : ''))); }
   if (Object.keys(b.pressures || {}).length) pr.append(daySel);
   info.append(pr);
+  if (b.power && b.power.items.length) info.append(powerStrip(b.power));
   if ((b.warnings || []).length) { const w = el('div', 'warns small'); w.append(el('b', null, 'Does not go together:'));
     const ul = el('ul'); for (const x of b.warnings) ul.append(el('li', null, x)); w.append(ul); info.append(w); }
   const cl = b.checklists || {};
@@ -460,6 +478,14 @@ function bikeCard(b) {
   for (const s of b.sets || []) card.append(wheelBlock(s, b));
   const add = button('Add a wheel', () => wheelForm(card, b)); add.className = 'small'; card.append(el('div', 'row'), add);
   return card;
+}
+function powerStrip(pw) {  // is it ready to ride? every battery it needs, with its level as last reported
+  const box = el('div', 'power ' + (pw.ready === true ? 'ready' : pw.ready === false ? 'notready' : ''));
+  box.append(el('b', null, (pw.ready === true ? '✓ ' : pw.ready === false ? '⚠ ' : '🔋 ') + pw.say));
+  const row = el('div', 'pitems');
+  for (const i of pw.items) { const c = el('span', 'pitem' + (i.low ? ' low' : i.level == null ? ' unk' : ''), i.name + ': ' + i.text);
+    if (i.at) c.title = 'Reported after the ride on ' + new Date(i.at).toLocaleDateString('en-GB'); if (i.worn) c.title = (c.title ? c.title + '; ' : '') + 'worn by you, on every bike'; row.append(c); }
+  box.append(row); return box;
 }
 let TODAY = {}; try { TODAY = JSON.parse(localStorage.getItem('wa_bikes_today') || '{}') || {}; } catch (e) { TODAY = {}; }
 function formToggle(card, cls) {  // a form under the bike's picture and buttons (not below all its wheels)
@@ -714,6 +740,7 @@ document.addEventListener('click', e => {
 });
 function foldBikes(shut) { for (const b of g.bikes) { const k = 'bike:' + b.id; shut ? SHUT.add(k) : SHUT.delete(k); } saveFolds(); folds(); }
 function draw() {
+  $('gseen').textContent = garminSeen(g.garmin);
   const due = g.due.filter(d => d.state === 'due' || d.share >= 0.75), low = g.spares_low || [];
   $('duecard').hidden = !due.length && !low.length; $('due').replaceChildren();
   $('lowspares').replaceChildren(...low.map(x => { const li = el('li'); li.append(svg(cat.icons[(cat.kinds[x.kind] || {}).icon] || cat.icons.part, 'ic'));

@@ -1435,6 +1435,12 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
                         "last_ride": bike_rides[-1]["started"].isoformat() if bike_rides else None,
                         "parts": on["parts"] + [p for s in on["sets"] for p in s["parts"]], "sets": [s["label"] for s in on["sets"]],
                         "cost": by_bike.get(b["id"]), "history": hist[:100]})  # fmt: skip
+    for b in bikes.values():
+        b["power"] = power(b, kit)
+        mine = [r["started"] for r in rides if r["bike_id"] == b["id"]]
+        b["rides"], b["last_ride"] = len(mine), (max(mine).isoformat() if mine else None)
+    gs = st.get("garmin") or {}
+    garmin_seen = {"last_sync": gs.get("last_sync"), "last_result": gs.get("last_result"), "error": gs.get("error")}
     return {"rider": _out(rider), "settings": st, "bikes": list(bikes.values()), "loose_sets": loose, "shelf": shelf,
             "kit": kit, "due": due, "ask_wet": ask[-50:], "unassigned_rides": unassigned[-100:],
             "counts": {"to_confirm": len(ask), "unanswered_wet": sum(1 for r in rides if r["wet"] is None and not r["indoor"]),
@@ -1442,7 +1448,48 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
                        "bike_unchecked": sum(1 for r in rides if not r["bike_checked"] and r["bike_id"] is not None),
                        "without_bike": len(unassigned), "kinds_without_bike": kinds},
             "log": log, "recent_rides": recent, "retired": retired, "costs": c, "spares_low": spares_low,
-            "recalls": recall_view(st.get("recalls") or {})}  # fmt: skip
+            "recalls": recall_view(st.get("recalls") or {}), "garmin": garmin_seen}  # fmt: skip
+
+
+WORN = {"heart rate"}  # sensors the rider wears (on every bike's list): the rest belong to the bike they were last on
+POWER_NAMES = {"axs_battery": "Derailleur battery", "coin_cells": "Shifter batteries", "di2_battery": "Di2 battery"}
+
+
+def power(b: dict[str, Any], kit: list[dict[str, Any]]) -> dict[str, Any]:
+    """Every battery a bike needs for a ride, with its level as last reported (or "--"): its derailleur (AXS) and
+    shifter batteries, the sensors on it (speed, cadence, power, radar: the bike they were last seen on, or the one set
+    in their details) and the rider's own (a heart rate strap). Ready when none is low; low at 20% or under."""
+    items = []
+    for p in b.get("batteries") or []:
+        items.append(_power_item(p, POWER_NAMES.get(p["kind"], p["name"]) + (f" ({p['label']})" if p.get("label") else "")))
+    for p in b["parts"]:
+        if p["kind"] in ("coin_cells", "di2_battery"):
+            items.append(_power_item(p, POWER_NAMES[p["kind"]]))
+    for p in kit:
+        if p["kind"] != "sensor":
+            continue
+        d = p.get("details") or {}
+        mine = str(d.get("bike_id") or (d.get("last") or {}).get("bike_id") or "") == str(b["id"])
+        if d.get("type") in WORN or mine:
+            items.append({**_power_item(p, p.get("label") or p["name"]), "worn": d.get("type") in WORN})
+    low = [i["name"] for i in items if i["low"]]
+    known = [i for i in items if i["level"] is not None]
+    own_known = [i for i in known if not i.get("worn")]  # a heart rate strap alone does not make a bike ready
+    if not items:
+        say, ready = "No batteries known for this bike", None
+    elif low:
+        say, ready = "Charge or replace first: " + ", ".join(low), False
+    elif own_known:
+        say, ready = "Ready to ride" + (f" ({len(items) - len(known)} not reported yet)" if len(known) < len(items) else ""), True
+    else:
+        say, ready = "Battery levels not reported yet", None
+    return {"items": items, "ready": ready, "say": say}
+
+
+def _power_item(p: dict[str, Any], name: str) -> dict[str, Any]:
+    level = p.get("level")
+    return {"id": p["id"], "kind": p["kind"], "name": name, "level": level, "text": p.get("level_text") or "--",
+            "low": level is not None and level <= 20, "at": (p.get("reported") or {}).get("at")}
 
 
 def low_spares(want: dict[str, int], parts: list[dict[str, Any]]) -> list[dict[str, Any]]:

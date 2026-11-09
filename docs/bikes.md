@@ -141,6 +141,11 @@ their battery is the labelled AXS battery on the bike.
 Battery levels (sensors, AXS batteries, shifter coin cells, Di2) show as "--" until Garmin has reported one, then
 its status and level ("good (80%)"). A new battery goes back to "--" until its first reading.
 
+**Ready to ride:** each bike has a battery summary under its name on the Bikes page and in the Garage. It lists the
+derailleur (AXS) and shifter batteries, the sensors last seen on that bike (speed, cadence, power, radar), and your
+heart rate strap, which is on every bike's list because you wear it. A battery at 20% or under, or reported low,
+makes it "Charge or replace first". The strap alone never makes a bike "ready".
+
 ## Rain and rough riding
 - **Wet or dry** is suggested from the Environment Agency rain gauges along a Garmin ride's route (the nearest gauge to
   points about 12 km apart), over the ride and the three hours before it: wet if any had as much rain as a wet ride.
