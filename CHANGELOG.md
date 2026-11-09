@@ -11,6 +11,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   reported yet. It is on the Bikes page under each bike and in the Garage, with a tick or warning on each bike's tile.
 - **Rides synced before 0.46.0** have their files read once, up to four weeks back, so their sensors and batteries
   show without waiting for a new ride.
+- **Last ride and Garmin sync:** each bike shows the date of its last ride. The Bikes page and the Garage show
+  when Garmin last synced, and how many new rides that brought in.
+
+### Changed
+- **Places open on where you are:** Pollen, Events, Fuel, Environment and the map list "Where I am" first, then
+  Home, then your other places A to Z. Each opens on where you are, or on Home when your location is refused,
+  not found, or the page is not on the https address. Environment still remembers a place you picked.
+
+### Fixed
+- **The Load button** next to the hidden token box no longer shows on any page when no token is needed. Each
+  page loads by itself.
 
 ## [0.49.0] - 2026-11-08
 

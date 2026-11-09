@@ -146,5 +146,6 @@ def page_without_token(conn: HTTPConnection) -> bool:
 # placeholder is stored (only when there is no real token) and the box is hidden; the API lets it through.
 PAGE_SNIPPET = (
     "<script>try{if(!sessionStorage.getItem('wa_token'))sessionStorage.setItem('wa_token','local')}catch(e){}"
-    "</script><style>#t{display:none}.bar:has(>#t):not(:has(>:not(#t):not(#go))){display:none}</style>"
+    "</script><style>#t{display:none}#auth{display:none}"
+    ".bar:has(>#t):not(:has(>:not(#t):not(#go):not(button.primary))){display:none}.bar:has(>#t)>#go{display:none}</style>"
 )

@@ -30,6 +30,7 @@ from app.integrations.ticketmaster.client import TicketmasterClient, Ticketmaste
 from app.pagestyle import themed
 from app.places import place_or_default
 from app.ratelimit import SlidingWindowLimiter
+from app.whereami import WHERE_JS
 
 router = APIRouter(prefix="/v1/events", tags=["events"], dependencies=[Depends(require_token)])
 CACHE_SECONDS = 600
@@ -367,21 +368,22 @@ async function load() {
   msg.textContent = '';
   try { MUTES = await get('/v1/events/mutes'); drawMutes(); } catch (e) {}
   try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
-  try { const places = await get('/v1/places'); $('place').replaceChildren(...places.map(p => new Option(p.name, p.id)));
+  try { const places = await get('/v1/places');
     const u = new URLSearchParams(location.search), want = u.get('place'), lat = u.get('lat'), lon = u.get('lon');
-    if (lat && lon) $('place').prepend(new Option('Here (' + Number(lat).toFixed(3) + ', ' + Number(lon).toFixed(3) + ')', '@' + lat + ',' + lon));
-    $('place').value = lat && lon ? '@' + lat + ',' + lon : (want && places.some(p => p.id === want)) ? want : homeId(places) || '';
+    await waFill($('place'), places, lat && lon ? null : want);
+    if (lat && lon) { $('place').prepend(new Option('Here (' + Number(lat).toFixed(3) + ', ' + Number(lon).toFixed(3) + ')', '@' + lat + ',' + lon)); $('place').value = '@' + lat + ',' + lon; }
     if (u.get('days')) $('days').value = u.get('days'); if (u.get('radius_km')) $('radius').value = u.get('radius_km');
     if (location.hash.startsWith('#ev-') || want || lat) await search(); }
   catch (e) { msg.textContent = e.message; }
 }
-const homeId = ps => (ps.find(p => p.kind === 'home') || ps.find(p => p.id === 'home') || ps[0] || {}).id;
+/*WHERE*/
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 async function search() {
   msg.textContent = ''; $('list').replaceChildren();
   if (!$('place').value) { msg.textContent = 'Add a place on /places first.'; return; }
   const v = $('place').value, p = new URLSearchParams({ radius_km: $('radius').value, days: $('days').value });
-  if (v.startsWith('@')) { const [la, lo] = v.slice(1).split(','); p.set('lat', la); p.set('lon', lo); } else p.set('place', v);
+  if (v === WA_ME) for (const [k, x] of await waWhere($('place'))) p.set(k, x);
+  else if (v.startsWith('@')) { const [la, lo] = v.slice(1).split(','); p.set('lat', la); p.set('lon', lo); } else p.set('place', v);
   if ($('type').value) p.set('type', $('type').value);
   if ($('kw').value.trim()) p.set('keyword', $('kw').value.trim());
   if ($('showmuted').checked) p.set('show_muted', 'true');
@@ -421,4 +423,4 @@ page_router = APIRouter()
 @page_router.get("/events", response_class=HTMLResponse, include_in_schema=False)
 async def events_page(request: Request) -> str:
     """The page holds no data; it asks for the token and calls /v1/events."""
-    return themed(PAGE, "events", request)
+    return themed(PAGE.replace("/*WHERE*/", WHERE_JS), "events", request)

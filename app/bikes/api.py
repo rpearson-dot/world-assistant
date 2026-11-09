@@ -1437,6 +1437,10 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
                         "cost": by_bike.get(b["id"]), "history": hist[:100]})  # fmt: skip
     for b in bikes.values():
         b["power"] = power(b, kit)
+        mine = [r["started"] for r in rides if r["bike_id"] == b["id"]]
+        b["rides"], b["last_ride"] = len(mine), (max(mine).isoformat() if mine else None)
+    gs = st.get("garmin") or {}
+    garmin_seen = {"last_sync": gs.get("last_sync"), "last_result": gs.get("last_result"), "error": gs.get("error")}
     return {"rider": _out(rider), "settings": st, "bikes": list(bikes.values()), "loose_sets": loose, "shelf": shelf,
             "kit": kit, "due": due, "ask_wet": ask[-50:], "unassigned_rides": unassigned[-100:],
             "counts": {"to_confirm": len(ask), "unanswered_wet": sum(1 for r in rides if r["wet"] is None and not r["indoor"]),
@@ -1444,7 +1448,7 @@ def build(rows: dict[str, Any], rider: dict[str, Any], now: datetime) -> dict[st
                        "bike_unchecked": sum(1 for r in rides if not r["bike_checked"] and r["bike_id"] is not None),
                        "without_bike": len(unassigned), "kinds_without_bike": kinds},
             "log": log, "recent_rides": recent, "retired": retired, "costs": c, "spares_low": spares_low,
-            "recalls": recall_view(st.get("recalls") or {})}  # fmt: skip
+            "recalls": recall_view(st.get("recalls") or {}), "garmin": garmin_seen}  # fmt: skip
 
 
 WORN = {"heart rate"}  # sensors the rider wears (on every bike's list): the rest belong to the bike they were last on

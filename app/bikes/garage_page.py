@@ -94,6 +94,7 @@ body { padding-bottom: 150px; }
 <div class="layout">
   <section class="stage" id="stage" hidden>
     <h2><span id="bname"></span><span class="odo" id="bodo"></span></h2>
+    <p class="dim small" id="bseen"></p>
     <div class="legend"><span>New</span><i></i><span>Worn out</span><span id="bdue"></span></div>
     <div id="bpower" class="power"></div>
     <div class="rig" id="rig"><div class="art" id="art"></div></div>
@@ -182,9 +183,19 @@ function drawBikes() {
     box.append(t);
   }
 }
+function dayOf(iso) {  // today, yesterday, or Sun 8 Nov (with the year when not this year)
+  const d = new Date(iso), now = new Date(), day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const n = Math.round((day(now) - day(d)) / 86400000);
+  return n === 0 ? 'today' : n === 1 ? 'yesterday' : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) });
+}
+function garminSeen(gm) {
+  if (!gm || !gm.last_sync) return gm && gm.error ? 'Garmin sync failed: ' + gm.error : 'Garmin not synced yet';
+  return 'Garmin synced ' + dayOf(gm.last_sync) + ' at ' + new Date(gm.last_sync).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
 function drawStage() {
   const b = cur; $('stage').hidden = !b; if (!b) return;
   $('bname').textContent = b.label; $('bodo').textContent = fmt(b.km || 0) + ' km';
+  $('bseen').textContent = (b.last_ride ? 'Last ride ' + dayOf(b.last_ride) : 'No rides yet') + ' · ' + garminSeen(g.garmin);
   const parts = allParts(b), due = parts.filter(p => p.wear && p.wear.state === 'due');
   $('bdue').textContent = due.length ? due.length + ' due' : 'nothing due';
   $('art').innerHTML = b.art;

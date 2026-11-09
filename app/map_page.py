@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse
 
 from app.config import get_settings
 from app.pagestyle import themed
+from app.whereami import WHERE_JS
 
 page_router = APIRouter()
 
@@ -198,6 +199,7 @@ async function load() {
 addEventListener('wa-theme', () => { if (Object.keys(drawn).length) load(); });
 
 // the map opens where you are (the browser asks once), else at home; it does not follow you: 📍 Me centres again
+/*WHERE*/
 const ME = '__me';
 let HERE = null, WHY = '';
 function locate() {
@@ -210,7 +212,7 @@ function locate() {
 async function places() {
   try {
     const list = await api('GET', '/v1/places'), keep = $('place').value;
-    $('place').replaceChildren(new Option('Where I am', ME), ...list.map(p => new Option(p.name, p.id)));
+    $('place').replaceChildren(new Option('Where I am', ME), ...waOrder(list).map(p => new Option(p.name, p.id)));
     if (keep && (keep === ME || list.some(p => p.id === keep))) $('place').value = keep;
   } catch (e) { /* the token may be wrong; load() will say so */ }
 }
@@ -231,4 +233,4 @@ async def map_page(request: Request) -> str:
         {"tile_url": s.map_tile_url, "attribution": s.map_tile_attribution, "max_zoom": s.map_max_zoom},
         ensure_ascii=False,  # the page is UTF-8; "©" should read as itself in the source
     )
-    return themed(PAGE.replace("/*MAP_CONFIG*/", cfg), "map", request)
+    return themed(PAGE.replace("/*MAP_CONFIG*/", cfg).replace("/*WHERE*/", WHERE_JS), "map", request)

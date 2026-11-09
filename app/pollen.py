@@ -21,6 +21,7 @@ from app.pollen_budget import PollenLimiter
 from app.pollen_grid import current, nearest
 from app.pollen_grid import load as load_grid
 from app.pollen_history import CACHE_SECONDS, KEEP_DAYS, cache_key, history, record
+from app.whereami import WHERE_JS
 
 router = APIRouter(prefix="/v1/pollen", tags=["pollen"], dependencies=[Depends(require_token)])
 
@@ -177,10 +178,10 @@ async function get(url) {
 async function load() {
   msg.textContent = '';
   try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
-  try { const places = await get('/v1/places'); $('place').replaceChildren(...places.map(p => new Option(p.name, p.id))); $('place').value = homeId(places) || ''; }
+  try { const places = await get('/v1/places'); await waFill($('place'), places); await show(); }
   catch (e) { msg.textContent = e.message; }
 }
-const homeId = ps => (ps.find(p => p.kind === 'home') || ps.find(p => p.id === 'home') || ps[0] || {}).id;
+/*WHERE*/
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 const DAY = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
 function row(title, dates, levels, labels, extra) {
@@ -240,6 +241,7 @@ function drawEach() {
 }
 async function loadHistory() {
   try {
+    if ($('place').value === WA_ME) throw new Error('history is kept for saved places');
     HIST = await get('/v1/pollen/history?place=' + encodeURIComponent($('place').value));
   } catch (e) { $('hist').hidden = true; return; }
   $('hist').hidden = false; OFF = new Set();
@@ -262,7 +264,7 @@ async function show() {
   if (!$('place').value) { msg.textContent = 'Add a place on /places first.'; return; }
   $('note').textContent = 'Loading...';
   try {
-    const d = await get('/v1/pollen/near?place=' + encodeURIComponent($('place').value));
+    const d = await get('/v1/pollen/near?' + await waWhere($('place')));
     $('note').textContent = 'Pollen near ' + d.place + (d.cached ? ' (saved from earlier; refreshed daily)' : '') + '.';
     $('list').append(row('Allergy risk', d.dates, d.allergy_risk_level, d.allergy_risk_label,
       d.allergy_risk.map(r => r == null ? '' : r + '/10')));
@@ -281,4 +283,4 @@ page_router = APIRouter()
 @page_router.get("/pollen", response_class=HTMLResponse, include_in_schema=False)
 async def pollen_page(request: Request) -> str:
     """The page holds no data; it asks for the token and calls /v1/pollen."""
-    return themed(PAGE, "pollen", request)
+    return themed(PAGE.replace("/*WHERE*/", WHERE_JS), "pollen", request)
