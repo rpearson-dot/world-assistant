@@ -1,0 +1,33 @@
+# World Assistant's front door (docker-compose.yml, service wa-proxy). Every request to the api comes through here,
+# so an update can start the new version beside the old one and move requests across without a gap
+# (scripts/rollout.sh). Which api answers is in upstreams.caddy, kept in the data folder and rewritten by the
+# rollout; `caddy reload` switches over without dropping a request.
+#
+# The api decides who may skip the token (app/localnet.py) from who connected to it. Through this proxy that is
+# always the proxy, so the proxy says who connected to it (X-WA-Peer) and whether the request had already come
+# through another proxy (X-WA-Hops: the forwarding headers it arrived with). The api believes these two only from
+# this container, and then ignores the X-Forwarded-* headers Caddy adds. A version from before the front door sees
+# those and asks every request for the token: safe, if less convenient, should one ever run behind it.
+{
+	admin localhost:2019
+	auto_https off
+	persist_config off
+	servers {
+		# No front-end is trusted: the X-Forwarded-* a client sends are reported in X-WA-Hops, never believed
+		trusted_proxies static 255.255.255.255/32
+	}
+}
+
+:8000 {
+	reverse_proxy {
+		import /live/upstreams.caddy
+		# A version being swapped out: try the other for up to 10 s before giving up
+		lb_try_duration 10s
+		lb_try_interval 250ms
+		fail_duration 10s
+		# Streamed answers (Here) go out as they are written
+		flush_interval -1
+		header_up X-WA-Peer {http.request.remote.host}
+		header_up X-WA-Hops "{http.request.header.Forwarded}{http.request.header.X-Forwarded-For}{http.request.header.X-Forwarded-Host}{http.request.header.X-Forwarded-Proto}{http.request.header.X-Real-IP}"
+	}
+}

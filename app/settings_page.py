@@ -121,10 +121,18 @@ PAGE = """<!doctype html>
     <div class="row"><button id="bk" class="primary" type="button">Back up now</button>
     <span id="bkmsg" class="dim"></span></div>
     <div class="scroll"><table id="bklist"></table></div></div>
+  <div class="card"><h2>Update now</h2>
+    <p class="dim">Installs the newest signed release straight away, the same way as the nightly update: a backup first,
+    then the new version starts beside the running one, is checked, tried on a share of requests, and takes over,
+    with the old one ready to take them back. Everything keeps answering throughout. It starts within a minute and
+    takes about a quarter of an hour.</p>
+    <div class="row"><button id="up" class="primary" type="button">Update now</button>
+    <button id="upcancel" type="button" hidden>Cancel</button></div>
+    <p id="upmsg" class="dim" aria-live="polite"></p></div>
   <div class="card"><h2>Automatic updates</h2>
-    <p class="dim">When on, a job on this server checks every night at 04:00 for a newer signed release, backs up,
-    updates, checks that every page and endpoint still answers, and puts the old version back if they do not.
-    It can only apply what has been released. The one-time setup of that job is in the runbook.</p>
+    <p class="dim">When on, the updater checks every night at 04:00 for a newer signed release and puts it in place the
+    same way as Update now, then brings the database, cache and other containers to their newest images (only those
+    with a newer one restart, briefly). It can only apply what has been released.</p>
     <label class="row" style="font-weight:600"><input id="au" type="checkbox" style="width:auto"> Update this server automatically</label>
     <p id="aumsg" class="dim"></p></div>
 </section>
@@ -344,6 +352,42 @@ $('au').onchange = async ev => {
   try { await api('/v1/auto-deploy', { method: 'PUT', body: JSON.stringify({ enabled: ev.target.checked }) }); await auLoad(); }
   catch (e) { ev.target.checked = !ev.target.checked; $('aumsg').textContent = 'Could not save: ' + e.message; }
 };
+// Update now: ask, then follow it (asked, picked up, the restart, the outcome) until the server reports
+let UP = { watching: false, from: null, timer: null };
+const hm = iso => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+function upShow(d) {
+  const r = d.request, l = d.last_run, m = $('upmsg');
+  $('up').disabled = !!r; $('upcancel').hidden = !(r && !r.claimed);
+  if (r && !r.claimed) {
+    const mins = (Date.now() - new Date(r.asked)) / 60000;
+    m.textContent = mins < 3 ? 'Asked at ' + hm(r.asked) + '. Waiting for the server to start it (it looks every minute)...'
+      : 'Asked at ' + hm(r.asked) + ' and not picked up yet. The updater container may not be running on the server: see "The updater container" in the runbook.';
+  } else if (r) m.textContent = 'Updating since ' + hm(r.claimed) + ': backing up, then starting, checking and trying the new version beside this one (about 15 minutes)...';
+  else if (UP.watching && l) {
+    m.replaceChildren(document.createTextNode((AU_WORDS[l.result] || l.result) + (l.message ? ': ' + l.message : '') + '. '));
+    if (d.running.version !== UP.from) { const b = document.createElement('button'); b.type = 'button'; b.textContent = 'Reload the page';
+      b.onclick = () => location.reload(); m.append(b); }
+    UP.watching = false;
+  }
+}
+async function upPoll() {
+  clearTimeout(UP.timer);
+  let d;
+  try { d = await api('/v1/auto-deploy'); }
+  catch (e) { if (UP.watching) { $('upmsg').textContent = 'The server is not answering for a moment...'; UP.timer = setTimeout(upPoll, 5000); } return; }
+  if (d.request && !UP.watching) { UP.watching = true; UP.from = d.running.version; }
+  upShow(d); auLoad();
+  if (d.request || UP.watching) UP.timer = setTimeout(upPoll, 5000);
+}
+$('up').onclick = async () => {
+  if (!confirm('Update this server to the newest release now? It takes a backup first and puts the old version back if the checks fail.')) return;
+  try { const d = await api('/v1/auto-deploy/request', { method: 'POST' }); UP.watching = true; UP.from = d.running.version; upShow(d); UP.timer = setTimeout(upPoll, 5000); }
+  catch (e) { $('upmsg').textContent = 'Could not ask: ' + e.message; }
+};
+$('upcancel').onclick = async () => {
+  try { const d = await api('/v1/auto-deploy/request', { method: 'DELETE' }); UP.watching = false; upShow(d); $('upmsg').textContent = 'Cancelled.'; }
+  catch (e) { $('upmsg').textContent = e.message; }
+};
 async function bkLoad() {
   try {
     const d = await api('/v1/backups');
@@ -436,7 +480,7 @@ async function load() {
   $('msg').textContent = '';
   try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
   try { await refreshKeys(); } catch (e) { $('msg').textContent = 'Could not load: ' + e.message; return; }
-  bkLoad(); auLoad(); mqLoad(); nfLoad(); sysLoad().catch(e => $('sys').textContent = e.message);
+  bkLoad(); auLoad(); upPoll(); mqLoad(); nfLoad(); sysLoad().catch(e => $('sys').textContent = e.message);
   let done = false; try { done = localStorage.getItem('wa_wizard') === 'done'; } catch (e) {}
   if (!done && setup.you.find(x => x.id === 'home').state !== 'ready') wizard(0);
 }

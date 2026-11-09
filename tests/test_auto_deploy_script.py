@@ -32,21 +32,23 @@ esac
 
 FAKE_CURL = r"""#!/usr/bin/env bash
 echo "curl $*" >> "$T/calls"
-body=""; method=GET
+body=""; method=GET; url=""
 while [ $# -gt 0 ]; do
-  case "$1" in -X) method=$2; shift ;; -d) body=$2; shift ;; esac
+  case "$1" in -X) method=$2; shift ;; -d) body=$2; shift ;; -H|--max-time) shift ;; -*) ;; *) url=$1 ;; esac
   shift
 done
-if [ "$method" = POST ]; then echo "$body" >> "$T/reports"; exit 0; fi
 [ -z "${FAKE_API_DOWN:-}" ] || exit 7
-printf '{"enabled":%s,"running":{"version":"%s","commit":"x"},"last_run":null}' "$SWITCH" "$RUNNING"
+case "$url" in *"/request/claim") echo claimed >> "$T/claims"; [ -z "${FAKE_CLAIM_FAIL:-}" ]; exit ;; esac
+if [ "$method" = POST ]; then echo "$body" >> "$T/reports"; exit 0; fi
+printf '{"enabled":%s,"running":{"version":"%s","commit":"x"},"last_run":null,"request":null,"pending":%s}' "$SWITCH" "$RUNNING" "${PENDING:-false}"
 """
 
 FAKE_DEPLOY = r"""#!/usr/bin/env bash
+if [ "${1:-}" = "--infra" ]; then echo "infra" >> "$T/infra"; [ -z "${FAKE_INFRA_FAIL:-}" ]; exit; fi
 echo "deploy WA_IMAGE=${WA_IMAGE:-} env=$(grep '^WA_IMAGE=' .env 2>/dev/null || true) $*" >> "$T/calls"
 n=$(cat "$T/deploy_n" 2>/dev/null || echo 0); echo $((n+1)) > "$T/deploy_n"
 case ",${DEPLOY_RESULTS:-0,0}," in *",$n:fail,"*) exit 1 ;; esac
-[ "$(echo "${DEPLOY_RESULTS:-0,0}" | cut -d, -f$((n+1)))" = 0 ]
+exit "$(echo "${DEPLOY_RESULTS:-0,0}" | cut -d, -f$((n+1)))"
 """
 
 
@@ -278,3 +280,52 @@ def test_a_dry_run_on_a_checkout_does_not_sync(box: Box) -> None:
     r = box.run("--dry-run")
     assert "move the project files to v0.6.0" in r.stdout
     assert not any(c.startswith(("sync", "deploy")) for c in box.calls)
+
+
+def test_every_minute_does_nothing_unless_update_now_was_pressed(box: Box) -> None:
+    r = box.run("--if-requested", PENDING="false")
+    assert r.returncode == 0 and r.stdout == "" and box.calls == [c for c in box.calls if c.startswith("curl")]
+    assert not (box.t / "claims").exists() and box.reports == []
+    assert box.run("--if-requested", FAKE_API_DOWN="1").returncode == 0  # the api restarting: try again next minute
+
+
+def test_update_now_is_claimed_then_runs_like_now_even_switched_off(box: Box) -> None:
+    box.dot_env(f"WA_IMAGE={OLD}\n")
+    r = box.run("--if-requested", PENDING="true", SWITCH="false", WA_IMAGE=OLD)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (box.t / "claims").read_text().count("claimed") == 1 and "Update now was pressed" in r.stdout
+    assert box.reports[-1]["result"] == "updated" and any(c.startswith("deploy") for c in box.calls)
+
+
+def test_update_now_claimed_elsewhere_is_left_alone(box: Box) -> None:
+    r = box.run("--if-requested", PENDING="true", FAKE_CLAIM_FAIL="1")
+    assert r.returncode == 0 and not any(c.startswith("docker") for c in box.calls) and box.reports == []
+
+
+def test_the_nightly_run_also_refreshes_the_other_containers_but_update_now_does_not(box: Box) -> None:
+    box.dot_env(f"WA_IMAGE={OLD}\n")
+    assert box.run(WA_IMAGE=OLD).returncode == 0
+    assert (box.t / "infra").read_text().count("infra") == 1
+    (box.t / "infra").unlink()
+    box.dot_env(f"WA_IMAGE={OLD}\n")
+    assert box.run("--now", WA_IMAGE=OLD).returncode == 0 and not (box.t / "infra").exists()
+    box.dot_env(f"WA_IMAGE={NEW}\n")
+    assert box.run(WA_IMAGE=NEW).returncode == 0 and (box.t / "infra").exists()  # already up to date: still checked
+
+
+def test_a_staged_update_that_failed_its_checks_leaves_the_old_version_and_its_database(box: Box) -> None:
+    sha = box.make_checkout()
+    box.dot_env(f"WA_IMAGE={OLD}\n")
+    r = box.run(WA_IMAGE=OLD, DEPLOY_RESULTS="3", SCHEMA_BEFORE="0047", SCHEMA_AFTER="0048")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert box.reports[-1]["result"] == "rolled_back" and "answering throughout" in box.reports[-1]["message"]
+    assert not any("alembic downgrade" in c for c in box.calls)  # the old version runs on the added parts
+    assert len([c for c in box.calls if c.startswith("deploy")]) == 1  # nothing to start again
+    assert f"WA_IMAGE={OLD}" in box.dot_env_text and any(c == f"sync {sha}" for c in box.calls)
+
+
+def test_a_staged_update_that_did_not_finish_is_reported_not_undone(box: Box) -> None:
+    box.dot_env(f"WA_IMAGE={OLD}\n")
+    r = box.run(WA_IMAGE=OLD, DEPLOY_RESULTS="4")
+    assert r.returncode == 1 and box.reports[-1]["result"] == "failed" and "is running and answering" in box.reports[-1]["message"]
+    assert len([c for c in box.calls if c.startswith("deploy")]) == 1

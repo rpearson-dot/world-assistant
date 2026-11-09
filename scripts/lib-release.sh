@@ -40,6 +40,7 @@ wa_set_image() { # ref: the one WA_IMAGE line in .env
 wa_align_image() {
   # Returns 0 when there is nothing to do or the pin was moved; 1 (with the reason printed) when the deploy should stop.
   [ -n "${WA_IMAGE:-}" ] || return 0   # building from the folder: the files are the version
+  [ -z "${WA_NO_PULL:-}" ] || return 0  # an image built here (CI's rollout check): nothing to pull or align
   [ -d .git ] || return 0              # not a checkout: the files do not say which release they are
   local files pinned repo ref
   files="$(wa_files_version)"

@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # requests from signed-in tailnet users need no token for the web pages; the API, MCP and Siri still do.
     tailscale_proxy: str = ""
     tailnet_web_no_token: bool = True
+    # The stack's own front door (docker-compose.yml sets wa-proxy). Requests through it say, in X-WA-Peer and
+    # X-WA-Hops, who connected and whether another proxy came first; believed only from this container.
+    front_proxy: str = ""
 
     db_host: str = "wa-db"
     db_port: int = 5432

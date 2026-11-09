@@ -64,6 +64,35 @@ def test_switch_and_report_round_trip(monkeypatch: pytest.MonkeyPatch, table: No
     assert c.put("/v1/auto-deploy", json={"enabled": False}, headers=H).json()["enabled"] is False
 
 
+@pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
+def test_update_now_is_asked_claimed_and_cleared_by_the_report(monkeypatch: pytest.MonkeyPatch, table: None) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app import autodeploy as AD
+
+    monkeypatch.setenv("API_TOKEN", "s3cret")
+    app.state.engine = create_async_engine(URL, poolclass=NullPool)  # type: ignore[arg-type]
+    c = TestClient(app)
+    assert c.post("/v1/auto-deploy/request/claim", headers=H).status_code == 409  # nothing asked
+    d = c.post("/v1/auto-deploy/request", headers=H).json()
+    asked = d["request"]["asked"]
+    assert d["pending"] is True and d["request"]["claimed"] is None
+    assert c.post("/v1/auto-deploy/request", headers=H).json()["request"]["asked"] == asked  # asking again: the same one
+    d = c.post("/v1/auto-deploy/request/claim", headers=H).json()
+    assert d["pending"] is False and d["request"]["claimed"]
+    assert c.post("/v1/auto-deploy/request/claim", headers=H).status_code == 409  # taken once
+    assert c.delete("/v1/auto-deploy/request", headers=H).status_code == 409  # too late to cancel
+    d = c.post("/v1/auto-deploy/report", json={"result": "updated", "to_version": "9.9.9"}, headers=H).json()
+    assert d["request"] is None and d["last_run"]["result"] == "updated"
+    # cancelling before it is picked up
+    c.post("/v1/auto-deploy/request", headers=H)
+    assert c.delete("/v1/auto-deploy/request", headers=H).json()["request"] is None
+    # a claim that never reported counts as over
+    old = (datetime.now(UTC) - timedelta(seconds=AD.STALE_S + 60)).isoformat()
+    assert AD._ask_view({"asked": old, "claimed": old}, datetime.now(UTC)) is None
+    assert AD._ask_view({"asked": old, "claimed": None}, datetime.now(UTC)) == {"asked": old, "claimed": None}
+
+
 def test_status_page_has_the_switch() -> None:
     html = TestClient(app).get("/status").text
-    assert 'id="au"' in html and "/v1/auto-deploy" in html
+    assert 'id="au"' in html and "/v1/auto-deploy" in html and 'id="up"' in html and "/v1/auto-deploy/request" in html

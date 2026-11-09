@@ -46,6 +46,9 @@ x-app: &app
     WA_LOCAL_HOSTS: ${WA_LOCAL_HOSTS:-}
     # Over Tailscale (docker-compose.tailscale.yml), pages in a browser need no token; false: they ask too.
     WA_TAILNET_WEB_NO_TOKEN: ${WA_TAILNET_WEB_NO_TOKEN:-true}
+    # The front door (wa-proxy below): who connected is taken from it, and the stack calls the api through it
+    WA_FRONT_PROXY: wa-proxy
+    WA_HA_API_URL: ${WA_HA_API_URL:-http://wa-proxy:8000}
     WA_NH_RATE_LIMIT_PER_MINUTE: ${WA_NH_RATE_LIMIT_PER_MINUTE:-8}
     WA_NH_CAPTURE_ENABLED: ${WA_NH_CAPTURE_ENABLED:-true}
     WA_NH_POLL_ENABLED: ${WA_NH_POLL_ENABLED:-true}
@@ -184,13 +187,39 @@ services:
       wa-db:
         condition: service_healthy
 
-  api:
-    <<: *app
+  # The front door: the only published port. Every request goes through it to the api, so an update can start the
+  # new version beside the old one and move requests across without a gap (scripts/rollout.sh). It holds nothing:
+  # which api answers is in WA_DATA_DIR/proxy/upstreams.caddy, rewritten by the rollout.
+  wa-proxy:
+    image: caddy:${WA_CADDY_TAG:-2.10-alpine}
+    restart: unless-stopped
     labels:
       net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/world-assistant.png"
       net.unraid.docker.webui: "http://[IP]:[PORT:8000]/status"
     ports:
       - "${WA_API_PORT:-8010}:8000"
+    networks: [internal]
+    environment:
+      TZ: ${TZ:-Europe/London}
+    volumes:
+      - ./deploy/proxy:/etc/caddy:ro
+      - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}/proxy:/live
+    entrypoint:
+      - sh
+      - -c
+      - |
+        [ -s /live/upstreams.caddy ] || cp /etc/caddy/upstreams.default.caddy /live/upstreams.caddy
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  api:
+    <<: *app
+    labels:
+      net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/world-assistant.png"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -212,6 +241,8 @@ services:
     labels:
       net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/worker.png"
     command: ["arq", "app.worker.WorkerSettings"]
+    # Running jobs may finish when it is stopped (job_completion_wait in app/worker.py)
+    stop_grace_period: 150s
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -223,6 +254,33 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+
+  # Updates this server: every night at 04:00 when automatic updates are on, and within a minute of "Update now" in
+  # Settings (scripts/updater.sh runs scripts/auto-deploy.sh). It replaces the User Scripts the runbook used to set
+  # up. It drives Docker on this server through its socket, which is full control of the server, so it publishes
+  # no port and only installs releases whose signature checks out. Started by scripts/deploy.sh, which puts
+  # COMPOSE_PROFILES=updater and WA_PROJECT_DIR in .env (WA_UPDATER=off in .env leaves it out).
+  wa-updater:
+    profiles: [updater]
+    build: ./deploy/updater
+    image: world-assistant-updater:local
+    restart: unless-stopped
+    networks: [internal]
+    working_dir: ${WA_PROJECT_DIR:-/mnt/user/projects/world-assistant}
+    command: ["bash", "scripts/updater.sh"]
+    environment:
+      TZ: ${TZ:-Europe/London}
+      WA_IN_UPDATER: "1"
+      AUTO_DEPLOY_API: http://wa-proxy:8000
+      DOCKER_CONFIG: ${WA_DOCKER_CONFIG:-/root/.docker}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # The same paths as on the server, so compose finds the files and folders it names
+      - ${WA_PROJECT_DIR:-/mnt/user/projects/world-assistant}:${WA_PROJECT_DIR:-/mnt/user/projects/world-assistant}
+      - ${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}:${WA_DATA_DIR:-/mnt/user/appdata/world-assistant}
+      - ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}:${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}:ro
+      # The registry login for the release images (docker login ghcr.io on the server)
+      - ${WA_DOCKER_CONFIG:-/root/.docker}:${WA_DOCKER_CONFIG:-/root/.docker}:ro
 
 networks:
   internal: {}

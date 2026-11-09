@@ -6,6 +6,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -55,10 +56,44 @@ for _module_id, _path in registry.router_paths():
 app.add_middleware(ModuleGate)  # a switched-off module's routes answer 404 (see app/modules/gate.py)
 
 
+class ErrorCount:
+    """Counts the server errors (5xx) this process has answered, for an update's trial of a new version
+    (scripts/rollout.sh reads /healthz/errors before and after)."""
+
+    n = 0
+
+    def __init__(self, inner: Any) -> None:
+        self.inner = inner
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            return await self.inner(scope, receive, send)
+
+        async def counted(message: Any) -> None:
+            if message["type"] == "http.response.start" and message["status"] >= 500:
+                ErrorCount.n += 1
+            await send(message)
+
+        try:
+            await self.inner(scope, receive, counted)
+        except Exception:
+            ErrorCount.n += 1
+            raise
+
+
+app.add_middleware(ErrorCount)
+
+
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     """Liveness: the process is up. Does not touch dependencies."""
     return {"status": "ok"}
+
+
+@app.get("/healthz/errors")
+async def healthz_errors() -> dict[str, Any]:
+    """How many server errors this process has answered since it started, and its version (for updates)."""
+    return {"errors": ErrorCount.n, "version": VERSION}
 
 
 @app.get("/readyz")

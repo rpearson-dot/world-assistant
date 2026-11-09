@@ -12,7 +12,8 @@
 # with WA_HOST resolving to the Unraid IP (a Pi-hole local DNS record works).
 
 services:
-  api:
+  # The stack's front door (wa-proxy) is what Traefik reaches, so updates swap the api without a gap
+  wa-proxy:
     networks: [internal, infra]
     labels:
       - "traefik.enable=true"

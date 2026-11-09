@@ -2,6 +2,33 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.51.0] - 2026-11-09
+
+### Added
+- **Update now** in Settings (Backups and updates): installs the newest signed release straight away, the same way
+  as the nightly update, whether automatic updates are on or off. The page follows it through to the result.
+- **Updates with no gap.** A front door, `wa-proxy` (Caddy), now holds the published port, and Tailscale and
+  Traefik point at it. An update starts the new version beside the running one and checks it. It then tries it on
+  one request in five for 2 minutes, and gives it every request while the old version stands by for 10 minutes.
+  Last, it hands the worker over: the old worker finishes its running jobs first. If the new version fails at any
+  point, the old one has answered throughout and carries on. The database keeps the new version's additions, and
+  nothing is restored. See the runbook, "Staged updates".
+- **The updater container** (`wa-updater`) runs the nightly update and Update now, instead of the Unraid User
+  Scripts. `scripts/deploy.sh` starts it, adding `COMPOSE_PROFILES=updater` and `WA_PROJECT_DIR` to `.env`. It has
+  the server's Docker socket, publishes no port, and installs only signed releases. Delete the old User Script;
+  left in place it does no harm.
+- **The nightly update** also brings Postgres, Redis, the front door, Tailscale and ntfy to their newest images.
+  Only those with a newer image restart, briefly, at 04:00. Each successful update removes release images older
+  than the one before it, so Docker's disk use stays flat.
+- **Database changes only add** ([docs/migrations.md](docs/migrations.md)): removing or renaming takes two
+  releases. A test checks every new migration, and CI now updates the previous release to each change in stages,
+  with requests running throughout. That check must pass before a release.
+
+### Changed
+- **The first update to this version** replaces everything at once, as before (about a minute's gap), to put the
+  front door in. Updates after it have no gap. `COMPOSE_REVISION` is 2: a project folder that is not a git
+  checkout needs the new compose files first.
+
 ## [0.50.0] - 2026-11-09
 
 ### Added

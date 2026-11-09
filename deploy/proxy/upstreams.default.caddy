@@ -1,0 +1,3 @@
+# Written by scripts/rollout.sh. This is the starting point: every request to the api service.
+to api:8000
+lb_policy first

@@ -16,6 +16,11 @@ without one, only when all of these hold (WA_LOCAL_NO_TOKEN=false turns it off e
 
 Never expose the port to the internet: with port forwarding, Docker can present an outside connection as
 coming from its own gateway, which is a private address.
+
+In the full stack every request reaches the api through its front door, wa-proxy (deploy/proxy/Caddyfile), so the
+api can be swapped without a gap. The proxy passes on who connected to it (X-WA-Peer) and the forwarding headers
+the request came with (X-WA-Hops), and drops its own. Those two are believed only when the connection itself comes
+from the proxy container (WA_FRONT_PROXY), so the rules above apply to the real client, as they would without it.
 """
 
 from __future__ import annotations
@@ -35,8 +40,7 @@ HOME_SUFFIXES = (".local", ".lan", ".home", ".home.arpa", ".internal", ".localdo
 TAILSCALE = ip_network("100.64.0.0/10")
 
 
-def _peer(conn: HTTPConnection) -> IPv4Address | IPv6Address | None:
-    host = conn.client.host if conn.client else None
+def _ip(host: str | None) -> IPv4Address | IPv6Address | None:
     try:
         ip = ip_address(host or "")
     except ValueError:
@@ -44,6 +48,29 @@ def _peer(conn: HTTPConnection) -> IPv4Address | IPv6Address | None:
     if isinstance(ip, IPv6Address) and ip.ipv4_mapped:
         return ip.ipv4_mapped
     return ip
+
+
+def via_front(conn: HTTPConnection) -> bool:
+    """The connection comes from the stack's own front door, so its X-WA-Peer and X-WA-Hops can be believed."""
+    front = get_settings().front_proxy
+    if not front or "x-wa-peer" not in conn.headers:
+        return False
+    ip = _ip(conn.client.host if conn.client else None)
+    return ip is not None and str(ip) in _proxy_ips(front)
+
+
+def _peer(conn: HTTPConnection) -> IPv4Address | IPv6Address | None:
+    """Who connected: the client itself, or, through the front door, whoever connected to it."""
+    if via_front(conn):
+        return _ip(conn.headers.get("x-wa-peer"))
+    return _ip(conn.client.host if conn.client else None)
+
+
+def proxied(conn: HTTPConnection) -> bool:
+    """Came through a reverse proxy other than the stack's own front door."""
+    if via_front(conn):
+        return bool(conn.headers.get("x-wa-hops", "").strip())
+    return any(h in conn.headers for h in PROXY_HEADERS)
 
 
 def private_peer(conn: HTTPConnection) -> bool:
@@ -89,7 +116,7 @@ def is_local(conn: HTTPConnection, method: str = "GET") -> bool:
     s = get_settings()
     if not s.local_no_token:
         return False
-    if any(h in conn.headers for h in PROXY_HEADERS):
+    if proxied(conn):
         return False
     return private_peer(conn) and home_host(conn.headers.get("host", ""), s.local_hosts) and same_origin(conn, method)
 
@@ -101,20 +128,20 @@ def is_local(conn: HTTPConnection, method: str = "GET") -> bool:
 #   * the API answers without a token only the browser's own same-origin fetches from those pages, so the
 #     web interface works from your phone while Siri Shortcuts, MCP clients and scripts still need the token.
 
-_proxy_cache: tuple[float, str, frozenset[str]] = (0.0, "", frozenset())
+_proxy_cache: dict[str, tuple[float, frozenset[str]]] = {}
 
 
 def _proxy_ips(name: str) -> frozenset[str]:
-    """The sidecar's addresses on the stack's network, looked up at most once a minute."""
-    global _proxy_cache
-    at, cached_name, ips = _proxy_cache
-    if cached_name == name and time.monotonic() - at < 60:
-        return ips
+    """A container's addresses on the stack's network (the Tailscale sidecar, the front door), looked up at most
+    once a minute."""
+    hit = _proxy_cache.get(name)
+    if hit and time.monotonic() - hit[0] < 60:
+        return hit[1]
     try:
         ips = frozenset(str(info[4][0]) for info in socket.getaddrinfo(name, None))
     except OSError:
         ips = frozenset()
-    _proxy_cache = (time.monotonic(), name, ips)
+    _proxy_cache[name] = (time.monotonic(), ips)
     return ips
 
 

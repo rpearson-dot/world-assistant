@@ -46,7 +46,7 @@ def runs(**states: str) -> dict:
     return {"check_runs": out}
 
 
-GREEN = {"test": "completed/success", "secrets": "completed/success", "image": "completed/success", "stack": "completed/success"}
+GREEN = {"test": "completed/success", "secrets": "completed/success", "image": "completed/success", "stack": "completed/success", "rollout": "completed/success"}
 
 
 @pytest.fixture
@@ -121,7 +121,7 @@ def test_a_rerun_replaces_an_earlier_failure(gate) -> None:  # type: ignore[no-u
     both = {"check_runs": [
         {"name": "test", "status": "completed", "conclusion": "failure", "started_at": "2026-10-21T09:00:00Z"},
         {"name": "test", "status": "completed", "conclusion": "success", "started_at": "2026-10-21T09:10:00Z"},
-        *runs(secrets="completed/success", image="completed/success", stack="completed/success")["check_runs"],
+        *runs(secrets="completed/success", image="completed/success", stack="completed/success", rollout="completed/success")["check_runs"],
     ]}  # fmt: skip
     assert gate(both).returncode == 0
 
