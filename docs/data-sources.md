@@ -35,6 +35,15 @@ not legal advice.
 | **FSA food alerts** (`data.food.gov.uk/food-alerts`) | Allergy alerts and product recalls, read each morning and matched against the KitchenOwl list and usual products (`/v1/food/alerts`, the Home Assistant sensor "Food alerts to check") | None | A handful a week; the last 60 days kept. A match by name says "check this". `python -m app.food LAT LON` |
 | **DVLA Vehicle Enquiry Service** (`driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles`) | Each vehicle's tax status and due date, MOT status and expiry | Key (secret `dvla_api_key`, header `x-api-key`), applied for on DVLA's developer portal | Checked each Monday and with Check now; the answer is kept with the vehicle |
 | **DVSA MOT History API** (`history.mot.api.gov.uk`) | Each vehicle's MOT tests: result, mileage, advisories and defects; first MOT due; outstanding recalls | API key (`dvsa_mot_api_key`) plus a Microsoft Entra client (`dvsa_mot_client_id`, `dvsa_mot_client_secret`, `dvsa_mot_token_url`), all from DVSA's registration email | 15 requests a second, 500,000 a day; the client secret lasts two years, and an API key unused for 90 days is revoked (the weekly check keeps it alive). `python -m app.vehiclecheck REG` |
+| **Defra UK-AIR** (Sensor Observation Service REST API) | Air quality near each place, as Defra's Daily Air Quality Index (1 to 10), with the readings behind it | None | Read live and kept ten minutes. Open Government Licence v3.0. See [environment.md](environment.md). |
+| **Environment Agency: rivers, rain and tides** (`environment.data.gov.uk/flood-monitoring`) | River levels and flows, rainfall and tide gauges near a place, with trends | None | Read live and kept ten minutes. Open Government Licence v3.0. |
+| **UK Power Networks open data** (Opendatasoft API v2.1) | Power cuts and planned works near your places, and which areas they supply | Key optional for some datasets (`ukpn_api_key`, header `Authorization: Apikey`) | Faults every hour (15 minutes for alerts); datasets found by title. See [power.md](power.md). |
+| **Garmin Connect Personal API** | Each rider's rides, their files (route, sensors and batteries) and weight, for the bikes | Each rider's own Personal API key, saved on the Bikes page | Daily sync, nothing written to Garmin. See [bikes.md](bikes.md). |
+| **KitchenOwl** (your own, in the stack) | The family's shopping, wishlist and outdoors lists | Token (secret `kitchenowl_token`) | On your tailnet only. See [shopping.md](shopping.md). |
+| **Sainsbury's and Ocado** (through the supermarket service) | Prices of the shopping list, delivery slots, filling a basket | Your own retailer logins | Unofficial and may break; personal use only. Never orders or pays. See [shopping.md](shopping.md). |
+| **Aldi and Lidl product search** | Specialbuys and Middle of Lidl for the wishlist | None | Unofficial JSON searches their websites use; read gently, twice a week. See [wishlist.md](wishlist.md). |
+| **GO Outdoors, Decathlon and Bikesy** | Outdoor gear and bike part prices | None | GO Outdoors' public Shopify JSON; a Decathlon page only when pasted in; Bikesy tag pages its robots.txt allows. See [outdoors.md](outdoors.md). |
+| **GOV.UK bank holidays** (`www.gov.uk/bank-holidays.json`) | Days a weekday bus tracker rests and weekday timetables do not apply | None | Read daily. Open Government Licence v3.0. |
 | **OpenStreetMap** via Geofabrik extract | Map data for Valhalla | Download | Open Database Licence: credit "© OpenStreetMap contributors" wherever routes are shown to others. |
 
 ## Credits and licences
@@ -59,6 +68,8 @@ affiliated with, or endorsed by, any of them. Where a provider asks for a credit
 - **NaPTAN:** Department for Transport, Open Government Licence v3.0.
 - **OpenStreetMap:** © OpenStreetMap contributors (Open Database Licence), via Geofabrik extracts.
 - **National Rail:** Darwin data through the Rail Data Marketplace, under its consumer terms.
+- **Defra, the Environment Agency, the ONS, data.police.uk, the FSA, DVLA, DVSA, GOV.UK and the NRFA:** Open
+  Government Licence v3.0 (the NRFA under its own open terms), credited where the data is shown.
 
 If you run this yourself you agree to each provider's terms with your own key. Do not use it commercially
 with a personal or non-commercial key, and keep within each provider's rate limits (the defaults do).

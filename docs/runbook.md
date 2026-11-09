@@ -60,7 +60,7 @@ new folder, checks every row and page, and goes back by itself if anything fails
 
 ## Back up and restore
 
-Backups are built into the app: the status page, `scripts/deploy.sh` and `python -m app.backup`.
+Backups are built into the app: Settings (Backups and updates), `scripts/deploy.sh` and `python -m app.backup`.
 See [backup.md](backup.md). A full-database dump is still possible:
 
 ```bash
@@ -71,7 +71,7 @@ docker compose exec -T wa-db pg_restore -U worldassistant -d worldassistant --cl
 ## First data load
 
 On a new install the worker loads fuel stations (with a Fuel Finder key), bus stops and stations, and
-postcodes as soon as it starts, rather than at the nightly run. The status page's Setup list shows them
+postcodes as soon as it starts, rather than at the nightly run. The Setup list in Settings shows them
 arrive. By hand:
 
 - **Fuel:** from a stored capture without calling the API again:

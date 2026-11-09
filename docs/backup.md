@@ -12,12 +12,12 @@ your places, so treat them as private, and copy them somewhere other than this s
 
 ## Taking one
 
-- **On the status page:** press **Back up now**. Each backup has a **Download** button.
+- **In Settings (Backups and updates):** press **Back up now**. Each backup has a **Download** button.
 - **When you deploy:** `bash scripts/deploy.sh` backs up first, then builds or pulls, starts and checks. If
   the backup fails it stops without changing anything. Use `--skip-backup` only for a first install.
 - **By hand:** `docker compose exec api python -m app.backup create` (and `list`).
 
-If the status page says the backup folder is not writable, run `bash scripts/deploy.sh` once (it creates the
+If Settings says the backup folder is not writable, run `bash scripts/deploy.sh` once (it creates the
 folder with the right owner), or: `mkdir -p /mnt/user/appdata/world-assistant/backups && chown 10001:10001 /mnt/user/appdata/world-assistant/backups`.
 
 The first time you run the deploy script on a version that predates this feature, it takes a full

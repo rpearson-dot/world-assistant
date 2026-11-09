@@ -208,7 +208,7 @@ use any saved place. Pollen is answered from the stored grid, so the pollen prov
 | `WA_HA_LOCATION_PRESSURE_TTL_DAYS` | `7` | The shorter time-out once 75% of the cap is used. |
 | `WA_HA_LOCATION_REFRESH_H` | `12` | How often each place's events are searched again. |
 | `WA_HA_LOCATION_RADIUS_KM`, `WA_HA_LOCATION_DAYS` | `8`, `7` | How far and how many days, for extra places. |
-| `WA_HA_API_URL` | `http://api:8000` | Where the worker finds the API. |
+| `WA_HA_API_URL` | `http://wa-proxy:8000` | Where the worker finds the API (through the front door, so it follows updates). |
 | `WA_MQTT_TOPIC_PREFIX` | `world_assistant` | State topics are `<prefix>/<device>/<sensor>`. |
 | `WA_MQTT_DISCOVERY_PREFIX` | `homeassistant` | Must match the MQTT integration in Home Assistant. |
 
