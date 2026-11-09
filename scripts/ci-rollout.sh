@@ -39,7 +39,8 @@ cleanup() {
 }
 trap cleanup EXIT
 step() { CURRENT="$*"; printf '\n== %s\n' "$*"; echo "::notice title=rollout step::$*"; }
-version() { curl -fsS "$API/healthz/errors" | sed -n 's/.*"version":"\([^"]*\)".*/\1/p'; }
+# The version answering through the front door (the status endpoint has it in every release)
+version() { curl -fsS -H "Authorization: Bearer $TOKEN" "$API/v1/status" | sed -n 's/^{"time":"[^"]*","version":"\([^"]*\)".*/\1/p'; }
 # Requests all the time, through the front door: a page, an endpoint with the database, and health
 poll() {
   while :; do
