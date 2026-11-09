@@ -44,7 +44,7 @@ version() { curl -fsS -H "Authorization: Bearer $TOKEN" "$API/v1/status" | sed -
 # Requests all the time, through the front door: a page, an endpoint with the database, and health
 poll() {
   while :; do
-    for u in /healthz /v1/places /status; do
+    for u in /healthz /v1/places /settings; do
       code="$(curl -s -o /dev/null -m 10 -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$API$u")"
       echo "$(date +%T) $u $code" >> "$WORK/codes"
     done
@@ -56,7 +56,7 @@ check_codes() {
   n="$(wc -l < "$WORK/codes")"; bad="$(grep -vc ' 200$' "$WORK/codes" || true)"
   echo "$n requests during the update, $bad not answered with 200"
   [ "$n" -gt 50 ] || fail "too few requests were made ($n)"
-  [ "$bad" = 0 ] || { grep -v ' 200$' "$WORK/codes" | head -20; fail "$bad requests failed during the update"; }
+  [ "$bad" = 0 ] || { grep -v ' 200$' "$WORK/codes" | head -20 || true; fail "$bad requests failed during the update"; }
   : > "$WORK/codes"
 }
 
