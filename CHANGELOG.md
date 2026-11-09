@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.51.0] - 2026-11-09
 
 ### Added
 - **Update now** in Settings (Backups and updates): installs the newest signed release straight away, the same way
