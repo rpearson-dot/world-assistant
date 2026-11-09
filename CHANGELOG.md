@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.50.0] - 2026-11-09
 
 ### Added
 - **Ready to ride:** each bike shows every battery it needs and its level as last reported, or "--" until one is.
