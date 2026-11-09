@@ -1,6 +1,7 @@
 # Roadmap
 
-Ideas parked for later. None of these are built.
+Ideas parked for later. None of these are built. What is built is in the [README](../README.md) and the
+[changelog](../CHANGELOG.md).
 
 * **Ticketmaster Inventory Status (live ticket availability):** says whether an event has tickets, few left,
   or none (`TICKETS_AVAILABLE`, `FEW_TICKETS_LEFT`, `TICKETS_NOT_AVAILABLE`), near real time, for up to ~350
@@ -13,7 +14,8 @@ Ideas parked for later. None of these are built.
   have to be entered by hand. Skiddle and Ticketmaster are built (see docs/data-sources.md).
 * **Live traffic journey times:** needs a traffic-aware routing provider (TomTom, HERE or similar);
   check its terms on traffic-aware routing and on storing results first.
-* **Fill-up and efficiency log, MOT, tax and insurance reminders.**
+* **Fill-up and efficiency log, and insurance reminders.** (Tax and MOT are built: the Vehicles page, from DVLA
+  and DVSA.)
 * **Dover to Calais crossings (ferries and Eurotunnel):** parked (Oct 2026). Looked for feeds and found none
   offered: Port of Dover, P&O, DFDS and Irish Ferries publish only web pages and social posts for people, no
   API or open data. Eurotunnel's own website board (`.../api/v1/departures/GetCombinedBoardResults`) is

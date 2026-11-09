@@ -43,7 +43,7 @@ Until you delete the old folder:
     bash scripts/pg-upgrade.sh --rollback
 
 This switches back to PostgreSQL 16 and the old folder. Anything World Assistant saved since the upgrade is not in
-that folder, so it will not be there. Your World Assistant backups (the status page) can bring back places, trips
+that folder, so it will not be there. Your World Assistant backups (Settings, Backups and updates) can bring back places, trips
 and so on, as long as you restore them on the same release.
 
 ## Why not just change the image?

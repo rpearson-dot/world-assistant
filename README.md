@@ -2,198 +2,151 @@
 
 [![CI](https://github.com/rpearson-dot/World-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/rpearson-dot/World-assistant/actions/workflows/ci.yml)
 
-**The other half of a smart home.** Home Assistant knows what is going on inside the house. World
-Assistant knows what is going on outside it: the roads you drive, the fuel you buy, the buses and
-trains you catch, what is on nearby, and what the pollen is doing to your hay fever. It runs on your
-own server, keeps its own history, and answers in one place, whether you ask from a web page, a Siri
-Shortcut, a script, an AI assistant, or a sensor on your Home Assistant dashboard.
+**The other half of a smart home.** Home Assistant knows what is happening inside the house. World Assistant knows
+what is happening outside it: the roads, buses and trains, fuel and energy prices, floods, air and pollen, what is
+on nearby, the shopping, and the bikes and cars in the garage.
+
+It runs on your own server, keeps its own history, and answers in one place: a web app on your phone, Home
+Assistant sensors, Siri Shortcuts, an AI assistant, or a script.
 
 ## Why it exists
 
-Everything outside the house that affects your day is scattered. Road closures are in one government
-feed, fuel prices in another, bus and train times in two more, events on commercial sites, pollen on a
-European service. Each has its own key, rate limit, format and quirks, and almost none keep a history,
-so you can never ask *"is this normal?"*.
+What happens outside the house is spread across dozens of public services. Each has its own key, limits, format and
+quirks, and almost none keeps a history, so you can never ask *"is this normal?"*.
 
-World Assistant is a small, self-hosted gateway that:
+World Assistant sits in the middle:
 
-- **talks to each source once, politely.** It respects every provider's limits, so ten questions
-  do not mean ten calls;
-- **keeps what is worth keeping.** Road events, fuel price changes, bus timings and pollen are stored, so
-  you get trends and "how often is the 7:42 late?", not only "right now";
-- **answers questions about *your* journeys and places, not the whole country.** *What is the M25 like
-  towards Brighton right now? Where is the cheapest E10 along the way, and is it worth the detour? What will
-  the trip cost in the petrol car versus the electric one? Did my bus make the stop before the deadline this
-  week? What is on near home on Saturday? How bad is the birch pollen tomorrow?*
-- **stays yours.** Your places, trips and vehicles never leave your server. There is no account, no cloud
-  service and no telemetry; the only outbound calls are to the public data services.
+- **It asks each service once, politely.** It keeps to every provider's limits, so ten questions do not mean ten calls.
+- **It keeps what is worth keeping.** Road events, fuel prices, bus timings, pollen and bike rides are stored, so you
+  get trends ("how often is the 7:42 late?"), not only "right now".
+- **It answers about your places and journeys, not the whole country.** Is the M25 clear towards Brighton? Where is
+  the cheapest E10 on the way? Is the river near home high? What is on this Saturday? Is the Reiver ready to ride?
+- **It stays yours.** No account, no cloud service, no telemetry. Your places, trips and vehicles never leave your
+  server. The only calls out are to the public data services.
 
-It started as a personal project on a home Unraid server. Nothing in it is specific to Unraid, but it is
-**UK-focused**: most of the data sources are British.
+It is **UK-focused**, since most of its sources are British. It started on a home Unraid server, but nothing in it
+needs Unraid.
 
 ## What it does
 
-| Area | What you get |
-|------|--------------|
-| **Roads** | National Highways closures, variable speed limits and message signs, polled and stored with history. Each event is tagged with the corridors (your regular routes) it affects. |
-| **Fuel** | Every UK station's current prices from the government Fuel Finder service, refreshed every 30 minutes. Cheapest near a place or along a route, with the saving after the detour. |
-| **Events** | What is on near a place (gigs, comedy, theatre, sport, exhibitions and more) from Skiddle, Ticketmaster and Data Thistle, merged by date. |
-| **Pollen** | Pollen by allergen and allergy risk for today and three days ahead, with a 90-day history and graphs. |
-| **Places and trips** | Named places (by postcode or coordinates) and trips between them. Your **home** is the default place everywhere. |
-| **Routing** | Optional self-hosted Valhalla turns a trip into a real road line, which becomes that trip's corridor. |
-| **Vehicles** | Petrol/diesel (mpg) and electric (battery, health, miles per kWh). Trip cost, range check, and whether a cheaper station is worth the detour. |
-| **Buses and trains** | Live bus tracking with on-time statistics, and train departure boards (TfL and National Rail). Departures, fuel prices and road closures are published to Home Assistant over MQTT, and fuel, roads, pollen (a map and a home graph) follow where each person is, and events show what is on near the home zone and any extra places you add (the app's location when away, else the home zone) ([how](docs/home-assistant.md)), with ready-made dashboards. |
-| **Assistant** | The same data as spoken-style answers: `/v1/ask` for Siri Shortcuts and scripts, and `/mcp` for AI assistants that speak the Model Context Protocol. |
-| **Knowledge graph** | Optional Neo4j holding how the data joins up — trips to corridors, closures to corridors, stations near places — so the assistant can follow connections rather than be told where to look ([how](docs/graph.md)). Derived from Postgres and safe to throw away. |
-| **Live buses** | Where buses are right now, anywhere in Great Britain, from the Bus Open Data Service (a free key); a layer on the map and `GET /v1/live-buses` ([how](docs/live-buses.md)). The bus tracker above remains the TfL record; this is a live snapshot. |
-| **Postcodes** | Every UK postcode with a position, held locally from Ordnance Survey Code-Point Open, so adding a place no longer needs an outside service; the nearest postcode to any point ([how](docs/postcodes.md)). |
-| **Energy** | Your Octopus tariff's rates (Cosy, Agile, fixed) banded cheap / standard / peak, the next cheap window and cheapest block, Saving Sessions, on a page at `/energy` and as sensors for Home Assistant to run the battery from ([how](docs/energy.md)). |
-| **Air and water** | Air quality near each place as Defra's 1-10 index, with the readings behind it, and river levels (low, normal or high for there), rainfall, tide gauges and storm overflow spills (on the rivers you watch) near home, live from Defra and the Environment Agency ([how](docs/environment.md)). |
-| **Wishlist** | A KitchenOwl list the whole family adds to, looked for in Aldi's Specialbuys and the Middle of Lidl twice a week: what is coming or on sale, and when each was last seen ([how](docs/wishlist.md)). |
-| **Here** | Everything World Assistant knows about where you are now, from your phone's location, without saving a place: buses, fuel, chargers, floods, air and water, pollen, events, roads and power cuts ([how](docs/here.md)). |
-| **Outdoors** | A KitchenOwl list of outdoor gear, priced every morning at GO Outdoors and Decathlon, with price drops ([how](docs/outdoors.md)). |
-| **Shopping** | The family's shopping list in KitchenOwl (its own app, on your tailnet), priced at Sainsbury's and Ocado: the total at each, which is cheaper, the product it means for each item (yours to change, remembered), the next delivery slots, and sending the list to either basket. Nothing is booked or bought: you check out on their site ([how](docs/shopping.md)). |
-| **EV chargers** | GRIDSERVE's chargers near your places, along a trip or by name: how many work and are free now, by connector (CCS, CHAdeMO, Type 2), how fast and the price, refreshed hourly; on the map and in the graph ([how](docs/ev.md)). |
-| **Trip conditions** | What is on the way for a trip with a route: works, closures and incidents (National Highways and TfL) and flood warnings, now and planned ([how](docs/trip-conditions.md)). |
-| **London road disruptions** | TfL works, closures and incidents with their position, every 15 minutes; ask what is near a point ([how](docs/tfl-roads.md)). |
-| **Floods** | Environment Agency flood alerts and warnings for England, refreshed every 15 minutes, with each warned area drawn on the map; ask what covers home, or what crosses the way to work ([how](docs/floods.md)). |
-| **Stops** | Where every bus stop, station and ferry terminal in Great Britain is, from the national NaPTAN register, held locally and refreshed weekly ([how](docs/naptan.md)). |
-| **Map** | Everything with coordinates on one map, a layer at a time: places, people, corridors, closures, signs, fuel priced cheapest to dearest, stops and stations, pollen ([how](docs/map.md)). Leaflet is served from the app; only the tiles come from outside, and you choose where from. |
-| **Web app** | Installable on a phone (Add to Home Screen) with a tab bar: Buses, Trains, Map, Fuel, Energy, Events, Pollen, Places, **Graph** (the knowledge graph as nodes and edges you can search, expand and query), **Home Assistant** setup, and **Settings** (a setup wizard, what is working, keys saved from the browser, backups, updates). No accounts, no token on the home network or in a browser on your tailnet. |
-| **Operations** | One-click backups, signed releases, optional automatic updates with rollback, optional bundled key vault. |
+The web app (installable on a phone) has a page for each area. Everything is also available to Home Assistant,
+the assistant and the API.
 
-Planned (see [docs/roadmap.md](docs/roadmap.md)): live-traffic journey times, MOT and tax reminders,
-efficiency trends.
+**Getting about**
+- **Buses:** live bus tracking with on-time statistics, and live bus positions across Great Britain ([bus](docs/bus.md), [live buses](docs/live-buses.md)).
+- **Trains:** departure boards from TfL and National Rail, and TfL station status, including closed lifts ([trains](docs/trains.md), [stations](docs/stations.md)).
+- **Roads:** National Highways closures, speed limits and message signs, and TfL road works, with history. Each is tagged with the routes you use ([trip conditions](docs/trip-conditions.md), [TfL roads](docs/tfl-roads.md)).
+- **Fuel and charging:** every UK forecourt's prices, cheapest near you or along a route, and GRIDSERVE chargers that are free now ([EV](docs/ev.md)).
+- **Places, trips and the map:** your places and routes, everything with a position on one map, and **Here**: what is around you right now ([map](docs/map.md), [here](docs/here.md)).
 
-## How it works
+**Home and surroundings**
+- **Energy:** your Octopus tariff's cheap and peak times, and Saving Sessions, for Home Assistant to run the battery from ([energy](docs/energy.md)).
+- **Environment:** air quality, pollen, flood warnings, river levels and flows compared with normal, tides and storm overflows ([environment](docs/environment.md), [floods](docs/floods.md)).
+- **Power:** UK Power Networks cuts and works near your places ([power](docs/power.md)).
+- **Events:** what is on nearby from Skiddle, Ticketmaster and Data Thistle. You can mute events or words you never want to see.
+- **Safety:** crime near a place compared with the neighbouring boroughs, and your local police team.
+
+**Shopping**
+- **Shopping list:** the family's KitchenOwl list priced at Sainsbury's and Ocado, ready to send to either basket. Nothing is ever ordered or paid for ([shopping](docs/shopping.md)).
+- **Wishlist and outdoors:** Aldi and Lidl special buys, and outdoor gear prices at GO Outdoors and Decathlon ([wishlist](docs/wishlist.md), [outdoors](docs/outdoors.md)).
+- **Food alerts:** allergy alerts and recalls checked against your shopping, and hygiene ratings nearby.
+
+**Vehicles and bikes**
+- **Vehicles:** cars and vans with tax and MOT from DVLA and DVSA, trip costs, range, and the [Leaf dashboard](docs/leaf.md).
+- **Bikes:** rides from Garmin, wear on every part, service lists, spares, and a battery summary for each bike, all in a game-style Garage ([bikes](docs/bikes.md)).
+
+**Telling you and answering you**
+- **Home Assistant:** sensors appear by themselves over MQTT, with ready-made dashboards ([Home Assistant](docs/home-assistant.md)).
+- **Notifications:** alerts on your phone through World Assistant's own ntfy server: low batteries, parts due, flood warnings ([notifications](docs/notifications.md)).
+- **Assistant:** spoken-style answers for Siri Shortcuts (`/v1/ask`) and AI assistants over MCP (`/mcp`) ([assistant](docs/assistant.md)).
+- **Knowledge graph:** an optional graph of how it all joins up, to explore on the Graph page ([graph](docs/graph.md)).
+
+## How it fits together
 
 ```mermaid
 flowchart LR
-  S[Public data services] --> W[worker]
-  W --> DB[(PostGIS)]
-  A[api] --> DB
-  A --> S
-  U[Browser, Shortcuts, MCP] --> A
-  W -.-> M[(MQTT / Home Assistant)]
+  you["You: phone, browser,<br/>Siri, AI assistant"] -->|home network or Tailscale| door["Front door<br/>(Caddy)"]
+  door --> api["API and web app<br/>(FastAPI)"]
+  api --> db[("Postgres + PostGIS<br/>your data and history")]
+  worker["Worker<br/>(scheduled jobs)"] --> db
+  sources["Public data services<br/>roads, fuel, transport, environment,<br/>energy, events, shops, Garmin"] --> worker
+  api -->|asked live, cached| sources
+  worker --> ha["Home Assistant<br/>(MQTT)"]
+  worker --> ntfy["Your phone<br/>(ntfy)"]
 ```
 
-A **worker** polls the feeds that are worth storing on a slow schedule and writes them to Postgres. An
-**API** answers from the database, so a question never waits on a rate-limited upstream and keeps working
-when one is down. Live services that are not stored (events, train boards) are cached briefly. It all runs
-as a small Docker Compose stack: FastAPI, an arq worker, PostGIS Postgres and a private, password-protected
-Redis, plus optional Valhalla and OpenBao. Details: [docs/architecture.md](docs/architecture.md).
+A **worker** collects the feeds worth storing, on a schedule, and writes them to Postgres. The **API** answers from
+the database, so a question never waits on a slow or rate-limited service, and still works when one is down.
+Things that are only useful live (train boards, events) are asked for when needed and cached briefly. Every
+request comes through a small **front door**, so an update can start the new version beside the old one and switch
+over with no gap.
 
-## Is it for you?
+More: [architecture](docs/architecture.md).
 
-It suits you if you run a home server, live in the UK, and like owning your data and your automations.
-You will need to register for a few free API keys (see [docs/data-sources.md](docs/data-sources.md)); each
-is optional, and a feature without its key simply says it is not set up.
+## Getting started
 
-It is **not** a hosted service, not a navigation or safety system, and not affiliated with any data
-provider. Do not rely on it for anything where a wrong or late answer could hurt anyone. It is a
-personal project: use it, fork it, send fixes, but expect no support level.
-
-## Quick start
-
-You need Docker with Compose. Keys are optional and free; Home Assistant is optional.
+You need a server with Docker and Compose. API keys are free and each is optional: a feature without its key says
+it is not set up. Home Assistant is optional too.
 
 ```bash
 git clone https://github.com/rpearson-dot/World-assistant.git && cd World-assistant
 bash scripts/setup.sh
 ```
 
-`setup.sh` asks where to keep the data, whether you use Home Assistant (your broker, a bundled one, or none),
-whether to add road routing, and for each key (with what it unlocks and where to get it, typed without echo).
-Then it starts the stack and prints the address. Re-run it any time; Enter keeps each answer.
+`setup.sh` asks where to keep the data, whether you use Home Assistant, and for each key (what it unlocks and where
+to get it). It then starts everything and prints the address. Run it again any time to change an answer.
 
-Then open `http://<server>:8010`. From your home network no token is needed. **Settings** starts a short setup wizard
-(home, keys, Home Assistant) and its Setup list shows what is working, what each missing key would unlock and where to
-get it; keys can be pasted straight in. Add your places (start with `home`) on
-`/places`, and set up Home Assistant from `/ha`. Stops, stations and postcodes load within minutes of the first
-start.
+Then open `http://<server>:8010`. No token is needed on your home network. **Settings** has a short setup wizard
+and a list of what is working. Add your home on **Places** first, since it is the default place everywhere.
 
-Prefer files? `cp .env.example .env`, edit it, `bash scripts/init-secrets.sh`, put keys in the files it lists,
-`docker compose up -d --build`.
+**Away from home:** never open the port to the internet. Add the Tailscale container instead (`setup.sh` asks). It
+gives World Assistant its own `https://world-assistant.<tailnet>.ts.net` address for your phone, Siri and AI
+assistants ([Tailscale](docs/tailscale.md)).
 
-Do not expose the port to the internet. To reach it from your phone anywhere, add the Tailscale container
-(`setup.sh` asks): it gets its own `https://world-assistant.<tailnet>.ts.net` address, for the web app, Siri
-Shortcuts and AI assistants over MCP ([docs/tailscale.md](docs/tailscale.md)). Securing MQTT from a car's OVMS
-module through to Home Assistant: [docs/mqtt-tls.md](docs/mqtt-tls.md).
+Is it for you? It suits you if you run a home server, live in the UK, and like owning your data. It is a personal
+project, not a hosted service, not a navigation or safety system, and not affiliated with any data provider. Do
+not rely on it where a wrong or late answer could hurt anyone.
 
-## Staying up to date
+## Keeping it up to date
 
-- **By hand:** `bash scripts/sync.sh --deploy` (a git checkout) or `bash scripts/deploy.sh` (a copy).
-  Both back up first and finish with a check that every page and endpoint still answers.
-- **Released images:** releases are built once by GitHub Actions, scanned, signed and published with SBOMs,
-  and deployed by digest, never by tag.
-- **Automatically (optional, off by default):** a switch in Settings makes a nightly job install the newest
-  signed release, with a backup first and an automatic rollback if the post-update check fails. On GitHub,
-  Dependabot checks daily and can merge safe updates once CI is green.
+- **Updates have no gap.** The new version starts beside the running one and is checked. It is then tried on one
+  request in five, and takes over while the old one stands by. If anything fails, the old one carries on as if
+  nothing happened.
+- **Update now, or every night.** Settings → Backups and updates has an **Update now** button and an **Update
+  this server automatically** box (04:00). The updater container does the work. It installs only releases signed
+  by this repository's release workflow, and takes a backup first.
+- **By hand:** `bash scripts/deploy.sh`.
 
-All of it is in [docs/runbook.md](docs/runbook.md).
+Details: [runbook](docs/runbook.md).
 
 ## Security in brief
 
-From outside the home network every `/v1/*` route needs a bearer token, and refuses everything if none is set; on the home network the pages and API need none ([what counts as home](docs/security.md#access)). Secrets are files (or an
-optional key vault), never environment variables or committed. The image runs as a non-root user and an
-optional hardened profile makes it read-only. Dependencies are pinned by hash, actions by commit,
-releases are signed (Sigstore) with SBOMs, and every push is scanned for secrets. See
-[docs/security.md](docs/security.md) and [SECURITY.md](SECURITY.md).
+- **Tokens:** from outside the home network every request needs a token. At home, and in a browser on your
+  tailnet, the web app needs none ([what counts as home](docs/security.md#access)).
+- **Secrets:** kept as files or in an optional key vault, never in the code or environment.
+- **Containers:** the app runs as a non-root user, and there is an optional read-only, hardened profile.
+- **Supply chain:** dependencies are pinned by hash, releases are signed with SBOMs, and every change is scanned.
+
+More: [security](docs/security.md) and [SECURITY.md](SECURITY.md).
 
 ## Documentation
 
-- [Architecture](docs/architecture.md): components, data flow, schema
-- [Runbook](docs/runbook.md): deploy, upgrade, roll back, automatic updates, troubleshoot
-- [Data sources](docs/data-sources.md): each feed, its limits, licence and credit
-- [Assistant](docs/assistant.md): Siri Shortcuts, MCP, the default place
-- [Tailscale](docs/tailscale.md): the app on your phone anywhere, Siri and MCP over your tailnet
-- [MQTT over TLS](docs/mqtt-tls.md): certificates from the car's OVMS module to Home Assistant
-- [Bus tracker](docs/bus.md), [Trains](docs/trains.md), [Leaf dashboard](docs/leaf.md), [EV chargers](docs/ev.md), [Shopping](docs/shopping.md), [Wishlist](docs/wishlist.md), [Outdoors](docs/outdoors.md), [Here](docs/here.md), [Air and water](docs/environment.md), [Map](docs/map.md), [Knowledge graph](docs/graph.md)
-- [Backups](docs/backup.md): the status-page button, the deploy script and restoring
-- [Secrets and key vaults](docs/secrets.md), [bundled OpenBao](docs/openbao.md)
-- [Security](docs/security.md): what is protected and how; supply chain
-- [GitHub settings](docs/repo-settings.md): branch protection and the other repository settings
-- [Roadmap](docs/roadmap.md) and [decisions](docs/adr/): what is parked, and why it is built this way
-- [Changelog](CHANGELOG.md), [Contributing](CONTRIBUTING.md), [Security policy](SECURITY.md)
+Start with the [documentation index](docs/README.md). The most used pages are:
 
-## API at a glance
+- [Architecture](docs/architecture.md): how it is built, with diagrams
+- [Runbook](docs/runbook.md): install, update, back up, troubleshoot
+- [API reference](docs/api.md): every endpoint (and the live reference at `/docs` on your server)
+- [Data sources](docs/data-sources.md): each feed, its key, limits, licence and credit
+- [Changelog](CHANGELOG.md): what changed in each release
 
-From outside the home network, `/v1/*` routes need `Authorization: Bearer <api_token>`. The interactive reference is at `/docs`.
+## Data and credits
 
-| Route | Purpose |
-|-------|---------|
-| `GET /v1/status` | Job runs, event counts, corridors, fuel counts, version, worker heartbeat |
-| `GET/PUT/DELETE /v1/settings/keys/…` | Which data-source keys are set (never their values); save or forget one |
-| `GET /v1/graph/overview`, `/search`, `/expand`, `POST /v1/graph/query` | The Graph page: explore the knowledge graph; read-only Cypher |
-| `GET /v1/setup` | The setup checklist: each source, Home Assistant, routing and home, working or not, and where to get a key |
-| `GET /v1/ha/setup`, `/v1/ha/files/…`, `/v1/ha/token` | Home Assistant files of this version, what changed when, and the values for `secrets.yaml` |
-| `GET/PUT/DELETE /v1/places/{id}`, `/v1/trips/{id}`, `/v1/vehicles/{id}` | Manage places, trips, vehicles |
-| `POST /v1/trips/{id}/route` | Route a trip and (re)build its corridor |
-| `GET /v1/trips/{id}/cost?vehicle=` | Energy or fuel needed, range check, cost |
-| `GET /v1/live-buses` | Buses reporting a position near a place or point (needs `bods_api_key`) |
-| `GET /v1/postcodes/{postcode}`, `/v1/postcodes/near` | A postcode's position; the nearest postcodes to a point |
-| `GET /v1/energy/now`, `/rates`, `/windows`, `/sessions` | Electricity rate now and ahead, cheap/peak windows |
-| `GET /v1/trips/{id}/conditions`, `/v1/conditions` | What is on a trip's route, now and planned |
-| `GET /v1/roads/tfl`, `/v1/roads/tfl/at` | TfL road disruptions; those near a place or point |
-| `GET /v1/floods`, `/v1/floods/at` | Current flood warnings; those covering a place or a point |
-| `GET /v1/stops/near`, `/v1/stops/{atco}` | Bus stops, stations and terminals near a point (nearest first), or one stop by its ATCO code |
-| `GET /v1/fuel/near`, `/v1/fuel/along/{corridor}` | Cheapest fuel near a place or along a corridor; `vehicle=` ranks by saving after the detour |
-| `GET /v1/events/near` | What is on near a place (`place` defaults to home) or a point (`lat` and `lon`) |
-| `GET/POST /v1/ha/locations`, `GET /v1/ha/locations/events` | Extra places Home Assistant watches for events (capped, they expire) |
-| `GET/POST /v1/ha/routes`, `POST /v1/ha/routes/delete` | Routes Home Assistant adds between two positions (both ways, routed locally, capped); their corridors become roads sensors |
-| `POST /v1/bus/settings` | Change a bus tracker's deadline, earliest time and the time to stop showing the chance, without resetting it |
-| `GET /v1/pollen/near`, `/v1/pollen/grid`, `/v1/pollen/history` | Pollen forecast (a place, defaulting to home, or a point with `lat` and `lon`) and the recorded history |
-| `GET /v1/tfl/boards`, `/v1/bus/trackers/{id}/…` | Train departure boards and the bus tracker |
-| `POST /v1/ask/{tool}`, `POST /mcp` | Spoken-style answers for Shortcuts, scripts and MCP clients |
-| `GET/POST /v1/backups` | List, create and download backups |
-
-## Data sources and credits
-
-Road data from National Highways, fuel prices from GOV.UK Fuel Finder, bus and rail from Transport for
-London and National Rail (Rail Data Marketplace), events from Skiddle, Ticketmaster and Data Thistle, postcodes from
-Ordnance Survey Code-Point Open and postcodes.io, stops from NaPTAN, flood warnings from the Environment Agency, maps © OpenStreetMap contributors, and pollen from the Austrian Pollen Information Service
-(www.polleninformation.at, non-commercial use only). Each stays under its own licence and terms; see
-[docs/data-sources.md](docs/data-sources.md). Raw feed data is never committed to this repository.
+The data comes from National Highways, GOV.UK Fuel Finder, Transport for London, National Rail, the Bus Open Data
+Service, NaPTAN, the Environment Agency, Defra, the National River Flow Archive, Ordnance Survey, what3words,
+data.police.uk, the ONS, the Food Standards Agency, UK Power Networks, Octopus Energy, GRIDSERVE, DVLA, DVSA,
+Skiddle, Ticketmaster, Data Thistle, the Austrian Pollen Information Service, Garmin, and OpenStreetMap
+contributors. Each stays under its own licence and terms ([data sources](docs/data-sources.md)). Raw feed data is
+never committed to this repository.
 
 ## Development
 
@@ -202,8 +155,9 @@ pip install --require-hashes --no-deps -r requirements-dev.lock
 ruff check . && pytest
 ```
 
-Tests that need Postgres or Redis are skipped unless `WA_TEST_DATABASE_URL` / `WA_TEST_REDIS_URL` are set.
-CI also starts the whole stack and requests every page and endpoint. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Tests that need Postgres or Redis are skipped unless `WA_TEST_DATABASE_URL` and `WA_TEST_REDIS_URL` are set. CI
+also runs the whole stack, requests every page and endpoint, and updates the previous release to the new code in
+stages with requests running. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 

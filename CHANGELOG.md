@@ -2,6 +2,14 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Documentation refreshed.** The README is now a shorter overview of what World Assistant is for and what it
+  does, grouped by area. `docs/architecture.md` has new diagrams of the stack, the data and an update.
+  `docs/README.md` is an index of every page. `docs/api.md` lists every endpoint and is written from the code
+  (`python scripts/api-doc.py`), with a test that keeps it current. The data sources page lists every source.
+
 ## [0.51.0] - 2026-11-09
 
 ### Added

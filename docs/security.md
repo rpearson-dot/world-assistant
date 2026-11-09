@@ -11,7 +11,9 @@ token, no secret is ever in the repository or the image, and what runs is exactl
   A request counts as local only when all of these hold ([app/localnet.py](../app/localnet.py)):
   - it came straight from a private, loopback, link-local or Tailscale (100.64.0.0/10) address, with no
     `Forwarded`, `X-Forwarded-*` or `X-Real-IP` header. Anything through a reverse proxy is treated as the
-    internet, because the proxy may be relaying it;
+    internet, because the proxy may be relaying it. The stack's own front door (`wa-proxy`) is the exception: it
+    reports who connected to it and which forwarding headers the request arrived with, and the api believes that
+    only from the front door's own address, so these rules apply to the real client;
   - the host asked for is an IP address, `localhost`, a single-label name (`nas`), a home-network name (`.lan`,
     `.local`, `.home`, `.home.arpa`, `.internal`, `.localdomain`, `.ts.net`) or one listed in `WA_LOCAL_HOSTS`.
     This stops another website from re-pointing its own name at this server (DNS rebinding) and reading it;
