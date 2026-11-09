@@ -63,6 +63,35 @@ auto_deploy_main() {
     return 0
   }
 
+  # After a successful update: old release images go (the one before stays, to go back to); and when this runs
+  # in the updater container, the updater is brought up to date last, from a separate container, since replacing
+  # itself would stop this script part-way.
+  prune_old() {
+    local keep="$new_ref ${prev_ref:-}" ref id
+    docker images --digests --format '{{.Repository}}@{{.Digest}} {{.ID}}' "$REPO_IMAGE" 2>/dev/null | while read -r ref id; do
+      case " $keep " in *" $ref "*) continue ;; esac
+      docker rmi "$id" >/dev/null 2>&1 && log "Removed the old image $ref."
+    done
+    return 0
+  }
+  refresh_updater() {
+    [ "${WA_IN_UPDATER:-}" = 1 ] || return 0
+    docker run -d --rm --name "${COMPOSE_PROJECT_NAME:-world-assistant}-updater-refresh" \
+      -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:$PWD" -v "$DATA:$DATA" -v "$SECRETS:$SECRETS:ro" -w "$PWD" \
+      world-assistant-updater:local sh -c 'sleep 10; docker compose up -d --no-deps --build wa-updater' >/dev/null 2>&1 || true
+  }
+  # The nightly run also brings Postgres, Redis, the front door and the rest to their newest images: only those
+  # with a newer image restart, briefly, at 04:00 (scripts/deploy.sh --infra). Update now leaves them for the night.
+  nightly_infra() {
+    [ "$NOW" = 0 ] && [ "$DRY_RUN" = 0 ] || return 0
+    log "Checking the other containers for newer images..."
+    if ! out="$(bash scripts/deploy.sh --infra 2>&1)"; then
+      report failed "updating Postgres, Redis or another container failed: $(printf '%s' "$out" | tail -1)" "$running" "$running"
+    fi
+    printf '%s\n' "$out" | tail -8
+    return 0
+  }
+
   state="$(call "$API/v1/auto-deploy")" || { [ "$ASKED" = 1 ] && exit 0; log "The api did not answer at $API."; exit 1; }
   if [ "$ASKED" = 1 ]; then  # every minute: quiet unless "Update now" was pressed
     printf '%s' "$state" | grep -q '"pending":true' || exit 0
@@ -94,7 +123,8 @@ auto_deploy_main() {
   if [ "$new_ref" = "$prev_ref" ] || {
     [[ "$running" =~ $semver ]] && [[ "$new_ver" =~ $semver ]] && [ "$(newest_of "$running" "$new_ver")" = "$running" ]; }; then
     report unchanged "already on the newest release (${running})" "$running" "$running"
-    log "Already up to date ($running)."; exit 0
+    log "Already up to date ($running)."
+    nightly_infra; exit 0
   fi
   log "Newer release found: $new_ver ($new_ref)"
 
@@ -148,9 +178,27 @@ auto_deploy_main() {
   fi
   log "Updating to $new_ver..."
   set_image "$new_ref"
-  if bash scripts/deploy.sh --skip-backup; then
+  rc=0; bash scripts/deploy.sh --skip-backup || rc=$?
+  if [ "$rc" = 0 ]; then
     report updated "now running $new_ver" "$running" "$new_ver"
-    log "Updated to $new_ver."; exit 0
+    log "Updated to $new_ver."
+    prune_old; nightly_infra; refresh_updater; exit 0
+  fi
+  if [ "$rc" = 3 ]; then
+    # A staged update that failed a check never took over: the old version answered throughout and still runs.
+    # The database keeps what the new version added, which the old one ignores (docs/migrations.md).
+    log "$new_ver failed its checks before taking over; ${running:-the previous version} answered throughout."
+    if [ -n "$prev_head" ] && ! bash scripts/sync.sh "$prev_head" >/dev/null 2>&1; then
+      report failed "$new_ver failed its checks (the running version was not touched), but the project files could not be put back. Run: bash scripts/sync.sh $prev_head" "$running" "$new_ver"
+      exit 1
+    fi
+    set_image "$prev_ref"
+    report rolled_back "$new_ver failed its checks before taking over, so ${running:-the previous version} kept answering throughout" "$running" "$new_ver"
+    exit 1
+  fi
+  if [ "$rc" = 4 ]; then
+    report failed "$new_ver is running and answering, but the last step of the update did not finish; see auto-deploy.log" "$running" "$new_ver"
+    exit 1
   fi
 
   log "The update failed its checks; going back to ${running:-the previous version}."

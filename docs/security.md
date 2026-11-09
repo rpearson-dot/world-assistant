@@ -61,6 +61,13 @@ token, no secret is ever in the repository or the image, and what runs is exactl
   root filesystem, a small `noexec` tmpfs for `/tmp`, all capabilities dropped, no privilege
   escalation, and a process limit.
 - Valhalla publishes no port; only stack containers can reach it.
+- The updater (`wa-updater`) has the server's Docker socket, which is full control of the server, so it can update
+  the stack. It publishes no port, accepts no requests, and acts only on two stored requests (the nightly switch and
+  Update now), whose only effect is to install the newest **signed** release. `WA_UPDATER=off` leaves it out
+  ([runbook](runbook.md#the-updater-container)).
+- The front door (`wa-proxy`) holds the published port. The api believes its `X-WA-Peer` and `X-WA-Hops` headers
+  (who connected, and which forwarding headers the request arrived with) only when the connection comes from that
+  container. So the home-network and tailnet rules apply to the real client, and a client cannot claim to be at home.
 
 ## Supply chain
 
@@ -99,9 +106,9 @@ Both are opt-in and off by default.
   Never a major version, never GitHub Actions (the built-in token cannot change workflows), never a database
   image. It cannot release unless you also set `AUTO_RELEASE`.
 - **Server side (the switch on Settings (`/settings`)):** the api cannot restart containers; the switch is a stored flag.
-  A nightly job on the server installs only a **release image whose signature verifies against this
-  repository's release workflow**; otherwise it refuses. It takes a backup first, and puts the previous
-  version back if the post-update check fails. Its GitHub token is read-only (Contents: read) and lives in
+  The updater container (nightly, or on Update now) installs only a **release image whose signature verifies
+  against this repository's release workflow**; otherwise it refuses. It takes a backup first, and the new version takes requests only after
+  passing its checks and a trial, with the previous version ready to take them back. Its GitHub token is read-only (Contents: read) and lives in
   a file outside the project folder, handed to git through the environment so it is not in process lists or
   `.git/config`. Anyone who can push to `main` and run the release workflow can change what your server
   installs, so keep two-factor authentication on the GitHub account and review who has write access.

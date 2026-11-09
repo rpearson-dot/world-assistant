@@ -11,14 +11,14 @@
 #   3. the files say they are this version: pyproject.toml's version is $VERSION and CHANGELOG.md has its heading
 #      (deploy.sh reads pyproject.toml to choose the release image, so a stale number there leaves a server on the
 #      old release without a word)
-#   4. the CI checks "test", "secrets", "image" and "stack" have all succeeded on the commit; if they are
+#   4. the CI checks "test", "secrets", "image", "stack" and "rollout" have all succeeded on the commit; if they are
 #      still running or have not started, wait up to WAIT_SECONDS; if any has failed, stop at once
 set -euo pipefail
 
 : "${REPO:?}" "${SHA:?}" "${VERSION:?}" "${EVENT:?}"
 WAIT_SECONDS="${WAIT_SECONDS:-300}"
 POLL_SECONDS="${POLL_SECONDS:-15}"
-REQUIRED=(test secrets image stack)
+REQUIRED=(test secrets image stack rollout)
 
 fail() { printf 'RELEASE REFUSED: %s\n' "$*" >&2; exit 1; }
 
@@ -43,7 +43,7 @@ file_at CHANGELOG.md | grep -q "^## \[$VERSION\]" || fail "CHANGELOG.md has no '
 latest() {
   gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" --jq '
     .check_runs | sort_by(.started_at) | group_by(.name) | map(last) | .[]
-    | select(.name == "test" or .name == "secrets" or .name == "image" or .name == "stack")
+    | select(.name == "test" or .name == "secrets" or .name == "image" or .name == "stack" or .name == "rollout")
     | "\(.name) \(.status) \(.conclusion // "none")"'
 }
 

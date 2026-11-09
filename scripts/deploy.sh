@@ -4,6 +4,16 @@
 #   bash scripts/deploy.sh                 # back up, then build from this folder and start
 #   WA_IMAGE=ghcr.io/...@sha256:... bash scripts/deploy.sh   # same, using a released image
 #   bash scripts/deploy.sh --skip-backup   # first install, or you have just taken one
+#   bash scripts/deploy.sh --classic       # replace everything at once (a short gap), even when a staged update could run
+#   bash scripts/deploy.sh --infra         # bring Postgres, Redis, the front door and the rest to their newest images
+#
+# When the stack is already running with its front door (wa-proxy), World Assistant itself is updated in stages with
+# no gap (scripts/rollout.sh): the new version starts beside the old one, is checked, tried, then takes over. The
+# other containers (Postgres, Redis, Tailscale, ntfy, the front door) are left alone then; --infra updates those,
+# which restarts the ones with a newer image (the nightly update does it at 04:00). The first deploy with the front
+# door, or --classic, replaces everything at once as before.
+#
+# Exit 3: a staged update was not applied because the new version failed a check, and the old one kept answering.
 #
 # With WA_IMAGE set (the nightly update pins the release it installed) on a git checkout, the pin is kept on the
 # same release as the files: if they differ, the files' release image is used (signature checked), or the deploy
@@ -14,8 +24,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-SKIP_BACKUP=0
-for arg in "$@"; do [ "$arg" = "--skip-backup" ] && SKIP_BACKUP=1; done
+SKIP_BACKUP=0 CLASSIC=0 INFRA=0
+for arg in "$@"; do
+  case "$arg" in --skip-backup) SKIP_BACKUP=1 ;; --classic) CLASSIC=1 ;; --infra) INFRA=1 ;; esac
+done
 
 if [ -f .env ]; then
   set -a
@@ -49,7 +61,43 @@ case ":${COMPOSE_FILE:-}:" in
     chmod 700 "$DATA/supermarket" 2>/dev/null || true ;;
 esac
 
-running() { [ -n "$(docker compose ps --status running -q api 2>/dev/null)" ]; }
+running() { [ -n "$(docker compose ps --status running -q "${1:-api}" 2>/dev/null)" ]; }
+# Every service but the updater: the updater runs this script, and must not be stopped part-way by it
+others() { docker compose config --services 2>/dev/null | grep -vx wa-updater; }
+
+# The updater container (docker-compose.yml, wa-updater) needs the profile on and the project folder's path, in .env.
+# WA_UPDATER=off in .env leaves it out. Not done in CI, or when there is no .env (a bare checkout).
+if [ -f .env ] && [ -z "${CI:-}" ] && [ "${WA_UPDATER:-on}" != "off" ]; then
+  here="$(pwd)"
+  grep -q '^WA_PROJECT_DIR=' .env || { printf 'WA_PROJECT_DIR=%s\n' "$here" >> .env; export WA_PROJECT_DIR="$here"; }
+  if ! grep -q '^COMPOSE_PROFILES=' .env; then
+    printf 'COMPOSE_PROFILES=updater\n' >> .env; export COMPOSE_PROFILES=updater
+  fi
+fi
+
+if [ "$INFRA" = 1 ]; then
+  # Only the images that have a newer version are restarted: compose says which it would recreate
+  docker compose pull --ignore-buildable --quiet 2>/dev/null || echo "Could not pull every image; using what is here."
+  mapfile -t svcs < <(others)
+  plan="$(docker compose up -d --no-build --dry-run "${svcs[@]}" 2>&1 || true)"
+  if ! printf '%s' "$plan" | grep -qiE 'recreate|create'; then
+    echo "Every container already runs its newest image."; exit 0
+  fi
+  printf '%s\n' "$plan" | grep -iE 'recreate|create' | sed 's/^/  /'
+  if [ "$SKIP_BACKUP" = 0 ] && running; then docker compose exec -T api python -m app.backup create || { echo "The backup failed; nothing changed."; exit 1; }; fi
+  front_before="$(docker compose ps -q wa-proxy 2>/dev/null)"
+  docker compose up -d --no-build "${svcs[@]}"
+  if [ -n "$(docker compose ps --status running -q wa-tailscale 2>/dev/null)" ] && [ "$front_before" != "$(docker compose ps -q wa-proxy 2>/dev/null)" ]; then
+    docker compose restart wa-tailscale >/dev/null 2>&1 || true  # it holds on to the old front door's address
+  fi
+  for _ in $(seq 1 40); do
+    curl -fsS "http://127.0.0.1:${WA_API_PORT:-8010}/healthz" >/dev/null 2>&1 && { echo "Updated; World Assistant answers."; exit 0; }
+    docker compose exec -T api python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)" >/dev/null 2>&1 \
+      && { echo "Updated; World Assistant answers."; exit 0; }
+    sleep 3
+  done
+  echo "World Assistant did not answer after the update. Look at: docker compose ps"; exit 1
+fi
 
 if [ "$SKIP_BACKUP" = 1 ]; then
   echo "Skipping the backup (--skip-backup)."
@@ -80,15 +128,41 @@ fi
 # are never touched) so the start cannot fail with "bind source path does not exist".
 bash scripts/init-secrets.sh >/dev/null || echo "Could not check the secret files; if the start fails on a missing file, run: bash scripts/init-secrets.sh"
 
-if [ -n "${WA_IMAGE:-}" ]; then
-  docker compose pull
-  docker compose up -d --no-build
+STAGED=0
+[ "$CLASSIC" = 0 ] && running && running wa-proxy && STAGED=1
+
+if [ "$STAGED" = 1 ]; then
+  # Only World Assistant's own image changes; the rest waits for --infra
+  if [ -n "${WA_IMAGE:-}" ]; then
+    [ -n "${WA_NO_PULL:-}" ] || docker compose pull api
+  else
+    docker compose build --pull api
+  fi
+  rc=0; bash scripts/rollout.sh || rc=$?
+  if [ "$rc" = 3 ]; then
+    echo "The new version was not put in place: it failed a check, and the running version answered throughout."
+    exit 3
+  elif [ "$rc" != 0 ]; then
+    echo "The staged update did not finish (above)."; exit "$rc"
+  fi
 else
-  # Fetch the latest Redis, Postgres, OpenBao and so on (same tags, newest patch), and the newest
-  # Python base image, so security fixes arrive with every deploy.
-  docker compose pull --ignore-buildable || echo "Could not pull the latest third-party images; using what is here."
-  docker compose build --pull
-  docker compose up -d
+  mapfile -t svcs < <(others)
+  if [ -n "${WA_IMAGE:-}" ]; then
+    [ -n "${WA_NO_PULL:-}" ] || docker compose pull --ignore-buildable
+    docker compose build wa-updater >/dev/null 2>&1 || true
+    docker compose up -d --no-build "${svcs[@]}"
+  else
+    # Fetch the latest Redis, Postgres, OpenBao and so on (same tags, newest patch), and the newest
+    # Python base image, so security fixes arrive with every deploy.
+    docker compose pull --ignore-buildable || echo "Could not pull the latest third-party images; using what is here."
+    docker compose build --pull
+    docker compose up -d "${svcs[@]}"
+  fi
+fi
+# The updater: started (or brought up to date) from here, but never by itself mid-run; scripts/auto-deploy.sh
+# replaces it last, from a separate container
+if [ "${WA_IN_UPDATER:-}" != 1 ] && others >/dev/null && docker compose config --services 2>/dev/null | grep -qx wa-updater; then
+  docker compose up -d --no-deps --build wa-updater >/dev/null 2>&1 || echo "Could not start the updater: docker compose up -d wa-updater"
 fi
 
 # If the bundled OpenBao is part of this stack, unseal it when a key is stored on this server.
@@ -106,21 +180,22 @@ for _ in $(seq 1 40); do
     running="$(docker compose exec -T api python -c 'from app.version import VERSION; print(VERSION)' 2>/dev/null | tr -d '\r')"
     files="$(sed -n 's/^version = "\([^"]*\)".*/\1/p' pyproject.toml 2>/dev/null | head -1)"
     echo "Running World Assistant ${running:-unknown} (these files are ${files:-unknown})."
-    if [ -n "${WA_IMAGE:-}" ] && [ -n "$running" ] && [ -n "$files" ] && [ "$running" != "$files" ]; then
+    if [ -n "${WA_IMAGE:-}" ] && [ -n "$running" ] && [ -n "$files" ] && [ "${running%%+*}" != "$files" ]; then
       echo "WARNING: the running release is $running but these files are $files. The pinned image (WA_IMAGE in .env)"
       echo "was not moved on. Look at the messages above, or run: bash scripts/sync.sh  then this again."
       exit 1
     fi
     docker compose exec -T api python -m app.secretsctl check || true
-    # The tailnet's https address reaches the api through the Tailscale container, which went on running while the api
-    # was replaced: after 0.44.0 it stopped passing requests on until restarted. Restart it with every update.
-    if [ -n "$(docker compose ps --status running -q wa-tailscale 2>/dev/null)" ]; then
+    # The tailnet's https address reaches the api through the Tailscale container, which held on to the old address
+    # when what it points at was replaced. A staged update replaces only the api behind the front door, so there is
+    # nothing to restart then.
+    if [ "$STAGED" = 0 ] && [ -n "$(docker compose ps --status running -q wa-tailscale 2>/dev/null)" ]; then
       echo "Restarting the Tailscale container, so the tailnet address reaches the new api..."
       docker compose restart wa-tailscale >/dev/null 2>&1 || echo "Could not restart wa-tailscale: run  docker compose restart wa-tailscale"
     fi
     # Read-only comfort check: every page and endpoint answers, nothing returns a 500.
     echo "Checking every page and endpoint..."
-    if docker compose exec -T api python -m app.smoke; then
+    if [ "$STAGED" = 1 ] || docker compose exec -T api python -m app.smoke; then  # a staged update checked it before it went live
       # Every outside source, asked live, in the background: a record to read, never a reason to roll back.
       if [ "${WA_LIVE_CHECK:-1}" != "0" ] && [ -f scripts/live-check.sh ]; then
         mkdir -p "$DATA/live-checks" 2>/dev/null || true

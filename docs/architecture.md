@@ -56,10 +56,13 @@ flowchart LR
 | `valhalla` | Optional routing engine (separate compose file). Only reachable inside the stack. |
 | `openbao` | Optional key vault run beside the app (separate compose file), with an optional auto-unseal helper. See [openbao.md](openbao.md). |
 | MQTT | An existing broker you provide. The worker publishes bus-tracker summaries and the fuel, train, road and pollen sensors (with a pollen map image) to it with Home Assistant discovery, so sensors appear without YAML. Events are fetched by Home Assistant itself for where each person is (the mobile app's location when away, else its home zone) (see [home-assistant.md](home-assistant.md)). |
+| `wa-proxy` | The front door (Caddy): the only published port. Tailscale and Traefik point at it too. It passes every request to the api, so an update can run the new version beside the old one and move requests across without a gap. It tells the api who connected (`X-WA-Peer`, believed only from this container). See [runbook](runbook.md#staged-updates-no-gap). |
+| `wa-updater` | Runs `scripts/auto-deploy.sh`: nightly when automatic updates are on, and within a minute of Update now. It drives Docker through the server's socket, publishes no port, and installs only signed releases. |
 
-Outside the containers, on the server: `scripts/deploy.sh` (back up, update, check), and the optional
-nightly `scripts/auto-deploy.sh` ([runbook](runbook.md)). The api cannot restart containers; the
-automatic-update switch on Settings (`/settings`) is only a stored flag that the nightly job reads.
+Updates are staged (`scripts/rollout.sh`): migrations first (they only add, [migrations.md](migrations.md)), the
+new api beside the old one, checked, tried on one request in five, then given every request while the old one
+stands by, then the worker handed over. `scripts/deploy.sh` runs it; the api cannot restart containers, and the
+automatic-update switch and Update now on Settings (`/settings`) are only stored requests that the updater acts on.
 
 ## Code layout
 

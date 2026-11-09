@@ -110,3 +110,6 @@ class WorkerSettings:
     queue_name = "wa:arq"
     health_check_interval = 30
     health_check_key = "wa:arq:health-check"
+    # An update starts the new worker before stopping this one; stopping waits up to this long for running jobs to
+    # finish instead of cutting them off (compose's stop_grace_period is longer).
+    job_completion_wait = 120

@@ -1,11 +1,11 @@
 """The automatic-update switch (on the status page), the "Update now" button, and the record of the last update attempt.
 
 The api cannot restart containers, and should not be able to. The switch is only a stored flag.
-A job on the server (scripts/auto-deploy.sh, run nightly) reads it, does the update, and posts the
+The updater container (scripts/updater.sh runs scripts/auto-deploy.sh nightly) reads it, does the update, and posts the
 outcome back here so the status page can show it.
 
-"Update now" is a stored request in the same way. A second job on the server (scripts/auto-deploy.sh --if-requested,
-every minute) sees it, claims it, and runs the same update as --now: signature check, backup, page and endpoint check,
+"Update now" is a stored request in the same way. The updater container (scripts/updater.sh: auto-deploy.sh
+--if-requested, every minute) sees it, claims it, and runs the same update as --now: signature check, backup, page and endpoint check,
 and rollback. Its report clears the request. A claim more than STALE_S old with no report counts as not picked up, so
 a job that died part-way does not leave the button stuck.
 """

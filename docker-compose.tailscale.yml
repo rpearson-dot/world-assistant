@@ -51,6 +51,8 @@ services:
         esac
         exec /usr/local/bin/containerboot
     depends_on:
+      wa-proxy:
+        condition: service_started
       api:
         condition: service_healthy
 
