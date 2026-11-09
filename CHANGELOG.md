@@ -2,6 +2,16 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Ready to ride:** each bike shows every battery it needs and its level as last reported, or "--" until one is.
+  This covers the derailleur (AXS) and shifter batteries, the speed, cadence and power sensors last seen on it, and
+  your heart rate strap. The summary says "Ready to ride", "Charge or replace first: …", or that levels are not
+  reported yet. It is on the Bikes page under each bike and in the Garage, with a tick or warning on each bike's tile.
+- **Rides synced before 0.46.0** have their files read once, up to four weeks back, so their sensors and batteries
+  show without waiting for a new ride.
+
 ## [0.49.0] - 2026-11-08
 
 ### Added

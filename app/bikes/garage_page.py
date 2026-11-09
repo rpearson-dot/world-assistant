@@ -38,6 +38,11 @@ body { padding-bottom: 150px; }
   .bin, .counter { width: 58px; } .bin .big, .counter .big { font-size: 22px; } .tile { width: 88px; } }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--bad-bg); } 50% { box-shadow: 0 0 0 9px var(--bad-bg); } }
 @media (prefers-reduced-motion: reduce) { .spot.due { animation: none; } .fly { transition: none !important; } }
+.power { margin: 6px 0; font-size: 13px; } .power.ready b { color: var(--good); } .power.notready b { color: var(--bad); }
+.pitems { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.pitem { background: var(--chip); border-radius: var(--pill); padding: 1px 8px; } .pitem.low { background: var(--bad-bg); color: var(--bad); font-weight: 600; }
+.pitem.unk { color: var(--dim); }
+.bt .rdy { font-size: 12px; } .bt .rdy.ok { color: var(--good); } .bt .rdy.no { color: var(--bad); }
 .odo { font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; font-size: 13px; background: var(--ink); color: var(--card);
   border-radius: 4px; padding: 2px 8px; letter-spacing: .06em; }
 .legend { display: flex; gap: 10px; font-size: 12px; color: var(--dim); align-items: center; }
@@ -90,6 +95,7 @@ body { padding-bottom: 150px; }
   <section class="stage" id="stage" hidden>
     <h2><span id="bname"></span><span class="odo" id="bodo"></span></h2>
     <div class="legend"><span>New</span><i></i><span>Worn out</span><span id="bdue"></span></div>
+    <div id="bpower" class="power"></div>
     <div class="rig" id="rig"><div class="art" id="art"></div></div>
     <p class="dim small">Tap a marker for its parts. Drag a spare from the shelf onto a marker to fit it, or a part to the bin.</p>
   </section>
@@ -171,6 +177,7 @@ function drawBikes() {
     const t = el('button', 'bt' + (cur && cur.id === b.id ? ' on' : '')); t.type = 'button';
     t.append(svgEl(b.art), el('b', null, b.label), el('span', 'dim small', fmt(b.km || 0) + ' km'));
     if (d) t.append(el('div', 'due', d + ' due'));
+    const pw = b.power || {}; if (pw.ready != null) t.append(el('div', 'rdy ' + (pw.ready ? 'ok' : 'no'), pw.ready ? '✓ batteries ok' : '⚠ batteries low'));
     t.onclick = () => { cur = b; try { localStorage.setItem('wa_garage_bike', b.id); } catch (e) {} draw(); };
     box.append(t);
   }
@@ -181,6 +188,9 @@ function drawStage() {
   const parts = allParts(b), due = parts.filter(p => p.wear && p.wear.state === 'due');
   $('bdue').textContent = due.length ? due.length + ' due' : 'nothing due';
   $('art').innerHTML = b.art;
+  const pw = b.power || { items: [] }, box = $('bpower'); box.replaceChildren(); box.className = 'power ' + (pw.ready === true ? 'ready' : pw.ready === false ? 'notready' : '');
+  if (pw.items.length) { box.append(el('b', null, (pw.ready === true ? '✓ ' : pw.ready === false ? '⚠ ' : '🔋 ') + pw.say)); const row = el('div', 'pitems');
+    for (const i of pw.items) row.append(el('span', 'pitem' + (i.low ? ' low' : i.level == null ? ' unk' : ''), i.name + ': ' + i.text)); box.append(row); }
   $('rig').querySelectorAll('.spot').forEach(s => s.remove());
   const by = {}; for (const p of parts) (by[p.spot || 'frame'] = by[p.spot || 'frame'] || []).push(p);
   for (const [spot, ps] of Object.entries(by)) {
