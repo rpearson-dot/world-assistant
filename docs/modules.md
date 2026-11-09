@@ -29,6 +29,8 @@ command (1Password, Bitwarden, pass, sops, AWS, Azure, Google). Details: [secret
 
 ## Adding a module (for developers)
 
+The full guide, step by step: [contributing a module](contributing-a-module.md). In short:
+
 A module is one `Module(...)` declaration (see `app/modules/model.py` and the built-ins in
 `app/modules/builtin.py`): keys, routes, worker jobs and schedules, assistant tools, URL prefixes, dependencies and
 coverage. Add it to `BUILTIN` and nothing else in the core changes. `tests/test_modules.py` checks the declaration

@@ -1,6 +1,6 @@
 # Contributing
 
-Small project, simple rules.
+Small project, simple rules. Adding a whole new area? See [contributing a module](docs/contributing-a-module.md).
 
 1. **Branch and PR.** `main` is protected: nothing is pushed to it directly ([docs/repo-settings.md](docs/repo-settings.md)). Work on a branch; CI (lint, tests, image build, secret scan, dependency
    review, a whole-stack check on PostGIS, and a staged update from the previous release) must pass before
