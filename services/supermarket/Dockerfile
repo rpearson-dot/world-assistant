@@ -24,14 +24,14 @@ ENV NODE_ENV=production \
 WORKDIR /srv
 COPY package.json package-lock.json ./
 # --ignore-scripts: nothing runs at install; the browsers come with the base image
-# then npm itself goes: the service never runs it, and the copy in the base image bundles its own libraries (undici,
-# brace-expansion) that the image scan reports.
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force \
- && rm -rf /usr/lib/node_modules/npm /usr/lib/node_modules/corepack /usr/bin/npm /usr/bin/npx /usr/bin/corepack /root/.npm
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY src ./src
 
-# Security fixes published since the base image was built (a fixable finding fails the release scan)
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && apt-get clean && rm -rf /var/lib/apt/lists/*
+# Security fixes published since the base image was built (a fixable finding fails the release scan). Then npm itself
+# goes: the service never runs it, and it bundles its own libraries (undici, brace-expansion) that the scan reports.
+# After the upgrade, because an upgraded nodejs package puts npm back.
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && apt-get clean && rm -rf /var/lib/apt/lists/* \
+ && rm -rf /usr/lib/node_modules/npm /usr/lib/node_modules/corepack /usr/bin/npm /usr/bin/npx /usr/bin/corepack /root/.npm
 
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin wa \
  && mkdir -p /data && chown 10001:10001 /data

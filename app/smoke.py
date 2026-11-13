@@ -108,6 +108,12 @@ def _fill(path: str) -> str:
 def run(base: str, token: str, *, seed: bool = False, out: Callable[[str], None] = print) -> int:
     r = Report(out)
 
+    # A new install starts with only what the wizard is asked for, which on a test stack is nothing: switch every
+    # module on so the whole of it is checked
+    if seed:
+        s, _, b = fetch(base, "/v1/modules", token, "PUT", {"mode": "all", "on": [], "off": []})
+        r.check(s == 200, "switch every module on", f"HTTP {s}: {b[:120]}" if s != 200 else "")
+
     # health and pages
     for path in ("/healthz", "/readyz"):
         s, _, b = fetch(base, path)
