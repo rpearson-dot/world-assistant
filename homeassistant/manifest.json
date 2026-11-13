@@ -14,8 +14,8 @@
       "sha256": "ef2cc85901a8f9b38e4438e81003dba8a9046ebaed0d89fdc7e175cfcbcd26ce"
     },
     "dashboards/leaf.yaml": {
-      "changed_in": "0.26.1",
-      "sha256": "9be0a2331ecfd3d6bd0ab34728916071b9a6fb684657454bc45279e2f84a9b24"
+      "changed_in": "0.51.1",
+      "sha256": "364b962ef1179d4d101ee3a64f1b2db9005a94bbc33fd9547b2a7871910b21c0"
     },
     "dashboards/manage.yaml": {
       "changed_in": "0.7.5",
@@ -38,8 +38,8 @@
       "sha256": "7366e744dd9e52593782f0ec313062bd66f2cd9a43dab056bf182393b82b1ad6"
     },
     "packages/wa_ev_plan.yaml": {
-      "changed_in": "0.31.0",
-      "sha256": "311b0120d8db00adc08daecaf065cfe5394a3238c64644075f167991f332c8d9"
+      "changed_in": "0.51.1",
+      "sha256": "4aa25b17b4fef72b7e1f93138d93455e61d3255f8a4fcfb72e4a1918cdc68987"
     },
     "packages/world_assistant_bus.yaml": {
       "changed_in": "0.7.5",

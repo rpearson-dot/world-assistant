@@ -55,6 +55,19 @@ views:
           {% if is_state('binary_sensor.hv66bzd_12v_battery_voltage_alert', 'on') or (v12 >= 0 and v12 < 11.9 and not is_state('binary_sensor.hv66bzd_12v_battery_charging', 'on')) %}{% set ns.items = ns.items + ['⚠️ 12V battery at ' ~ v12 ~ 'V — this is what strands a Leaf'] %}{% endif %}
           {% if is_state('binary_sensor.nissan_leaf_hv66bzd_cell_voltage_alerts', 'on') %}{% set ns.items = ns.items + ['⚠️ Cell voltage alert'] %}{% endif %}
           {% if is_state('binary_sensor.nissan_leaf_hv66bzd_cell_temperature_alerts', 'on') %}{% set ns.items = ns.items + ['⚠️ Cell temperature alert'] %}{% endif %}
+          {#- Any other warning the car sends (every OVMS binary sensor of class problem or safety that is on), so new ones
+              show up here without a change. The handbrake is "on" whenever it is applied, which is normal: it is only
+              mentioned when it is off while the car has been standing still for 5 minutes. -#}
+          {% set shown = ['12v_battery_voltage_alert', 'cell_voltage_alerts', 'cell_temperature_alerts', 'handbrake', 'charging_status', 'charge_port', '12v_battery_charging']
+             + ['front_left_door', 'front_right_door', 'rear_left_door', 'rear_right_door', 'trunk'] %}
+          {% for b in states.binary_sensor if 'hv66bzd' in b.entity_id and b.attributes.device_class in ['problem', 'safety'] and b.state == 'on' %}
+          {% if not (shown | select('in', b.entity_id) | list) %}{% set ns.items = ns.items + ['⚠️ ' ~ (b.name | replace('HV66BZD ', '') | replace('Nissan Leaf ', ''))] %}{% endif %}
+          {% endfor %}
+          {% set hb = states.binary_sensor | selectattr('entity_id', 'search', 'hv66bzd.*handbrake') | list %}
+          {% set sp = states.sensor | selectattr('entity_id', 'search', 'hv66bzd.*speed') | list %}
+          {% if hb and hb[0].state == 'off' and (now() - hb[0].last_changed).total_seconds() > 300
+                and (not sp or (sp[0].state | float(0) < 1 and (now() - sp[0].last_changed).total_seconds() > 300)) %}
+          {% set ns.items = ns.items + ['🅿️ Handbrake off while parked'] %}{% endif %}
           {% for t in [('front_left', 'Front left'), ('front_right', 'Front right'), ('rear_left', 'Rear left'), ('rear_right', 'Rear right')] %}
           {% set p = states('sensor.leaf_tyre_pressure_' ~ t[0] ~ '_psi') | float(-1) %}
           {% if p >= 0 and (p < 33 or p > 40) %}{% set ns.items = ns.items + ['🛞 ' ~ t[1] ~ ' tyre ' ~ p ~ ' psi (36 recommended)'] %}{% endif %}
@@ -167,6 +180,18 @@ views:
         content: |
           Hx falls faster than state of health and is the earlier warning. Gids against the maximum is the
           same story in the pack's own units.
+      - type: markdown
+        title: Warnings from the car
+        content: |
+          {#- Every warning OVMS reports (binary sensors of class problem or safety), on or off, so what Home Assistant
+              files under the car's diagnostics is visible here too. The handbrake reads "Applied" rather than
+              "Problem": applied is normal when parked. -#}
+          {% for b in states.binary_sensor | sort(attribute='name') if 'hv66bzd' in b.entity_id and b.attributes.device_class in ['problem', 'safety'] %}
+          {% set name = b.name | replace('HV66BZD ', '') | replace('Nissan Leaf ', '') %}
+          {% if 'handbrake' in b.entity_id %}- 🅿️ {{ name }}: {{ 'applied' if b.state == 'on' else 'off' }}
+          {% else %}- {{ '⚠️' if b.state == 'on' else '✅' }} {{ name }}: {{ 'needs attention' if b.state == 'on' else 'OK' }}
+          {% endif %}{% else %}No warnings are reported by the car's integration.
+          {% endfor %}
       - type: entities
         title: 12V battery
         show_header_toggle: false
