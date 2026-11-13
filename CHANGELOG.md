@@ -2,6 +2,13 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Keys page: the MOT History keys are named as DVSA's email names them** (Client ID, Client Secret, API Key,
+  ScopeURL, TokenURL), so each value goes in the box with the same name. ScopeURL is new and optional: the usual
+  `https://tapi.dvsa.gov.uk/.default` is used when it is empty.
+
 ## [0.52.0] - 2026-11-13
 
 ### Fixed

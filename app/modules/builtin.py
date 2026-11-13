@@ -263,7 +263,7 @@ BUILTIN: tuple[Module, ...] = (
     Module("vehiclechecks", "Tax and MOT", "Each vehicle's tax and MOT status and due dates, its MOT history with "
            "advisories, and outstanding safety recalls (DVLA and DVSA), with reminders", category="energy",
            keys=("dvla_api_key", "dvsa_mot_api_key"), any_key=True,
-           more_keys=("dvsa_mot_client_id", "dvsa_mot_client_secret", "dvsa_mot_token_url"), jobs=("vehicle_check",),
+           more_keys=("dvsa_mot_client_id", "dvsa_mot_client_secret", "dvsa_mot_scope_url", "dvsa_mot_token_url"), jobs=("vehicle_check",),
            link="https://developer-portal.driver-vehicle-licensing.api.gov.uk/",
            note="DVLA: apply for a Vehicle Enquiry Service key. DVSA: register at documentation.history.mot.api.gov.uk; "
                 "its email gives the API key, client id and secret, and the token URL. Either works alone. Give each "

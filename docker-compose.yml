@@ -119,6 +119,7 @@ x-app: &app
     - dvsa_mot_api_key
     - dvsa_mot_client_id
     - dvsa_mot_client_secret
+    - dvsa_mot_scope_url
     - dvsa_mot_token_url
     - kitchenowl_token
     - sainsburys_email
@@ -339,6 +340,8 @@ secrets:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/dvsa_mot_client_id.txt
   dvsa_mot_client_secret:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/dvsa_mot_client_secret.txt
+  dvsa_mot_scope_url:
+    file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/dvsa_mot_scope_url.txt
   dvsa_mot_token_url:
     file: ${WA_SECRETS_DIR:-/mnt/user/appdata/world-assistant/secrets}/dvsa_mot_token_url.txt
   kitchenowl_token:

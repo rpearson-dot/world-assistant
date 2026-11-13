@@ -41,7 +41,8 @@ DVLA = os.environ.get("WA_DVLA_URL", "https://driver-vehicle-licensing.api.gov.u
 MOT = os.environ.get("WA_MOT_URL", "https://history.mot.api.gov.uk/v1/trade/vehicles/registration")
 MOT_SCOPE = "https://tapi.dvsa.gov.uk/.default"
 WARN_DAYS = 30
-KEYS = ("dvla_api_key", "dvsa_mot_api_key", "dvsa_mot_client_id", "dvsa_mot_client_secret", "dvsa_mot_token_url")
+KEYS = ("dvla_api_key", "dvsa_mot_api_key", "dvsa_mot_client_id", "dvsa_mot_client_secret", "dvsa_mot_scope_url",
+        "dvsa_mot_token_url")
 _token: dict[str, Any] = {}
 
 
@@ -85,9 +86,12 @@ async def mot_token(client: httpx.AsyncClient) -> str:
         return str(_token["value"])
     cid, secret, url = (read_secret(k) for k in ("dvsa_mot_client_id", "dvsa_mot_client_secret", "dvsa_mot_token_url"))
     if not (cid and secret and url):
-        raise CheckError("the DVSA MOT login is not set (dvsa_mot_client_id, dvsa_mot_client_secret, dvsa_mot_token_url: "
-                         "from DVSA's registration email)")  # fmt: skip
-    r = await client.post(url, data={"grant_type": "client_credentials", "client_id": cid, "client_secret": secret, "scope": MOT_SCOPE})
+        raise CheckError("the DVSA MOT login is not set (Client ID, Client Secret and TokenURL from DVSA's email, on the "
+                         "Keys page)")  # fmt: skip
+    scope = (read_secret("dvsa_mot_scope_url") or MOT_SCOPE).strip()  # the email's "ScopeURL"; the usual one if not set
+    if not url.startswith("https://") or not scope.startswith("https://"):
+        raise CheckError("the DVSA TokenURL and ScopeURL should both start https://")
+    r = await client.post(url, data={"grant_type": "client_credentials", "client_id": cid, "client_secret": secret, "scope": scope})
     if r.status_code >= 400:
         raise CheckError(f"DVSA's login (Microsoft) answered HTTP {r.status_code}: check the client id and secret")
     d = r.json()

@@ -187,7 +187,10 @@ const STATE = { ready: ['good', 'Working'], limited: ['warn', 'Works, better wit
 const LABELS = { nh_subscription_key: 'Primary key', nh_subscription_key_secondary: 'Secondary key (optional)',
   fuel_finder_client_id: 'Client ID', fuel_finder_client_secret: 'Client secret', skiddle_api_key: 'Skiddle API key',
   ticketmaster_api_key: 'Ticketmaster consumer key', datathistle_token: 'Data Thistle access token', datathistle_refresh_token: 'Data Thistle refresh token', what3words_api_key: 'what3words API key', tfl_app_key: 'App key', nr_access_token: 'Consumer key',
-  bods_api_key: 'API key', pollen_api_key: 'API key', octopus_api_key: 'API key' };
+  bods_api_key: 'API key', pollen_api_key: 'API key', octopus_api_key: 'API key',
+  // as DVSA's MOT History email names them
+  dvsa_mot_client_id: 'Client ID', dvsa_mot_client_secret: 'Client Secret', dvsa_mot_api_key: 'API Key',
+  dvsa_mot_scope_url: 'ScopeURL (optional)', dvsa_mot_token_url: 'TokenURL', dvla_api_key: 'DVLA API key (tax)' };
 let setup = null, keys = null;
 
 function ago(iso) {

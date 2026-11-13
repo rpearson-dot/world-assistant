@@ -8,7 +8,7 @@ How to use it: [docs/data-sources.md](../../../docs/data-sources.md).
 
 | | |
 |---|---|
-| Keys | `dvla_api_key`, `dvsa_mot_api_key`, `dvsa_mot_client_id`, `dvsa_mot_client_secret`, `dvsa_mot_token_url` |
+| Keys | `dvla_api_key`, `dvsa_mot_api_key`, `dvsa_mot_client_id`, `dvsa_mot_client_secret`, `dvsa_mot_scope_url`, `dvsa_mot_token_url` |
 | Endpoints | `/v1/vehicle-checks` |
 | Scheduled jobs | `vehicle_check` |
 | Assistant tools | `vehicle_checks` |
