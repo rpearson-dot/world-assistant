@@ -224,7 +224,7 @@ def test_home_assistant_says_what_is_coming() -> None:
 
 
 async def test_the_tools_say_it_plainly(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app import assistant_more as M
+    from app.modules.wishlist import tools as M
 
     data = {"list": {"name": "Wishlist"}, "last_check": None, "items": [
         {"key": "ko:77", "name": "Kamado BBQ", "now": [{"retailer": "lidl", "name": "Grillmeister Kamado Barbecue",

@@ -19,7 +19,6 @@ from app.config import get_settings
 from app.logging import configure_logging
 from app.modules import registry
 from app.modules.gate import ModuleGate
-from app.modules.graph import store as graph_store
 from app.version import VERSION
 
 log = logging.getLogger("wa.api")
@@ -42,7 +41,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("world-assistant api started (env=%s)", settings.env)
     yield
 
-    await graph_store.close()
+    for _, close in registry.provided("shutdown"):
+        await close()
     await app.state.redis.aclose()
     await app.state.engine.dispose()
 

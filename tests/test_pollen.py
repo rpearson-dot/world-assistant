@@ -94,7 +94,7 @@ async def test_assistant_pollen_text(monkeypatch: pytest.MonkeyPatch) -> None:
                           {"name": "Birch", "levels": [0], "labels": ["none"]}],
         }  # fmt: skip
 
-    monkeypatch.setattr(assistant, "pollen_near", near)
+    monkeypatch.setattr("app.modules.pollen.tools.pollen_near", near)
     out = await assistant.run_tool(None, "pollen", {"place": "home"})  # type: ignore[arg-type]
     assert out["text"] == "Near Home, allergy risk today is high; pollen today: Grasses high."
 

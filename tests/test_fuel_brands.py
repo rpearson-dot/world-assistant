@@ -72,7 +72,7 @@ async def test_assistant_mentions_absolute_cheapest(monkeypatch) -> None:  # typ
         assert kw["brands"] == "tesco" and kw["supermarkets"] is False
         return _out("E10", HITS, brands=kw["brands"], limit=3, place="Home")
 
-    monkeypatch.setattr(assistant, "fuel_near", near)
+    monkeypatch.setattr("app.modules.fuel.tools.fuel_near", near)
     out = await assistant.run_tool(None, "fuel_cheapest", {"place": "home", "brands": "tesco"})  # type: ignore[arg-type]
     assert "absolute cheapest is Shell" in out["text"] and "4.0 pence a litre more" in out["text"]
 

@@ -52,8 +52,12 @@ class Module:
     prefixes: tuple[str, ...] = ()  # URL path prefixes that go dark when it is switched off
     worker: tuple[Job, ...] = ()
     tools: tuple[str, ...] = ()  # assistant (MCP) tool names
+    # What it plugs into the core, by extension point: {"assistant.tools": "app.modules.crime.tools:TOOLS"}. The
+    # points are listed in docs/module-sdk.md; the core asks the registry (provided, provider), never the module.
+    provides: dict[str, str] = field(default_factory=dict, compare=False)
     # how it relates to the rest
     needs: tuple[str, ...] = ()  # module ids it cannot work without
+    uses: tuple[str, ...] = ()  # module ids whose code it may use when they are there (it must cope without them)
     services: tuple[str, ...] = ()  # optional containers: compose file names
     coverage: tuple[str, ...] = ()  # region words ("london"); empty = everywhere
     area: tuple[float, float, float, float] | None = None  # (min lat, min lon, max lat, max lon) of its coverage

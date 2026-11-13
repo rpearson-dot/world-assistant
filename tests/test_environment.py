@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 
-from app import assistant_more as M
+from app.modules.environment import tools as M
 from app.ha_publish import environment_device
 from app.modules.environment.sources.environment import clients as C
 

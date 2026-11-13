@@ -169,7 +169,7 @@ AT_PLACE_KM = 0.15  # within this of a saved place, Here is "at" it
 
 def saved_place(places: list[dict[str, Any]], lat: float, lon: float) -> dict[str, Any] | None:
     """The nearest saved place within AT_PLACE_KM of the point, if any."""
-    from app.modules.fuel.sources.fuelfinder.queries import haversine_km
+    from app.geoquery import haversine_km
 
     best = None
     for p in places:

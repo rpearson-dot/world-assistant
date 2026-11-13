@@ -110,7 +110,7 @@ async def test_assistant_tools_pass_no_place_through(monkeypatch: pytest.MonkeyP
         got.update(kw)
         return {"place": "Home", "allergy_risk_label": [None], "allergens": []}
 
-    monkeypatch.setattr(assistant, "pollen_near", near)
+    monkeypatch.setattr("app.modules.pollen.tools.pollen_near", near)
     out = await assistant.run_tool(None, "pollen", {})  # type: ignore[arg-type]
     assert got["place"] is None and out["text"].startswith("Near Home")
     for name in ("pollen", "events_near", "fuel_cheapest"):

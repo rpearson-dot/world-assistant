@@ -118,25 +118,6 @@ async def routing(s: Settings) -> dict[str, Any]:
     return out
 
 
-async def graph(s: Settings) -> dict[str, Any]:
-    out: dict[str, Any] = {"id": "graph", "name": "Knowledge graph (Neo4j)", "link": "/graph",
-                           "unlocks": "The Graph page: how your places, trips, roads and stations connect"}  # fmt: skip
-    if not s.graph_enabled:
-        out["state"], out["note"] = OFF, "Optional container: docker-compose.graph.yml and WA_GRAPH_ENABLED=true."
-        return out
-    from app.modules.graph import store
-
-    try:
-        rows = await store.run(store.COUNTS)
-    except store.GraphUnavailable as exc:
-        out["state"], out["error"] = FAILING, str(exc)[:300]
-        return out
-    total = sum(int(r["total"]) for r in rows)
-    out["state"] = READY if total else WAITING
-    out["note"] = f"{total} nodes" if total else "Built twice an hour; or Rebuild on the Graph page."
-    return out
-
-
 async def checklist(request: Request) -> dict[str, Any]:
     s = get_settings()
     async with request.app.state.engine.connect() as conn:
@@ -158,7 +139,7 @@ async def checklist(request: Request) -> dict[str, Any]:
          "note": "" if home else "Add a place called home on the Places page."},
         home_assistant(s, last, (await load(request.app.state.engine))[0]),
         await routing(s),
-        await graph(s),
+        *[await check(s) for _, check in registry.provided("setup.check")],
     ]  # fmt: skip
     return {"local": is_local(request, request.method), "you": you, "keys": keyed, "free": free}
 

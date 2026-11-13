@@ -17,8 +17,8 @@ from sqlalchemy import text
 
 from app.auth import require_token
 from app.config import get_settings
+from app.geoquery import haversine_km
 from app.modules.bods.sources.bods.client import BodsError, box_around, fetch_vehicles
-from app.modules.fuel.sources.fuelfinder.queries import haversine_km
 from app.places import place_or_default
 
 log = logging.getLogger("wa.bods")

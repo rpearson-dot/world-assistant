@@ -22,7 +22,7 @@ from sqlalchemy import text
 from app.auth import require_token
 from app.config import get_settings
 from app.ha import slug
-from app.modules.events.events import search
+from app.modules import registry
 
 router = APIRouter(prefix="/v1/ha/locations", tags=["home-assistant"], dependencies=[Depends(require_token)])
 
@@ -121,8 +121,11 @@ async def location_events(request: Request) -> dict[str, Any]:
     s = get_settings()
     rows, lim = await _load(request)
     out = []
+    search = registry.provider("events.search")
     for r in rows:
         try:
+            if search is None:
+                raise HTTPException(404, "the events module is not installed")
             res = await search(
                 request, r["name"], r["lat"], r["lon"], radius_km=r["radius_km"] or s.ha_location_radius_km,
                 days=s.ha_location_days, type=None, keyword=None, limit=20,

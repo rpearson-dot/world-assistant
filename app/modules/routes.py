@@ -64,7 +64,7 @@ def describe(m: Module, s: Any, runs: dict[str, dict[str, Any]], on: set[str], w
         "any_key": m.any_key, "key_optional": m.key_optional, "link": m.link, "note": m.note,
         "services": list(m.services), "needs": list(m.needs), "coverage": list(m.coverage),
         "suggested": why.get(m.id), "source": m.source, "last_ok": row.get("last_ok"), "error": row.get("error"),
-        "testable": m.id in keytest.TESTS,
+        "testable": "key.test" in m.provides,
     }  # fmt: skip
 
 

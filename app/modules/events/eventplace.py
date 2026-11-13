@@ -16,7 +16,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-from app.modules.fuel.sources.fuelfinder.queries import haversine_km
+from app.geoquery import haversine_km
 
 log = logging.getLogger("wa.events")
 

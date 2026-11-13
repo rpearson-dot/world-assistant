@@ -18,7 +18,7 @@ from typing import Any, Self
 
 import httpx
 
-from app.modules.fuel.sources.fuelfinder.queries import haversine_km
+from app.geoquery import haversine_km
 
 DEFAULT_BASE = "https://www.skiddle.com/api/v1"
 KM_PER_MILE = 1.609344

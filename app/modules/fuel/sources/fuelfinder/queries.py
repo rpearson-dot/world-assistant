@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import re
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
@@ -12,10 +11,9 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from app.geoquery import EARTH_KM, haversine_km  # noqa: F401  (kept here for older imports)
 from app.modules.fuel.sources.fuelfinder.normalise import canonical_fuel
 from app.modules.nh.sources.nationalhighways.match import Corridor, distance_to_line_m
-
-EARTH_KM = 6371.0088
 
 
 @dataclass(frozen=True)
@@ -42,11 +40,6 @@ class FuelHit:
         return d
 
 
-def haversine_km(a: tuple[float, float], b: tuple[float, float]) -> float:
-    p1, p2 = math.radians(a[0]), math.radians(b[0])
-    dp, dl = p2 - p1, math.radians(b[1] - a[1])
-    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 2 * EARTH_KM * math.asin(math.sqrt(h))
 
 
 _SELECT = text(

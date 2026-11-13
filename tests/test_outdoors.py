@@ -383,7 +383,7 @@ async def test_sigma_search_is_found_kept_and_follows_robots(monkeypatch: pytest
 
 
 def test_bikesy_deals_name_their_shop_and_the_preferred_shop_is_shown() -> None:
-    from app.assistant_more import _outdoor_text
+    from app.modules.outdoors.tools import _outdoor_text
 
     html = BIKESY_CARDS.replace("outbound.php?pid=5300601", 'outbound.php?pid=5300601"><img src="/logos/sigma-sports.png"')
     got = {d["id"]: d.get("shop") for d in O.bikesy_deals(html)}

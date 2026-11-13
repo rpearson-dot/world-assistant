@@ -113,7 +113,7 @@ async def test_assistant_events_text(monkeypatch: pytest.MonkeyPatch) -> None:
             {"name": "Stand up", "venue": "The Pub", "date": "2026-10-24"},
             {"name": "Late show", "venue": None, "date": None}]}  # fmt: skip
 
-    monkeypatch.setattr(assistant, "events_near", near)
+    monkeypatch.setattr("app.modules.events.tools.events_near", near)
     out = await assistant.run_tool(None, "events_near", {"place": "home", "type": "comedy"})  # type: ignore[arg-type]
     assert "7 events near Home" in out["text"] and "Stand up at The Pub on 2026-10-24" in out["text"]
     assert "and 5 more" in out["text"]

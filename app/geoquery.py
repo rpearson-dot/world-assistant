@@ -10,6 +10,7 @@ touches the rows near the point rather than the whole table.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 POINT = "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography"
@@ -40,3 +41,15 @@ def distance_km(alias: str = "") -> str:
 
 def params(lat: float, lon: float, radius_km: float, **extra: Any) -> dict[str, Any]:
     return {"lat": lat, "lon": lon, "radius_m": radius_km * 1000.0, **extra}
+
+
+EARTH_KM = 6371.0088
+
+
+def haversine_km(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Great-circle distance between two (lat, lon) points, in km."""
+    p1, p2 = math.radians(a[0]), math.radians(b[0])
+    dp, dl = p2 - p1, math.radians(b[1] - a[1])
+    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * EARTH_KM * math.asin(math.sqrt(h))
+

@@ -24,7 +24,7 @@ from typing import Any, Self
 
 import httpx
 
-from app.modules.fuel.sources.fuelfinder.queries import haversine_km
+from app.geoquery import haversine_km
 
 BASE = "https://api.datathistle.com"
 ATTRIBUTION = {"name": "Data Thistle", "url": "https://www.datathistle.com/",

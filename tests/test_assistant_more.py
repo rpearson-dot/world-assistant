@@ -10,13 +10,30 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import assistant_more as M
+import importlib
+
+from app import assistant_base, assistant_more
 from app.assistant import TOOLS, ToolError
 from app.config import get_settings
 from app.main import app
 from app.modules import registry
 from app.modules.shopping import shopping as S
 from app.version import VERSION
+
+# The tools as one namespace, wherever they now live: the core's, and each module's own (app/modules/<id>/tools.py)
+_TOOL_MODULES = [importlib.import_module(ref.split(":")[0]) for m in registry.modules()
+                 for point, ref in m.provides.items() if point == "assistant.tools"]  # fmt: skip
+
+
+class _AllTools:
+    def __getattr__(self, name: str) -> Any:
+        for mod in [*_TOOL_MODULES, assistant_more, assistant_base]:
+            if hasattr(mod, name):
+                return getattr(mod, name)
+        raise AttributeError(name)
+
+
+M = _AllTools()
 
 REQ: Any = object()  # the tools only pass it on; every function that would use it is replaced here
 
@@ -25,7 +42,7 @@ def test_every_feature_with_an_api_has_an_assistant_tool() -> None:
     """A module with routes must give the assistant a tool, so a new feature cannot again be API-only by accident."""
     for m in registry.modules():
         if m.routers and not m.core:
-            assert m.tools, f"{m.id} has an API but no assistant tool (add one to app/assistant_more.py)"
+            assert m.tools, f"{m.id} has an API but no assistant tool (add one in its tools.py)"
     claimed = {t for m in registry.modules() for t in m.tools}
     assert claimed == set(TOOLS), "every tool belongs to a module, and every module's tool exists"
 
@@ -55,7 +72,9 @@ def at_home(monkeypatch: pytest.MonkeyPatch) -> None:
     async def point(request: Any, place: Any) -> tuple[str, float, float]:
         return "Home", 51.38, -0.25
 
-    monkeypatch.setattr(M, "_point", point)
+    for mod in _TOOL_MODULES:
+        if hasattr(mod, "_point"):
+            monkeypatch.setattr(mod, "_point", point)
 
 
 PRICED = {

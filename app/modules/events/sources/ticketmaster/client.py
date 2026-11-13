@@ -14,8 +14,8 @@ from typing import Any, Self
 
 import httpx
 
+from app.geoquery import haversine_km
 from app.modules.events.sources.skiddle.client import _num, _text
-from app.modules.fuel.sources.fuelfinder.queries import haversine_km
 
 DEFAULT_BASE = "https://app.ticketmaster.com/discovery/v2"
 _BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz"

@@ -480,7 +480,7 @@ async def sync(engine: AsyncEngine, rider: str, client: httpx.AsyncClient | None
     g |= {"last_sync": now.isoformat(), "last_result": result, "types": seen_types, "error": None}
     await _save_settings(engine, rider, g)
     try:
-        from app.notify_jobs import after_sync
+        from app.modules.bikes.notify import after_sync
 
         await after_sync(engine, rider, changes)
     except Exception:
@@ -506,7 +506,7 @@ async def garmin_sync(ctx: dict[str, Any]) -> Any:
             except GarminError as exc:
                 out[rider] = {"error": str(exc)}
             try:
-                from app.notify_jobs import garmin_system
+                from app.modules.bikes.notify import garmin_system
 
                 await garmin_system(engine, rider, out[rider].get("error"))
             except Exception:

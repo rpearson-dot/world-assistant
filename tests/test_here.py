@@ -89,7 +89,7 @@ async def test_every_part_for_a_point(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 async def test_the_tool_takes_a_point_or_a_postcode(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app import assistant_more as M
+    from app.modules.here import tools as M
     from app.geo import Located
     from app.modules.codepoint import postcodes
 
