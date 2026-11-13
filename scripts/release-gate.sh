@@ -37,7 +37,10 @@ file_at() { gh api "repos/$REPO/contents/$1?ref=$SHA" -H "Accept: application/vn
 files_version="$(file_at pyproject.toml | sed -n 's/^version = "\([^"]*\)".*/\1/p' | head -1)" \
   || fail "could not read pyproject.toml at ${SHA:0:7}"
 [ "$files_version" = "$VERSION" ] || fail "pyproject.toml says version $files_version, not $VERSION: bump it in the release PR"
-file_at CHANGELOG.md | grep -q "^## \[$VERSION\]" || fail "CHANGELOG.md has no '## [$VERSION]' heading"
+# read whole, then searched: `file_at ... | grep -q` stops reading at the first match, and with pipefail the cut-off
+# download counts as a failure once the file is large
+changelog="$(file_at CHANGELOG.md)" || fail "could not read CHANGELOG.md at ${SHA:0:7}"
+grep -q "^## \[$VERSION\]" <<<"$changelog" || fail "CHANGELOG.md has no '## [$VERSION]' heading"
 
 # Newest run of each required check on this commit: "name status conclusion"
 latest() {
