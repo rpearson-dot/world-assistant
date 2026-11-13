@@ -16,13 +16,14 @@ New here? Read the [project README](../README.md) first: what World Assistant is
 | [Themes](themes.md) | The look of every page, light and dark |
 | [Modules](modules.md) | Switching whole areas off |
 | [Contributing a module](contributing-a-module.md) | Adding a new area: a pull request, or your own package |
+| [Module SDK](module-sdk.md) | What a module may use from the core, and where it plugs in |
 | [Moving to PostgreSQL 18](postgres-upgrade.md) | A one-time database upgrade for older installs |
 
 ## Each area
 
 | Area | Pages |
 |---|---|
-| Getting about | [Bus tracker](bus.md), [live buses](live-buses.md), [bus disruptions](bus-disruptions.md), [trains](trains.md), [TfL stations](stations.md), [stops (NaPTAN)](naptan.md) |
+| Getting about | [Bus tracker](bus.md), [bus route log](bus-log.md), [live buses](live-buses.md), [bus disruptions](bus-disruptions.md), [trains](trains.md), [TfL stations](stations.md), [stops (NaPTAN)](naptan.md) |
 | Roads and trips | [Trip conditions](trip-conditions.md), [TfL road disruptions](tfl-roads.md), [map](map.md), [Here](here.md) |
 | Fuel, charging and vehicles | [EV chargers](ev.md), [Leaf dashboard](leaf.md) |
 | Home | [Energy](energy.md), [power cuts](power.md) |

@@ -1,4 +1,5 @@
-"""Postcode lookup using postcodes.io (free, no key, UK only)."""
+"""Postcode lookup: the local Code-Point Open table when a module provides it ("postcodes.local"), else postcodes.io
+(free, no key, UK only)."""
 
 from __future__ import annotations
 
@@ -56,3 +57,13 @@ async def lookup_postcode(
     if lat is None or lon is None:
         raise PostcodeError(f"{pc} has no coordinates")
     return Located(pc, float(lat), float(lon))
+
+
+async def local_postcode(engine: object, value: str) -> Located | None:
+    """A postcode's position from the module that keeps the local table (Code-Point Open), or None: no such module,
+    or it does not know the postcode. None means "ask postcodes.io"."""
+    from app.modules import registry
+
+    find = registry.provider("postcodes.local")
+    return await find(engine, value) if find else None
+

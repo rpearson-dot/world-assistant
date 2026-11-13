@@ -9,9 +9,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.integrations.bods.client import BodsError
-from app.integrations.bods.txc import Pattern, Route
-from app.integrations.bus import departures as D
+from app.modules.bods.sources.bods.client import BodsError
+from app.modules.bods.sources.bods.txc import Pattern, Route
+from app.modules.bus.sources.bus import departures as D
 
 LONDON = ZoneInfo("Europe/London")
 # a straight road north: stops 1 km apart, A at the bottom
@@ -108,8 +108,8 @@ async def test_a_slow_timetable_does_not_hold_the_answer(setup: dict[str, Any], 
 async def test_london_stops_use_tfl_countdowns(monkeypatch: pytest.MonkeyPatch) -> None:
     from types import SimpleNamespace
 
-    import app.integrations.tfl.client as tfl
-    from app import bods
+    import app.modules.tfl.sources.tfl.client as tfl
+    from app.modules.bods import bods
 
     asked: list[str] = []
 

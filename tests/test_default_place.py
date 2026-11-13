@@ -16,8 +16,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app import assistant, events, pollen
+from app import assistant
 from app.main import app
+from app.modules.events import events
+from app.modules.pollen import pollen
 from app.places import place_or_default
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
@@ -108,7 +110,7 @@ async def test_assistant_tools_pass_no_place_through(monkeypatch: pytest.MonkeyP
         got.update(kw)
         return {"place": "Home", "allergy_risk_label": [None], "allergens": []}
 
-    monkeypatch.setattr(assistant, "pollen_near", near)
+    monkeypatch.setattr("app.modules.pollen.tools.pollen_near", near)
     out = await assistant.run_tool(None, "pollen", {})  # type: ignore[arg-type]
     assert got["place"] is None and out["text"].startswith("Near Home")
     for name in ("pollen", "events_near", "fuel_cheapest"):

@@ -22,8 +22,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from app.config import get_settings
-from app.integrations.nationalhighways.match import Corridor
-from app.integrations.nationalhighways.store import rematch_all, upsert_corridor
+from app.corridor import Corridor
+from app.modules import registry
 
 Point = tuple[float, float]
 _ROAD = re.compile(r"^([AM])(\d{1,4})(\(M\))?$")
@@ -183,7 +183,9 @@ async def build_trip(engine: AsyncEngine, client: ValhallaClient, trip_id: str) 
         raise RoutingError(f"no trip {trip_id!r}")
     route = await client.route((row["flat"], row["flon"]), (row["tlat"], row["tlon"]))
     corridor = corridor_for(row["id"], row["name"], route)
-    await upsert_corridor(engine, corridor, source="route")
+    save = registry.provider("corridors.save")
+    if save:  # the module that keeps corridors and matches road events to them (National Highways)
+        await save(engine, corridor, source="route")
     async with engine.begin() as conn:
         await conn.execute(
             text(
@@ -205,7 +207,9 @@ async def build_trips(engine: AsyncEngine, client: ValhallaClient, ids: list[str
         async with engine.connect() as conn:
             ids = [r[0] for r in await conn.execute(text("SELECT id FROM trip WHERE enabled ORDER BY id"))]
     out = [await build_trip(engine, client, i) for i in ids]
-    await rematch_all(engine)
+    rematch = registry.provider("corridors.rematch")
+    if rematch:
+        await rematch(engine)
     return out
 
 

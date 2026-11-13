@@ -20,9 +20,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.graph import model
-from app.integrations.ukpn import client as uc
-from app.integrations.ukpn import normalise as N
+from app.modules.graph import model
+from app.modules.ukpn.sources.ukpn import client as uc
+from app.modules.ukpn.sources.ukpn import normalise as N
 
 NOW = datetime(2026, 10, 24, 9, 0, tzinfo=UTC)
 URL = os.environ.get("WA_TEST_DATABASE_URL")
@@ -196,8 +196,8 @@ async def test_synced_and_asked_everywhere(schema: None, monkeypatch: pytest.Mon
     from app import assistant
     from app.config import get_settings
     from app.ha_publish import power_device
-    from app.integrations.ukpn import sync
     from app.main import app
+    from app.modules.ukpn.sources.ukpn import sync
 
     uc.forget()
     monkeypatch.setenv("API_TOKEN", "tok")
@@ -282,7 +282,7 @@ def test_details_keep_records_but_drop_shapes() -> None:
 def test_works_on_a_route_read_as_trip_conditions() -> None:
     from types import SimpleNamespace
 
-    from app.conditions import ukpn_item, ukpn_level
+    from app.modules.conditions.conditions import ukpn_item, ukpn_level
 
     assert (ukpn_level("Road closure"), ukpn_level("Two-way signals"), ukpn_level("Lane closure"), ukpn_level(None)) == (3, 2, 2, 1)
     r = SimpleNamespace(id="proposed:UK019-NEXT", stage="proposed", street="Kingston Road", town="New Malden",
@@ -296,8 +296,8 @@ def test_works_on_a_route_read_as_trip_conditions() -> None:
 @pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
 async def test_hourly_until_a_cut_is_at_home_and_every_cut_is_kept(schema: None, monkeypatch: pytest.MonkeyPatch) -> None:
     from app.config import get_settings
-    from app.integrations.ukpn import sync
     from app.main import app
+    from app.modules.ukpn.sources.ukpn import sync
 
     uc.forget()
     monkeypatch.setenv("API_TOKEN", "tok")

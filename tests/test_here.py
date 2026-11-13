@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI, HTTPException, Request
 
-from app import here as H
+from app.modules.here import here as H
 
 ANSWERS: dict[str, Any] = {
     "/v1/places": [{"id": "home", "name": "Home", "kind": "home", "lat": 51.0, "lon": 0.0}],
@@ -89,9 +89,9 @@ async def test_every_part_for_a_point(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 async def test_the_tool_takes_a_point_or_a_postcode(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app import assistant_more as M
-    from app import postcodes
     from app.geo import Located
+    from app.modules.codepoint import postcodes
+    from app.modules.here import tools as M
 
     async def find(engine: Any, value: str) -> Located | None:
         return Located("KT17 1AA", 51.3343, -0.2678) if value else None
@@ -112,8 +112,8 @@ async def test_the_tool_takes_a_point_or_a_postcode(monkeypatch: pytest.MonkeyPa
 
 
 def test_the_page_script_compiles_and_calls_real_routes(tmp_path: Any) -> None:
-    from app.here_page import PAGE
     from app.main import app
+    from app.modules.here.here_page import PAGE
 
     js = re.findall(r"<script>(.*?)</script>", PAGE, re.DOTALL)[-1]
     f = tmp_path / "here.js"
@@ -138,8 +138,8 @@ async def test_a_part_that_never_answers_does_not_hold_up_the_rest(monkeypatch: 
 
 
 async def test_a_postcode_instead_of_a_point(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app import postcodes
     from app.geo import Located
+    from app.modules.codepoint import postcodes
 
     async def find(engine: Any, value: str) -> Located | None:
         return Located("KT17 1AA", 51.3343, -0.2678) if value.replace(" ", "").upper() == "KT171AA" else None
@@ -166,7 +166,7 @@ async def test_a_postcode_instead_of_a_point(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_a_saved_place_is_named() -> None:
-    from app.here import saved_place
+    from app.modules.here.here import saved_place
 
     places = [{"id": "home", "name": "Home", "lat": 51.3343, "lon": -0.2678}, {"id": "work", "name": "Work", "lat": 51.5, "lon": -0.1},
               {"id": "bad", "name": "No position"}]  # fmt: skip

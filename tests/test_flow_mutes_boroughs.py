@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 import pytest
 
-from app.integrations.environment import clients as C
+from app.modules.environment.sources.environment import clients as C
 
 NRFA_ROWS = {"data": [
     {"id": 39015, "name": "Hogsmill at Kingston", "river": "Hogsmill", "lat-long": {"latitude": 51.3986, "longitude": -0.2879},
@@ -64,7 +64,7 @@ def test_flows_near_with_the_usual_flows() -> None:
 
 
 def test_an_event_is_muted_by_name_or_word() -> None:
-    from app.events import is_muted
+    from app.modules.events.events import is_muted
 
     m = {"names": ["Quiz Night"], "words": ["tribute"]}
     assert is_muted({"name": "quiz  night"}, m) == "the event"
@@ -83,8 +83,8 @@ def test_mutes_saved_and_applied(monkeypatch: pytest.MonkeyPatch) -> None:
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
 
-    from app import events as E
     from app.main import app
+    from app.modules.events import events as E
 
     eng = sa.create_engine(DB)  # type: ignore[arg-type]
     with eng.begin() as c:
@@ -110,8 +110,8 @@ def test_mutes_saved_and_applied(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_a_borough_against_its_neighbours(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app import crime as CR
-    from app import crime_areas as A
+    from app.modules.crime import crime as CR
+    from app.modules.crime import crime_areas as A
 
     A._counts.clear()
     A._pops.clear()

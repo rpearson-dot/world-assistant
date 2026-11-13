@@ -22,11 +22,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from app.config import Settings
-from app.integrations.nationalhighways.client import Page
-from app.integrations.nationalhighways.match import Corridor
-from app.integrations.nationalhighways.normalise import RoadEvent, Segment, VmsSign
-from app.integrations.nationalhighways.poller import poll_live_with, vms_bbox
-from app.integrations.nationalhighways.store import (
+from app.modules.nh.sources.nationalhighways.client import Page
+from app.modules.nh.sources.nationalhighways.match import Corridor
+from app.modules.nh.sources.nationalhighways.normalise import RoadEvent, Segment, VmsSign
+from app.modules.nh.sources.nationalhighways.poller import poll_live_with, vms_bbox
+from app.modules.nh.sources.nationalhighways.store import (
     clear_unseen,
     load_corridors,
     rematch_all,
@@ -167,7 +167,7 @@ class _FakeClient:
 
 
 async def test_poll_live_end_to_end(engine: AsyncEngine) -> None:
-    from app.integrations.nationalhighways import client as c
+    from app.modules.nh.sources.nationalhighways import client as c
 
     await upsert_corridor(engine, NEAR)
     vms = {"vmsControllerStatus": []}
@@ -189,7 +189,7 @@ async def test_poll_live_end_to_end(engine: AsyncEngine) -> None:
 
 
 async def test_failed_fetch_does_not_clear(engine: AsyncEngine) -> None:
-    from app.integrations.nationalhighways import client as c
+    from app.modules.nh.sources.nationalhighways import client as c
 
     await upsert_corridor(engine, NEAR)
     settings = Settings()

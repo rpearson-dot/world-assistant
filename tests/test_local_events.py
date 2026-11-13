@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from app.integrations.localevents.sync import to_row
+from app.modules.events.sources.localevents.sync import to_row
 
 NOW = datetime(2026, 10, 23, tzinfo=UTC)
 GOOD = {"id": "42", "name": "Gig", "date": "2026-11-01", "lat": "51.4", "lon": -0.3, "venue": "Hall", "doors_open": "19:00"}
@@ -26,7 +26,7 @@ def test_an_event_without_a_position_date_or_name_is_skipped() -> None:
 async def test_sync_reads_every_place_a_page_at_a_time_until_there_is_no_more(monkeypatch) -> None:
     from types import SimpleNamespace
 
-    from app.integrations.localevents import sync as ls
+    from app.modules.events.sources.localevents import sync as ls
 
     asked: list[tuple[str, str, int]] = []
 
@@ -90,7 +90,7 @@ async def test_sync_reads_every_place_a_page_at_a_time_until_there_is_no_more(mo
 
 
 def test_an_event_knows_its_venue_and_when_it_ends() -> None:
-    from app.integrations.localevents.sync import venue_id
+    from app.modules.events.sources.localevents.sync import venue_id
 
     row = to_row("skiddle", {**GOOD, "postcode": "kt1 1aa", "end_date": "2026-11-01T23:00:00+00:00"}, NOW)
     assert row and row["venue_id"] == "hall:KT11AA" and row["ends"] == datetime(2026, 11, 1, 23, tzinfo=UTC)
@@ -115,7 +115,7 @@ def test_venues_are_saved_kept_and_dropped_after_a_year() -> None:
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
 
-    from app.integrations.localevents import sync as ls
+    from app.modules.events.sources.localevents import sync as ls
 
     eng = sa.create_engine(DB)  # type: ignore[arg-type]
     with eng.begin() as conn:

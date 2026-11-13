@@ -18,12 +18,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from app.integrations.fuelfinder import sync
-from app.integrations.fuelfinder.client import IncompleteError
-from app.integrations.fuelfinder.normalise import parse_prices, parse_station
-from app.integrations.fuelfinder.queries import along_corridor, near_point
-from app.integrations.nationalhighways.match import Corridor
 from app.main import app
+from app.modules.fuel.sources.fuelfinder import sync
+from app.modules.fuel.sources.fuelfinder.client import IncompleteError
+from app.modules.fuel.sources.fuelfinder.normalise import parse_prices, parse_station
+from app.modules.fuel.sources.fuelfinder.queries import along_corridor, near_point
+from app.modules.nh.sources.nationalhighways.match import Corridor
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")

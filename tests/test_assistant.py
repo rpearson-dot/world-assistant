@@ -114,7 +114,7 @@ async def test_fuel_text(monkeypatch: pytest.MonkeyPatch) -> None:
             {"brand": None, "name": "Joe's Garage", "city": None, "pence": 133.9, "distance_km": 1.6},
         ]}  # fmt: skip
 
-    monkeypatch.setattr(assistant, "fuel_near", near)
+    monkeypatch.setattr("app.modules.fuel.tools.fuel_near", near)
     out = await assistant.run_tool(None, "fuel_cheapest", {"place": "home"})  # type: ignore[arg-type]
     assert out["text"] == ("E10 near Home: cheapest is Asda, Epsom, 129.9 pence, 2.0 miles away; "
                            "Joe's Garage, 133.9 pence, 1.0 mile away.")  # fmt: skip
@@ -123,7 +123,7 @@ async def test_fuel_text(monkeypatch: pytest.MonkeyPatch) -> None:
         assert kw["place"] is None  # no place given: the endpoint chooses home
         return {"place": "Home", "stations": []}
 
-    monkeypatch.setattr(assistant, "fuel_near", near_default)
+    monkeypatch.setattr("app.modules.fuel.tools.fuel_near", near_default)
     out = await assistant.run_tool(None, "fuel_cheapest", {})  # type: ignore[arg-type]
     assert "No E10 prices found" in out["text"] and "Home" in out["text"]
 
@@ -132,7 +132,7 @@ async def test_fuel_http_error_becomes_tool_error(monkeypatch: pytest.MonkeyPatc
     async def near(_r: Any, **_kw: Any) -> dict[str, Any]:
         raise HTTPException(404, "no place 'x'")
 
-    monkeypatch.setattr(assistant, "fuel_near", near)
+    monkeypatch.setattr("app.modules.fuel.tools.fuel_near", near)
     with pytest.raises(assistant.ToolError, match="no place"):
         await assistant.run_tool(None, "fuel_cheapest", {"place": "x"})  # type: ignore[arg-type]
 
@@ -145,7 +145,7 @@ async def test_trains_and_trip_cost_text(monkeypatch: pytest.MonkeyPatch) -> Non
             {"destination": "London Waterloo", "minutes": 36, "platform": None, "status": "Cancelled"},
         ]}  # fmt: skip
 
-    monkeypatch.setattr(assistant, "board_departures", deps)
+    monkeypatch.setattr("app.modules.tfl.tools.board_departures", deps)
     t = (await assistant.run_tool(None, "trains", {"board": "b"}))["text"]  # type: ignore[arg-type]
     assert t == ("To Waterloo: London Waterloo in 6 minutes, platform 1; "
                  "London Waterloo in 21 minutes, 4 minutes late; London Waterloo in 36 minutes, cancelled.")  # fmt: skip
@@ -158,7 +158,7 @@ async def test_trains_and_trip_cost_text(monkeypatch: pytest.MonkeyPatch) -> Non
         return {"trip": "Silverstone", "vehicle": "Estima", "distance_km": 160.9, "litres": 22.4,
                 "cost_gbp_typical": 29.1, "cost_gbp_cheapest": 27.8}  # fmt: skip
 
-    monkeypatch.setattr(assistant, "trip_cost", cost)
+    monkeypatch.setattr("app.modules.vehicles.tools.trip_cost", cost)
     ev = (await assistant.run_tool(None, "trip_cost", {"trip": "s", "vehicle": "leaf"}))["text"]  # type: ignore[arg-type]
     assert (
         "100 miles" in ev

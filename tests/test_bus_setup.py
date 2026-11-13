@@ -5,10 +5,10 @@ from typing import Any, Self
 import pytest
 from fastapi.testclient import TestClient
 
-from app import bus
-from app.integrations.bus.config import TrackerConfig
-from app.integrations.bus.setup import SetupError, build_config, describe
 from app.main import app
+from app.modules.bus import bus
+from app.modules.bus.sources.bus.config import TrackerConfig
+from app.modules.bus.sources.bus.setup import SetupError, build_config, describe
 
 SEQS = {
     "outbound": [{"id": "OUT00001", "name": "Depot"}, {"id": "OUT00002", "name": "Station Road"},
@@ -115,7 +115,7 @@ async def _async(value: Any) -> Any:
 
 
 def test_the_way_back_takes_chosen_stops_where_the_names_differ() -> None:
-    from app.integrations.bus.setup import return_config, return_stops
+    from app.modules.bus.sources.bus.setup import return_config, return_stops
 
     seqs = {**SEQS, "inbound": [{"id": "INB00001", "name": "Terminus"}, {"id": "INB00002", "name": "School Close (stop K)"},
                                 {"id": "INB00003", "name": "Beta Lane"}, {"id": "INB00004", "name": "Station Road"},

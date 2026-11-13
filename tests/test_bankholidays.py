@@ -33,8 +33,8 @@ def test_built_in_until_the_first_fetch() -> None:
 
 
 def test_a_weekdays_only_tracker_rests_on_a_bank_holiday() -> None:
-    from app.integrations.bus.config import TrackerConfig
-    from app.integrations.bus.poller import in_window
+    from app.modules.bus.sources.bus.config import TrackerConfig
+    from app.modules.bus.sources.bus.poller import in_window
 
     cfg = TrackerConfig.model_construct(weekdays_only=True, poll_start="06:30", poll_end="09:30")
     tz = ZoneInfo("Europe/London")
@@ -43,8 +43,8 @@ def test_a_weekdays_only_tracker_rests_on_a_bank_holiday() -> None:
 
 
 def test_no_weekday_timetable_on_a_bank_holiday() -> None:
-    from app.integrations.bods.txc import Pattern, Route
-    from app.integrations.bus.departures import _next_times
+    from app.modules.bods.sources.bods.txc import Pattern, Route
+    from app.modules.bus.sources.bus.departures import _next_times
 
     r = Route(line="1", names={}, patterns={"p": Pattern("outbound", ["A", "B"], [0, 60])}, journeys=[("p", 9 * 60)])
     tz = ZoneInfo("Europe/London")

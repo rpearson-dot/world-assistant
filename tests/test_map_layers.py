@@ -250,7 +250,7 @@ async def test_live_buses_are_drawn_around_a_place_and_explain_themselves_when_a
                      "direction": "out", "bearing": 90.0, "lat": NEAR[0], "lon": NEAR[1],
                      "recorded_at": "2026-10-22T09:00:00+00:00"}]  # fmt: skip
 
-        monkeypatch.setattr(map_layers, "vehicles_near", fake)
+        monkeypatch.setattr("app.modules.bods.bods.vehicles_near", fake)
         r = c.get("/v1/map/geojson?layers=buses&radius_km=5", headers=h).json()
         assert [f["properties"]["line"] for f in r["layers"]["buses"]["features"]] == ["213"] and not r["notes"]
 
@@ -258,9 +258,9 @@ async def test_live_buses_are_drawn_around_a_place_and_explain_themselves_when_a
         assert wide["layers"]["buses"]["features"] == [] and "around a place" in wide["notes"]["buses"]
 
         async def broken(*a: object, **k: object) -> list[dict]:
-            raise map_layers.BodsError("the bus feed answered HTTP 500")
+            raise __import__("app.modules.bods.sources.bods.client", fromlist=["BodsError"]).BodsError("the bus feed answered HTTP 500")
 
-        monkeypatch.setattr(map_layers, "vehicles_near", broken)
+        monkeypatch.setattr("app.modules.bods.bods.vehicles_near", broken)
         r = c.get("/v1/map/geojson?layers=buses,places&radius_km=5", headers=h)
         assert r.status_code == 200 and "HTTP 500" in r.json()["notes"]["buses"]  # a BODS outage is a note
     finally:

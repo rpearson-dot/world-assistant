@@ -18,7 +18,7 @@ The data comes from the Rail Data Marketplace's Live Departure Board.
    **Live Departure Board** product. Copy the **consumer key** (you do not need the secret).
 2. Save the key, on its own line and nothing else, in `nr_access_token.txt` in your secrets folder.
 3. Rebuild and restart: `docker compose up -d --build`.
-4. Check it works: `docker compose exec api python -m app.integrations.rail.probe departures SNL`.
+4. Check it works: `docker compose exec api python -m app.modules.nr.sources.rail.probe departures SNL`.
    It prints field names and one sample service. Never paste the key anywhere.
 5. Open `/trains`, choose National Rail, type the three-letter station code (for example `SNL`)
    in the search box, press Find, then add a board. The marketplace has no station-name search.

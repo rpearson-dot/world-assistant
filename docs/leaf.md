@@ -24,6 +24,8 @@ It speaks up when:
 | 🚪 … open | any door or the boot is open |
 | ⚠️ 12V battery at _n_V | the alert is on, or it is under 11.9V while nothing is charging it |
 | ⚠️ Cell voltage / temperature alert | the pack alerts are on |
+| ⚠️ _any other warning_ | any other warning OVMS reports is on (a binary sensor of class problem or safety), by its name, so new ones appear without editing the card |
+| 🅿️ Handbrake off while parked | the handbrake has been off for 5 minutes with the car standing still (an applied handbrake is normal, so it is not shown) |
 | 🛞 … tyre _n_ psi | a tyre is under 33 or over 40 psi, against the 36 recommended |
 | 📡 Nothing from the car for _n_ | no report from OVMS for 15 minutes while the car is away (no mobile signal where it is, or its SIM), or for an hour at home: everything else on the page is then its last values |
 
@@ -35,6 +37,12 @@ with nothing changing still counts as heard.
 
 A missing or unavailable sensor never raises a warning: a car asleep says nothing rather than
 crying wolf. The thresholds are plain numbers in the template, so change them in place.
+
+## Warnings from the car
+
+Home Assistant files some of the car's sensors under its diagnostics, where they are easy to miss. The Health view's
+**Warnings from the car** card lists every warning OVMS reports: ✅ OK or ⚠️ needs attention, and the handbrake as
+applied or off. Home Assistant shows an applied handbrake as "Problem" because of the sensor's class; it is not one.
 
 ## The trail on the map
 

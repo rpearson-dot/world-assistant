@@ -381,3 +381,47 @@ def test_shopping_tabs_leave_out_switched_off_parts(monkeypatch) -> None:  # typ
     monkeypatch.setitem(selection._cache, "sel", selection.Selection("all", off=frozenset({"wishlist"}), chosen=True))
     page = pagestyle.themed("<body><!--NAV-->", "shopping")
     assert 'href="/outdoors"' in page and 'href="/wishlist"' not in page.split('class="subtabs"')[1]
+
+
+@pytest.mark.skipif(not __import__("os").environ.get("WA_TEST_DATABASE_URL"), reason="WA_TEST_DATABASE_URL not set")
+def test_a_new_install_starts_from_the_essentials_and_an_old_one_is_left_alone() -> None:
+    import asyncio
+    import os
+
+    import sqlalchemy as sa
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from app.modules import selection
+
+    url = os.environ["WA_TEST_DATABASE_URL"]
+    eng = sa.create_engine(url)
+    with eng.begin() as c:
+        c.execute(sa.text("CREATE TABLE IF NOT EXISTS app_setting (key text primary key, value jsonb not null, updated_at timestamptz not null default now())"))
+        c.execute(sa.text("CREATE TABLE IF NOT EXISTS place (id text primary key, name text, lat float, lon float)"))
+        saved = c.execute(sa.text("SELECT id, name, lat, lon FROM place")).all()
+        before = c.execute(sa.text("SELECT value FROM app_setting WHERE key = 'modules'")).first()
+        c.execute(sa.text("DELETE FROM app_setting WHERE key = 'modules'"))
+        c.execute(sa.text("DELETE FROM place"))
+    aeng = create_async_engine(url, poolclass=NullPool)
+    try:
+        assert asyncio.run(selection.first_start(aeng)) is True  # nothing chosen, nothing set up: the essentials
+        sel = asyncio.run(selection.load(aeng, fresh=True))
+        assert sel.mode == "only" and not sel.on and sel.new_install
+        assert asyncio.run(selection.first_start(aeng)) is False  # once only
+        with eng.begin() as c:
+            c.execute(sa.text("DELETE FROM app_setting WHERE key = 'modules'"))
+            c.execute(sa.text("INSERT INTO place (id, name, lat, lon) VALUES ('home', 'Home', 51.5074, -0.1278)"))
+        assert asyncio.run(selection.first_start(aeng)) is False  # an install already in use keeps every module on
+        assert asyncio.run(selection.load(aeng, fresh=True)).chosen is False
+    finally:
+        with eng.begin() as c:
+            c.execute(sa.text("DELETE FROM app_setting WHERE key = 'modules'"))
+            c.execute(sa.text("DELETE FROM place"))
+            for r in saved:
+                c.execute(sa.text("INSERT INTO place (id, name, lat, lon) VALUES (:i, :n, :a, :o)"), {"i": r[0], "n": r[1], "a": r[2], "o": r[3]})
+            if before:
+                c.execute(sa.text("INSERT INTO app_setting (key, value) VALUES ('modules', CAST(:v AS jsonb))"), {"v": __import__("json").dumps(before[0])})
+        selection.clear_cache()
+        asyncio.run(aeng.dispose())
+        eng.dispose()

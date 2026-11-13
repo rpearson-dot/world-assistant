@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from app.integrations.nationalhighways.client import (
+from app.modules.nh.sources.nationalhighways.client import (
     CLOSURES,
     NationalHighwaysClient,
     cursor_from_x_next,

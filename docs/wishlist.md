@@ -50,4 +50,4 @@ a check fails with a message saying so, and it needs fixing here. Nothing is eve
 
 To see exactly what each retailer sends:
 
-    docker compose exec api python -m app.wishlist kamado bbq
+    docker compose exec api python -m app.modules.wishlist.wishlist kamado bbq

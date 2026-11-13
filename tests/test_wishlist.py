@@ -13,9 +13,9 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 
-from app import shopping as S
-from app import wishlist as W
-from app.integrations.wishlist import clients as C
+from app.modules.shopping import shopping as S
+from app.modules.wishlist import wishlist as W
+from app.modules.wishlist.sources.wishlist import clients as C
 
 TODAY = date(2026, 11, 7)
 
@@ -105,7 +105,7 @@ def test_an_items_description_narrows_it() -> None:
 
 
 def test_the_page_script_compiles(tmp_path: Any) -> None:
-    from app.wishlist_page import PAGE
+    from app.modules.wishlist.wishlist_page import PAGE
 
     js = re.findall(r"<script>(.*?)</script>", PAGE, re.DOTALL)[-1]
     f = tmp_path / "wl.js"
@@ -115,7 +115,7 @@ def test_the_page_script_compiles(tmp_path: Any) -> None:
 
 def test_the_page_calls_real_routes() -> None:
     from app.main import app
-    from app.wishlist_page import PAGE
+    from app.modules.wishlist.wishlist_page import PAGE
 
     paths = set(app.openapi()["paths"])
     for p in set(re.findall(r"'(/v1/wishlist[^']*)'", PAGE)):
@@ -224,7 +224,7 @@ def test_home_assistant_says_what_is_coming() -> None:
 
 
 async def test_the_tools_say_it_plainly(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app import assistant_more as M
+    from app.modules.wishlist import tools as M
 
     data = {"list": {"name": "Wishlist"}, "last_check": None, "items": [
         {"key": "ko:77", "name": "Kamado BBQ", "now": [{"retailer": "lidl", "name": "Grillmeister Kamado Barbecue",
@@ -255,7 +255,7 @@ async def test_the_tools_say_it_plainly(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_the_shops_are_asked_for_the_distinctive_words() -> None:
-    from app.integrations.wishlist import clients as W
+    from app.modules.wishlist.sources.wishlist import clients as W
 
     assert W.search_words("kamado bbq") == "kamado"
     assert W.search_words("Large garden grill set") == "garden"

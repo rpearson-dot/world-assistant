@@ -8,13 +8,13 @@ from typing import Any, Self
 import pytest
 from fastapi.testclient import TestClient
 
-from app import bus
-from app.integrations.bods.client import BodsError, Box
-from app.integrations.bods.txc import TxcError, parse_txc, seconds
-from app.integrations.bus import bods_source
-from app.integrations.bus.bods_source import Stop, arrivals, place_on_route, stop_distances
-from app.integrations.bus.config import TrackerConfig
 from app.main import app
+from app.modules.bods.sources.bods.client import BodsError, Box
+from app.modules.bods.sources.bods.txc import TxcError, parse_txc, seconds
+from app.modules.bus import bus
+from app.modules.bus.sources.bus import bods_source
+from app.modules.bus.sources.bus.bods_source import Stop, arrivals, place_on_route, stop_distances
+from app.modules.bus.sources.bus.config import TrackerConfig
 
 NS = 'xmlns="http://www.transxchange.org.uk/"'
 TXC = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -221,7 +221,7 @@ class _Engine:
 
 @pytest.mark.asyncio
 async def test_a_poll_of_a_bods_line_turns_positions_into_predictions(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.integrations.bus import poller, store
+    from app.modules.bus.sources.bus import poller, store
 
     seen: dict[str, Any] = {}
 
@@ -331,7 +331,7 @@ URL = "https://data.bus-data.dft.gov.uk/timetable/dataset/1/download/"
 
 async def test_a_big_archive_keeps_only_the_files_naming_the_line() -> None:
     """NXWM publishes every route in one archive: no size limit, and only the files naming the line are kept."""
-    from app.integrations.bods import client as bods_client
+    from app.modules.bods.sources.bods import client as bods_client
 
     other = b'<TransXChange><Lines><Line id="1"><LineName>9070</LineName></Line></Lines>' + b" " * 4000 + b"</TransXChange>"
     mine = b'<txc:TransXChange><Line><txc:LineName> 907 </txc:LineName></Line></txc:TransXChange>'
@@ -343,7 +343,7 @@ async def test_a_big_archive_keeps_only_the_files_naming_the_line() -> None:
 
 
 async def test_a_damaged_archive_says_so() -> None:
-    from app.integrations.bods import client as bods_client
+    from app.modules.bods.sources.bods import client as bods_client
 
     with pytest.raises(BodsError, match="damaged"):
         await bods_client.download_txc(URL, _serving(b"PK\x03\x04 not really a zip"), line="1")

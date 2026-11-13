@@ -15,13 +15,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import text
 
 from app.auth import require_token
-from app.bods import vehicles_near
 from app.config import get_settings
-from app.geoquery import POINT, distance_km, params, within_sql
-from app.integrations.bods.client import BodsError
-from app.integrations.fuelfinder.normalise import canonical_fuel
-from app.integrations.fuelfinder.queries import haversine_km
-from app.integrations.naptan.normalise import STATION_TYPES
+from app.geoquery import POINT, distance_km, haversine_km, params, within_sql
+from app.modules import registry
 from app.places import place_or_default
 
 router = APIRouter(prefix="/v1/map", tags=["map"], dependencies=[Depends(require_token)])
@@ -182,20 +178,9 @@ async def _fuel(conn: Any, centre: Point | None, radius_km: float, fuel: str) ->
 
 
 async def _ev(conn: Any, centre: Point | None, radius_km: float) -> list[dict[str, Any]]:
-    """Charging sites, each with how many chargers work and are free now."""
-    from app.ev import _details
-    from app.integrations.gridserve.normalise import summary
-
-    res = (await _near(conn, "SELECT s.id, s.name, s.network, s.postcode, s.lat, s.lon FROM ev_site s WHERE s.lat IS NOT NULL",
-                       centre, radius_km, alias="s", order="name")).all()  # fmt: skip
-    by, prices = await _details(conn, [r.id for r in res])
-    out = []
-    for r in res:
-        s = summary(by[r.id], prices)
-        out.append(_point(r.lat, r.lon, {"id": r.id, "name": r.name, "network": r.network, "postcode": r.postcode,
-                                         "total": s["total"], "working": s["working"], "free": s["free"],
-                                         "max_kw": s["max_kw"], "chademo": "CHAdeMO" in s["connectors"]}))  # fmt: skip
-    return out
+    """Charging sites, from the module that keeps them (provides "map.ev")."""
+    layer = registry.provider("map.ev")
+    return await layer(conn, centre, radius_km) if layer else []
 
 
 async def _stops(conn: Any, centre: Point | None, radius_km: float) -> list[dict[str, Any]]:
@@ -205,7 +190,7 @@ async def _stops(conn: Any, centre: Point | None, radius_km: float) -> list[dict
     extra: dict[str, Any] = {}
     if centre is None:
         where = " WHERE stop_type = ANY(:types)"
-        extra["types"] = list(STATION_TYPES)
+        extra["types"] = list(registry.provider("naptan.station_types") or [])
     res = await _near(
         conn,
         "SELECT atco, name, street, indicator, locality, kind, stop_type, lat, lon FROM naptan_stop" + where,
@@ -247,9 +232,12 @@ async def _buses(request: Request, centre: Point | None, radius_km: float) -> tu
         return [], "live buses are shown around a place, not across the whole country"
     if not get_settings().bods_api_key:
         return [], "set the bods_api_key secret (a free BODS key) to see live buses"
+    vehicles_near = registry.provider("map.live_buses")
+    if vehicles_near is None:
+        return [], "the live buses module is not installed"
     try:
         vehicles = await vehicles_near(request.app.state.redis, centre[0], centre[1], radius_km)
-    except BodsError as exc:
+    except Exception as exc:  # noqa: BLE001 - the module's own error (BodsError): say it, keep the rest of the map
         return [], str(exc)
     return [_point(v["lat"], v["lon"], {k: v[k] for k in ("vehicle", "line", "operator", "destination",
                                                           "direction", "bearing", "recorded_at")})
@@ -306,7 +294,8 @@ async def geojson(
     unknown = [x for x in wanted if x not in LAYERS]
     if unknown:
         raise HTTPException(422, f"no layer {unknown[0]!r}; choose from {', '.join(LAYERS)}")
-    fuel_key = canonical_fuel(fuel)
+    canonical_fuel = registry.provider("fuel.canonical")
+    fuel_key = canonical_fuel(fuel) if canonical_fuel else fuel.upper()
     if fuel_key is None:
         raise HTTPException(422, f"no fuel {fuel!r}")
 
@@ -358,3 +347,9 @@ async def geojson(
     if centre is not None:
         where = {"name": centre_name, "lat": centre[0], "lon": centre[1], "radius_km": radius_km}
     return {"centre": where, "layers": out, "notes": notes}
+
+
+# For modules that draw a layer of their own (module SDK, docs/module-sdk.md)
+near_rows = _near
+point_feature = _point
+

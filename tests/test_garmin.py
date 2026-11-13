@@ -14,8 +14,8 @@ from typing import Any
 import httpx
 import pytest
 
-from app.bikes import fit
-from app.bikes import garmin as G
+from app.modules.bikes import fit
+from app.modules.bikes import garmin as G
 from tests.test_bikes import DB, garage  # noqa: F401 - the fixture
 
 NOW = datetime.now(UTC).replace(microsecond=0)
@@ -160,7 +160,7 @@ def test_the_sync_brings_rides_in_keeps_what_was_said_about_imported_ones_and_fo
 
 
 def G_TZ() -> Any:
-    from app.bikes.api import TZ
+    from app.modules.bikes.api import TZ
 
     return TZ
 

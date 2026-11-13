@@ -9,10 +9,10 @@ from alembic.operations import Operations
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.energy import octopus, store
-from app.energy import rates as R
-from app.energy.ha import energy_device
-from app.energy.summary import slots, summarise
+from app.modules.octopus import octopus, store
+from app.modules.octopus import rates as R
+from app.modules.octopus.ha import energy_device
+from app.modules.octopus.summary import slots, summarise
 
 D = datetime(2026, 10, 23, 0, 0, tzinfo=UTC)
 

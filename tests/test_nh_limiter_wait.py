@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import httpx
 
-from app.integrations.nationalhighways.client import CLOSURES, NationalHighwaysClient
+from app.modules.nh.sources.nationalhighways.client import CLOSURES, NationalHighwaysClient
 
 
 class _RecordingLimiter:

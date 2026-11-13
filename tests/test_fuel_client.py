@@ -5,14 +5,19 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
-from app.integrations.fuelfinder.client import (
+from app.modules.fuel.sources.fuelfinder.client import (
     PRICES,
     STATIONS,
     AuthError,
     FuelFinderClient,
     IncompleteError,
 )
-from app.integrations.fuelfinder.normalise import get_path, parse_timestamp, to_bool, to_pence
+from app.modules.fuel.sources.fuelfinder.normalise import (
+    get_path,
+    parse_timestamp,
+    to_bool,
+    to_pence,
+)
 
 
 async def _nosleep(_s: float) -> None:
@@ -146,7 +151,7 @@ def test_to_bool_and_get_path() -> None:
 
 
 def test_describe_body_is_short_and_secret_free() -> None:
-    from app.integrations.fuelfinder.client import describe_body
+    from app.modules.fuel.sources.fuelfinder.client import describe_body
 
     assert describe_body({"data": [], "meta": {"a": 1}}) == "keys data:list, meta:dict"
     assert describe_body([1, 2, 3]) == "list of 3"

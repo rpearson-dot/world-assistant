@@ -27,8 +27,8 @@ or a year old.
 Both read an OS GeoPackage with the standard library (a GeoPackage is an SQLite file). The layer and column names
 were written from OS's documentation, not from a real download, so look first:
 
-    docker compose exec worker python -m app.integrations.boundaryline.sync --file bdline_gb.zip --list
-    docker compose exec worker python -m app.integrations.usrn.sync --file open_usrn.zip --list
+    docker compose exec worker python -m app.modules.boundary.sources.boundaryline.sync --file bdline_gb.zip --list
+    docker compose exec worker python -m app.modules.usrn.sources.usrn.sync --file open_usrn.zip --list
 
 `--list` prints each layer, the kind it would load as, and its columns. If a layer you want shows `kind: None`, say
 so and it is a one-line change. With no `--file`, the same commands download and load.

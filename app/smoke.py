@@ -31,7 +31,7 @@ PAGES = ("/settings", "/bus", "/trains", "/fuel", "/events", "/pollen", "/enviro
 SEED = "smoke-test-place"
 SKIP_SWEEP = {"/mcp", "/healthz", "/readyz", "/v1/backups/{name}"}  # checked on their own, or a download
 # Read live from someone else's service on every call (no stored data): a slow or down source there must not fail a
-# deploy here. `python -m app.environment` checks them.
+# deploy here. `python -m app.modules.environment.environment` checks them.
 SKIP_PREFIXES = ("/v1/environment/",)
 TIMEOUT = 30.0
 HEARTBEAT_WAIT = int(os.environ.get("WA_SMOKE_HEARTBEAT_WAIT", "60"))
@@ -107,6 +107,12 @@ def _fill(path: str) -> str:
 
 def run(base: str, token: str, *, seed: bool = False, out: Callable[[str], None] = print) -> int:
     r = Report(out)
+
+    # A new install starts with only what the wizard is asked for, which on a test stack is nothing: switch every
+    # module on so the whole of it is checked
+    if seed:
+        s, _, b = fetch(base, "/v1/modules", token, "PUT", {"mode": "all", "on": [], "off": []})
+        r.check(s == 200, "switch every module on", f"HTTP {s}: {b[:120]}" if s != 200 else "")
 
     # health and pages
     for path in ("/healthz", "/readyz"):

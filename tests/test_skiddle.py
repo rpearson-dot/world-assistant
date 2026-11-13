@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from app import assistant
-from app.integrations.skiddle.client import SkiddleClient, SkiddleError, parse_event
+from app.modules.events.sources.skiddle.client import SkiddleClient, SkiddleError, parse_event
 
 RAW = {
     "id": 123, "eventname": "Live at the Hall", "date": "2026-10-24", "EventCode": "LIVE",
@@ -113,7 +113,7 @@ async def test_assistant_events_text(monkeypatch: pytest.MonkeyPatch) -> None:
             {"name": "Stand up", "venue": "The Pub", "date": "2026-10-24"},
             {"name": "Late show", "venue": None, "date": None}]}  # fmt: skip
 
-    monkeypatch.setattr(assistant, "events_near", near)
+    monkeypatch.setattr("app.modules.events.tools.events_near", near)
     out = await assistant.run_tool(None, "events_near", {"place": "home", "type": "comedy"})  # type: ignore[arg-type]
     assert "7 events near Home" in out["text"] and "Stand up at The Pub on 2026-10-24" in out["text"]
     assert "and 5 more" in out["text"]
@@ -133,8 +133,8 @@ class _FakeRedis:
 def test_endpoint_caches_and_needs_a_token(monkeypatch: pytest.MonkeyPatch) -> None:
     from fastapi.testclient import TestClient
 
-    from app import events
     from app.main import app
+    from app.modules.events import events
 
     monkeypatch.setenv("API_TOKEN", "s3cret")
     monkeypatch.setenv("SKIDDLE_API_KEY", "k")

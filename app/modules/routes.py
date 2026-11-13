@@ -64,7 +64,7 @@ def describe(m: Module, s: Any, runs: dict[str, dict[str, Any]], on: set[str], w
         "any_key": m.any_key, "key_optional": m.key_optional, "link": m.link, "note": m.note,
         "services": list(m.services), "needs": list(m.needs), "coverage": list(m.coverage),
         "suggested": why.get(m.id), "source": m.source, "last_ok": row.get("last_ok"), "error": row.get("error"),
-        "testable": m.id in keytest.TESTS,
+        "testable": "key.test" in m.provides,
     }  # fmt: skip
 
 
@@ -106,7 +106,7 @@ async def list_modules(request: Request) -> dict[str, Any]:
     on = selection.enabled_ids(mods, sel)
     why = suggest(mods, await home_point(engine))
     runs = await _runs(engine)
-    return {"chosen": sel.chosen, "mode": sel.mode,
+    return {"chosen": sel.chosen, "mode": sel.mode, "new_install": sel.new_install,
             "modules": [describe(m, s, runs, on, why) for m in mods], "secrets": secrets_view()}  # fmt: skip
 
 

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.integrations.bods.disruptions import Situation
-from app.integrations.bods.disruptions_sync import current, select
+from app.modules.bods.sources.bods.disruptions import Situation
+from app.modules.busdisruptions.disruptions_sync import current, select
 
 NOW = datetime(2026, 10, 23, 15, tzinfo=UTC)
 HOME = ("home", 52.684, -1.540)  # Appleby Magna
@@ -120,8 +120,8 @@ def schema() -> Iterator[None]:
 @pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
 async def test_read_stored_and_listed(schema: None, monkeypatch: pytest.MonkeyPatch) -> None:
     from app.config import get_settings
-    from app.integrations.bods import disruptions_sync
     from app.main import app
+    from app.modules.busdisruptions import disruptions_sync
 
     monkeypatch.setenv("API_TOKEN", "tok")
     get_settings.cache_clear()

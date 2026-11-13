@@ -25,7 +25,7 @@ Bands are worked out from the rates themselves, not hard-coded times:
 2. In `.env` set `WA_OCTOPUS_ACCOUNT=A-XXXXXXXX`. WA reads your account to find the current import tariff
    (export agreements are ignored).
    *No key?* Set `WA_OCTOPUS_TARIFF=E-1R-COSY-22-12-08-A` (your tariff code) instead; rates are public.
-3. Deploy, then check: `docker compose exec worker python -m app.energy.sync` prints the tariff and the number of rates stored.
+3. Deploy, then check: `docker compose exec worker python -m app.modules.octopus.sync` prints the tariff and the number of rates stored.
 
 `WA_ENERGY_POLL_ENABLED=false` switches the module off. With neither account nor tariff set it does nothing.
 
@@ -91,7 +91,7 @@ change at Octopus could break them. The rates keep working if the sessions fail.
 returns for your account (account number and tokens are blanked out):
 
 ```
-docker compose exec worker python -m app.energy.probe
+docker compose exec worker python -m app.modules.octopus.probe
 ```
 
 API: `GET /v1/energy/sessions` (also under `sessions` in `/v1/energy/now`). Home Assistant sensors: Saving session

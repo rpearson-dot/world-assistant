@@ -41,7 +41,7 @@ API gives), each ride's GPS track for rain along the route and saved routes, and
   derailleurs), put the derailleur's serial (shown on the bike's card) in each battery's details.
 - **The key runs out:** a warning on the card a fortnight before; Garmin also emails a week before. A token that stops
   early tells the page the key's end date, if you did not give it.
-- **The probe:** `python -m app.bikes.garmin [RIDER]` prints what your key gives: how far back the rides go, the fields
+- **The probe:** `python -m app.modules.bikes.garmin [RIDER]` prints what your key gives: how far back the rides go, the fields
   of a ride and its details (looking for gear, sensors and batteries), whether Garmin's gear can be read, the original
   file's GPS points, devices and developer fields (where tyre pressure sensors write), and weight. It only reads. It is
   part of the live check.
@@ -236,7 +236,7 @@ chain checker's reading ("the Reiver's chain measures 0.3%").
 Not sent to Home Assistant.
 
 ## Defaults
-Every life, threshold and answer is a starting point and can be changed. The defaults are in `app/bikes/defaults.py`:
+Every life, threshold and answer is a starting point and can be changed. The defaults are in `app/modules/bikes/defaults.py`:
 chain 3,500 km (measure its stretch), cassette 10,000, chainrings 20,000, disc pads 2,000 (check every 500), rotor
 8,000 (to its minimum thickness), tyre 4,500, sealant 90 days, tyre check weekly (latex: daily), hub service 8,000 km
 or a year, bottom bracket 15,000 (press-fit 10,000), brake bleed yearly, RockShox fork lowers 50 h and damper 200 h,

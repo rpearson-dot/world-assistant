@@ -9,9 +9,9 @@ from alembic.operations import Operations
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.energy import kraken, sessions, store
-from app.energy.ha import energy_device, session_sensors
-from app.energy.probe import redact
+from app.modules.octopus import kraken, sessions, store
+from app.modules.octopus.ha import energy_device, session_sensors
+from app.modules.octopus.probe import redact
 
 NOW = datetime(2026, 10, 23, 17, 30, tzinfo=UTC)
 
@@ -180,7 +180,7 @@ async def test_save_replaces_only_its_kinds(schema) -> None:
 
 def test_retired_sensors_are_not_published_and_are_cleared():
     from app import ha
-    from app.energy.ha import RETIRED
+    from app.modules.octopus.ha import RETIRED
 
     published = {x.key for x in session_sensors(sessions.summarise(rows(), NOW))}
     assert not published & set(RETIRED)
@@ -191,8 +191,8 @@ def test_retired_sensors_are_not_published_and_are_cleared():
 def test_spoken_answer():
     from zoneinfo import ZoneInfo
 
-    from app.energy import rates as R
-    from app.energy import speech, summary
+    from app.modules.octopus import rates as R
+    from app.modules.octopus import speech, summary
 
     tz = ZoneInfo("Europe/London")
     d = datetime(2026, 10, 23, 0, 0, tzinfo=UTC)
@@ -226,9 +226,9 @@ def _happy(code: str, start: datetime, joined: bool) -> dict:
 
 def test_weekend_happy_hours_your_joined_hour_comes_first() -> None:
     """As Octopus sent them on 24 October 2026: Weekend Happy Hours from 07:00 to 15:00, the 13:00 one joined."""
-    from app.energy import kraken
-    from app.energy import speech as sp
-    from app.energy.ha import free_sensors
+    from app.modules.octopus import kraken
+    from app.modules.octopus import speech as sp
+    from app.modules.octopus.ha import free_sensors
 
     day = datetime(2026, 10, 25, tzinfo=UTC)
     events = [_happy(f"EVENT_{110 + h}_251026", day + timedelta(hours=h), h == 13) for h in range(7, 15)]
@@ -265,7 +265,7 @@ def ZoneInfoLondon():
 async def test_saving_sessions_query_retried_once_after_a_timeout() -> None:
     import httpx
 
-    from app.energy import kraken
+    from app.modules.octopus import kraken
 
     calls = []
 

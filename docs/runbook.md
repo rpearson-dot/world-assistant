@@ -75,7 +75,7 @@ postcodes as soon as it starts, rather than at the nightly run. The Setup list i
 arrive. By hand:
 
 - **Fuel:** from a stored capture without calling the API again:
-  `docker compose run --rm worker python -m app.integrations.fuelfinder.sync --from-capture`.
+  `docker compose run --rm worker python -m app.modules.fuel.sources.fuelfinder.sync --from-capture`.
   Or pull live: `... fuelfinder.sync --pull` (about 4 minutes, UK IP required).
 - **Routes:** add places and trips on `/places`, press **Build route** on each. Or
   `docker compose exec worker python -m app.routing build`.

@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy.exc import DBAPIError
 
-from app import eventplace as E
+from app.modules.events import eventplace as E
 
 HOME = (51.37, -0.247)
 POINTS = {"SA11NW": (51.6195, -3.9436), "KT11EU": (51.4093, -0.3062)}  # Swansea Arena; Kingston

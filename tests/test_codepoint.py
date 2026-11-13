@@ -20,9 +20,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.geo import Located
-from app.integrations.codepoint import sync
 from app.main import app
-from app.postcodes import local_postcode
+from app.modules.codepoint.postcodes import local_postcode
+from app.modules.codepoint.sources.codepoint import sync
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"

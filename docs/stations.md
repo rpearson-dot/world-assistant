@@ -21,7 +21,7 @@ National Rail-only stations (Kingston, New Malden, Bishop's Stortford) are not i
 
 It loads overnight. To load at once, or to see what TfL sends:
 
-    docker compose exec worker python -m app.integrations.tflstations.sync
-    docker compose exec worker python -m app.integrations.tflstations.sync --probe
+    docker compose exec worker python -m app.modules.tflstations.sources.tflstations.sync
+    docker compose exec worker python -m app.modules.tflstations.sources.tflstations.sync --probe
 
 Off: `WA_TFL_STATIONS_POLL_ENABLED=false`, or switch the module off on the Modules page.

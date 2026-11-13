@@ -123,3 +123,25 @@ def module_of_tool(tool: str) -> str | None:
 def worker_jobs() -> list[tuple[str, Any]]:
     """(module id, Job) for every worker job."""
     return [(m.id, j) for m in modules() for j in m.worker]
+
+
+def provided(point: str) -> list[tuple[str, Any]]:
+    """Everything the modules provide at an extension point (docs/module-sdk.md), as (module id, object), in module
+    order. A provider that fails to import is logged and left out, so one broken module cannot take the core down."""
+    out: list[tuple[str, Any]] = []
+    for m in modules():
+        ref = m.provides.get(point)
+        if not ref:
+            continue
+        try:
+            out.append((m.id, import_string(ref)))
+        except Exception:
+            log.warning("module %s: could not load %s for %s", m.id, ref, point, exc_info=True)
+    return out
+
+
+def provider(point: str) -> Any | None:
+    """The first module's object at an extension point, or None when no module provides it."""
+    got = provided(point)
+    return got[0][1] if got else None
+

@@ -7,7 +7,7 @@ import zipfile
 
 import pytest
 
-from app.integrations.tfwm.routes import match_by_stops, read_routes
+from app.modules.tfwm.sources.tfwm.routes import match_by_stops, read_routes
 
 
 def _gtfs() -> bytes:
@@ -48,7 +48,7 @@ def test_the_route_calling_at_the_lines_stops_wins() -> None:
 async def test_a_download_streams_to_a_file_and_says_why_it_failed(monkeypatch: pytest.MonkeyPatch) -> None:
     import httpx
 
-    from app.integrations.tfwm import client as tc
+    from app.modules.tfwm.sources.tfwm import client as tc
 
     real = httpx.AsyncClient
 

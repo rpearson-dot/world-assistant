@@ -18,10 +18,16 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.integrations.tfl.client import TflClient, TflError
-from app.integrations.tflroads import sync
-from app.integrations.tflroads.normalise import geometry_of, parse_item, parse_time, rank, scope_of
 from app.main import app
+from app.modules.tfl.sources.tfl.client import TflClient, TflError
+from app.modules.tflroads.sources.tflroads import sync
+from app.modules.tflroads.sources.tflroads.normalise import (
+    geometry_of,
+    parse_item,
+    parse_time,
+    rank,
+    scope_of,
+)
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"

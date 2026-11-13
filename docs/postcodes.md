@@ -30,8 +30,8 @@ add and update but never wipe. Postcodes the file marks as having no position ar
 By hand, from the download or a file you already have:
 
 ```
-docker compose exec worker python -m app.integrations.codepoint.sync
-docker compose exec worker python -m app.integrations.codepoint.sync --file codepo_gb.zip
+docker compose exec worker python -m app.modules.codepoint.sources.codepoint.sync
+docker compose exec worker python -m app.modules.codepoint.sources.codepoint.sync --file codepo_gb.zip
 ```
 
 `WA_CODEPOINT_POLL_ENABLED=false` switches the job off. `WA_CODEPOINT_URL` points at a different copy; if

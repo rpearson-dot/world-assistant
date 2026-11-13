@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from app.integrations.nationalhighways.match import (
+from app.modules.nh.sources.nationalhighways.match import (
     Corridor,
     distance_to_line_m,
     match_events,
     match_signs,
 )
-from app.integrations.nationalhighways.normalise import (
+from app.modules.nh.sources.nationalhighways.normalise import (
     clean_sign_line,
     iter_events,
     iter_vms,

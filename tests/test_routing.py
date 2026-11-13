@@ -14,7 +14,7 @@ from alembic.operations import Operations
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from app.integrations.nationalhighways.store import load_corridors
+from app.modules.nh.sources.nationalhighways.store import load_corridors
 from app.routing import (
     RoutingError,
     ValhallaClient,
@@ -137,7 +137,7 @@ async def engine(schema: None) -> AsyncIterator[AsyncEngine]:
 async def test_build_trips_creates_corridor_and_tags_events(engine: AsyncEngine) -> None:
     from datetime import UTC, datetime
 
-    from app.integrations.nationalhighways.store import save_events
+    from app.modules.nh.sources.nationalhighways.store import save_events
     from tests.test_nh_store import _event
 
     async with engine.begin() as conn:

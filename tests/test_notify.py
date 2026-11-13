@@ -92,9 +92,9 @@ def test_settings_send_once_and_quiet_hours(tables: Any, monkeypatch: pytest.Mon
 def test_after_a_sync_low_batteries_due_parts_and_firmware_in_one_message_each(tables: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     import sqlalchemy as sa
 
-    from app import notify_jobs as J
-    from app.bikes import api as A
     from app.main import app
+    from app.modules.bikes import api as A
+    from app.modules.bikes import notify as J
 
     c = tables
     sent: list[tuple[str, str, str, str]] = []
@@ -133,10 +133,10 @@ def test_after_a_sync_low_batteries_due_parts_and_firmware_in_one_message_each(t
 
 @pytest.mark.skipif(not DB, reason="WA_TEST_DATABASE_URL not set")
 def test_environment_check_high_air_and_very_high_pollen(tables: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    from app import notify_jobs as J
-    from app import pollen_grid
-    from app.integrations.environment import clients as C
     from app.main import app
+    from app.modules.environment import notify as J
+    from app.modules.environment.sources.environment import clients as C
+    from app.modules.pollen import pollen_grid
 
     sent: list[tuple[str, str]] = []
 

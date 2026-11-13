@@ -67,9 +67,10 @@ async def first_loads(ctx: dict[str, Any]) -> list[str]:
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:
-    from app.graph import store as graph_store
+    from app.modules import registry
 
-    await graph_store.close()
+    for _, close in registry.provided("shutdown"):  # modules' own connections (the graph's Neo4j driver)
+        await close()
     await ctx["engine"].dispose()
     log.info("world-assistant worker stopping")
 

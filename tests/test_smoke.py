@@ -77,6 +77,10 @@ def toy(*, broken_route: bool = False, bad_page: bool = False, open_api: bool = 
         places[pid] = body
         return {"id": pid}
 
+    @app.put("/v1/modules", dependencies=[Depends(auth)], include_in_schema=False)
+    def put_modules(body: dict) -> dict:
+        return body
+
     @app.delete("/v1/places/{pid}", dependencies=[Depends(auth)])
     def del_place(pid: str) -> dict:
         places.pop(pid, None)
@@ -140,6 +144,7 @@ def test_a_healthy_stack_passes_with_and_without_seeding() -> None:
         code, text = go(toy(json_503=True), seed=seed)
         assert code == 0, text
     assert "assistant lists its tools" in text and "delete the test place" in text
+    assert "switch every module on" in text  # a seeded run checks the whole of a new install
 
 
 def test_a_500_anywhere_is_caught() -> None:

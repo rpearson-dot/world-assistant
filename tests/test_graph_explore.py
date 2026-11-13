@@ -7,8 +7,8 @@ from typing import Self
 import pytest
 from fastapi.testclient import TestClient
 
-from app.graph.explore import PRESETS, QueryRefused, check
 from app.main import app
+from app.modules.graph.explore import PRESETS, QueryRefused, check
 
 
 @pytest.mark.parametrize("cypher", [
@@ -58,7 +58,7 @@ async def test_queries_run_as_read_transactions_with_a_time_limit(monkeypatch: p
     """Against the driver's own rules: inside a transaction function, run() takes a string, not a Query."""
     from neo4j import READ_ACCESS
 
-    from app.graph import explore, store
+    from app.modules.graph import explore, store
 
     seen: dict[str, object] = {}
 

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.integrations.tfwm.client import DEFAULT_BASE, TfwmClient, TfwmError
-from app.integrations.tfwm.gtfsrt import FeedError, parse_trip_updates
+from app.modules.tfwm.sources.tfwm.client import DEFAULT_BASE, TfwmClient, TfwmError
+from app.modules.tfwm.sources.tfwm.gtfsrt import FeedError, parse_trip_updates
 
 
 def varint(n: int) -> bytes:

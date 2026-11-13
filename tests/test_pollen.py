@@ -5,7 +5,12 @@ import httpx
 import pytest
 
 from app import assistant
-from app.integrations.pollen.client import PollenClient, PollenError, parse_forecast, risk_level
+from app.modules.pollen.sources.pollen.client import (
+    PollenClient,
+    PollenError,
+    parse_forecast,
+    risk_level,
+)
 
 RAW = {
     "contamination": [
@@ -89,7 +94,7 @@ async def test_assistant_pollen_text(monkeypatch: pytest.MonkeyPatch) -> None:
                           {"name": "Birch", "levels": [0], "labels": ["none"]}],
         }  # fmt: skip
 
-    monkeypatch.setattr(assistant, "pollen_near", near)
+    monkeypatch.setattr("app.modules.pollen.tools.pollen_near", near)
     out = await assistant.run_tool(None, "pollen", {"place": "home"})  # type: ignore[arg-type]
     assert out["text"] == "Near Home, allergy risk today is high; pollen today: Grasses high."
 
@@ -108,8 +113,8 @@ class _FakeRedis:
 def test_endpoint_caches_sorts_and_needs_a_token(monkeypatch: pytest.MonkeyPatch) -> None:
     from fastapi.testclient import TestClient
 
-    from app import pollen
     from app.main import app
+    from app.modules.pollen import pollen
 
     monkeypatch.setenv("API_TOKEN", "s3cret")
     monkeypatch.setenv("POLLEN_API_KEY", "k")
@@ -159,8 +164,8 @@ def test_endpoint_without_key_is_503(monkeypatch: pytest.MonkeyPatch, tmp_path) 
 def test_endpoint_takes_a_point_instead_of_a_place(monkeypatch: pytest.MonkeyPatch) -> None:
     from fastapi.testclient import TestClient
 
-    from app import pollen
     from app.main import app
+    from app.modules.pollen import pollen
 
     monkeypatch.setenv("API_TOKEN", "s3cret")
     monkeypatch.setenv("POLLEN_API_KEY", "k")
@@ -197,8 +202,8 @@ def test_endpoints_answer_from_the_stored_lattice(monkeypatch: pytest.MonkeyPatc
 
     from fastapi.testclient import TestClient
 
-    from app import pollen
     from app.main import app
+    from app.modules.pollen import pollen
 
     monkeypatch.setenv("API_TOKEN", "s3cret")
     monkeypatch.setenv("POLLEN_API_KEY", "k")

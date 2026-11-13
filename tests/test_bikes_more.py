@@ -10,14 +10,14 @@ from typing import Any
 import httpx
 import pytest
 
-from app.bikes import checklists as CL
-from app.bikes import compat as C
-from app.bikes import defaults as D
-from app.bikes import fit
-from app.bikes import groupsets as GS
-from app.bikes import rain as R
-from app.bikes import recalls as RC
-from app.bikes import wear as W
+from app.modules.bikes import checklists as CL
+from app.modules.bikes import compat as C
+from app.modules.bikes import defaults as D
+from app.modules.bikes import fit
+from app.modules.bikes import groupsets as GS
+from app.modules.bikes import rain as R
+from app.modules.bikes import recalls as RC
+from app.modules.bikes import wear as W
 from tests.test_bikes import DB, T0, _part, garage, ride  # noqa: F401 - the fixture
 from tests.test_bikes import fit as fitted
 
@@ -244,7 +244,7 @@ def test_groupsets_checklists_measurements_batteries_and_records(garage: Any) ->
 
 
 def test_recent_rides_get_their_route_and_batteries_from_their_files(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.bikes import garmin as G
+    from app.modules.bikes import garmin as G
 
     now = datetime.now(UTC)
     track = [(None, 51.0 + i * 0.001, -0.25) for i in range(30)]
@@ -273,8 +273,8 @@ def test_recent_rides_get_their_route_and_batteries_from_their_files(monkeypatch
 
 @pytest.mark.skipif(not DB, reason="WA_TEST_DATABASE_URL not set")
 def test_garmin_sensors_become_kit_with_their_batteries(garage: Any) -> None:  # noqa: F811
-    from app.bikes import api as A
     from app.main import app
+    from app.modules.bikes import api as A
 
     c = garage
     c.post("/v1/bikes/riders", json={"name": "Rob", "weight_kg": 80})
@@ -312,8 +312,8 @@ def test_garmin_sensors_become_kit_with_their_batteries(garage: Any) -> None:  #
 
 
 def test_parts_have_a_place_on_the_drawing() -> None:
-    from app.bikes import art
-    from app.bikes import garage as GR
+    from app.modules.bikes import art
+    from app.modules.bikes import garage as GR
 
     sp = art.spots({"type": "full_suspension"})
     assert "shock" in sp and all(0 <= v <= 1 for xy in sp.values() for v in xy) and sp["rear_wheel"][0] < sp["front_wheel"][0]
@@ -323,7 +323,7 @@ def test_parts_have_a_place_on_the_drawing() -> None:
 
 
 def test_what_to_buy_fits_the_bike() -> None:
-    from app.bikes import garage as GR
+    from app.modules.bikes import garage as GR
 
     cfg = {"groupset": "sram-rival-axs-e1-xplr", "speeds": 13, "front_brake": "hydraulic_disc", "rear_brake": "hydraulic_disc"}
     chain = {"id": 1, "kind": "chain", "brand": "SRAM", "model": "Rival AXS E1", "details": {"speeds": 13}}
@@ -363,7 +363,8 @@ def test_a_service_list_done_in_one_go(garage: Any, monkeypatch: pytest.MonkeyPa
         bought.append(text)
         return {}
 
-    from app import outdoors, shopping
+    from app.modules.outdoors import outdoors
+    from app.modules.shopping import shopping
 
     monkeypatch.setattr(outdoors, "the_list", fake_list)
     monkeypatch.setattr(shopping, "add_item", fake_add)

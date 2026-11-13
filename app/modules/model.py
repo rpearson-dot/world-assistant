@@ -5,7 +5,7 @@ It declares, as data, what it needs (keys, other modules, optional containers), 
 jobs, assistant tools) and how to describe it on the Setup page. The core reads these declarations and wires
 everything; a module never edits the core.
 
-Everything that runs code is named by an import string ("app.floods:router") and imported only when needed, so
+Everything that runs code is named by an import string ("app.modules.floods.floods:router") and imported only when needed, so
 a module that is switched off, or one that comes from outside the image, costs nothing until it is used.
 """
 
@@ -24,7 +24,7 @@ CronSpec = dict[str, Any] | Callable[[Any], dict[str, Any]]
 class Job:
     """A worker job: where its function is, and when it runs (no cron = started by something else)."""
 
-    func: str  # "app.integrations.flood.sync:flood_poll"
+    func: str  # "app.modules.floods.sources.flood.sync:flood_poll"
     cron: CronSpec | None = None
 
 
@@ -52,8 +52,12 @@ class Module:
     prefixes: tuple[str, ...] = ()  # URL path prefixes that go dark when it is switched off
     worker: tuple[Job, ...] = ()
     tools: tuple[str, ...] = ()  # assistant (MCP) tool names
+    # What it plugs into the core, by extension point: {"assistant.tools": "app.modules.crime.tools:TOOLS"}. The
+    # points are listed in docs/module-sdk.md; the core asks the registry (provided, provider), never the module.
+    provides: dict[str, str] = field(default_factory=dict, compare=False)
     # how it relates to the rest
     needs: tuple[str, ...] = ()  # module ids it cannot work without
+    uses: tuple[str, ...] = ()  # module ids whose code it may use when they are there (it must cope without them)
     services: tuple[str, ...] = ()  # optional containers: compose file names
     coverage: tuple[str, ...] = ()  # region words ("london"); empty = everywhere
     area: tuple[float, float, float, float] | None = None  # (min lat, min lon, max lat, max lon) of its coverage

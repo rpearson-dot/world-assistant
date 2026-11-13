@@ -10,10 +10,16 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import bods
-from app.integrations.bods import client
-from app.integrations.bods.client import BodsError, Box, box_around, fetch_vehicles, parse_vehicles
 from app.main import app
+from app.modules.bods import bods
+from app.modules.bods.sources.bods import client
+from app.modules.bods.sources.bods.client import (
+    BodsError,
+    Box,
+    box_around,
+    fetch_vehicles,
+    parse_vehicles,
+)
 
 SIRI = b"""<?xml version="1.0" encoding="UTF-8"?>
 <Siri xmlns="http://www.siri.org.uk/siri" version="2.0">

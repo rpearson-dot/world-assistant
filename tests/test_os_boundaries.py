@@ -18,8 +18,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.integrations import osgpkg
-from app.integrations.boundaryline import sync as boundary
-from app.integrations.usrn import sync as usrn
+from app.modules.boundary.sources.boundaryline import sync as boundary
+from app.modules.usrn.sources.usrn import sync as usrn
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"

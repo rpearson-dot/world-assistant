@@ -1,5 +1,5 @@
-from app.fuel import _out
-from app.integrations.fuelfinder.queries import (
+from app.modules.fuel.fuel import _out
+from app.modules.fuel.sources.fuelfinder.queries import (
     FuelHit,
     brand_options,
     compare_cheapest,
@@ -72,13 +72,13 @@ async def test_assistant_mentions_absolute_cheapest(monkeypatch) -> None:  # typ
         assert kw["brands"] == "tesco" and kw["supermarkets"] is False
         return _out("E10", HITS, brands=kw["brands"], limit=3, place="Home")
 
-    monkeypatch.setattr(assistant, "fuel_near", near)
+    monkeypatch.setattr("app.modules.fuel.tools.fuel_near", near)
     out = await assistant.run_tool(None, "fuel_cheapest", {"place": "home", "brands": "tesco"})  # type: ignore[arg-type]
     assert "absolute cheapest is Shell" in out["text"] and "4.0 pence a litre more" in out["text"]
 
 
 def test_feed_spellings_are_one_brand() -> None:
-    from app.integrations.fuelfinder.queries import brand_key, pretty_brand
+    from app.modules.fuel.sources.fuelfinder.queries import brand_key, pretty_brand
 
     assert brand_key("SAINSBURYS") == brand_key("Sainsbury's") == brand_key(" sainsburys ")
     assert pretty_brand("SAINSBURYS") == "Sainsbury's"
@@ -90,7 +90,7 @@ def test_feed_spellings_are_one_brand() -> None:
 
 
 def test_known_supermarket_brand_counts_even_when_the_feed_flag_is_false() -> None:
-    from app.integrations.fuelfinder.queries import SUPERMARKET_BRANDS, brand_key
+    from app.modules.fuel.sources.fuelfinder.queries import SUPERMARKET_BRANDS, brand_key
 
     assert brand_key("SAINSBURYS") in SUPERMARKET_BRANDS and brand_key("Shell") not in SUPERMARKET_BRANDS
 
@@ -98,7 +98,7 @@ def test_known_supermarket_brand_counts_even_when_the_feed_flag_is_false() -> No
 def test_hit_builder_marks_sainsburys_a_supermarket_and_tidies_the_name() -> None:
     from datetime import UTC, datetime
 
-    from app.integrations.fuelfinder.queries import _hit
+    from app.modules.fuel.sources.fuelfinder.queries import _hit
 
     row = {"node_id": "n", "trading_name": "Sainsbury's Epsom", "brand_name": "SAINSBURYS",
            "postcode": "KT17", "city": "Epsom", "lat": 51.3, "lon": -0.27, "is_motorway": False,

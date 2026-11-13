@@ -9,7 +9,7 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [ask](#ask) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [outdoors](#outdoors) · [places](#places) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [ask](#ask) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [outdoors](#outdoors) · [places](#places) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [wishlist](#wishlist) · [Other](#other)
 
 
 ## ask
@@ -121,6 +121,23 @@ pages themselves hold no data: each one calls these endpoints.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/v1/bus-disruptions` | Current disruptions near your places (or near a point), closest first. Empty where no authority publishes. |
+
+## buslog
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/buslog/calendar` | Get Calendar |
+| PUT | `/v1/buslog/calendar` | The school's terms, holidays and INSET days: {school, terms: [{name, from, to}], breaks: [...], inset: [dates], notes}. |
+| GET | `/v1/buslog/polls` | Every minute of a day, per source: requests that answered with data, answered empty, or failed. A gap in the record shows here as a failed (or missing) request, never as a bus that did not come. |
+| GET | `/v1/buslog/positions` | Each bus's last BODS position at a moment (default now) within `within_s` before it, and how old it was then. |
+| GET | `/v1/buslog/predictions` | TfL's prediction changes on a day: new, moved (by how much) and gone, for one stop or bus if given. |
+| GET | `/v1/buslog/raw/{poll_id}` | A request's response exactly as it came (kept a school year). |
+| DELETE | `/v1/buslog/record-now` | Stop Now |
+| POST | `/v1/buslog/record-now` | Record from the next minute for a while, whatever the day and time (the worker starts within a minute). |
+| GET | `/v1/buslog/route` | The route as recorded on a day (or the newest before it): each direction's stops in order, and its line. |
+| GET | `/v1/buslog/settings` | Get Settings  |
+| PUT | `/v1/buslog/settings` | The route, the window, and the test switch that records every day (weekends and holidays too). |
+| GET | `/v1/buslog/status` | Whether it is recording now and why, the next recording days, and how today's requests went per source. |
 
 ## conditions
 

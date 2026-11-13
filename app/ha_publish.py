@@ -24,11 +24,9 @@ import httpx
 
 from app import ha, mqtt
 from app.config import get_settings
-from app.energy.ha import RETIRED as ENERGY_RETIRED
-from app.energy.ha import energy_device
 from app.ha import Device, Sensor, slug
+from app.modules import registry
 from app.mqtt_config import from_env, load
-from app.pollen_map import render_svg
 
 log = logging.getLogger("wa.ha")
 
@@ -139,7 +137,9 @@ def pollen_device(points: list[dict[str, Any]]) -> Device:
     sensors += [_pollen_point(p) for p in points]  # one per lattice point, so each can be opened on a map
     images = []
     if points:
-        images.append(ha.Image("map", "Pollen map", render_svg(points).encode("utf-8")))
+        render_svg = registry.provider("ha.pollen_map")
+        if render_svg:
+            images.append(ha.Image("map", "Pollen map", render_svg(points).encode("utf-8")))
     return Device("pollen", "Pollen", sensors, images)
 
 
@@ -217,7 +217,7 @@ def bus_device(
     record come from stored results (so they stay up to date outside the polling window); the buses
     being followed and the next arrivals come from the live arrivals feed. Names match what the poller
     used to publish itself, so existing entities carry on."""
-    from app.integrations.bus.events import nearest_slot
+    nearest_slot = registry.provider("bus.nearest_slot") or (lambda slots, m: None)
 
     sensors: list[Sensor] = []
     nxt = (live or {}).get("next") or {}
@@ -595,6 +595,9 @@ async def collect(c: httpx.AsyncClient) -> list[Device]:
         return out
 
     async def energy() -> Device:
+        energy_device = registry.provider("ha.energy_device")
+        if energy_device is None:
+            raise ValueError("the energy module is not installed")
         now = await _get(c, "/v1/energy/now")
         if now.get("tariff") is None:
             raise ValueError("energy is not set up")
@@ -693,7 +696,7 @@ async def ha_sync(ctx: dict[str, Any]) -> int:
             if dev in keys:
                 gone += ha.clear(s.mqtt_topic_prefix, s.mqtt_discovery_prefix, dev, [k for k in old if k not in keys[dev]])
     if first and "energy" in keys:
-        gone += ha.clear(s.mqtt_topic_prefix, s.mqtt_discovery_prefix, "energy", ENERGY_RETIRED)
+        gone += ha.clear(s.mqtt_topic_prefix, s.mqtt_discovery_prefix, "energy", registry.provider("ha.energy_retired") or [])
     if first and "power" in keys:
         gone += ha.clear(s.mqtt_topic_prefix, s.mqtt_discovery_prefix, "power", POWER_RETIRED)
     expire = max(1, s.ha_interval_min) * 60 * 3

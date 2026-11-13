@@ -9,8 +9,8 @@ import httpx
 import pytest
 from fastapi import HTTPException
 
-from app import shopping as S
 from app.config import get_settings
+from app.modules.shopping import shopping as S
 
 
 @pytest.mark.parametrize(("desc", "want"), [
@@ -182,7 +182,7 @@ def test_every_address_the_shopping_page_calls_is_a_real_route() -> None:
     import re as _re
 
     from app.main import app
-    from app.shopping_page import PAGE
+    from app.modules.shopping.shopping_page import PAGE
 
     routes = [(_re.sub(r"\{[^}]+\}", "[^/]+", path), {m.upper() for m in ops}) for path, ops in app.openapi()["paths"].items()]
     calls = _re.findall(r"api\('(GET|PUT|POST|DELETE)', '(/v1/[^']*)'(?: \+ \w+(?: \+ '([^']*)')?)?", PAGE)
@@ -215,7 +215,7 @@ def test_the_shopping_page_script_compiles(tmp_path: Any) -> None:
     import shutil
     import subprocess
 
-    from app.shopping_page import PAGE
+    from app.modules.shopping.shopping_page import PAGE
 
     node = shutil.which("node")
     if not node:
