@@ -175,7 +175,7 @@ parsers are pure so they can be tested against small fixtures. Most have a **pro
 | Your data | `place`, `trip`, `vehicle`, `ha_location` |
 | Roads | `nh_event`, `nh_event_corridor`, `nh_sign`, `nh_sign_message`, `nh_corridor`, `tfl_road_disruption` |
 | Fuel and charging | `fuel_station`, `fuel_price`, `fuel_price_change`, `ev_site`, `ev_evse`, `ev_tariff`, `ev_site_log` |
-| Buses and trains | `bus_tracker`, `bus_stop`, `bus_segment_obs`, `bus_anomaly`, `bus_target_day`, `bus_target_hit`, `bus_timetable`, `bus_position`, `bus_disruption`, `bus_disruption_point`, `tfl_board`, `tfl_station`, `tfl_station_part`, `tfl_station_alert`, `naptan_stop` |
+| Buses and trains | `bus_tracker`, `bus_stop`, `bus_segment_obs`, `bus_anomaly`, `bus_target_day`, `bus_target_hit`, `bus_timetable`, `bus_position`, `bus_disruption`, `bus_disruption_point`, `buslog_*` (the route log), `tfl_board`, `tfl_station`, `tfl_station_part`, `tfl_station_alert`, `naptan_stop` |
 | Environment | `flood_warning`, `flood_area`, `pollen_grid`, `pollen_reading` |
 | Energy and power | `energy_rate`, `energy_session`, `ukpn_fault`, `ukpn_fault_history`, `ukpn_works`, `ukpn_place_area` |
 | Events | `local_event`, `event_venue` |

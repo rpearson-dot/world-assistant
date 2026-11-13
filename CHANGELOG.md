@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.52.0] - 2026-11-13
 
 ### Fixed
 - **Car charging (Home Assistant's `wa_ev_plan.yaml`):**
@@ -17,6 +17,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
     late). The reason line says when it is estimating, and when it has never had a level at all.
 
 ### Added
+- **Bus route log (Buses → Route log, `/buslog`).** A record of every bus on the 213 during the school run, made to
+  show exactly what happened. From 07:00 to 09:00 on school days it asks BODS for the buses' positions every 10 s,
+  TfL for its predictions every 15 s and for the route's status every 2 minutes. Before the window it takes the day's
+  route (TfL's stop order with NaPTAN's positions) and timetable from each end. Every request is kept, including the
+  ones that failed or came back empty, with its answer exactly as it came. A failed request is never read as a bus
+  that did not come. Predictions are kept when they appear, when they move by 15 s or more, and when they go.
+  - The page has a map of the route's stops with each bus as a red box holding its numberplate, at any moment of a
+    recorded day. A strip for each source shows every minute as answered, empty, failed or not asked.
+  - School days follow Coombe Girls School's 2026/27 calendar (terms, half terms, INSET days) and the bank holidays.
+    A test switch records every day; "Record now" records straight away for up to 4 hours.
+  - Stored in Postgres in monthly partitions, only ever added to. Raw answers are kept 13 months (about 30 MB a
+    recorded day). See `docs/bus-log.md`.
+- **New installs start with the essentials.** The setup wizard asks "What do you want it for?" and switches on only
+  the areas you tick. Existing installs are unchanged.
 - **Leaf dashboard: every warning from the car.**
   - "Before you go" lists any warning OVMS reports (binary sensors of class problem or safety), so new ones appear
     without a change.
@@ -25,6 +39,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   - The Health view has a "Warnings from the car" card listing them all, with the handbrake as applied or off.
 
 ### Changed
+- **Every module in its own folder.** Each area (fuel, buses, the bike garage and the rest) now lives in
+  `app/modules/<id>/`, with its API, pages, jobs, assistant tools, notifications and outside services, and a
+  `README.md` written from its declaration. The core never imports a module: modules plug in at declared extension
+  points (assistant tools, map layers, Home Assistant sensors, key tests, setup checks and others), and a test holds
+  both sides to the written interface, `docs/module-sdk.md`. Nothing changes in use.
 - **Documentation refreshed.** The README is now a shorter overview of what World Assistant is for and what it
   does, grouped by area. `docs/architecture.md` has new diagrams of the stack, the data and an update.
   `docs/README.md` is an index of every page. `docs/api.md` lists every endpoint and is written from the code

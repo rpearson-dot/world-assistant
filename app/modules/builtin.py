@@ -237,6 +237,18 @@ BUILTIN: tuple[Module, ...] = (
                        {"hour": {*range(5, 11), *range(14, 19)}, "second": {0, 30}, "timeout": 25, "max_tries": 1}),),
            provides={"assistant.tools": "app.modules.bus.tools:TOOLS", "bus.nearest_slot": "app.modules.bus.sources.bus.events:nearest_slot"},
            uses=("bods", "tfl")),
+    Module("buslog", "Bus route log", "Every bus on one route (the 213) in the school-run window, recorded from TfL and "
+           "BODS several times a minute, with every failed or empty request kept too",
+           category="transport", keys=("bods_api_key", "tfl_app_key"), any_key=True, jobs=("buslog",),
+           link="https://data.bus-data.dft.gov.uk",
+           note="Positions need a BODS key; TfL's predictions work without a key, faster with one. Records 07:00 to "
+                "09:00 on school days (the school calendar is on the page); a test switch records every day",
+           routers=("app.modules.buslog.api:router", "app.modules.buslog.page:page_router"), prefixes=("/v1/buslog", "/buslog"),
+           worker=(Job("app.modules.buslog.collect:buslog_minute",
+                       {"minute": set(range(60)), "second": {0}, "timeout": 75, "max_tries": 1, "unique": True}),
+                   Job("app.modules.buslog.collect:buslog_housekeep", {"hour": {2}, "minute": {41}, "timeout": 300, "max_tries": 1})),
+           tools=("bus_log",),
+           provides={"assistant.tools": "app.modules.buslog.tools:TOOLS"}),
     Module("conditions", "Trip conditions", "Road works, closures and floods on a saved trip's route",
            category="transport", listed=False,
            routers=("app.modules.conditions.conditions:router",), prefixes=("/v1/conditions", "re:/v1/trips/[^/]+/conditions"), tools=("road_conditions",),
