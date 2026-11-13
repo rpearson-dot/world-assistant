@@ -38,6 +38,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from app import look
 
     await look.load(app.state.engine)
+    from app.modules import selection
+
+    if await selection.first_start(app.state.engine):
+        log.info("new install: starting from the essentials; the setup wizard asks which areas to add")
     log.info("world-assistant api started (env=%s)", settings.env)
     yield
 

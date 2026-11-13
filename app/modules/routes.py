@@ -106,7 +106,7 @@ async def list_modules(request: Request) -> dict[str, Any]:
     on = selection.enabled_ids(mods, sel)
     why = suggest(mods, await home_point(engine))
     runs = await _runs(engine)
-    return {"chosen": sel.chosen, "mode": sel.mode,
+    return {"chosen": sel.chosen, "mode": sel.mode, "new_install": sel.new_install,
             "modules": [describe(m, s, runs, on, why) for m in mods], "secrets": secrets_view()}  # fmt: skip
 
 

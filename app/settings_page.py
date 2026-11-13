@@ -281,7 +281,8 @@ function renderAll() { renderSetup(); if (!$('wizard').hidden) wizard(wizStep); 
 
 // --- the wizard -------------------------------------------------------------------------------------
 let wizStep = 0;
-const STEPS = 5;
+const STEPS = 6;
+const AREAS = { transport: 'Getting around', place: 'Places and what is near them', energy: 'Energy and vehicles', home: 'At home', data: 'Other data', service: 'Services' };
 function wizard(step) {
   wizStep = step;
   const w = $('wizard'); w.hidden = false; w.replaceChildren();
@@ -309,10 +310,34 @@ function wizard(step) {
     };
     f.append(pc, save, st); w.append(f);
   } else if (step === 2) {
+    w.append(el('h2', null, 'What do you want it for?'),
+      el('p', 'dim', 'Tick the areas you want. Everything else stays switched off, costs nothing and can be added any time under Modules.'));
+    const box = el('div'), st = el('span', 'dim');
+    w.append(box);
+    api('/v1/modules').then(d => {
+      for (const [cat, title] of Object.entries(AREAS)) {
+        const mods = d.modules.filter(m => m.category === cat && !m.core); if (!mods.length) continue;
+        box.append(el('h3', null, title));
+        for (const m of mods) {
+          const lab = el('label', 'row'), cb = el('input'); cb.type = 'checkbox'; cb.value = m.id; cb.checked = m.enabled;
+          lab.append(cb, el('span', null, ' ' + m.name + ': ' + m.unlocks + (m.suggested ? ' (suggested: ' + m.suggested + ')' : '')));
+          box.append(lab);
+        }
+      }
+      const save = el('button', 'primary', 'Save these'); save.type = 'button';
+      save.onclick = async () => {
+        const on = [...box.querySelectorAll('input[type=checkbox]:checked')].map(x => x.value);
+        try { await api('/v1/modules', { method: 'PUT', body: JSON.stringify({ mode: 'only', on }) });
+          st.textContent = 'Saved: ' + on.length + ' switched on.'; setup = await api('/v1/setup'); }
+        catch (e) { st.textContent = e.message; }
+      };
+      box.append(el('p'), save, st);
+    }).catch(e => box.append(el('p', 'note', e.message)));
+  } else if (step === 3) {
     w.append(el('h2', null, 'Free keys'), el('p', 'dim', 'Each one unlocks something. Open "Get a key", sign up, paste it here and Save. Skip any you do not want.'));
     if (!keys.writable) w.append(el('p', 'note', 'Keys cannot be saved from the browser on this server yet (' + keys.reason + '). Use scripts/setup.sh on the server instead.'));
     w.append(...setup.keys.map(s => keyCard(s, renderAll)));
-  } else if (step === 3) {
+  } else if (step === 4) {
     const ha = setup.you.find(x => x.id === 'ha');
     w.append(el('h2', null, 'Home Assistant'), badge(ha.state), el('p', null, details(ha) || 'Publishing sensors to Home Assistant.'));
     const a = el('a', null, 'Open the Home Assistant setup page'); a.href = '/ha';

@@ -1,7 +1,8 @@
 """Which modules the user has switched on: a small saved choice, read with a short cache.
 
 No saved choice (an install from before modules existed, or a user who never chose) means every module is on,
-so an upgrade changes nothing. Two shapes once chosen:
+so an upgrade changes nothing. A new install (no choice and no saved places when the api first starts) starts from
+the essentials instead: only the always-on core, and the setup wizard asks which areas to add (first_start). Two shapes once chosen:
 
     {"mode": "all",  "off": ["fuel"]}      everything except these
     {"mode": "only", "on":  ["fuel", "bus"]}   only these (and what they need), plus the always-on core
@@ -30,6 +31,7 @@ class Selection:
     off: frozenset[str] = field(default_factory=frozenset)
     on: frozenset[str] = field(default_factory=frozenset)
     chosen: bool = False  # false = nobody has chosen yet
+    new_install: bool = False  # chosen for you on a new install (the essentials), not by you yet
 
     def to_json(self) -> dict[str, Any]:
         return {"mode": self.mode, "off": sorted(self.off), "on": sorted(self.on)}
@@ -39,7 +41,7 @@ class Selection:
         if not isinstance(raw, dict) or raw.get("mode") not in ("all", "only"):
             return Selection()
         ids = lambda k: frozenset(str(x) for x in raw.get(k) or [] if isinstance(x, str))
-        return Selection(mode=raw["mode"], off=ids("off"), on=ids("on"), chosen=True)
+        return Selection(mode=raw["mode"], off=ids("off"), on=ids("on"), chosen=True, new_install=bool(raw.get("new_install")))
 
 
 def enabled_ids(modules: list[Module], sel: Selection) -> set[str]:
@@ -94,3 +96,21 @@ async def reset(engine: Any) -> None:
     async with engine.begin() as conn:
         await conn.execute(text("DELETE FROM app_setting WHERE key = :k"), {"k": KEY})
     clear_cache()
+
+
+async def first_start(engine: Any) -> bool:
+    """On a new install, start from the essentials: save "only the core" when nobody has chosen and nothing has been
+    set up (no saved places). An existing install is left exactly as it is. True when it saved the choice."""
+    try:
+        async with engine.begin() as conn:
+            if (await conn.execute(text("SELECT 1 FROM app_setting WHERE key = :k"), {"k": KEY})).first():
+                return False
+            if (await conn.execute(text("SELECT 1 FROM place LIMIT 1"))).first():
+                return False
+            await conn.execute(text("INSERT INTO app_setting (key, value) VALUES (:k, CAST(:v AS jsonb)) ON CONFLICT (key) DO NOTHING"),
+                               {"k": KEY, "v": json.dumps({"mode": "only", "on": [], "new_install": True})})  # fmt: skip
+    except Exception:  # noqa: BLE001 - no tables yet, database down: decide another time
+        return False
+    clear_cache()
+    return True
+
