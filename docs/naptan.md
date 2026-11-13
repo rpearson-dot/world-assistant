@@ -21,8 +21,8 @@ bus or train calls at (taxi ranks, say) are left out.
 By hand, from a file you already have or from the source:
 
 ```
-docker compose exec worker python -m app.integrations.naptan.sync
-docker compose exec worker python -m app.integrations.naptan.sync --file naptan.csv
+docker compose exec worker python -m app.modules.naptan.sources.naptan.sync
+docker compose exec worker python -m app.modules.naptan.sources.naptan.sync --file naptan.csv
 ```
 
 `WA_NAPTAN_POLL_ENABLED=false` switches the weekly job off. It is on by default in the compose file.

@@ -59,7 +59,7 @@ def price_text(res: dict[str, Any]) -> str:
 
 
 async def shopping_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.shopping import LAST_KEY, _get, current_items
+    from app.modules.shopping.shopping import LAST_KEY, _get, current_items
 
     items = await _wrap(current_items(request))
     if str(args.get("about") or "list") == "prices":
@@ -74,7 +74,7 @@ async def shopping_tool(request: Request, args: dict[str, Any]) -> dict[str, Any
 
 
 async def add_to_list_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.shopping import add_item
+    from app.modules.shopping.shopping import add_item
 
     raw = _need(args, "item")
     note = str(args.get("note") or "")
@@ -93,14 +93,14 @@ async def add_to_list_tool(request: Request, args: dict[str, Any]) -> dict[str, 
 
 
 async def price_list_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.shopping import PriceIn, price
+    from app.modules.shopping.shopping import PriceIn, price
 
     res = await _wrap(price(PriceIn(refresh=bool(args.get("fresh"))), request))
     return {"text": price_text(res), "data": {"priced_at": res["priced_at"], "totals": res["totals"]}}
 
 
 async def send_to_basket_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.shopping import send_to_basket
+    from app.modules.shopping.shopping import send_to_basket
 
     r = _retailer(args)
     out = await _wrap(send_to_basket(r, request))
@@ -120,7 +120,7 @@ def _order_line(o: dict[str, Any]) -> str:
 
 
 async def orders_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.shopping import orders
+    from app.modules.shopping.shopping import orders
 
     r = _retailer(args)
     d = await _wrap(orders(r, request))
@@ -135,7 +135,7 @@ async def orders_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def tick_off_order_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.shopping import KeysIn, orders, tick_off
+    from app.modules.shopping.shopping import KeysIn, orders, tick_off
 
     r = _retailer(args)
     d = await _wrap(orders(r, request))
@@ -153,7 +153,7 @@ async def tick_off_order_tool(request: Request, args: dict[str, Any]) -> dict[st
 
 
 async def clear_list_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.shopping import ClearIn, clear_list
+    from app.modules.shopping.shopping import ClearIn, clear_list
 
     if args.get("confirm") is not True:
         raise ToolError("Clearing the whole list needs confirm: true. Check with the person first.")
@@ -166,7 +166,7 @@ async def clear_list_tool(request: Request, args: dict[str, Any]) -> dict[str, A
 
 
 async def floods_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.floods import at
+    from app.modules.floods.floods import at
 
     name, lat, lon = await _point(request, args.get("place"))
     km = float(args.get("km") or 0)
@@ -179,7 +179,7 @@ async def floods_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def road_disruptions_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.tflroads import at
+    from app.modules.tflroads.tflroads import at
 
     name, lat, lon = await _point(request, args.get("place"))
     km = float(args.get("km") or 0.5)
@@ -194,7 +194,7 @@ async def road_disruptions_tool(request: Request, args: dict[str, Any]) -> dict[
 
 
 async def live_buses_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.bods import live
+    from app.modules.bods.bods import live
 
     name, lat, lon = await _point(request, args.get("place"))
     km = float(args.get("km") or 1)
@@ -208,7 +208,7 @@ async def live_buses_tool(request: Request, args: dict[str, Any]) -> dict[str, A
 
 
 async def bus_disruptions_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.bus_disruptions import near
+    from app.modules.busdisruptions.bus_disruptions import near
 
     place = str(args.get("place") or "") or None
     line = str(args.get("line") or "") or None
@@ -221,7 +221,7 @@ async def bus_disruptions_tool(request: Request, args: dict[str, Any]) -> dict[s
 
 
 async def stops_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.stops import near
+    from app.modules.naptan.stops import near
 
     name, lat, lon = await _point(request, args.get("place"))
     km = float(args.get("km") or 0.5)
@@ -235,7 +235,7 @@ async def stops_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def connections_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.graph_routes import disruption, neighbours
+    from app.modules.graph.graph_routes import disruption, neighbours
 
     pid = await _wrap(place_or_default(request, args.get("place") or None))
     d = await _wrap(disruption(place=pid, limit=50))
@@ -248,7 +248,7 @@ async def connections_tool(request: Request, args: dict[str, Any]) -> dict[str, 
 
 
 async def air_quality_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.environment import air
+    from app.modules.environment.environment import air
 
     r = await _wrap(air(request, place=args.get("place") or None, km=float(args.get("km") or 20)))
     if r.get("index") is None:
@@ -261,7 +261,7 @@ async def air_quality_tool(request: Request, args: dict[str, Any]) -> dict[str, 
 
 
 async def river_levels_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.environment import rain, rivers
+    from app.modules.environment.environment import rain, rivers
 
     place = args.get("place") or None
     rv = await _wrap(rivers(request, place=place, km=float(args.get("km") or 5)))
@@ -279,7 +279,7 @@ async def river_levels_tool(request: Request, args: dict[str, Any]) -> dict[str,
     if rn["gauges"]:
         g = rn["gauges"][0]
         text_ += f" Rain at {g['gauge']}: {g['last_hour_mm']:g} mm in the last hour, {g['last_24h_mm']:g} mm in 24 hours."
-    from app.environment import flows
+    from app.modules.environment.environment import flows
 
     try:
         fl = await _wrap(flows(request, place=place, km=10))
@@ -296,7 +296,7 @@ async def river_levels_tool(request: Request, args: dict[str, Any]) -> dict[str,
 
 
 async def tides_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.environment import tides
+    from app.modules.environment.environment import tides
 
     r = await _wrap(tides(request, place=args.get("place") or None, km=float(args.get("km") or 20)))
     if not r.get("gauge"):
@@ -311,7 +311,7 @@ RIVER_LIST = {"type": "array", "items": {"type": "string"},
 
 
 async def storm_overflows_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.environment import overflows
+    from app.modules.environment.environment import overflows
 
     rv = args.get("rivers")
     rivers = ",".join(rv) if isinstance(rv, list) else (str(rv) if rv else None)
@@ -336,7 +336,7 @@ async def storm_overflows_tool(request: Request, args: dict[str, Any]) -> dict[s
 
 
 async def watch_rivers_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.environment import Rivers, put_rivers
+    from app.modules.environment.environment import Rivers, put_rivers
 
     rv = args.get("rivers") or []
     r = await _wrap(put_rivers(request, Rivers(rivers=[str(x) for x in (rv if isinstance(rv, list) else [rv])])))
@@ -346,7 +346,7 @@ async def watch_rivers_tool(request: Request, args: dict[str, Any]) -> dict[str,
 
 
 async def postcode_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.postcodes import near, one
+    from app.modules.codepoint.postcodes import near, one
 
     if args.get("postcode"):
         r = await _wrap(one(request, str(args["postcode"])))
@@ -423,7 +423,7 @@ def _hhmm(v: Any, what: str) -> str | None:
 
 def _stop_matches(query: str, stops: list[dict[str, Any]]) -> list[int]:
     """Positions of the stops a name means: an exact name first, else every stop containing all its words."""
-    from app.integrations.bus.setup import norm
+    from app.modules.bus.sources.bus.setup import norm
 
     q = norm(query)
     exact = [i for i, s in enumerate(stops) if norm(s["name"]) == q or s["id"] == query.strip()]
@@ -459,8 +459,8 @@ def _stop_list(line: str, dirs: dict[str, Any]) -> str:
 async def bus_setup_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
     from pydantic import ValidationError
 
-    from app.bus import SetupIn, line_stops, setup
-    from app.integrations.bus import store
+    from app.modules.bus.bus import SetupIn, line_stops, setup
+    from app.modules.bus.sources.bus import store
 
     line = _need(args, "line")
     got = await _wrap(line_stops(request, line, place=args.get("place") or None, lat=None, lon=None))
@@ -523,7 +523,7 @@ def _wish_text(it: dict[str, Any]) -> str:
 
 
 async def wishlist_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.wishlist import wishes
+    from app.modules.wishlist.wishlist import wishes
 
     data = await _wrap(wishes(request))
     if not data["items"]:
@@ -536,7 +536,7 @@ async def wishlist_tool(request: Request, args: dict[str, Any]) -> dict[str, Any
 
 
 async def wish_add_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.wishlist import WishIn, add_wish, summary
+    from app.modules.wishlist.wishlist import WishIn, add_wish, summary
 
     rules = []
     if args.get("max_price"):
@@ -552,7 +552,7 @@ async def wish_add_tool(request: Request, args: dict[str, Any]) -> dict[str, Any
 
 
 async def wish_remove_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.wishlist import remove_wish, wishes
+    from app.modules.wishlist.wishlist import remove_wish, wishes
 
     name = _need(args, "name").lower()
     items = (await _wrap(wishes(request)))["items"]
@@ -564,7 +564,7 @@ async def wish_remove_tool(request: Request, args: dict[str, Any]) -> dict[str, 
 
 
 async def wishlist_check_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.wishlist import check_now
+    from app.modules.wishlist.wishlist import check_now
 
     data = await _wrap(check_now(request, None))
     errs = f" Could not read: {'; '.join(data['errors'].values())}." if data.get("errors") else ""
@@ -575,7 +575,7 @@ async def wishlist_check_tool(request: Request, args: dict[str, Any]) -> dict[st
 
 # --- Crime and police -----------------------------------------------------------------------------------------------
 async def crime_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.crime import CrimeError, look_up, words
+    from app.modules.crime.crime import CrimeError, look_up, words
 
     lat, lon = args.get("lat"), args.get("lon")
     if not (isinstance(lat, (int, float)) and isinstance(lon, (int, float))):
@@ -589,7 +589,7 @@ async def crime_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 
 async def _point_of(request: Request, args: dict[str, Any]) -> tuple[float, float]:
     """A saved place's or a postcode's point."""
-    from app.postcodes import local_postcode
+    from app.modules.codepoint.postcodes import local_postcode
 
     if args.get("place"):
         from sqlalchemy import text as _text
@@ -616,7 +616,7 @@ async def _point_of(request: Request, args: dict[str, Any]) -> tuple[float, floa
 
 # --- Food standards --------------------------------------------------------------------------------------------------
 async def food_hygiene_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.food import FoodError, hygiene, hygiene_words
+    from app.modules.food.food import FoodError, hygiene, hygiene_words
 
     lat, lon = args.get("lat"), args.get("lon")
     if not (isinstance(lat, (int, float)) and isinstance(lon, (int, float))):
@@ -629,7 +629,7 @@ async def food_hygiene_tool(request: Request, args: dict[str, Any]) -> dict[str,
 
 
 async def food_alerts_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.food import FoodError, alerts_words, check, get_alerts
+    from app.modules.food.food import FoodError, alerts_words, check, get_alerts
 
     if args.get("check"):
         try:
@@ -643,7 +643,7 @@ async def food_alerts_tool(request: Request, args: dict[str, Any]) -> dict[str, 
 
 # --- Tax and MOT -----------------------------------------------------------------------------------------------------
 async def vehicle_checks_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.vehiclecheck import check_all, list_checks, words
+    from app.modules.vehiclechecks.vehiclecheck import check_all, list_checks, words
 
     if args.get("check"):
         await check_all(request.app.state.engine)
@@ -672,9 +672,9 @@ async def bank_holidays_tool(request: Request, args: dict[str, Any]) -> dict[str
 
 # --- Here --------------------------------------------------------------------------------------------------------
 async def here_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.here import gather
     from app.integrations.what3words import client as W3W
-    from app.postcodes import local_postcode
+    from app.modules.codepoint.postcodes import local_postcode
+    from app.modules.here.here import gather
 
     lat, lon = args.get("lat"), args.get("lon")
     w = str(args.get("words") or "").strip() or (str(args.get("postcode") or "") if W3W.words_in(str(args.get("postcode") or "")) else "")
@@ -740,7 +740,7 @@ def _outdoor_text(it: dict[str, Any]) -> str:
 
 
 async def outdoors_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.outdoors import overview
+    from app.modules.outdoors.outdoors import overview
 
     data = await _wrap(overview(request))
     if not data["items"]:
@@ -755,7 +755,7 @@ async def outdoors_tool(request: Request, args: dict[str, Any]) -> dict[str, Any
 
 
 async def outdoors_add_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.outdoors import ItemIn, add_outdoors
+    from app.modules.outdoors.outdoors import ItemIn, add_outdoors
 
     bits = [str(args["link"]).strip()] if args.get("link") else []
     if args.get("max_price"):
@@ -769,7 +769,7 @@ async def outdoors_add_tool(request: Request, args: dict[str, Any]) -> dict[str,
 
 
 async def outdoors_check_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.outdoors import check_now
+    from app.modules.outdoors.outdoors import check_now
 
     data = await _wrap(check_now(request, None))
     fell = data.get("fell") or []
@@ -937,7 +937,7 @@ MORE: list[Tool] = [
           "required": ["from_place", "to_place"]}, add_trip_tool),
 ]
 
-# The bike garage's tools live with it (app/bikes/tools.py).
-from app.bikes.tools import TOOLS as _BIKE_TOOLS
+# The bike garage's tools live with it (app/modules/bikes/tools.py).
+from app.modules.bikes.tools import TOOLS as _BIKE_TOOLS
 
 MORE += _BIKE_TOOLS

@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from app.bikes import defaults as D
-from app.bikes import wear as W
+from app.modules.bikes import defaults as D
+from app.modules.bikes import wear as W
 
 T0 = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -159,8 +159,8 @@ def garage(monkeypatch: pytest.MonkeyPatch) -> Any:
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
 
-    from app.bikes import api as A
     from app.main import app
+    from app.modules.bikes import api as A
 
     tables = ("bike_service", "bike_ride", "bike_fit", "bike_part", "bike_set", "bike", "bike_rider", "place")
     eng = sa.create_engine(DB)  # type: ignore[arg-type]
@@ -292,8 +292,8 @@ def test_a_garage_from_riders_to_due_parts(garage: Any) -> None:
 def test_due_parts_go_on_the_outdoors_list_once_and_not_with_a_spare(garage: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     import asyncio
 
-    from app.bikes import api as A
     from app.main import app
+    from app.modules.bikes import api as A
 
     c = garage
     c.post("/v1/bikes/riders", json={"name": "Rob"})
@@ -323,8 +323,8 @@ def test_the_page_script_compiles_and_calls_real_routes(tmp_path: Any) -> None:
     import re
     import subprocess
 
-    from app.bikes.page import PAGE
     from app.main import app
+    from app.modules.bikes.page import PAGE
 
     js = re.findall(r"<script>(.*?)</script\s*>", PAGE, re.DOTALL | re.IGNORECASE)[-1]
     f = tmp_path / "bikes.js"
@@ -337,7 +337,7 @@ def test_the_page_script_compiles_and_calls_real_routes(tmp_path: Any) -> None:
 
 
 def test_every_kind_has_a_picture_and_each_bike_type_draws() -> None:
-    from app.bikes import art
+    from app.modules.bikes import art
 
     assert {k.icon for k in D.KINDS.values()} <= set(art.ICONS)
     for t in D.BIKE_TYPES:
@@ -375,7 +375,7 @@ def test_replaced_with_the_same_again_or_something_different_and_the_history_say
 
 
 def test_a_ride_on_the_wrong_bike_is_spotted_and_the_better_one_offered() -> None:
-    from app.bikes import api as A
+    from app.modules.bikes import api as A
 
     bikes = [{"id": 1, "label": "Road", "config": {"type": "road"}}, {"id": 2, "label": "Trail", "config": {"type": "full_suspension"}},
              {"id": 3, "label": "Commuter e-bike", "config": {"type": "hybrid", "ebike": True}}]  # fmt: skip
@@ -415,7 +415,7 @@ async def test_the_product_lookup_only_asks_public_https_websites(monkeypatch: p
 
     from fastapi import HTTPException
 
-    from app.bikes import api as A
+    from app.modules.bikes import api as A
 
     async def resolve(host: str, port: int, **kw: Any) -> list[Any]:
         ips = {"shop.example": "93.184.216.34", "nas.example": "10.0.2.49", "sneaky.example": "93.184.216.34"}
@@ -559,7 +559,7 @@ def test_one_bike_changed_to_axs_takes_batteries_and_they_come_off_again(garage:
 
 
 def test_what_cannot_go_where() -> None:
-    from app.bikes.placement import problems
+    from app.modules.bikes.placement import problems
 
     road = {"id": 1, "label": "Road", "config": {**D.defaults_for("road"), "front_brake": "rim", "rear_brake": "rim"}}
     gravel = {"id": 2, "label": "Gravel", "config": D.defaults_for("gravel")}
@@ -597,8 +597,8 @@ def test_a_cassette_cannot_go_on_a_front_wheel(garage: Any) -> None:
 def test_each_model_and_paint_draws_and_bad_ones_are_refused() -> None:
     from fastapi import HTTPException
 
-    from app.bikes import art
-    from app.bikes.api import _check
+    from app.modules.bikes import art
+    from app.modules.bikes.api import _check
     from app.themes import PAINTS
 
     for key, m in art.MODELS.items():

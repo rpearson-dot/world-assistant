@@ -11,9 +11,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app import bus
 from app.auth import require_token
-from app.integrations.bus import store
+from app.modules.bus import bus
+from app.modules.bus.sources.bus import store
 
 CFG = {
     "line": "213",

@@ -8,8 +8,8 @@ import zipfile
 import httpx
 import pytest
 
-from app.integrations.bods.client import BodsError
-from app.integrations.bods.disruptions import fetch, km, parse_situations
+from app.modules.bods.sources.bods.client import BodsError
+from app.modules.bods.sources.bods.disruptions import fetch, km, parse_situations
 
 SX = b"""<?xml version="1.0" encoding="UTF-8"?>
 <Siri xmlns="http://www.siri.org.uk/siri" version="2.0"><ServiceDelivery>

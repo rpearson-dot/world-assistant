@@ -44,5 +44,5 @@ the table.
 | the `floods` map layer | each warned area, coloured by severity, on by default |
 | `GET /v1/graph/disruption?place=` | with the graph on: warnings over the place and over its trips' corridors |
 
-By hand: `docker compose exec worker python -m app.integrations.flood.sync`.
+By hand: `docker compose exec worker python -m app.modules.floods.sources.flood.sync`.
 `WA_FLOOD_POLL_ENABLED=false` switches the job off.

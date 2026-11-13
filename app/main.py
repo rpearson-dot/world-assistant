@@ -16,10 +16,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import get_settings
-from app.graph import store as graph_store
 from app.logging import configure_logging
 from app.modules import registry
 from app.modules.gate import ModuleGate
+from app.modules.graph import store as graph_store
 from app.version import VERSION
 
 log = logging.getLogger("wa.api")

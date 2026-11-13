@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 import pytest
 
-from app.integrations.datathistle import client as DT
+from app.modules.events.sources.datathistle import client as DT
 
 EVENT = {"event_id": 41, "name": "Comedy at the Rose", "category": "Comedy", "tags": ["stand-up"],
          "website": "https://www.rosetheatrekingston.org/",
@@ -75,8 +75,8 @@ async def test_refusals_in_words() -> None:
 async def test_merged_with_the_others_and_credited(monkeypatch: pytest.MonkeyPatch) -> None:
     from types import SimpleNamespace
 
-    from app import events as E
     from app.config import get_settings
+    from app.modules.events import events as E
 
     monkeypatch.setattr(type(get_settings()), "datathistle_token", property(lambda self: "tok"))
     monkeypatch.setattr(type(get_settings()), "skiddle_api_key", property(lambda self: ""))

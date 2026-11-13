@@ -1,0 +1,584 @@
+"""Bus tracker API: configure trackers, see live buses, the target-stop run and its history."""
+
+from __future__ import annotations
+
+import re
+import time
+from datetime import date, datetime, timedelta
+from typing import Any, Literal
+from zoneinfo import ZoneInfo
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import text
+
+from app.auth import require_token
+from app.config import get_settings
+from app.modules.bods.sources.bods.client import BodsError, Box, box_around
+from app.modules.bods.sources.bods.txc import TxcError
+from app.modules.bus.sources.bus import store
+from app.modules.bus.sources.bus.bods_source import BodsLineClient, near_check
+from app.modules.bus.sources.bus.config import TrackerConfig
+from app.modules.bus.sources.bus.events import (
+    condition_summary,
+    journey_rows,
+    outlook,
+    pair_arrivals,
+    result_log,
+    sentence,
+    slot_reliability,
+    to_minutes,
+)
+from app.modules.bus.sources.bus.poller import Lookup, in_window
+from app.modules.bus.sources.bus.setup import SetupError, build_config, describe, return_config
+from app.modules.tfl.sources.tfl.client import TflClient, TflError
+from app.places import check_slug, place_or_default
+from app.ratelimit import SlidingWindowLimiter
+
+router = APIRouter(prefix="/v1/bus", tags=["bus"], dependencies=[Depends(require_token)])
+
+HISTORY_DAYS = 30
+
+
+class TrackerIn(BaseModel):
+    config: TrackerConfig
+    enabled: bool = True
+
+
+def _tfl(request: Request) -> TflClient:
+    key = get_settings().tfl_app_key
+    return TflClient(
+        key, limiter=SlidingWindowLimiter(request.app.state.redis, "tfl", 250 if key else 30)
+    )
+
+
+async def _home_box(request: Request, place: str | None, lat: float | None, lon: float | None) -> Box | None:
+    """A box round the given point or place (default: home) to look for a line's buses in; None if no place is saved."""
+    if lat is None or lon is None:
+        try:
+            pid = await place_or_default(request, place)
+        except HTTPException:
+            return None
+        async with request.app.state.engine.connect() as conn:
+            row = (await conn.execute(text("SELECT lat, lon FROM place WHERE id = :p"), {"p": pid})).first()
+        if row is None:
+            return None
+        lat, lon = row
+    return box_around(lat, lon, 15.0)
+
+
+async def _sequences(
+    request: Request, line: str, source: str | None = None, operator: str | None = None,
+    place: str | None = None, lat: float | None = None, lon: float | None = None,
+) -> tuple[dict[str, list[dict[str, str]]], dict[str, Any]]:
+    """The line's stops by direction and where they came from: TfL when it knows the line (it has predictions),
+    otherwise BODS. `source` forces one, as the setup page does after the stops step."""
+    if not re.fullmatch(r"[A-Za-z0-9-]{1,20}", line):
+        raise HTTPException(422, "that does not look like a line name")
+    tfl_problem = ""
+    if source != "bods":
+        try:
+            async with _tfl(request) as c:
+                seqs = {d: await c.route_sequence(line, d) for d in ("outbound", "inbound")}
+            if any(seqs.values()):
+                return seqs, {"source": "tfl", "operator": None}
+            tfl_problem = f"TfL has no stops for line {line!r}"
+        except TflError as exc:
+            tfl_problem = str(exc)
+        if source == "tfl":
+            raise HTTPException(404 if "not found" in tfl_problem else 502, tfl_problem)
+    key = get_settings().bods_api_key
+    if not key:
+        raise HTTPException(404, f"{tfl_problem or 'Not a TfL line'}. For lines outside London add a free BODS key under Settings > Keys.")
+    box = await _home_box(request, place, lat, lon)
+
+    async def coords_of(sids: list[str]) -> dict[str, tuple[float, float]]:
+        async with request.app.state.engine.connect() as conn:
+            return await store.stop_coords(conn, sids)
+
+    client = BodsLineClient(key, operator, box, near_check(coords_of, box) if box else None)
+    try:
+        seqs = {d: await client.route_sequence(line, d) for d in ("outbound", "inbound")}
+    except (BodsError, TxcError) as exc:
+        raise HTTPException(404 if "no timetable" in str(exc) else 502, f"{tfl_problem + '; ' if tfl_problem else ''}{exc}") from exc
+    if not any(seqs.values()):
+        raise HTTPException(404, f"no stops found for line {line!r}")
+    return seqs, {"source": "bods", "operator": client.noc}
+
+
+class SetupIn(BaseModel):
+    line: str
+    board: str = Field(description="stop id where you get on")
+    target: str = Field(description="stop id where you need to get to, in the same direction")
+    watch: list[str] = Field(default_factory=list, description="other stops to time on the way")
+    earliest: str = Field("07:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    deadline: str = Field("08:10", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    name: str = "main"
+    return_earliest: str | None = Field(
+        None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$",
+        description="also track the way back (the other side of each stop), earliest bus; needs return_deadline",
+    )
+    return_deadline: str | None = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$", description="the way back: arrive by")
+    return_board: str | None = Field(None, description="the way back: the stop to get on at, where its name differs")
+    return_target: str | None = Field(None, description="the way back: the stop to get off at, where its name differs")
+    source: Literal["tfl", "bods"] | None = Field(None, description="as reported when the stops were listed")
+    operator: str | None = Field(None, pattern=r"^[A-Za-z0-9]{2,10}$", description="BODS only, as reported with the stops")
+
+
+_HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
+
+
+class SettingsIn(BaseModel):
+    tracker: str | None = Field(None, description="which tracker; optional when there is only one")
+    deadline: str | None = Field(None, pattern=_HHMM, description="arrive by this time, e.g. 08:10")
+    earliest: str | None = Field(None, pattern=_HHMM)
+    show_until: str | None = Field(None, pattern=_HHMM, description="stop showing the chance after this time")
+
+    @field_validator("tracker", "deadline", "earliest", "show_until", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, v: Any) -> Any:  # Home Assistant sends "" for the fields it is not changing
+        return None if isinstance(v, str) and not v.strip() else v
+
+
+@router.post("/settings")
+async def change_settings(request: Request, body: SettingsIn) -> dict[str, Any]:
+    """Change the times of a tracker without touching its route or history. Meant for Home Assistant,
+    so it answers {"ok", "message"} rather than an error code. History already recorded keeps the
+    deadline it was recorded under; the new one applies from the next scheduled bus."""
+    changes = body.model_dump(exclude_none=True, exclude={"tracker"})
+    if not changes:
+        return {"ok": False, "message": "nothing to change"}
+    async with request.app.state.engine.begin() as conn:
+        rows = await store.list_trackers(conn)
+        if body.tracker:
+            tid = body.tracker
+        elif len(rows) == 1:
+            tid = rows[0]["id"]
+        else:
+            return {"ok": False, "message": "say which tracker: " + ", ".join(r["id"] for r in rows) if rows else "no bus tracker is set up"}
+        row = await store.get_tracker(conn, tid)
+        if not row:
+            return {"ok": False, "message": f"no tracker called {tid!r}"}
+        cfg = {**row["config"], **changes}
+        try:
+            TrackerConfig.model_validate(cfg)
+        except ValueError as exc:
+            return {"ok": False, "message": str(exc)}
+        if to_minutes(cfg.get("earliest", "07:00")) >= to_minutes(cfg.get("deadline", "08:10")):
+            return {"ok": False, "message": "the earliest time must be before the deadline"}
+        await store.update_config(conn, tid, cfg)
+    return {"ok": True, "tracker": tid, "message": "updated " + ", ".join(f"{k} {v}" for k, v in changes.items()), **changes}
+
+
+@router.get("/lines/{line}/stops")
+async def line_stops(
+    request: Request, line: str,
+    place: str | None = Query(None, description="where to look for the line's buses outside London; default: home"),
+    lat: float | None = Query(None, ge=49.5, le=61.0), lon: float | None = Query(None, ge=-8.7, le=2.0),
+) -> dict[str, Any]:
+    """The stops on a line in each direction, for choosing a journey. London lines come from TfL (with
+    arrival predictions); any other line in Britain comes from BODS (GPS positions and the operator's timetable)."""
+    seqs, src = await _sequences(request, line, None, None, place, lat, lon)
+    return {**describe(seqs), "_source": src["source"], "_operator": src["operator"]}
+
+
+@router.post("/setup")
+async def setup(request: Request, body: SetupIn) -> dict[str, Any]:
+    """Create or replace a tracker from plain choices; works out everything else. With a way-back window it also
+    creates `<name>-return`: the other side of each stop, from where you got off to where you got on."""
+    check_slug(body.name)
+    if bool(body.return_earliest) != bool(body.return_deadline):
+        raise HTTPException(422, "the way back needs both an earliest time and an arrive-by time")
+    back_id = f"{body.name}-return"
+    if body.return_earliest:
+        check_slug(back_id)
+    seqs, src = await _sequences(request, body.line, body.source, body.operator)
+    try:
+        cfg = build_config(
+            body.line, seqs, body.board, body.target, body.watch, body.earliest, body.deadline
+        )
+        if src["source"] == "bods":
+            cfg.update(source="bods", operator=src["operator"])
+        TrackerConfig.model_validate(cfg)
+    except (SetupError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    back: dict[str, Any] | None = None
+    if body.return_earliest and body.return_deadline:
+        try:
+            back = return_config(body.line, seqs, body.board, body.target, body.return_earliest, body.return_deadline,
+                                 body.return_board, body.return_target)
+            if src["source"] == "bods":
+                back.update(source="bods", operator=src["operator"])
+            TrackerConfig.model_validate(back)
+        except (SetupError, ValueError) as exc:
+            raise HTTPException(422, f"the way back: {exc}") from exc
+    async with request.app.state.engine.begin() as conn:  # both, or neither
+        await store.upsert_tracker(conn, body.name, cfg, True)
+        if back is not None:
+            await store.upsert_tracker(conn, back_id, back, True)
+    names = {s["sid"]: s["label"] for s in cfg["stops"]}
+    t = cfg["target"]
+    out: dict[str, Any] = {"id": body.name, "source": src["source"], "direction": t["direction"], "board": names[cfg["stops"][0]["sid"]],
+                           "stops_tracked": [s["label"] for s in cfg["stops"]],
+                           "return_side_found": t["alight_return"] is not None}  # fmt: skip
+    if back is not None:
+        back_names = {s["sid"]: s["label"] for s in back["stops"]}
+        out["return_tracker"] = {"id": back_id, "board": back_names[back["stops"][0]["sid"]],
+                                 "target": next(s["label"] for s in back["stops"] if s["key"] == "target"),
+                                 "earliest": body.return_earliest, "deadline": body.return_deadline}  # fmt: skip
+    return out
+
+
+@router.get("/trackers/{tid}/summary")
+async def summary(request: Request, tid: str) -> dict[str, Any]:
+    _, cfg = await _load(request, tid)
+    return {
+        "line": cfg.line,
+        "stops": [s.label for s in cfg.stops],
+        "earliest": cfg.earliest,
+        "deadline": cfg.deadline,
+    }
+
+
+def _tz() -> ZoneInfo:
+    return ZoneInfo(get_settings().local_tz)
+
+
+async def _load(request: Request, tid: str) -> tuple[dict[str, Any], TrackerConfig]:
+    check_slug(tid)
+    async with request.app.state.engine.connect() as conn:
+        row = await store.get_tracker(conn, tid)
+    if not row:
+        raise HTTPException(404, "no such tracker")
+    return row, TrackerConfig.model_validate(row["config"])
+
+
+@router.put("/trackers/{tid}")
+async def put_tracker(request: Request, tid: str, body: TrackerIn) -> dict[str, Any]:
+    """Create or replace a tracker. Replacing restarts tracking and re-reads the route."""
+    check_slug(tid)
+    async with request.app.state.engine.begin() as conn:
+        await store.upsert_tracker(conn, tid, body.config.model_dump(mode="json"), body.enabled)
+    return {"id": tid, "enabled": body.enabled}
+
+
+@router.get("/trackers")
+async def get_trackers(request: Request) -> list[dict[str, Any]]:
+    async with request.app.state.engine.connect() as conn:
+        rows = await store.list_trackers(conn)
+    return [
+        {
+            "id": r["id"],
+            "enabled": r["enabled"],
+            "line": r["config"].get("line"),
+            "last_poll": r["state_updated"],
+        }
+        for r in rows
+    ]
+
+
+@router.get("/trackers/{tid}")
+async def get_tracker(request: Request, tid: str) -> dict[str, Any]:
+    row, _ = await _load(request, tid)
+    return {
+        "id": tid,
+        "enabled": row["enabled"],
+        "config": row["config"],
+        "last_poll": row["state_updated"],
+    }
+
+
+@router.delete("/trackers/{tid}", status_code=204)
+async def remove_tracker(request: Request, tid: str) -> None:
+    check_slug(tid)
+    async with request.app.state.engine.begin() as conn:
+        if not await store.delete_tracker(conn, tid):
+            raise HTTPException(404, "no such tracker")
+
+
+@router.get("/trackers/{tid}/live")
+async def live(request: Request, tid: str) -> dict[str, Any]:
+    """Buses being followed right now, and the next arrivals at each stop of interest."""
+    row, cfg = await _load(request, tid)
+    async with request.app.state.engine.connect() as conn:
+        lookup = Lookup(await store.load_sequences(conn, tid))
+    now = time.time()
+    active = []
+    for trip in row["state"].get("trips", {}).values():
+        last = trip["stops"][-1] if trip["stops"] else None
+        active.append({
+            "vehicle": trip["vehicle"], "direction": trip["dir"],
+            "last_stop": lookup.names.get(last["sid"]) if last else None,
+            "stops_seen": len(trip["stops"]),
+        })  # fmt: skip
+    try:
+        async with _tfl(request) as c:
+            preds = await c.line_arrivals(cfg.line)
+    except TflError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    next_at: dict[str, list[dict[str, Any]]] = {}
+    for stop in cfg.stops:
+        rows = sorted(
+            (p for p in preds if p.get("naptanId") == stop.sid),
+            key=lambda p: p.get("timeToStation", 0),
+        )
+        next_at[stop.key] = [
+            {"label": stop.label, "vehicle": p.get("vehicleId"), "minutes": round(p.get("timeToStation", 0) / 60),
+             "expected": p.get("expectedArrival"), "towards": p.get("destinationName")}
+            for p in rows[:3]
+        ]  # fmt: skip
+    async with request.app.state.engine.connect() as conn:  # how full each one says it is, when it does
+        vehicles = sorted({r["vehicle"] for rows in next_at.values() for r in rows if r["vehicle"]})
+        occ = await store.latest_occupancy(conn, tid, vehicles)
+    for rows in next_at.values():
+        for r in rows:
+            o = occ.get(r["vehicle"] or "")
+            r["occupancy"], r["occupancy_counts"] = (o or {}).get("occupancy"), (o or {}).get("counts") or {}
+    return {"as_of": now, "active": active, "next": next_at}
+
+
+async def _history(request: Request, tid: str, since: Any) -> tuple[list[Any], list[Any]]:
+    async with request.app.state.engine.connect() as conn:
+        day_rows = (await conn.execute(
+            text("SELECT day, slots, explained FROM bus_target_day WHERE tracker = :t AND day >= :s ORDER BY day"),
+            {"t": tid, "s": since})).all()  # fmt: skip
+        hit_rows = (await conn.execute(
+            text("SELECT day, slot, arrive_at, delay_min FROM bus_target_hit "
+                 "WHERE tracker = :t AND day >= :s AND slot IS NOT NULL"),
+            {"t": tid, "s": since})).all()  # fmt: skip
+    return list(day_rows), list(hit_rows)
+
+
+@router.get("/trackers/{tid}/target")
+async def target(
+    request: Request, tid: str, day: str | None = Query(None, pattern=r"^\d{4}-\d\d-\d\d$")
+) -> dict[str, Any]:
+    """The run to the target stop: which buses made it before the deadline, and which is the last.
+    `outlook` is the chance each remaining bus gets there by the deadline (weekday mornings only)."""
+    _, cfg = await _load(request, tid)
+    if not cfg.target:
+        raise HTTPException(409, "this tracker has no target configured")
+    from app.bankholidays import ensure, is_bank_holiday
+
+    await ensure(request.app.state.engine)
+    tz = _tz()
+    now = datetime.now(tz)
+    the_day = day or now.date().isoformat()
+    async with request.app.state.engine.connect() as conn:
+        d = (await conn.execute(
+            text("SELECT slots, explained FROM bus_target_day WHERE tracker = :t AND day = :d"),
+            {"t": tid, "d": the_day})).first()  # fmt: skip
+        hits = [dict(r._mapping) for r in await conn.execute(
+            text("SELECT vehicle, board_at, arrive_at, slot, delay_min, via_return FROM bus_target_hit "
+                 "WHERE tracker = :t AND day = :d ORDER BY arrive_at"),
+            {"t": tid, "d": the_day})]  # fmt: skip
+    hit_slots = {h["slot"] for h in hits if h["slot"]}
+    slots = list(d[0]) if d else []
+    async with request.app.state.engine.connect() as conn:
+        due = await store.get_timetable(conn, tid, cfg.sid(cfg.target.alight), max_age_days=60)
+    is_today = the_day == now.date().isoformat()
+    journeys = journey_rows(
+        slots, hits, pair_arrivals(slots, due or []), now.hour * 60 + now.minute if is_today else None,
+        lambda t: t.astimezone(tz).strftime("%H:%M") if t else None,
+    )
+    explained = dict(d[1] or {}) if d else {}
+    left_ts = {(h["vehicle"], h["board_at"].astimezone(tz).strftime("%H:%M")): h["board_at"].timestamp() for h in hits}
+    for j in journeys:  # the bus that missed, and why (see events.explain_misses)
+        why = explained.get(j["slot"]) if j["status"] == "missed" else None
+        if why:
+            j.update(vehicle=why.get("vehicle"), why=why.get("why"), why_kind=why.get("kind"))
+        j["left_ts"] = (why or {}).get("left_ts") or left_ts.get((j.get("vehicle"), j.get("left")))
+    async with request.app.state.engine.connect() as conn:  # how full each bus said it was as it left your stop
+        for j in journeys:
+            ts = j.pop("left_ts", None)
+            occ = await store.occupancy_at(conn, tid, j["vehicle"], ts) if j.get("vehicle") and ts else None
+            j["occupancy"] = (occ or {}).get("occupancy")
+            j["occupancy_counts"] = (occ or {}).get("counts") or {}
+        occupancy = await store.occupancy_summary(conn, tid, (now - timedelta(days=HISTORY_DAYS)).date())
+    labels = {s.key: s.label for s in cfg.stops}
+    pending = [s for s in slots if s not in hit_slots]
+    last = hits[-1] if hits else None
+    since = (now - timedelta(days=HISTORY_DAYS)).date()
+    day_rows, hit_rows = await _history(request, tid, since)
+    by_day: dict[str, list[str]] = {}
+    for hday, slot, _a, _d in hit_rows:
+        by_day.setdefault(hday.isoformat(), []).append(slot)
+    reliability = slot_reliability(
+        [{"date": dd.isoformat(), "slots": list(ss), "hit_slots": by_day.get(dd.isoformat(), [])} for dd, ss, _e in day_rows],
+        now.date().isoformat(), now.hour * 60 + now.minute,
+    )  # fmt: skip
+    chance = outlook(
+        slots=slots, hit_slots=sorted(hit_slots), reliability=reliability,
+        now_minutes=now.hour * 60 + now.minute, show_until=cfg.show_until,
+        weekday_ok=not (cfg.weekdays_only and (now.weekday() > 4 or is_bank_holiday(now.date()))),
+    )  # fmt: skip
+    return {
+        "day": the_day, "earliest": cfg.earliest, "deadline": cfg.deadline,
+        "board": cfg.target.board, "tracking_now": in_window(cfg, now), "scheduled": slots, "pending": pending,
+        "hits": hits, "last_bus": last, "outlook": chance, "journeys": journeys,
+        "board_label": labels.get(cfg.target.board, ""), "alight_label": labels.get(cfg.target.alight, ""),
+        "summary": sentence(last, cfg.deadline, tz), "occupancy": occupancy,
+    }  # fmt: skip
+
+
+@router.get("/trackers/{tid}/log")
+async def log(request: Request, tid: str, days: int = Query(HISTORY_DAYS, ge=1, le=90)) -> dict[str, Any]:
+    """Success and failure of every scheduled bus on every recorded day: did a bus from the boarding
+    stop reach the target (either side of the road) before the deadline?"""
+    _, cfg = await _load(request, tid)
+    tz = _tz()
+    now = datetime.now(tz)
+    day_rows, hit_rows = await _history(request, tid, (now - timedelta(days=days)).date())
+    hits = [
+        {"date": hday.isoformat(), "slot": slot, "arrive": arrive.astimezone(tz).strftime("%H:%M") if arrive else None,
+         "delay_min": delay}
+        for hday, slot, arrive, delay in hit_rows
+    ]  # fmt: skip
+    out = result_log([(dd.isoformat(), list(ss)) for dd, ss, _e in day_rows], hits, now.date().isoformat(),
+                     now.hour * 60 + now.minute, {dd.isoformat(): dict(e or {}) for dd, _s, e in day_rows})  # fmt: skip
+    return {"deadline": cfg.deadline, "window_days": days, **out}
+
+
+def _clock(epoch_s: Any, tz: ZoneInfo) -> str | None:
+    try:
+        return datetime.fromtimestamp(float(epoch_s), tz).strftime("%H:%M")
+    except (TypeError, ValueError):
+        return None
+
+
+@router.get("/trackers/{tid}/terminations")
+async def terminations(request: Request, tid: str, days: int = Query(7, ge=1, le=60)) -> dict[str, Any]:
+    """A daily log of buses that ended a trip short of the end of the route while the tracker was
+    watching: where they were last seen and when, whether they turned back (and where they next
+    appeared) or just stopped appearing. Newest day first."""
+    _, cfg = await _load(request, tid)
+    tz = _tz()
+    now = datetime.now(tz)
+    since = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    async with request.app.state.engine.connect() as conn:
+        rows = (await conn.execute(
+            text("SELECT at, vehicle, detail FROM bus_anomaly WHERE tracker = :t AND type = 'early_termination' "
+                 "AND at >= :s ORDER BY at"),
+            {"t": tid, "s": since})).all()  # fmt: skip
+    lo, hi = to_minutes(cfg.earliest), to_minutes(cfg.deadline)
+    by_day: dict[str, list[dict[str, Any]]] = {}
+    for at, vehicle, d in rows:
+        seen = _clock(d.get("at"), tz) or at.astimezone(tz).strftime("%H:%M")
+        resumed = _clock(d.get("resumed_at"), tz)
+        mins = to_minutes(seen)
+        by_day.setdefault(at.astimezone(tz).date().isoformat(), []).append({
+            "time": seen, "vehicle": vehicle, "kind": d.get("kind"), "direction": d.get("direction"), "towards": d.get("towards"),
+            "stop": d.get("stop"), "stops_before_end": d.get("stops_before_end"),
+            "resumed_at_stop": d.get("resumed_stop"), "resumed_at_time": resumed,
+            "in_target_window": lo <= mins <= hi,
+        })  # fmt: skip
+    out = [{"date": k, "count": len(v), "in_target_window": sum(1 for e in v if e["in_target_window"]), "buses": v}
+           for k, v in sorted(by_day.items(), reverse=True)]  # fmt: skip
+    return {"window": {"earliest": cfg.earliest, "deadline": cfg.deadline}, "days": out}
+
+
+@router.get("/trackers/{tid}/reliability")
+async def reliability(
+    request: Request, tid: str, days: int = Query(HISTORY_DAYS, ge=1, le=90)
+) -> dict[str, Any]:
+    """How often each scheduled slot actually produced a bus at the target stop."""
+    _, cfg = await _load(request, tid)
+    tz = _tz()
+    now = datetime.now(tz)
+    since = (now - timedelta(days=days)).date()
+    async with request.app.state.engine.connect() as conn:
+        day_rows = (await conn.execute(
+            text("SELECT day, slots FROM bus_target_day WHERE tracker = :t AND day >= :s ORDER BY day"),
+            {"t": tid, "s": since})).all()  # fmt: skip
+        hit_rows = (await conn.execute(
+            text("SELECT day, slot FROM bus_target_hit WHERE tracker = :t AND day >= :s AND slot IS NOT NULL"),
+            {"t": tid, "s": since})).all()  # fmt: skip
+    hit_by_day: dict[str, list[str]] = {}
+    for d, slot in hit_rows:
+        hit_by_day.setdefault(d.isoformat(), []).append(slot)
+    history = [{"date": d.isoformat(), "slots": list(s), "hit_slots": hit_by_day.get(d.isoformat(), [])}
+               for d, s in day_rows]  # fmt: skip
+    return {
+        "days_recorded": len(history),
+        "deadline": cfg.deadline,
+        "slots": slot_reliability(history, now.date().isoformat(), now.hour * 60 + now.minute),
+    }
+
+
+@router.get("/trackers/{tid}/conditions")
+async def conditions(request: Request, tid: str) -> list[dict[str, Any]]:
+    """Leg times today, last 30 minutes against the day's average."""
+    _, cfg = await _load(request, tid)
+    tz = _tz()
+    start = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    names = {s.sid: s.label for s in cfg.stops}
+    out = []
+    async with request.app.state.engine.connect() as conn:
+        for a, b in cfg.segment_pairs():
+            rows = (await conn.execute(
+                text("SELECT extract(epoch FROM observed_at) AS observed_at, seconds FROM bus_segment_obs "
+                     "WHERE tracker = :t AND from_stop = :a AND to_stop = :b AND observed_at >= :s"),
+                {"t": tid, "a": a, "b": b, "s": start})).all()  # fmt: skip
+            obs = [{"observed_at": float(r[0]), "seconds": float(r[1])} for r in rows]
+            out.append(
+                {
+                    "from": names.get(a, a),
+                    "to": names.get(b, b),
+                    **condition_summary(obs, time.time()),
+                }
+            )
+    return out
+
+
+@router.get("/trackers/{tid}/positions")
+async def positions(
+    request: Request, tid: str, day: date | None = None, vehicle: str | None = None,
+    limit: int = Query(2000, ge=1, le=20000),
+) -> dict[str, Any]:
+    """GPS fixes of the buses the tracker followed inside its journey window (from BODS), oldest first.
+    Default: today. Each bus's fixes, in order, are its track along the route."""
+    await _load(request, tid)
+    tz = _tz()
+    d = day or datetime.now(tz).date()
+    lo = datetime(d.year, d.month, d.day, tzinfo=tz)
+    async with request.app.state.engine.connect() as conn:
+        rows = (await conn.execute(
+            text("SELECT vehicle, recorded_at, lat, lon, bearing, destination, bods_direction, occupancy, occupancy_counts "
+                 "FROM bus_position "
+                 "WHERE tracker = :t AND recorded_at >= :lo AND recorded_at < :hi "
+                 "AND (CAST(:v AS text) IS NULL OR vehicle = :v) ORDER BY recorded_at LIMIT :n"),
+            {"t": tid, "lo": lo, "hi": lo + timedelta(days=1), "v": vehicle, "n": limit})).all()  # fmt: skip
+    return {"date": d.isoformat(), "count": len(rows),
+            "fixes": [{"vehicle": r.vehicle, "at": r.recorded_at.astimezone(tz).isoformat(), "lat": r.lat, "lon": r.lon,
+                       "bearing": r.bearing, "destination": r.destination, "direction": r.bods_direction,
+                       "occupancy": r.occupancy, "occupancy_counts": r.occupancy_counts}
+                      for r in rows]}  # fmt: skip
+
+
+@router.get("/trackers/{tid}/anomalies")
+async def anomalies(
+    request: Request, tid: str, limit: int = Query(50, ge=1, le=500), type: str | None = None
+) -> list[dict[str, Any]]:
+    """Recent anomalies. The bookkeeping `first_seen` entries, and the "reported at an earlier stop" entries recorded
+    before 0.23.2 (the predictions shifting, not the bus), are left out unless asked for with `?type=`."""
+    await _load(request, tid)
+    async with request.app.state.engine.connect() as conn:
+        res = await conn.execute(
+            text(
+                "SELECT at, vehicle, type, detail FROM bus_anomaly WHERE tracker = :t "
+                "AND (CAST(:ty AS text) IS NULL AND type NOT IN ('first_seen', 'reverse_movement') OR type = CAST(:ty AS text)) "
+                "ORDER BY at DESC LIMIT :n"
+            ),
+            {"t": tid, "n": limit, "ty": type},
+        )
+        return [dict(r._mapping) for r in res]  # fmt: skip
+
+
+@router.post("/trackers/{tid}/refresh-route")
+async def refresh_route(request: Request, tid: str) -> dict[str, str]:
+    """Forget the stored stop order and timetable so the next poll re-reads them from TfL."""
+    await _load(request, tid)
+    async with request.app.state.engine.begin() as conn:
+        await conn.execute(text("DELETE FROM bus_stop WHERE tracker = :t"), {"t": tid})
+        await conn.execute(text("DELETE FROM bus_timetable WHERE tracker = :t"), {"t": tid})
+    return {"status": "will refresh on the next poll"}

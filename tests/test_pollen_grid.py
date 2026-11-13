@@ -5,8 +5,9 @@ from typing import Any, Self
 
 import pytest
 
-from app import ha_publish, pollen_grid
-from app.pollen_grid import fingerprint, grid_points, nearest, on_land
+from app import ha_publish
+from app.modules.pollen import pollen_grid
+from app.modules.pollen.pollen_grid import fingerprint, grid_points, nearest, on_land
 
 NOW = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
 
@@ -129,7 +130,7 @@ class _Redis:
 def _patch(monkeypatch: pytest.MonkeyPatch, *, fail: bool = False, have: list[dict[str, Any]] | None = None,
            fail_north_of: float | None = None) -> list[Any]:  # fmt: skip
     from app import jobs
-    from app.integrations.pollen.client import PollenError
+    from app.modules.pollen.sources.pollen.client import PollenError
 
     calls: list[Any] = []
 
@@ -217,7 +218,7 @@ async def test_the_grid_leaves_part_of_the_daily_budget_for_other_calls(monkeypa
 
 @pytest.mark.asyncio
 async def test_no_pollen_request_is_made_once_the_day_is_used_up() -> None:
-    from app.pollen_budget import PollenBudgetError, PollenLimiter
+    from app.modules.pollen.pollen_budget import PollenBudgetError, PollenLimiter
 
     redis = _Redis(used=36)
     limiter = PollenLimiter(redis, 36)

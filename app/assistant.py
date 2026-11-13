@@ -18,18 +18,18 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy import text
 
 from app.auth import require_token
-from app.bus import live as bus_live
-from app.bus import target as bus_target
 from app.config import get_settings
-from app.energy import sessions as energy_sessions
-from app.energy import speech as energy_speech
-from app.energy import store as energy_store
-from app.energy import summary as energy_summary
-from app.events import near as events_near
-from app.fuel import near as fuel_near
-from app.pollen import near as pollen_near
-from app.tfl import departures as board_departures
-from app.vehicles import trip_cost
+from app.modules.bus.bus import live as bus_live
+from app.modules.bus.bus import target as bus_target
+from app.modules.events.events import near as events_near
+from app.modules.fuel.fuel import near as fuel_near
+from app.modules.octopus import sessions as energy_sessions
+from app.modules.octopus import speech as energy_speech
+from app.modules.octopus import store as energy_store
+from app.modules.octopus import summary as energy_summary
+from app.modules.pollen.pollen import near as pollen_near
+from app.modules.tfl.tfl import departures as board_departures
+from app.modules.vehicles.vehicles import trip_cost
 from app.version import VERSION
 
 log = logging.getLogger("wa.assistant")
@@ -129,7 +129,7 @@ async def energy_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def conditions_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.conditions import all_conditions, trip_conditions
+    from app.modules.conditions.conditions import all_conditions, trip_conditions
 
     days = int(args.get("days") or 7)
     trip = str(args.get("trip") or "") or None
@@ -253,7 +253,7 @@ def _closure_text(items: list[dict[str, Any]]) -> str:
 
 
 async def station_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.stations import alerts, near, one, search
+    from app.modules.tflstations.stations import alerts, near, one, search
 
     name = str(args.get("name") or "").strip()
     if name:
@@ -285,7 +285,7 @@ async def station_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]
     r = await _wrap(alerts(request, None, bool(args.get("lifts_only"))))
     return {"text": f"{r['count']} closures across TfL stations now.", "data": r}
 async def power_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.power import cuts, history, supply, works
+    from app.modules.ukpn.power import cuts, history, supply, works
 
     place = args.get("place")
     what = str(args.get("about") or "cuts")
@@ -329,7 +329,7 @@ async def power_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def ev_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
-    from app.ev import along_trip, car_connector, sites
+    from app.modules.gridserve.ev import along_trip, car_connector, sites
 
     connector = args.get("connector") or None
     free = bool(args.get("free_only"))

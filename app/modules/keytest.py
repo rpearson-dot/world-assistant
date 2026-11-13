@@ -14,7 +14,7 @@ from app.config import Settings
 
 
 async def _bods(s: Settings) -> tuple[bool, str]:
-    from app.integrations.bods.client import BodsError, find_datasets
+    from app.modules.bods.sources.bods.client import BodsError, find_datasets
 
     try:
         sets = await find_datasets(s.bods_api_key, limit=1)
@@ -38,7 +38,7 @@ async def _tfl(s: Settings) -> tuple[bool, str]:
 
 
 async def _tfwm(s: Settings) -> tuple[bool, str]:
-    from app.integrations.tfwm.client import TfwmClient, TfwmError
+    from app.modules.tfwm.sources.tfwm.client import TfwmClient, TfwmError
 
     try:
         client = TfwmClient(s.tfwm_app_id, s.tfwm_app_key, s.tfwm_base_url)

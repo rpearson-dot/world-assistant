@@ -153,7 +153,7 @@ class Settings(BaseSettings):
     gridserve_poll_enabled: bool = False
     gridserve_interval_min: int = 60  # the whole network (about 2 MB) each read: hourly by default
     # Bus disruptions published to BODS (SIRI-SX) by 12 or so authorities, none of them London or the Midlands
-    # yet: off unless you live where they publish (python -m app.integrations.bods.disruptions_probe shows it).
+    # yet: off unless you live where they publish (python -m app.modules.bods.sources.bods.disruptions_probe shows it).
     bus_disruptions_poll_enabled: bool = False
     bus_disruptions_km: float = 25.0  # kept when a stop or place it names is this close to a saved place
     bus_disruptions_stale_days: int = 90  # an open-ended one that started longer ago than this is dropped

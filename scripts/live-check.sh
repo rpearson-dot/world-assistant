@@ -137,16 +137,16 @@ get("API health", "/healthz", show=500)
 run("Smoke (every page and GET endpoint)", "app.smoke", timeout=300)
 
 # 0.31.0: Air and water
-run("Air and water probe (Defra, EA, overflow Hub)", "app.environment", module="environment")
+run("Air and water probe (Defra, EA, overflow Hub)", "app.modules.environment.environment", module="environment")
 get("Air and water summary", "/v1/environment/summary", show=3000)
 get("Storm overflows", "/v1/environment/overflows")
 
 # 0.32.0 and 0.33.0: Wishlist, Outdoors
 if not QUICK:
-    run("Wishlist probe (Aldi, Lidl)", "app.wishlist", "kamado", "bbq", module="wishlist")
-    run("Outdoors probe (GO Outdoors, Bikesy)", "app.outdoors", "105", "cassette", module="outdoors")
-    run("Outdoors probe (GO Outdoors, Bikesy) 2", "app.outdoors", "two", "man", "tent", module="outdoors")
-    run("Sigma Sports product page probe", "app.outdoors",
+    run("Wishlist probe (Aldi, Lidl)", "app.modules.wishlist.wishlist", "kamado", "bbq", module="wishlist")
+    run("Outdoors probe (GO Outdoors, Bikesy)", "app.modules.outdoors.outdoors", "105", "cassette", module="outdoors")
+    run("Outdoors probe (GO Outdoors, Bikesy) 2", "app.modules.outdoors.outdoors", "two", "man", "tent", module="outdoors")
+    run("Sigma Sports product page probe", "app.modules.outdoors.outdoors",
         "https://www.sigmasports.com/item/Shimano/105-HG700-11-speed-Cassette-11-34T/IST8", module="outdoors")
 get("Wishlist list", "/v1/wishlist", show=2000)
 get("Outdoors list", "/v1/outdoors", show=2000)
@@ -166,36 +166,36 @@ if keys["what3words_api_key"]:
     run("what3words probe (the words for home; not counted)", "app.integrations.what3words.client", str(lat), str(lon),
         module="here")
 if keys["datathistle_token"]:
-    run("Data Thistle probe (one request)", "app.integrations.datathistle.client", str(lat), str(lon), module="events")
+    run("Data Thistle probe (one request)", "app.modules.events.sources.datathistle.client", str(lat), str(lon), module="events")
 if not QUICK and keys["bods_api_key"]:
-    run("BODS bus line probe (the 406)", "app.integrations.bus.bods_probe", "406", "51.3343", "-0.2678", timeout=240,
+    run("BODS bus line probe (the 406)", "app.modules.bus.sources.bus.bods_probe", "406", "51.3343", "-0.2678", timeout=240,
         module="bods", known="TfL's buses publish no timetable to BODS; live times come from TfL")
-    run("BODS disruptions probe", "app.integrations.bods.disruptions_probe", str(lat), str(lon), "25", timeout=240,
+    run("BODS disruptions probe", "app.modules.bods.sources.bods.disruptions_probe", str(lat), str(lon), "25", timeout=240,
         module="busdisruptions")
 
 # 0.39.0: the bike garage (its rides' wet suggestion comes from the EA rain gauges)
 riders = get("Bike riders", "/v1/bikes/riders", show=1000)
 if isinstance(riders, dict) and riders.get("riders"):
     get("Bike garage (the first rider)", "/v1/bikes", show=3000, rider=riders["riders"][0]["id"])
-run("Bike rain probe (the nearest EA gauge, yesterday morning)", "app.bikes.rain", str(lat), str(lon), module="bikes")
+run("Bike rain probe (the nearest EA gauge, yesterday morning)", "app.modules.bikes.rain", str(lat), str(lon), module="bikes")
 # stage 2: Garmin Connect's Personal API (each rider's key): what it gives, then the garage's sync state
-run("Garmin probe (rides, history, gear, GPS, sensors, weight)", "app.bikes.garmin", module="bikes", timeout=300)
+run("Garmin probe (rides, history, gear, GPS, sensors, weight)", "app.modules.bikes.garmin", module="bikes", timeout=300)
 if isinstance(riders, dict):
     for r in riders.get("riders") or []:
         get(f"Garmin sync state ({r['id']})", "/v1/bikes/garmin", show=1500, rider=r["id"])
 
-run("Recalls probe (GOV.UK product safety recalls for a few bike makers)", "app.bikes.recalls", "SRAM", "Shimano", "Yeti", module="bikes")
+run("Recalls probe (GOV.UK product safety recalls for a few bike makers)", "app.modules.bikes.recalls", "SRAM", "Shimano", "Yeti", module="bikes")
 # 0.42.0: crime and police, food standards, tax and MOT
-run("Police probe (crime within a mile of home, the last 2 months; the police team)", "app.crime", str(lat), str(lon), module="crime")
-run("Borough crime probe (home's borough against its neighbours: data.police.uk counts, Nomis populations)", "app.crime_areas", str(lat), str(lon),
+run("Police probe (crime within a mile of home, the last 2 months; the police team)", "app.modules.crime.crime", str(lat), str(lon), module="crime")
+run("Borough crime probe (home's borough against its neighbours: data.police.uk counts, Nomis populations)", "app.modules.crime.crime_areas", str(lat), str(lon),
     module="crime", timeout=240)
 get("River flow near home (EA, with the NRFA's usual flows)", "/v1/environment/flows", show=3000, lat=lat, lon=lon)
 get("Crime near home (12 months)", "/v1/crime", show=2500, lat=lat, lon=lon)
-run("Food standards probe (hygiene near home, alerts of the last 30 days)", "app.food", str(lat), str(lon), module="food")
+run("Food standards probe (hygiene near home, alerts of the last 30 days)", "app.modules.food.food", str(lat), str(lon), module="food")
 get("Food alerts and matches", "/v1/food/alerts", show=2500, limit=5)
 checks = get("Tax and MOT", "/v1/vehicle-checks", show=3000)
 regs = [v.get("registration") for v in (checks or {}).get("vehicles") or []] if isinstance(checks, dict) else []
-run("DVLA and DVSA probe (the first registration)", "app.vehiclecheck", *(regs[:1] or [""]), module="vehiclechecks")
+run("DVLA and DVSA probe (the first registration)", "app.modules.vehiclechecks.vehiclecheck", *(regs[:1] or [""]), module="vehiclechecks")
 
 head("Summary")
 for name, res in results:

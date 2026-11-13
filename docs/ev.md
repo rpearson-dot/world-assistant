@@ -55,8 +55,8 @@ Request a key on GRIDSERVE's open data page (https://www.gridserve.com/open-data
 
 ## Checking it
 
-    docker compose exec worker python -m app.integrations.gridserve.probe   # what the API sends and how it is read
-    docker compose exec worker python -m app.integrations.gridserve.sync    # read it now
+    docker compose exec worker python -m app.modules.gridserve.sources.gridserve.probe   # what the API sends and how it is read
+    docker compose exec worker python -m app.modules.gridserve.sources.gridserve.sync    # read it now
 
 `WA_GRIDSERVE_POLL_ENABLED=false` turns it off; `WA_GRIDSERVE_INTERVAL_MIN` (60) sets how often it reads (5 to 60).
 "Free now" is as of the last read: every answer says when that was (`updated`).

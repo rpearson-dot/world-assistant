@@ -16,11 +16,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app import secretstore
-from app.integrations.bus import live
-from app.integrations.bus.config import TrackerConfig
-from app.integrations.bus.poller import poll_one
-from app.integrations.bus.setup import SetupError, _shift, return_config
 from app.main import app
+from app.modules.bus.sources.bus import live
+from app.modules.bus.sources.bus.config import TrackerConfig
+from app.modules.bus.sources.bus.poller import poll_one
+from app.modules.bus.sources.bus.setup import SetupError, _shift, return_config
 from tests.test_bus_poller import T0, _FakeClient, cfg_dict, iso
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
@@ -116,7 +116,7 @@ def schema() -> Iterator[None]:
 
 
 async def drive(engine: Any, start: float, end: float, monkeypatch: pytest.MonkeyPatch, asked: list[float]) -> None:
-    from app.integrations.bus import store
+    from app.modules.bus.sources.bus import store
 
     client = _FakeClient()
     now = start

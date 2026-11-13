@@ -1,5 +1,5 @@
 """The Home Assistant energy plan package, rendered with Jinja as Home Assistant would, against a schedule that World
-Assistant really builds (app.energy.schedule) from Cosy's rates."""
+Assistant really builds (app.modules.octopus.schedule) from Cosy's rates."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.energy import rates as R
-from app.energy.schedule import build
+from app.modules.octopus import rates as R
+from app.modules.octopus.schedule import build
 
 yaml = pytest.importorskip("yaml")
 jinja2 = pytest.importorskip("jinja2")
@@ -142,7 +142,7 @@ def test_a_window_under_way_is_planned_for_today_and_free_hours_and_sessions_cou
 
 
 def test_the_schedule_reaches_home_assistant() -> None:
-    from app.energy.ha import schedule_sensor
+    from app.modules.octopus.ha import schedule_sensor
 
     (s,) = schedule_sensor({"available": True, "summary": "04:00-07:00, 13:00-16:00, 22:00-00:00", "slots": SCHED,
                             "windows": [], "warnings": [], "tariff": "E-1R-COSY"})  # fmt: skip
@@ -297,8 +297,8 @@ def test_the_schedule_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     from fastapi.testclient import TestClient
 
     from app.config import get_settings
-    from app.energy import store
     from app.main import app
+    from app.modules.octopus import store
 
     async def load(engine: object) -> tuple[str, list[R.Period]]:  # Cosy around the real clock
         today = datetime.now(LONDON).replace(hour=0, minute=0, second=0, microsecond=0)

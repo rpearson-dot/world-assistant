@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from app import assistant
-from app.integrations.skiddle.client import SkiddleClient, SkiddleError, parse_event
+from app.modules.events.sources.skiddle.client import SkiddleClient, SkiddleError, parse_event
 
 RAW = {
     "id": 123, "eventname": "Live at the Hall", "date": "2026-10-24", "EventCode": "LIVE",
@@ -133,8 +133,8 @@ class _FakeRedis:
 def test_endpoint_caches_and_needs_a_token(monkeypatch: pytest.MonkeyPatch) -> None:
     from fastapi.testclient import TestClient
 
-    from app import events
     from app.main import app
+    from app.modules.events import events
 
     monkeypatch.setenv("API_TOKEN", "s3cret")
     monkeypatch.setenv("SKIDDLE_API_KEY", "k")

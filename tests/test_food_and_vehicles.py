@@ -9,8 +9,8 @@ from typing import Any
 import httpx
 import pytest
 
-from app import food as F
-from app import vehiclecheck as V
+from app.modules.food import food as F
+from app.modules.vehiclechecks import vehiclecheck as V
 
 
 def test_hygiene_ratings_nearest_first_with_the_low_ones_named() -> None:

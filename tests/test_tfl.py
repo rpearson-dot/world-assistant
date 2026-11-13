@@ -17,10 +17,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app import tfl
-from app.integrations.tfl.client import TflClient, TflError
-from app.integrations.tfl.normalise import parse_departures, parse_time, select, summarise_status
 from app.main import app
+from app.modules.tfl import tfl
+from app.modules.tfl.sources.tfl.client import TflClient, TflError
+from app.modules.tfl.sources.tfl.normalise import (
+    parse_departures,
+    parse_time,
+    select,
+    summarise_status,
+)
 
 NOW = datetime(2026, 10, 20, 20, 0, tzinfo=UTC)  # 21:00 UK time (BST)
 
@@ -271,7 +276,7 @@ async def test_national_rail_board(schema: None, monkeypatch: pytest.MonkeyPatch
 async def test_cache_serves_stale_on_error_and_coalesces(monkeypatch: pytest.MonkeyPatch) -> None:
     import asyncio
 
-    from app.integrations.rail.rdm import RailError
+    from app.modules.nr.sources.rail.rdm import RailError
 
     tfl._cache.clear()
     tfl._locks.clear()

@@ -14,12 +14,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from app.integrations.fuelfinder import sync
-from app.integrations.fuelfinder.queries import FuelHit
-from app.integrations.nationalhighways.match import Corridor
-from app.integrations.nationalhighways.store import upsert_corridor
 from app.main import app
-from app.vehicles import litres_for, net_saving_pence
+from app.modules.fuel.sources.fuelfinder import sync
+from app.modules.fuel.sources.fuelfinder.queries import FuelHit
+from app.modules.nh.sources.nationalhighways.match import Corridor
+from app.modules.nh.sources.nationalhighways.store import upsert_corridor
+from app.modules.vehicles.vehicles import litres_for, net_saving_pence
 from tests.test_fuel_store import price, station
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
@@ -35,7 +35,7 @@ def _hit(pence: float, dist: float) -> FuelHit:
 
 
 def test_ev_energy_and_usable_battery() -> None:
-    from app.vehicles import ev_kwh_for, usable_kwh
+    from app.modules.vehicles.vehicles import ev_kwh_for, usable_kwh
 
     assert usable_kwh(40, 80) == 32.0
     assert ev_kwh_for(160.9344, 4.0) == pytest.approx(25.0)
@@ -162,7 +162,7 @@ async def test_vehicle_api_trip_cost_and_net_saving(
 def test_the_four_types_and_their_fuels() -> None:
     from pydantic import ValidationError
 
-    from app.vehicles import VehicleIn, type_of
+    from app.modules.vehicles.vehicles import VehicleIn, type_of
 
     petrol = VehicleIn(name="Estima", kind="petrol", mpg=33)
     assert (petrol.kind, petrol.fuel, type_of(petrol.kind, petrol.fuel)) == ("fuel", "E10", "petrol")
@@ -187,9 +187,9 @@ def test_the_four_types_and_their_fuels() -> None:
 async def test_an_ev_with_no_home_rate_uses_the_energy_tabs_cheapest(monkeypatch: pytest.MonkeyPatch) -> None:
     from datetime import UTC, datetime, timedelta
 
-    from app import vehicles
-    from app.energy import rates as R
-    from app.energy import store as energy_store
+    from app.modules.octopus import rates as R
+    from app.modules.octopus import store as energy_store
+    from app.modules.vehicles import vehicles
 
     now = datetime(2026, 10, 23, 12, tzinfo=UTC)
     h = timedelta(hours=1)
@@ -223,7 +223,7 @@ def test_the_vehicles_page_script_is_valid_javascript() -> None:
     import shutil
     import subprocess
 
-    from app.vehicles_page import PAGE
+    from app.modules.vehicles.vehicles_page import PAGE
 
     node = shutil.which("node")
     if not node:

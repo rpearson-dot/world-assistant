@@ -16,8 +16,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app import assistant, events, pollen
+from app import assistant
 from app.main import app
+from app.modules.events import events
+from app.modules.pollen import pollen
 from app.places import place_or_default
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")

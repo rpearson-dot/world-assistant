@@ -19,8 +19,8 @@ your profile, and save it as `ukpn_api_key` (Settings > Keys).
 
 ## Checking it
 
-    docker compose exec worker python -m app.integrations.ukpn.probe          # what the portal has, at home
-    docker compose exec worker python -m app.integrations.ukpn.sync all       # read everything now
+    docker compose exec worker python -m app.modules.ukpn.sources.ukpn.probe          # what the portal has, at home
+    docker compose exec worker python -m app.modules.ukpn.sources.ukpn.sync all       # read everything now
 
 The probe lists each dataset found, its fields and how this app reads the first record. Datasets are found by their
 published title and fields by their names, so a renamed field shows up there first.

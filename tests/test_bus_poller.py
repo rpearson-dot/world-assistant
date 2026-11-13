@@ -16,10 +16,10 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.integrations.bus.config import TrackerConfig
-from app.integrations.bus.poller import Lookup, in_window, poll_one, process_poll
-from app.integrations.bus.trips import new_state
 from app.main import app
+from app.modules.bus.sources.bus.config import TrackerConfig
+from app.modules.bus.sources.bus.poller import Lookup, in_window, poll_one, process_poll
+from app.modules.bus.sources.bus.trips import new_state
 
 TZ = ZoneInfo("Europe/London")
 DAY = date(2026, 10, 20)  # a Tuesday, BST
@@ -107,7 +107,7 @@ def test_bus_before_deadline_is_a_hit_with_its_slot() -> None:
 
 
 def test_bunched_buses_each_claim_their_own_slot(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.integrations.bus import poller
+    from app.modules.bus.sources.bus import poller
 
     def run(offsets: list[int]) -> list[dict[str, Any]]:
         found = [{"vehicle": f"V{i}", "board_ts": T0 + m * 60, "arrive_ts": T0 + (m + 15) * 60, "via_return": False}
@@ -124,7 +124,7 @@ def test_bunched_buses_each_claim_their_own_slot(monkeypatch: pytest.MonkeyPatch
 
 
 def test_first_sighting_is_recorded_once_per_run() -> None:
-    from app.integrations.bus.trips import first_sightings
+    from app.modules.bus.sources.bus.trips import first_sightings
 
     board = T0 + 30 * 60
     state = new_state()
@@ -277,7 +277,7 @@ async def test_poll_stores_hit_and_api_reports_it(
         while now <= _FakeClient.board + 1500:
             client.now = now
             async with engine.connect() as conn:
-                from app.integrations.bus import store
+                from app.modules.bus.sources.bus import store
 
                 row = await store.get_tracker(conn, "main")
             assert row
@@ -354,8 +354,8 @@ async def test_backfill_records_a_missed_run_once_from_the_stored_state(
 ) -> None:
     from sqlalchemy import text
 
-    from app.integrations.bus import poller, store
-    from app.integrations.bus.backfill import backfill
+    from app.modules.bus.sources.bus import poller, store
+    from app.modules.bus.sources.bus.backfill import backfill
 
     engine = create_async_engine(URL)  # type: ignore[arg-type]
     try:

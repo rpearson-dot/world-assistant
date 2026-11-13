@@ -11,10 +11,10 @@ from typing import Any
 import httpx
 import pytest
 
-from app import outdoors as OD
-from app import shopping as S
-from app.integrations.outdoors import clients as O
-from app.integrations.wishlist.clients import ShopError
+from app.modules.outdoors import outdoors as OD
+from app.modules.outdoors.sources.outdoors import clients as O
+from app.modules.shopping import shopping as S
+from app.modules.wishlist.sources.wishlist.clients import ShopError
 
 SUGGEST = {"resources": {"results": {"products": [
     {"id": 1, "title": "Eurohike Avon 2 Tent", "handle": "eurohike-avon-2-tent", "vendor": "Eurohike",
@@ -86,7 +86,7 @@ async def _now(*a: Any) -> None:
 
 def test_the_page_script_compiles_and_calls_real_routes(tmp_path: Any) -> None:
     from app.main import app
-    from app.outdoors_page import PAGE
+    from app.modules.outdoors.outdoors_page import PAGE
 
     js = re.findall(r"<script>(.*?)</script>", PAGE, re.DOTALL)[-1]
     f = tmp_path / "o.js"

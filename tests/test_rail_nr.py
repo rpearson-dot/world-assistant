@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 import pytest
 
-from app.integrations.rail.rdm import RailError, RdmClient, parse_services
+from app.modules.nr.sources.rail.rdm import RailError, RdmClient, parse_services
 
 NOW = datetime(2026, 10, 20, 6, 50, tzinfo=UTC)  # 07:50 UK time (BST)
 
@@ -74,7 +74,7 @@ def test_search_response_shape_is_tolerated() -> None:
 
 
 async def test_rdm_client_header_path_and_params() -> None:
-    from app.integrations.rail.rdm import DEFAULT_BASE
+    from app.modules.nr.sources.rail.rdm import DEFAULT_BASE
 
     seen: list[httpx.Request] = []
 
@@ -115,7 +115,7 @@ def test_pascal_case_responses_parse_the_same() -> None:
 
 
 async def test_rows_are_capped_and_error_reason_is_reported() -> None:
-    from app.integrations.rail.rdm import DEFAULT_BASE
+    from app.modules.nr.sources.rail.rdm import DEFAULT_BASE
 
     seen: list[httpx.Request] = []
 

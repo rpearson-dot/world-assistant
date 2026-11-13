@@ -4,7 +4,7 @@ from typing import Any, Self
 import httpx
 import pytest
 
-from app.integrations.ticketmaster.client import (
+from app.modules.events.sources.ticketmaster.client import (
     TicketmasterClient,
     TicketmasterError,
     geohash,
@@ -134,8 +134,8 @@ class _Fake:
 def _setup(monkeypatch: pytest.MonkeyPatch, sk: Any, tm: Any) -> Any:
     from fastapi.testclient import TestClient
 
-    from app import events
     from app.main import app
+    from app.modules.events import events
 
     monkeypatch.setenv("API_TOKEN", "s3cret")
     monkeypatch.setenv("SKIDDLE_API_KEY", "a")
@@ -166,7 +166,7 @@ def test_endpoint_merges_and_sorts_by_date(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_one_source_failing_still_returns_the_other(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.integrations.ticketmaster.client import TicketmasterError
+    from app.modules.events.sources.ticketmaster.client import TicketmasterError
 
     c = _setup(monkeypatch, [{"name": "S", "date": "2026-10-27"}], TicketmasterError("down"))
     r = c.get("/v1/events/near?place=home", headers=H)
@@ -175,8 +175,8 @@ def test_one_source_failing_still_returns_the_other(monkeypatch: pytest.MonkeyPa
 
 
 def test_all_sources_failing_is_a_502(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.integrations.skiddle.client import SkiddleError
-    from app.integrations.ticketmaster.client import TicketmasterError
+    from app.modules.events.sources.skiddle.client import SkiddleError
+    from app.modules.events.sources.ticketmaster.client import TicketmasterError
 
     c = _setup(monkeypatch, SkiddleError("a"), TicketmasterError("b"))
     assert c.get("/v1/events/near?place=home", headers=H).status_code == 502
@@ -192,7 +192,7 @@ def test_source_filter_and_no_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_availability_is_the_sale_status_not_seat_counts() -> None:
-    from app.integrations.ticketmaster.client import _availability
+    from app.modules.events.sources.ticketmaster.client import _availability
 
     now = datetime(2026, 10, 21, tzinfo=UTC)
     assert _availability("onsale", {"public": {"startDateTime": "2026-01-01T10:00:00Z"}}, now) == "On sale"

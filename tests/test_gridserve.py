@@ -20,9 +20,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.graph import model
-from app.integrations.gridserve import normalise as N
-from app.integrations.gridserve.client import GridserveClient, GridserveError, unwrap
+from app.modules.graph import model
+from app.modules.gridserve.sources.gridserve import normalise as N
+from app.modules.gridserve.sources.gridserve.client import GridserveClient, GridserveError, unwrap
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
@@ -176,8 +176,8 @@ def schema() -> Iterator[None]:
 async def test_synced_then_asked_near_home_along_a_trip_and_by_name(schema: None, monkeypatch: pytest.MonkeyPatch) -> None:
     from app import assistant
     from app.config import get_settings
-    from app.integrations.gridserve import sync
     from app.main import app
+    from app.modules.gridserve.sources.gridserve import sync
 
     monkeypatch.setenv("API_TOKEN", "tok")
     get_settings.cache_clear()

@@ -12,7 +12,7 @@ import pytest
 
 from app import assistant_more as M
 from app.ha_publish import environment_device
-from app.integrations.environment import clients as C
+from app.modules.environment.sources.environment import clients as C
 
 NOW = datetime(2026, 11, 7, 9, 0, tzinfo=UTC)
 HOME = (51.38, -0.25)
@@ -200,7 +200,7 @@ def test_home_assistant_gets_a_sensor_per_place_and_homes_water() -> None:
 
 
 async def test_the_tools_say_it_plainly(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.environment as E
+    import app.modules.environment.environment as E
 
     async def air(request: Any, **kw: Any) -> dict[str, Any]:
         return {"name": "Home", "index": 4, "band": "Moderate", "worst": "Ozone", "readings": {
@@ -300,7 +300,7 @@ def test_home_assistant_counts_the_spills() -> None:
 
 
 async def test_the_overflow_tool(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.environment as E
+    import app.modules.environment.environment as E
 
     got: dict[str, Any] = {}
 

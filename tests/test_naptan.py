@@ -19,9 +19,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.integrations.naptan import sync
-from app.integrations.naptan.normalise import KINDS, STATION_TYPES, parse_row
 from app.main import app
+from app.modules.naptan.sources.naptan import sync
+from app.modules.naptan.sources.naptan.normalise import KINDS, STATION_TYPES, parse_row
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"

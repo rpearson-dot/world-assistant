@@ -15,13 +15,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import text
 
 from app.auth import require_token
-from app.bods import vehicles_near
 from app.config import get_settings
 from app.geoquery import POINT, distance_km, params, within_sql
-from app.integrations.bods.client import BodsError
-from app.integrations.fuelfinder.normalise import canonical_fuel
-from app.integrations.fuelfinder.queries import haversine_km
-from app.integrations.naptan.normalise import STATION_TYPES
+from app.modules.bods.bods import vehicles_near
+from app.modules.bods.sources.bods.client import BodsError
+from app.modules.fuel.sources.fuelfinder.normalise import canonical_fuel
+from app.modules.fuel.sources.fuelfinder.queries import haversine_km
+from app.modules.naptan.sources.naptan.normalise import STATION_TYPES
 from app.places import place_or_default
 
 router = APIRouter(prefix="/v1/map", tags=["map"], dependencies=[Depends(require_token)])
@@ -183,8 +183,8 @@ async def _fuel(conn: Any, centre: Point | None, radius_km: float, fuel: str) ->
 
 async def _ev(conn: Any, centre: Point | None, radius_km: float) -> list[dict[str, Any]]:
     """Charging sites, each with how many chargers work and are free now."""
-    from app.ev import _details
-    from app.integrations.gridserve.normalise import summary
+    from app.modules.gridserve.ev import _details
+    from app.modules.gridserve.sources.gridserve.normalise import summary
 
     res = (await _near(conn, "SELECT s.id, s.name, s.network, s.postcode, s.lat, s.lon FROM ev_site s WHERE s.lat IS NOT NULL",
                        centre, radius_km, alias="s", order="name")).all()  # fmt: skip

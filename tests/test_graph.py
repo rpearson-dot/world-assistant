@@ -20,8 +20,8 @@ from alembic.operations import Operations
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.graph import model, store
 from app.main import app
+from app.modules.graph import model, store
 
 HOME = (51.5074, -0.1278)
 NEAR = (51.5100, -0.1300)  # ~0.4 km from home
@@ -426,7 +426,7 @@ async def test_the_generated_point_tracks_lat_and_lon_by_itself(geo_schema: None
 
 @pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
 async def test_postgis_finds_what_is_near_and_what_is_on_the_way(geo_schema: None) -> None:
-    from app.graph.build import read
+    from app.modules.graph.build import read
 
     engine = create_async_engine(URL)  # type: ignore[arg-type]
     try:

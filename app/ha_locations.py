@@ -21,8 +21,8 @@ from sqlalchemy import text
 
 from app.auth import require_token
 from app.config import get_settings
-from app.events import search
 from app.ha import slug
+from app.modules.events.events import search
 
 router = APIRouter(prefix="/v1/ha/locations", tags=["home-assistant"], dependencies=[Depends(require_token)])
 

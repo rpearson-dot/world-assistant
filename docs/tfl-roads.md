@@ -34,8 +34,8 @@ Works without a key at a low rate. Put your TfL app key in the `tfl_app_key` sec
 The TfL response shape is only partly documented. The probe shows what came back and what each disruption is
 stored as (lines, areas or points):
 
-    docker compose exec worker python -m app.integrations.tflroads.probe
-    docker compose exec worker python -m app.integrations.tflroads.sync
+    docker compose exec worker python -m app.modules.tflroads.sources.tflroads.probe
+    docker compose exec worker python -m app.modules.tflroads.sources.tflroads.sync
 
 ## Limits
 

@@ -124,7 +124,7 @@ async def graph(s: Settings) -> dict[str, Any]:
     if not s.graph_enabled:
         out["state"], out["note"] = OFF, "Optional container: docker-compose.graph.yml and WA_GRAPH_ENABLED=true."
         return out
-    from app.graph import store
+    from app.modules.graph import store
 
     try:
         rows = await store.run(store.COUNTS)

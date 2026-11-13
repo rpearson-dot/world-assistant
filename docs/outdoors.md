@@ -65,5 +65,5 @@ prices are the ones anyone pays. Nothing is ever bought.
 
 To see exactly what each shop sends:
 
-    docker compose exec api python -m app.outdoors two man tent
-    docker compose exec api python -m app.outdoors https://www.decathlon.co.uk/p/...
+    docker compose exec api python -m app.modules.outdoors.outdoors two man tent
+    docker compose exec api python -m app.modules.outdoors.outdoors https://www.decathlon.co.uk/p/...

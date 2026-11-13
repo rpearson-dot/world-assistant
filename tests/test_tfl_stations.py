@@ -20,8 +20,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.graph import model
-from app.integrations.tflstations.normalise import alert_kind, alerts, stations
+from app.modules.graph import model
+from app.modules.tflstations.sources.tflstations.normalise import alert_kind, alerts, stations
 
 NOW = datetime(2026, 10, 23, 15, tzinfo=UTC)
 URL = os.environ.get("WA_TEST_DATABASE_URL")
@@ -119,7 +119,7 @@ def test_the_graph_has_stations_lines_entrances_closures_and_hubs() -> None:
     assert platforms == []  # platforms stay in Postgres (the API has them); the graph keeps entrances
 
 
-@pytest.mark.parametrize("module", ["app.tfl", "app.graph_page"])
+@pytest.mark.parametrize("module", ["app.modules.tfl.tfl", "app.modules.graph.graph_page"])
 def test_page_scripts_parse(module: str) -> None:
     node = shutil.which("node")
     if not node:
@@ -160,9 +160,9 @@ def schema() -> Iterator[None]:
 async def test_stored_and_asked_through_the_api_and_the_assistant(schema: None, monkeypatch: pytest.MonkeyPatch) -> None:
     from app import assistant
     from app.config import get_settings
-    from app.integrations.tfl.client import TflError
-    from app.integrations.tflstations import sync
     from app.main import app
+    from app.modules.tfl.sources.tfl.client import TflError
+    from app.modules.tflstations.sources.tflstations import sync
 
     monkeypatch.setenv("API_TOKEN", "tok")
     get_settings.cache_clear()

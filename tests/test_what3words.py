@@ -79,8 +79,8 @@ async def test_errors_in_words() -> None:
 async def test_here_shows_the_words_and_takes_them(monkeypatch: pytest.MonkeyPatch) -> None:
     from fastapi import HTTPException
 
-    from app import here as H
     from app.config import get_settings
+    from app.modules.here import here as H
 
     monkeypatch.setattr(type(get_settings()), "what3words_api_key", property(lambda self: "k"))
 
@@ -121,8 +121,8 @@ async def test_here_shows_the_words_and_takes_them(monkeypatch: pytest.MonkeyPat
 
 
 async def test_without_a_key_here_has_no_words(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app import here as H
     from app.config import get_settings
+    from app.modules.here import here as H
     from tests.test_here import fake_app
 
     monkeypatch.setattr(type(get_settings()), "what3words_api_key", property(lambda self: ""))

@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from app import mqtt
-from app.integrations.bus.config import TrackerConfig
-from app.integrations.bus.poller import build_snapshot
+from app.modules.bus.sources.bus.config import TrackerConfig
+from app.modules.bus.sources.bus.poller import build_snapshot
 
 TZ = ZoneInfo("Europe/London")
 CFG = TrackerConfig.model_validate({

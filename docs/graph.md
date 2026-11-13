@@ -88,7 +88,7 @@ The worker rebuilds at **:08 and :38** past each hour, so the graph is never mor
 behind Postgres. By hand:
 
 ```
-docker compose exec worker python -m app.graph.build
+docker compose exec worker python -m app.modules.graph.build
 ```
 
 Each build stamps every node and relationship with its own id and then deletes anything carrying an

@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from app import crime as C
+from app.modules.crime import crime as C
 
 
 def street(cat: str, name: str, outcome: str | None = None) -> dict[str, Any]:

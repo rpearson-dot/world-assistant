@@ -31,7 +31,7 @@ PAGES = ("/settings", "/bus", "/trains", "/fuel", "/events", "/pollen", "/enviro
 SEED = "smoke-test-place"
 SKIP_SWEEP = {"/mcp", "/healthz", "/readyz", "/v1/backups/{name}"}  # checked on their own, or a download
 # Read live from someone else's service on every call (no stored data): a slow or down source there must not fail a
-# deploy here. `python -m app.environment` checks them.
+# deploy here. `python -m app.modules.environment.environment` checks them.
 SKIP_PREFIXES = ("/v1/environment/",)
 TIMEOUT = 30.0
 HEARTBEAT_WAIT = int(os.environ.get("WA_SMOKE_HEARTBEAT_WAIT", "60"))

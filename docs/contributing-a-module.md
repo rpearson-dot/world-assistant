@@ -31,7 +31,7 @@ decide whether it can be included:
 
 ## A built-in module, step by step
 
-The bike garage (`app/bikes/`, about 6,000 lines) and crime (`app/crime.py`, small) are good examples to read
+The bike garage (`app/modules/bikes/`, about 6,000 lines) and crime (`app/modules/crime/crime.py`, small) are good examples to read
 alongside this.
 
 ### 1. The code
@@ -58,7 +58,7 @@ Module("crime", "Crime and police",
        "Street-level crime within a mile of a place and its neighbourhood police team",   # what it gives you
        category="place", link="https://data.police.uk/",
        note="England, Wales and Northern Ireland; the figures are about two months behind.",
-       routers=("app.crime:router",),          # import strings: loaded only when used
+       routers=("app.modules.crime.crime:router",),          # import strings: loaded only when used
        prefixes=("/v1/crime",),                # these answer "switched off" when the module is off
        tools=("crime",)),                      # its assistant tools
 ```
@@ -136,8 +136,8 @@ All optional, and all declared in the code you add, not in the core:
 - **Notifications:** `await notify.send(engine, kind, key, title, body)`, where `key` makes it send only once. A
   new kind goes in `KINDS` in `app/notify.py`, off by default unless people would clearly want it
   ([notifications](notifications.md)).
-- **The map, Here and the graph:** each has a layer or part list to add to (`app/map_layers.py`, `app/here.py`,
-  `app/graph/build.py`).
+- **The map, Here and the graph:** each has a layer or part list to add to (`app/map_layers.py`, `app/modules/here/here.py`,
+  `app/modules/graph/build.py`).
 
 ### 9. Tests
 

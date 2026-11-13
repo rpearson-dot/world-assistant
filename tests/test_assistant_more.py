@@ -11,11 +11,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import assistant_more as M
-from app import shopping as S
 from app.assistant import TOOLS, ToolError
 from app.config import get_settings
 from app.main import app
 from app.modules import registry
+from app.modules.shopping import shopping as S
 from app.version import VERSION
 
 REQ: Any = object()  # the tools only pass it on; every function that would use it is replaced here
@@ -120,11 +120,11 @@ async def test_send_to_basket_says_what_happened_and_that_nothing_is_ordered(mon
 
 
 async def test_floods_roads_buses_stops_and_postcodes_read_well(monkeypatch: pytest.MonkeyPatch, at_home: None) -> None:
-    import app.bods
-    import app.floods
-    import app.postcodes
-    import app.stops
-    import app.tflroads
+    import app.modules.bods.bods
+    import app.modules.codepoint.postcodes
+    import app.modules.floods.floods
+    import app.modules.naptan.stops
+    import app.modules.tflroads.tflroads
 
     async def floods(request: Any, **kw: Any) -> dict[str, Any]:
         return {"count": 1, "warnings": [{"severity": "Flood alert", "area": "River Hogsmill"}]}
@@ -143,11 +143,11 @@ async def test_floods_roads_buses_stops_and_postcodes_read_well(monkeypatch: pyt
     async def pc_near(request: Any, **kw: Any) -> dict[str, Any]:
         return {"postcodes": [{"postcode": "KT4 8AA"}]}
 
-    monkeypatch.setattr(app.floods, "at", floods)
-    monkeypatch.setattr(app.tflroads, "at", roads)
-    monkeypatch.setattr(app.bods, "live", buses)
-    monkeypatch.setattr(app.stops, "near", stops)
-    monkeypatch.setattr(app.postcodes, "near", pc_near)
+    monkeypatch.setattr(app.modules.floods.floods, "at", floods)
+    monkeypatch.setattr(app.modules.tflroads.tflroads, "at", roads)
+    monkeypatch.setattr(app.modules.bods.bods, "live", buses)
+    monkeypatch.setattr(app.modules.naptan.stops, "near", stops)
+    monkeypatch.setattr(app.modules.codepoint.postcodes, "near", pc_near)
     assert (await M.floods_tool(REQ, {}))["text"] == "1 flood warning(s) cover Home: Flood alert for River Hogsmill."
     assert "Works (closure) at A3 Kingston Road, 230 m away" in (await M.road_disruptions_tool(REQ, {}))["text"]
     assert (await M.live_buses_tool(REQ, {}))["text"] == "1 bus(es) near Home now: 213 to Sutton, 0.2 miles away."
@@ -248,8 +248,8 @@ async def _conn() -> Any:
 def _bus_mocks(monkeypatch: pytest.MonkeyPatch, existing: list[str]) -> dict[str, Any]:
     import types
 
-    import app.bus as B
-    from app.integrations.bus import store
+    import app.modules.bus.bus as B
+    from app.modules.bus.sources.bus import store
 
     got: dict[str, Any] = {}
 

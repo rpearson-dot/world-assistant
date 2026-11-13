@@ -15,9 +15,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app import pollen, pollen_history
-from app.integrations.pollen.client import parse_forecast
 from app.main import app
+from app.modules.pollen import pollen, pollen_history
+from app.modules.pollen.sources.pollen.client import parse_forecast
 from tests.test_pollen import RAW, _FakeRedis
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
@@ -128,7 +128,7 @@ async def test_sync_job_stores_for_each_place_and_warms_cache(
             return None
 
     monkeypatch.setattr("app.jobs.tracked", fake_tracked)
-    monkeypatch.setattr("app.pollen_budget.PollenLimiter", NoLimit)
+    monkeypatch.setattr("app.modules.pollen.pollen_budget.PollenLimiter", NoLimit)
     redis = _FakeRedis()
     try:
         out = await pollen_history.pollen_sync({"engine": engine, "redis": redis})

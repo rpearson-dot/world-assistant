@@ -20,13 +20,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app import conditions as c
-from app.integrations.flood import sync as flood_sync
-from app.integrations.nationalhighways.match import Corridor
-from app.integrations.nationalhighways.store import upsert_corridor
-from app.integrations.tfl.client import TflClient
-from app.integrations.tflroads import sync as tfl_sync
 from app.main import app
+from app.modules.conditions import conditions as c
+from app.modules.floods.sources.flood import sync as flood_sync
+from app.modules.nh.sources.nationalhighways.match import Corridor
+from app.modules.nh.sources.nationalhighways.store import upsert_corridor
+from app.modules.tfl.sources.tfl.client import TflClient
+from app.modules.tflroads.sources.tflroads import sync as tfl_sync
 from tests.test_flood import item as flood_item_json
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")

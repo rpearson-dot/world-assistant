@@ -8,7 +8,7 @@ the Bus Open Data Service as SIRI-SX. World Assistant reads the national file ev
 Merseyside, Cornwall, Devon, Hampshire, North Lincolnshire, Telford & Wrekin, Bedford/Luton and Cheshire East.
 Not London (TfL's road disruptions cover that) and not the Midlands. See who publishes now, and what is near you:
 
-    docker compose exec worker python -m app.integrations.bods.disruptions_probe [lat lon] [km]
+    docker compose exec worker python -m app.modules.bods.sources.bods.disruptions_probe [lat lon] [km]
 
 ## Switching it on
 

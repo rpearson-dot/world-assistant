@@ -22,8 +22,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from app.config import get_settings
-from app.integrations.nationalhighways.match import Corridor
-from app.integrations.nationalhighways.store import rematch_all, upsert_corridor
+from app.modules.nh.sources.nationalhighways.match import Corridor
+from app.modules.nh.sources.nationalhighways.store import rematch_all, upsert_corridor
 
 Point = tuple[float, float]
 _ROAD = re.compile(r"^([AM])(\d{1,4})(\(M\))?$")

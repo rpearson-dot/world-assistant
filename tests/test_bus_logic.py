@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from app.integrations.bus import events, trips
+from app.modules.bus.sources.bus import events, trips
 
 OUT = ["s0", "s1", "s2", "s3", "s4", "s5"]  # outbound: s2 = boarding stop, s4 = target stop
 IN = ["i0", "i1", "i2"]  # inbound; i1 is the return-side stop by the target
@@ -228,7 +228,7 @@ def test_result_log_records_success_failure_and_pending() -> None:
 
 
 def test_tracker_config_defaults_to_either_side_and_a_0800_cutoff() -> None:
-    from app.integrations.bus.config import TrackerConfig
+    from app.modules.bus.sources.bus.config import TrackerConfig
 
     cfg = TrackerConfig.model_validate({
         "line": "213",
@@ -332,7 +332,7 @@ def test_anomalies_say_where_and_which_way() -> None:
 
 
 def test_each_direction_is_labelled_by_where_it_ends() -> None:
-    from app.integrations.bus.poller import Lookup
+    from app.modules.bus.sources.bus.poller import Lookup
 
     seq = [{"direction": "outbound", "pos": p, "sid": f"o{p}", "name": n} for p, n in enumerate(["Kingston", "Worcester Park", "Sutton"])]
     seq += [{"direction": "inbound", "pos": p, "sid": f"i{p}", "name": n} for p, n in enumerate(["Sutton", "Worcester Park", "Kingston"])]
@@ -340,7 +340,7 @@ def test_each_direction_is_labelled_by_where_it_ends() -> None:
 
 
 def test_a_scheduled_time_at_the_target_for_each_departure() -> None:
-    from app.integrations.bus.events import journey_rows, pair_arrivals
+    from app.modules.bus.sources.bus.events import journey_rows, pair_arrivals
 
     due = pair_arrivals(["07:02", "07:14", "07:26"], ["07:09", "07:21", "07:33", "07:45"])
     assert due == {"07:02": "07:09", "07:14": "07:21", "07:26": "07:33"}  # in order, none used twice

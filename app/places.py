@@ -13,8 +13,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app.auth import require_token
 from app.geo import PostcodeError, lookup_postcode
+from app.modules.codepoint.postcodes import local_postcode
 from app.pagestyle import themed
-from app.postcodes import local_postcode
 
 router = APIRouter(prefix="/v1", tags=["places"], dependencies=[Depends(require_token)])
 

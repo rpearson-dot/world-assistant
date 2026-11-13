@@ -67,7 +67,7 @@ async def first_loads(ctx: dict[str, Any]) -> list[str]:
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:
-    from app.graph import store as graph_store
+    from app.modules.graph import store as graph_store
 
     await graph_store.close()
     await ctx["engine"].dispose()

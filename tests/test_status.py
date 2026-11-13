@@ -16,9 +16,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.integrations.nationalhighways.store import save_events, upsert_corridor
 from app.jobs import tracked
 from app.main import app
+from app.modules.nh.sources.nationalhighways.store import save_events, upsert_corridor
 from tests.test_nh_store import NEAR, _event
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")

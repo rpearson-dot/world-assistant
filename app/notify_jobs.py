@@ -55,7 +55,7 @@ def _page(path: str) -> str | None:
 
 async def after_sync(engine: AsyncEngine, rider: str, firmware: list[dict[str, Any]] | None = None, now: datetime | None = None) -> dict[str, int]:
     """The bike notifications after one rider's Garmin sync."""
-    from app.bikes.api import _rider, build, load
+    from app.modules.bikes.api import _rider, build, load
 
     now = now or datetime.now(UTC)
     r = await _rider(engine, rider)
@@ -102,8 +102,8 @@ async def after_sync(engine: AsyncEngine, rider: str, firmware: list[dict[str, A
 
 async def garmin_system(engine: AsyncEngine, rider: str, error: str | None, today: date | None = None) -> None:
     """A Garmin sync that failed (once a day), and a key running out within 14 days (once per key)."""
-    from app.bikes.api import _rider
-    from app.bikes.garmin import status
+    from app.modules.bikes.api import _rider
+    from app.modules.bikes.garmin import status
 
     today = today or date.today()
     r = await _rider(engine, rider)
@@ -129,7 +129,7 @@ async def environment_alerts(ctx: dict[str, Any]) -> Any:
 
 
 async def environment_check(engine: AsyncEngine, client: httpx.AsyncClient | None = None, today: date | None = None) -> dict[str, int]:
-    from app.integrations.environment import clients as C
+    from app.modules.environment.sources.environment import clients as C
 
     st = await notify.settings(engine)
     if not st["enabled"] or not st["kinds"].get("environment"):
@@ -177,8 +177,8 @@ async def environment_check(engine: AsyncEngine, client: httpx.AsyncClient | Non
     home = next(((n, la, lo) for pid, n, la, lo in places if pid == "home"), None)
     if home:
         try:
-            from app.pollen_grid import current, nearest
-            from app.pollen_grid import load as load_grid
+            from app.modules.pollen.pollen_grid import current, nearest
+            from app.modules.pollen.pollen_grid import load as load_grid
 
             hit = nearest(current(await load_grid(engine)), home[1], home[2])
         except Exception:  # noqa: BLE001 - pollen switched off or no grid yet

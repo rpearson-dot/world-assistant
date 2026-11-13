@@ -24,11 +24,11 @@ import httpx
 
 from app import ha, mqtt
 from app.config import get_settings
-from app.energy.ha import RETIRED as ENERGY_RETIRED
-from app.energy.ha import energy_device
 from app.ha import Device, Sensor, slug
+from app.modules.octopus.ha import RETIRED as ENERGY_RETIRED
+from app.modules.octopus.ha import energy_device
+from app.modules.pollen.pollen_map import render_svg
 from app.mqtt_config import from_env, load
-from app.pollen_map import render_svg
 
 log = logging.getLogger("wa.ha")
 
@@ -217,7 +217,7 @@ def bus_device(
     record come from stored results (so they stay up to date outside the polling window); the buses
     being followed and the next arrivals come from the live arrivals feed. Names match what the poller
     used to publish itself, so existing entities carry on."""
-    from app.integrations.bus.events import nearest_slot
+    from app.modules.bus.sources.bus.events import nearest_slot
 
     sensors: list[Sensor] = []
     nxt = (live or {}).get("next") or {}

@@ -28,7 +28,7 @@ predictions. If not, and a BODS key is set (`bods_api_key`, free at data.bus-dat
 Each tracker is named after its route by default, so a second route does not replace the first. Without a BODS
 key a non-London line is explained, not guessed. To see what BODS sends for a line:
 
-    docker compose exec worker python -m app.integrations.bus.bods_probe 213 [lat lon]
+    docker compose exec worker python -m app.modules.bus.sources.bus.bods_probe 213 [lat lon]
 
 ### The way back
 
@@ -120,7 +120,7 @@ Polling runs every 30 s inside the poll window (`WA_BUS_POLL_ENABLED`, `WA_LOCAL
 ## Backfilling a missed day
 
 If the live matching missed a day (it did, once: see the changelog), run
-`docker compose exec worker python -m app.integrations.bus.backfill <tracker> [YYYY-MM-DD]`. It works out
+`docker compose exec worker python -m app.modules.bus.sources.bus.backfill <tracker> [YYYY-MM-DD]`. It works out
 which of the buses the tracker still remembers (its last 40 trips) reached the target in time, using the
 same rule, and saves the ones not already saved. Do it the same day: older trips are pushed out of
 memory by newer ones. Repeating it is harmless.

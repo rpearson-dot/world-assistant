@@ -32,7 +32,7 @@ To be told when one starts, make a Home Assistant automation on `sensor.storm_ov
 attributes say which, on which river, how far away and since when.
 
 Only Thames Water's feed is read, since home is in its area. The other companies publish the same way, and adding
-one is a line in `OVERFLOW_FEEDS` (app/integrations/environment/clients.py).
+one is a line in `OVERFLOW_FEEDS` (app/modules/environment/sources/environment/clients.py).
 
 ## Where to see it
 
@@ -50,7 +50,7 @@ Answers are kept for ten minutes; the sources update every 15 minutes (rivers, r
 Neither source needs setting up, but both are someone else's service. To see exactly what each sends near home (or
 a saved place):
 
-    docker compose exec api python -m app.environment [place]
+    docker compose exec api python -m app.modules.environment.environment [place]
 
 Each part says what it found, or why it failed. Because these are read live, the deploy check leaves them out, so a
 slow day at Defra cannot hold up an update.
