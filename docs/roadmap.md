@@ -21,13 +21,6 @@ Ideas parked for later. None of these are built. What is built is in the [README
   API or open data. Eurotunnel's own website board (`.../api/v1/departures/GetCombinedBoardResults`) is
   undocumented and token-protected; terms unchecked. Revisit if an operator offers a feed, or by asking
   Port of Dover and Eurotunnel whether they share data with personal projects.
-* **Modules as clean, separable parts (agreed, not started):**
-  * each module in its own folder (code, pages, tests, docs);
-  * a CI check that the core never imports a module, and that a module uses only the core's published interface
-    and the modules it declares;
-  * that interface written down as a small "module SDK" (places, keys, notifications, Home Assistant sensors,
-    pages, jobs, assistant tools);
-  * new installs starting from the essentials, with the setup wizard asking which areas you want.
-
-  The bike garage is the pilot. Separate repositories, and installing signed outside modules, wait until a module
-  needs them ([contributing a module](contributing-a-module.md)).
+* **Modules from outside the image:** keys, tables, menu tabs and Home Assistant sensors declared by a module rather
+  than listed in the core, and a trusted way to install signed outside modules. Each module already has its own
+  folder, a checked boundary and a written interface ([module SDK](module-sdk.md), 0.52.0).

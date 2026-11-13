@@ -9,8 +9,10 @@ off. Why it is built this way: [ADR 0009](adr/0009-modular-core.md).
 
 Open **Modules** (`/modules`, also linked from Settings).
 
-- Nothing is chosen on an install from before modules existed, so everything is on. Press **Start with the
-  essentials only** to turn the lot off, then switch on what you want. **Turn everything on** goes back.
+- **A new install starts from the essentials** (only the always-on core), and the setup wizard's second step asks
+  which areas to add. An install from before modules existed has nothing chosen, so everything stays on. Press
+  **Start with the essentials only** to turn the lot off, then switch on what you want. **Turn everything on** goes
+  back.
 - A switch takes effect within seconds, with no restart. A switched-off module's pages answer "switched off", its
   scheduled jobs do nothing and its assistant tools disappear. Its data stays, so switching it back on loses nothing.
 - A module that needs a key says which. Put keys under **Settings > Keys**, then **Test key** where offered (BODS,

@@ -137,36 +137,36 @@ built once by CI, signed and deployed by digest ([ADR 0004](adr/0004-immutable-r
 
 ## Code layout
 
+The core is `app/`; every module (an area such as fuel, buses or the bike garage) is a folder of its own under
+`app/modules/`, with its API, pages, jobs, assistant tools and the outside services it reads. The core never imports
+a module: modules plug in at declared extension points, and a test holds both sides to the
+[module SDK](module-sdk.md).
+
 ```
 app/
-  main.py, config.py, auth.py, localnet.py   the app, settings, who needs a token
-  modules/                                   the module registry: each area can be switched off (ADR 0009)
-  pagestyle.py, themes.py, look.py           shared page shell, navigation and themes
-  places.py, vehicles.py, vehiclecheck.py    places, trips and vehicles; tax and MOT
-  fuel.py, ev.py, energy/, power.py          fuel, chargers, Octopus energy, power cuts
-  bus*.py, tfl.py, stations.py, bods.py      buses, trains, stations, live bus positions
-  conditions.py, tflroads.py, floods.py      what is on a route; road works; flood warnings
-  environment.py, pollen*.py, crime*.py      environment page sources, pollen, crime
-  events.py, eventplace.py, here.py          events (with mutes), Here
-  shopping.py, wishlist.py, outdoors.py, food.py   shops and food alerts
-  bikes/                                     bikes: Garmin, FIT files, wear, groupsets, the Garage
-  assistant*.py                              /v1/ask and /mcp tools
-  ha*.py, mqtt*.py                           Home Assistant: sensors, setup, locations and routes
+  main.py, worker.py, config.py              the api, the worker and settings
+  auth.py, localnet.py                       who needs a token
+  places.py, geo.py, geoquery.py, corridor.py   places, postcodes, distance queries, route corridors
+  pagestyle.py, themes.py, look.py, whereami.py the page shell, menu, themes, the place picker
+  assistant.py, assistant_base.py            /v1/ask and /mcp: the core's tools, and the tools' building blocks
+  ha*.py, mqtt*.py                           Home Assistant: publishing, setup, locations and routes
   notify.py, notify_jobs.py                  phone notifications through ntfy
-  graph/                                     the knowledge graph (build, explore)
+  map_layers.py, map_page.py                 the map, and its core layers
   backup*.py, autodeploy.py, status.py       backups, updates, status
-  integrations/                              one folder per outside service: client, normalise, store, sync
-  worker.py, jobs.py, ratelimit.py           the scheduled jobs and the shared rate limiter
+  jobs.py, ratelimit.py                      job records and the shared rate limiter
+  modules/                                   the registry (model, registry, sdk, builtin declarations) and:
+    <id>/                                    one folder per module: README.md, API, pages, tools.py, notify.py,
+      sources/<name>/                        and each outside service: client, normalise, store, sync, probe
 migrations/versions/                         Alembic revisions
 deploy/                                      the front door, updater image, Tailscale and Unraid files
 scripts/                                     setup, deploy, staged rollout, updates, backups, CI checks
 services/supermarket/                        the supermarket pricing service
 ```
 
-Each integration has the same shape: a **client** (HTTP, auth, paging, retries, rate limit), a **normalise**
+Each outside service has the same shape: a **client** (HTTP, auth, paging, retries, rate limit), a **normalise**
 module (pure functions from raw JSON to dataclasses), usually a **store** (SQL), and jobs for the worker. The
 parsers are pure so they can be tested against small fixtures. Most have a **probe** that shows the real response:
-`python -m app.integrations.<name>.probe`.
+`python -m app.modules.<id>.sources.<name>.probe`.
 
 ## The database
 

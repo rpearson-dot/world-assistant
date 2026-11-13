@@ -36,7 +36,10 @@ alongside this.
 
 ### 1. The code
 
-Put an outside service's code under `app/integrations/<name>/`. Every integration has the same shape:
+Everything the module is goes in its own folder, `app/modules/<id>/`: its API, pages, jobs, assistant tools and
+notifications, with each outside service it reads under `sources/<name>/`. It may use only the core's published
+interface (the [module SDK](module-sdk.md)), its own folder, and the modules it declares in `needs` or `uses`;
+`tests/test_module_boundaries.py` checks every import. Every outside service has the same shape:
 
 | File | What it holds |
 |---|---|
@@ -44,9 +47,10 @@ Put an outside service's code under `app/integrations/<name>/`. Every integratio
 | `normalise.py` | **Pure** functions from raw JSON to dataclasses. They are tested against small, hand-written fixtures |
 | `store.py` | The SQL, if anything is kept |
 | `sync.py` | The worker jobs |
-| `probe.py` | `python -m app.integrations.<name>.probe` prints a real response, for when the source changes |
+| `probe.py` | `python -m app.modules.<id>.sources.<name>.probe` prints a real response, for when the source changes |
 
-The feature itself (its API, pages and rules) goes in `app/<name>.py`, or `app/<name>/` when it is large.
+The feature itself (its API, pages and rules) goes beside them in the folder, and `README.md` there is written
+from the declaration and the files by `python scripts/module-readmes.py` (a test checks it is current).
 
 ### 2. The declaration
 
@@ -60,7 +64,9 @@ Module("crime", "Crime and police",
        note="England, Wales and Northern Ireland; the figures are about two months behind.",
        routers=("app.modules.crime.crime:router",),          # import strings: loaded only when used
        prefixes=("/v1/crime",),                # these answer "switched off" when the module is off
-       tools=("crime",)),                      # its assistant tools
+       tools=("crime",),                       # its assistant tools, by name
+       uses=("codepoint",),                    # other modules it uses when they are there
+       provides={"assistant.tools": "app.modules.crime.tools:TOOLS"}),   # where it plugs into the core
 ```
 
 The other fields:
@@ -72,6 +78,8 @@ The other fields:
 | `jobs` | The names its jobs record runs under, so Settings can say when it last worked |
 | `switch` | A setting that turns its polling on, for heavy downloads that start off |
 | `needs` | Other modules it cannot work without; they are switched on with it |
+| `uses` | Other modules whose code it uses when they are there; it must cope without them |
+| `provides` | Where it plugs into the core, by extension point ([module SDK](module-sdk.md#extension-points)) |
 | `services` | Optional containers it uses, by compose file (`docker-compose.graph.yml`) |
 | `coverage`, `area` | Where it works (`("london",)`, or a box), so it is suggested to people who live there |
 | `category`, `note`, `listed` | How it is shown in Settings |
@@ -129,11 +137,13 @@ Anything with a position gets a `geog` column and a GiST index ([ADR 0007](adr/0
 
 All optional, and all declared in the code you add, not in the core:
 
-- **The assistant:** a `Tool(...)` in `app/assistant_more.py` (name, description, JSON schema, function), with its
-  name in your module's `tools`. Write the description for an AI assistant: what it answers and what to give it.
+- **The assistant:** a `TOOLS` list of `Tool(...)` in the module's `tools.py` (name, description, JSON schema,
+  function), declared as `provides={"assistant.tools": "app.modules.<id>.tools:TOOLS"}` with the names in `tools`.
+  Write the description for an AI assistant: what it answers and what to give it.
 - **Home Assistant:** a device function in `app/ha_publish.py` that turns your data into sensors, called from
   `ha_sync` ([Home Assistant](home-assistant.md)).
-- **Notifications:** `await notify.send(engine, kind, key, title, body)`, where `key` makes it send only once. A
+- **Notifications:** in the module's `notify.py`, `await notify.send(engine, kind, key, title, body)`, where `key`
+  makes it send only once (`notify_jobs.send_many` puts several in one message). A
   new kind goes in `KINDS` in `app/notify.py`, off by default unless people would clearly want it
   ([notifications](notifications.md)).
 - **The map, Here and the graph:** each has a layer or part list to add to (`app/map_layers.py`, `app/modules/here/here.py`,
@@ -202,17 +212,14 @@ RUN pip install --no-deps /opt/wa_tides
 Then set `WA_IMAGE` to your image. Your image is not signed by this repository, so **automatic updates and Update
 now will not install releases over it**: you rebuild it on each new release yourself.
 
-### What an outside module cannot do yet
+### What an outside module can and cannot do yet
 
-Keys, database tables, assistant tools, Home Assistant sensors, notification kinds and menu tabs are still listed
-in the core's own files, so an outside module cannot add them. A module can keep its own data in its own schema,
-or read the core's tables, but nothing promises the core's tables stay the same between releases.
+An outside module uses the same [module SDK](module-sdk.md) as a built-in one, so its pages, endpoints, scheduled
+jobs and assistant tools (`provides={"assistant.tools": ...}`) work as theirs do. What it still cannot add:
 
-The plan to close those gaps is on the [roadmap](roadmap.md):
+- **keys**, which are listed in `app/secretstore.py` and the compose files;
+- **database tables** through the core's migrations (it can keep its own schema);
+- **menu tabs** and Home Assistant sensors, which are listed in the core.
 
-- give each module its own folder;
-- check its boundaries in CI;
-- write down the small interface a module may rely on (a "module SDK");
-- later, a trusted way to install signed outside modules.
-
-Until then, contribute through a pull request.
+Those gaps, and a trusted way to install signed outside modules, are on the [roadmap](roadmap.md). Until then,
+contribute through a pull request.
