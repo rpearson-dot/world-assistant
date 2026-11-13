@@ -4,6 +4,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Fixed
+- **Car charging (Home Assistant's `wa_ev_plan.yaml`):**
+  - **It could stop starting at all.** If the charger's switch stayed on after the last charge, the plan never sent
+    a new start, so a car plugged in later waited all night. Now, when the charger has sat ready ("Preparing" or
+    "SuspendedEVSE") for 10 minutes with the switch on while the plan wants to charge, the start is sent again (off,
+    then on), at most every 30 minutes. It goes in the logbook.
+  - **It could charge to 100%.** When the car's charge level stopped arriving (OVMS asleep or out of signal, or the
+    entity renamed), the target was not checked, so the car charged until it stopped by itself. The plan now works
+    from the car's last figure plus an estimate of what the charger has added since, using its power, or the
+    current it was set to, over the new "WA car: usable battery" (20 kWh to start, so it stops early rather than
+    late). The reason line says when it is estimating, and when it has never had a level at all.
+
+### Added
+- **Leaf dashboard: every warning from the car.**
+  - "Before you go" lists any warning OVMS reports (binary sensors of class problem or safety), so new ones appear
+    without a change.
+  - It says "Handbrake off while parked" when the handbrake has been off for 5 minutes with the car standing still.
+    An applied handbrake is normal, so it is not shown.
+  - The Health view has a "Warnings from the car" card listing them all, with the handbrake as applied or off.
+
 ### Changed
 - **Documentation refreshed.** The README is now a shorter overview of what World Assistant is for and what it
   does, grouped by area. `docs/architecture.md` has new diagrams of the stack, the data and an update.

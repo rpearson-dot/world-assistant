@@ -23,8 +23,14 @@
 # LEAVING ROOM FOR FREE ELECTRICITY: with "WA car: leave room per free hour" above 0, cheap charging stops that much
 # below the target for each Free Electricity hour you joined in the next 24 hours, and the free hour fills the rest.
 # One hour at 4.6 kW is about 4.6 kWh: roughly 20% of a 24 kWh (usable) battery. 0 (the default) leaves no room.
-# Otherwise charging is stopped. Without a charge level (none set, or the car is asleep) the target is not checked:
-# the car charges whenever it is cheap or free until it stops by itself.
+# Otherwise charging is stopped.
+# WHEN THE CAR GOES QUIET: the car's charge level often stops arriving while it charges (OVMS asleep, no signal, or an
+# integration update that renamed the entity). The plan then works from the last level it was told, plus an estimate
+# of what the charger has added since (its power, or the current it was set to, into "WA car: usable battery"), so
+# the target still holds. Only with no level ever seen does it charge until the car stops by itself, and it says so.
+# NOT STARTING: if the charger's switch shows on but the charger sits ready ("Preparing" or "SuspendedEVSE") for 10
+# minutes while the plan wants to charge, the start is sent again (off, then on), at most every 30 minutes. The
+# switch can stay on after the last charge, and while it shows on no new start was ever sent.
 #
 # YOUR ENTITIES: set them on the Home charging dashboard (Car settings), or in Settings > Helpers, "WA car: ..."
 # entity fields. Left empty, the names below are used (a Sync EV charger named "charger" in the OCPP integration and
@@ -48,6 +54,10 @@ input_datetime:
     has_time: true
   wa_ev_full_at:
     name: "WA car: last stopped full"
+    has_date: true
+    has_time: true
+  wa_ev_retry_at:
+    name: "WA car: start last sent again"
     has_date: true
     has_time: true
 
@@ -110,6 +120,15 @@ input_number:
     max: 100
     step: 5
     unit_of_measurement: "%"
+  wa_ev_usable_kwh:
+    # no "initial": kept across restarts; it starts at 20, a little under a 24 kWh Leaf's usable charge, so an
+    # estimate stops early rather than late
+    name: "WA car: usable battery"
+    icon: mdi:car-battery
+    min: 20
+    max: 100
+    step: 1
+    unit_of_measurement: kWh
   wa_ev_min_soc:
     name: "WA car: low means below"
     min: 5
@@ -179,8 +198,9 @@ template:
           {% set e = states('input_text.wa_ev_entity_meter') %}
           {% set v = states(e if e.count('.') == 1 else 'sensor.charger_energy_active_import_register') %}
           {{ v | float if is_number(v) else none }}
-      - name: "WA car charge level"
-        unique_id: wa_car_charge_level
+      # what the car itself last said (the plan uses "WA car charge level" below, which fills the gaps)
+      - name: "WA car reported charge level"
+        unique_id: wa_car_reported_charge_level
         unit_of_measurement: "%"
         device_class: battery
         state: >-
@@ -276,12 +296,14 @@ template:
               {% if u.joined and st is not none and now() < st <= now() + timedelta(hours=24) %}{% set ns2.n = ns2.n + 1 %}{% if ns2.first is none %}{% set ns2.first = st %}{% endif %}{% endif %}
             {% endfor %}
             {% set room = [states('input_number.wa_ev_free_room_pct') | float(0) * ns2.n, target] | min %}
+            {% set note = (' (the car is quiet: its charge is estimated at ' ~ soc | round(0) | int ~ '%)') if state_attr('sensor.wa_car_charge_level', 'estimated') == true
+                          else (' (no charge level from the car: it charges until it stops by itself)') if soc < 0 else '' %}
             {% if is_state('sensor.wa_energy_free_electricity_now', 'on') %}a Free Electricity hour you joined
             {% elif is_state('input_boolean.wa_ev_low_enabled', 'on') and 0 <= soc < states('input_number.wa_ev_min_soc') | float(20) %}the car is below {{ states('input_number.wa_ev_min_soc') | int }}%
             {% elif room > 0 and soc >= 0 and target - room <= soc < target %}leaving {{ room | int }}% for the free electricity at {{ (ns2.first | as_local).strftime('%a %H:%M') }}: charged to {{ (target - room) | int }}% until then
             {% elif is_state('sensor.wa_energy_cheap_now', 'on') %}the rate is cheap now ({{ states('sensor.wa_energy_rate') }} p/kWh)
             {% elif is_state('sensor.wa_car_charge_source', 'battery') %}the house battery is at {{ states('sensor.office_inverter_battery_soc') }}%: charging from it at {{ states('input_number.wa_ev_battery_amps') | int }} A
-            {% else %}the rate is not cheap now{% endif %}
+            {% else %}the rate is not cheap now{% endif %}{{ note }}
           # the current to set (A); 0 leaves the charger's own
           amps: >-
             {% if is_state('sensor.wa_car_charge_source', 'battery') %}{{ states('input_number.wa_ev_battery_amps') | int(6) }}
@@ -298,6 +320,33 @@ template:
             {% set f = f if f is not none and state_attr('sensor.wa_energy_free_electricity_next_start', 'joined') == true else none %}
             {% set t = [c, f] | reject('none') | min if c is not none or f is not none else none %}
             {{ t.isoformat() if t is not none else none }}
+
+  # The charge level the plan works from: the car's own figure when it has one; while the car is quiet, the last
+  # figure plus what the charger has added since (estimated each minute from its power, or from the current it was
+  # set to at 230 V and 90% into the car, over "WA car: usable battery"). Kept across restarts.
+  - triggers:
+      - trigger: state
+        entity_id: sensor.wa_car_reported_charge_level
+      - trigger: time_pattern
+        minutes: "/1"
+    sensor:
+      - name: "WA car charge level"
+        unique_id: wa_car_charge_level
+        unit_of_measurement: "%"
+        device_class: battery
+        state: >-
+          {% set rep = states('sensor.wa_car_reported_charge_level') %}
+          {% set prev = this.state if this is defined and this.state is defined else none %}
+          {% if is_number(rep) %}{{ rep | float | round(1) }}
+          {% elif is_number(prev) and is_state('sensor.wa_charger_status', 'Charging') %}
+            {% set kw = states('sensor.wa_charger_power') | float(0) %}
+            {% set cur = states('input_text.wa_ev_entity_current') %}{% set cur = cur if cur.count('.') == 1 else 'number.charger_maximum_current' %}
+            {% set kw = kw if kw > 0.5 else (states(cur) | float(32)) * 0.23 * 0.9 %}
+            {{ [prev | float + kw / 60 / (states('input_number.wa_ev_usable_kwh') | float(20)) * 100, 100] | min | round(1) }}
+          {% elif is_number(prev) %}{{ prev }}
+          {% else %}{{ none }}{% endif %}
+        attributes:
+          estimated: "{{ not is_number(states('sensor.wa_car_reported_charge_level')) and is_number(this.state if this is defined and this.state is defined else none) }}"
 
 script:
   wa_car_charge_start:
@@ -350,14 +399,51 @@ automation:
         {% set t = state_attr('input_datetime.wa_ev_stopped_at', 'timestamp') %}
         {{ t is number and now().timestamp() < t + (300 if charging else 1800) }}
       stop: "{{ plan in ['wait', 'full'] and (charging or switch_on) and not stopped_recently }}"
+      # the switch shows on, but the charger has sat ready for 10 minutes: no start reached it (the switch can stay on
+      # after the last charge, and then no new start is sent); send it again, at most every 30 minutes
+      stuck: >-
+        {% set r = state_attr('input_datetime.wa_ev_retry_at', 'timestamp') %}
+        {% set since = states.sensor.wa_charger_status.last_changed if states.sensor.wa_charger_status else none %}
+        {{ plan == 'charge' and switch_on and status in ['Preparing', 'SuspendedEVSE']
+           and since is not none and (now() - since).total_seconds() > 600
+           and not (r is number and now().timestamp() < r + 1800) }}
       soc: "{{ states('sensor.wa_car_charge_level') }}"
       next: >-
         {% set t = as_datetime(state_attr('sensor.wa_car_charging_plan', 'next_start'), none) %}
         {{ (t | as_local).strftime('%a %H:%M') if t is not none else 'not known yet' }}
     conditions:
       - condition: template
-        value_template: "{{ start or stop }}"
+        value_template: "{{ start or stop or stuck }}"
     actions:
+      - if:
+          - condition: template
+            value_template: "{{ stuck }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.wa_ev_retry_at
+            data:
+              timestamp: "{{ now().timestamp() }}"
+          - if:
+              - condition: template
+                value_template: "{{ apply }}"
+            then:
+              - action: switch.turn_off
+                target:
+                  entity_id: "{{ switch }}"
+              - delay: "00:00:20"
+              - action: switch.turn_on
+                target:
+                  entity_id: "{{ switch }}"
+          - action: logbook.log
+            data:
+              name: WA car charging
+              entity_id: input_boolean.wa_ev_apply
+              message: >-
+                Sent the start again{{ ' (dry run: nothing changed)' if not apply else '' }}: the charger has been
+                {{ status }} for over 10 minutes with its switch on, and the plan wants to charge
+                ({{ state_attr('sensor.wa_car_charging_plan', 'why') | trim }}). Car {{ soc }}%.
+          - stop: "start sent again"
       - if:  # the current first, so a charge from the house battery never starts at the charger's full rate
           - condition: template
             value_template: "{{ apply and start and amps > 0 and is_number(states(current)) }}"

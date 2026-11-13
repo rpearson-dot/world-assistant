@@ -57,7 +57,31 @@ def _env(states: dict[str, Any], now: datetime = NOW) -> tuple[Any, dict[str, An
     num = lambda v, d=0: float(v) if str(v).lstrip("-").replace(".", "", 1).isdigit() else d
     env.filters |= {"as_local": lambda d: d.astimezone(LONDON), "from_json": json.loads, "to_json": json.dumps,
                     "int": lambda v, d=0: int(num(v, d)), "float": num, "as_datetime": as_dt}  # fmt: skip
-    funcs = {"states": lambda e: str(states.get(e, "unknown")), "is_state": lambda e, v: states.get(e) == v,
+    class _State:
+        def __init__(self, eid: str) -> None:
+            self.state = str(states.get(eid, "unknown"))
+            self.last_changed = states.get(f"{eid}@changed", now)
+
+    class _Domain:
+        def __init__(self, domain: str) -> None:
+            self.domain = domain
+
+        def __getattr__(self, name: str) -> Any:
+            if name.startswith("_") or name in ("unsafe_callable", "alters_data"):
+                raise AttributeError(name)
+            eid = f"{self.domain}.{name}"
+            return _State(eid) if eid in states else None
+
+    class _States:
+        def __call__(self, e: str) -> str:
+            return str(states.get(e, "unknown"))
+
+        def __getattr__(self, domain: str) -> Any:
+            if domain.startswith("_") or domain in ("unsafe_callable", "alters_data"):
+                raise AttributeError(domain)
+            return _Domain(domain)
+
+    funcs = {"states": _States(), "is_state": lambda e, v: states.get(e) == v,
              "state_attr": lambda e, a: states.get(f"{e}#{a}"), "as_datetime": as_dt, "now": lambda: now,
              "timedelta": timedelta, "none": None, "range": range,
              "is_number": lambda v: str(v).lstrip("-").replace(".", "", 1).isdigit()}  # fmt: skip
@@ -402,7 +426,7 @@ def test_nothing_is_logged_between_boundaries() -> None:
 # --- the car charging plan -----------------------------------------------------------------------------------------
 
 EV = yaml.safe_load((Path(__file__).parent.parent / "homeassistant/packages/wa_ev_plan.yaml").read_text())
-EV_SENSORS = {x["unique_id"]: x for x in EV["template"][0]["sensor"]}
+EV_SENSORS = {x["unique_id"]: x for block in EV["template"] for x in block["sensor"]}
 CAR = {"sensor.wa_charger_status": "SuspendedEVSE", "sensor.wa_car_charge_level": "55.0", "input_number.wa_ev_target_soc": "80.0",
        "input_number.wa_ev_min_soc": "20.0", "input_boolean.wa_ev_low_enabled": "on", "sensor.wa_energy_cheap_now": "off",
        "sensor.wa_energy_free_electricity_now": "off", "sensor.wa_energy_rate": "14.27",
@@ -414,7 +438,7 @@ def _plan(states: dict[str, Any], at: datetime) -> str:
 
 
 def test_the_entities_are_settings_with_defaults() -> None:
-    soc = EV_SENSORS["wa_car_charge_level"]["state"]
+    soc = EV_SENSORS["wa_car_reported_charge_level"]["state"]
     assert render(soc, {"sensor.hv66bzd_instrument_soc_nissan_leaf": "85"}) == 85.0  # empty setting: the default
     mine = {"input_text.wa_ev_entity_soc": "sensor.my_car_battery", "sensor.my_car_battery": "42"}
     assert render(soc, mine | {"sensor.hv66bzd_instrument_soc_nissan_leaf": "85"}) == 42.0
@@ -464,17 +488,17 @@ def test_the_charger_is_started_and_stopped_and_logged() -> None:
                   "sensor.wa_car_charging_plan#next_start": "2026-10-25T13:00:00+00:00"}  # fmt: skip
     v = go(base | {"sensor.wa_car_charging_plan": "charge"})
     assert (v["start"], v["stop"], v["switch"]) == (True, False, "switch.charger_charge_control")
-    assert words(a["actions"][3]["data"]["message"], base, **v) == (
+    assert words(a["actions"][4]["data"]["message"], base, **v) == (
         "Started charging the car: the rate is cheap now (14.27 p/kWh). Car 55.0%, charger SuspendedEVSE.")
     waiting = base | {"sensor.wa_car_charging_plan": "wait", "sensor.wa_charger_status": "Charging", "switch.charger_charge_control": "on",
                       "sensor.wa_car_charging_plan#why": "the rate is not cheap now"}  # fmt: skip
     v = go(waiting)
     assert (v["start"], v["stop"]) == (False, True)
-    assert words(a["actions"][3]["data"]["message"], waiting, **v).startswith(
+    assert words(a["actions"][4]["data"]["message"], waiting, **v).startswith(
         "Stopped charging the car: the rate is not cheap now; next cheap or free time Sun 13:00.")
     v = go(base | {"sensor.wa_car_charging_plan": "full", "sensor.wa_charger_status": "Charging", "input_boolean.wa_ev_apply": "off"})
     assert v["stop"] and not v["apply"]
-    assert words(a["actions"][3]["data"]["message"], base, **v).startswith(
+    assert words(a["actions"][4]["data"]["message"], base, **v).startswith(
         "Stopped charging the car (dry run: nothing changed): it is at 55.0%, the target is 80%.")
     mine = base | {"input_text.wa_ev_entity_switch": "switch.wallbox", "switch.wallbox": "on", "sensor.wa_car_charging_plan": "charge",
                    "sensor.wa_charger_status": "Charging"}  # fmt: skip
@@ -556,7 +580,7 @@ def test_after_a_full_charge_it_rests_instead_of_bouncing() -> None:
     assert go(burst)["stop"] is False  # not once per change in a burst (4 Nov: dozens of stops logged in one second)
     trigger = next(t for t in a["triggers"] if t["trigger"] == "state")
     assert "to" in trigger and trigger["to"] is None  # state changes only, not every attribute update
-    marks = a["actions"][2]["then"]
+    marks = a["actions"][3]["then"]
     assert marks[0]["target"]["entity_id"] == "input_datetime.wa_ev_stopped_at"
     assert marks[1]["if"][0]["value_template"] == "{{ plan == 'full' and charging }}"  # only a real full stop rests
 
@@ -598,10 +622,10 @@ def test_the_car_can_charge_from_the_house_battery_at_a_set_current() -> None:
     for k, tpl in a["variables"].items():
         v[k] = render(tpl, st, at, **v)
     assert v["start"] and v["amps"] == 10 and v["current"] == "number.charger_maximum_current"
-    first = a["actions"][0]
+    first = a["actions"][1]
     assert render(first["if"][0]["value_template"], st, at, **v) is True  # the current is set before the start
     assert first["then"][0]["action"] == "number.set_value" and render(first["then"][0]["data"]["value"], st, at, **v) == 10
-    assert words(a["actions"][3]["data"]["message"], st, **v).endswith("charger SuspendedEVSE, 10 A.")
+    assert words(a["actions"][4]["data"]["message"], st, **v).endswith("charger SuspendedEVSE, 10 A.")
 
     c = next(x for x in EV["automation"] if x["id"] == "wa_ev_current")
     w: dict[str, Any] = {}
@@ -658,3 +682,45 @@ def test_a_free_slot_fills_to_the_free_target_and_is_not_borrowed() -> None:
     at = "2026-10-24T12:00:00+00:00"
     assert render(a["variables"]["scheduled"], on, NOW, start=at) is True
     assert render(a["variables"]["scheduled"], on | {"sensor.wa_inverter_slot_check": "mismatch"}, NOW, start=at) is False
+
+
+def test_while_the_car_is_quiet_its_charge_is_estimated_so_the_target_still_holds() -> None:
+    level = EV_SENSORS["wa_car_charge_level"]
+    told = {"sensor.wa_car_reported_charge_level": "62.0"}
+    assert render(level["state"], told, this=None) == 62.0  # the car's own figure when it has one
+    quiet = {"sensor.wa_car_reported_charge_level": "unavailable", "sensor.wa_charger_status": "Charging",
+             "sensor.wa_charger_power": "0", "number.charger_maximum_current": "32", "input_number.wa_ev_usable_kwh": "24"}
+    this = type("This", (), {"state": "62.0"})()
+    # 32 A at 230 V, 90% in: 6.6 kW, a minute of it into 24 kWh is about 0.46%
+    assert render(level["state"], quiet, this=this) == 62.5
+    assert render(level["state"], quiet | {"sensor.wa_charger_power": "3.6"}, this=this) == 62.2  # its power when it reports one
+    assert render(level["state"], quiet | {"sensor.wa_charger_status": "SuspendedEV"}, this=this) == 62.0  # held, not charging
+    assert render(level["state"], quiet, this=type("This", (), {"state": "unknown"})()) in (None, "None")  # never told: none
+    assert render(level["attributes"]["estimated"], quiet, this=this) is True
+    near = type("This", (), {"state": "79.8"})()
+    assert render(level["state"], quiet, this=near) == 80.3 and _plan(CAR | {"sensor.wa_car_charge_level": "80.0",
+                                                                              "sensor.wa_energy_cheap_now": "on"}, NOW) == "full"
+
+
+def test_a_start_that_never_reached_the_charger_is_sent_again() -> None:
+    a = next(x for x in EV["automation"] if x["id"] == "wa_ev_plan")
+
+    def go(states: dict[str, Any]) -> dict[str, Any]:
+        v: dict[str, Any] = {}
+        for k, tpl in a["variables"].items():
+            v[k] = render(tpl, states, NOW, **v)
+        return v
+
+    # the switch stayed on from the last charge; the car is plugged in again and the charger waits for a start
+    stale = CAR | {"switch.charger_charge_control": "on", "input_boolean.wa_ev_apply": "on", "sensor.wa_car_charging_plan": "charge",
+                   "sensor.wa_charger_status": "Preparing", "sensor.wa_charger_status@changed": NOW - timedelta(minutes=12),
+                   "sensor.wa_car_charging_plan#why": "the rate is cheap now (14.27 p/kWh)"}  # fmt: skip
+    v = go(stale)
+    assert (v["start"], v["stop"], v["stuck"]) == (False, False, True)
+    assert words(a["actions"][0]["then"][2]["data"]["message"], stale, **v).startswith(
+        "Sent the start again: the charger has been Preparing for over 10 minutes with its switch on")
+    assert go(stale | {"sensor.wa_charger_status@changed": NOW - timedelta(minutes=3)})["stuck"] is False  # give it time
+    assert go(stale | {"input_datetime.wa_ev_retry_at#timestamp": (NOW - timedelta(minutes=10)).timestamp()})["stuck"] is False
+    assert go(stale | {"sensor.wa_charger_status": "SuspendedEV"})["stuck"] is False  # the car said no: leave it
+    assert go(stale | {"sensor.wa_car_charging_plan": "wait"})["stuck"] is False
+
