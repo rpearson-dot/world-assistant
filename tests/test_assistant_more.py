@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import contextlib
+import importlib
 import json
 from typing import Any
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-
-import importlib
 
 from app import assistant_base, assistant_more
 from app.assistant import TOOLS, ToolError
