@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.52.1] - 2026-11-13
 
 ### Changed
 - **Keys page: the MOT History keys are named as DVSA's email names them** (Client ID, Client Secret, API Key,
