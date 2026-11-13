@@ -147,3 +147,25 @@ def test_a_registration_saved_checked_and_kept_with_the_vehicle(monkeypatch: pyt
         with eng.begin() as conn:
             conn.execute(sa.text("DROP TABLE IF EXISTS vehicle"))
         eng.dispose()
+
+
+def test_the_mot_login_uses_the_emails_scope_url_when_given(monkeypatch: pytest.MonkeyPatch) -> None:
+    keys = {"dvsa_mot_client_id": "cid", "dvsa_mot_client_secret": "sec", "dvsa_mot_scope_url": "https://tapi.dvsa.gov.uk/other",
+            "dvsa_mot_token_url": "https://login.microsoftonline.com/t/oauth2/v2.0/token"}  # fmt: skip
+    monkeypatch.setattr(V, "read_secret", lambda k, d="": keys.get(k, d))
+    V._token.clear()
+
+    def fake(req: httpx.Request) -> httpx.Response:
+        assert b"scope=https%3A%2F%2Ftapi.dvsa.gov.uk%2Fother" in req.content
+        return httpx.Response(200, json={"access_token": "tok2", "expires_in": 3599})
+
+    async def go() -> str:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(fake)) as c:
+            return await V.mot_token(c)
+
+    assert asyncio.run(go()) == "tok2"
+    V._token.clear()
+    keys["dvsa_mot_scope_url"] = "http://not-https.example"
+    with pytest.raises(V.CheckError):
+        asyncio.run(go())
+    V._token.clear()

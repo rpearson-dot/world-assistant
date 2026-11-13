@@ -2,6 +2,19 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.52.1] - 2026-11-13
+
+### Changed
+- **Keys page: the MOT History keys are named as DVSA's email names them** (Client ID, Client Secret, API Key,
+  ScopeURL, TokenURL), so each value goes in the box with the same name. ScopeURL is new and optional: the usual
+  `https://tapi.dvsa.gov.uk/.default` is used when it is empty.
+- **Vehicles page: one pane per vehicle.** Each vehicle opens to show what it runs on, its registration with Check now,
+  its tax and MOT result and advisories, and Edit and Remove. The heading shows the registration and when the MOT and
+  tax run out (or the warning). Edit opens in the vehicle's own pane; "Add another vehicle" is below them all.
+- **Places: postcode and position, both shown and both editable.** Each place lists its postcode and its latitude and
+  longitude, with Edit and Delete. A place can be given a postcode, a position, or both; changing only the postcode
+  moves the place to it.
+
 ## [0.52.0] - 2026-11-13
 
 ### Fixed

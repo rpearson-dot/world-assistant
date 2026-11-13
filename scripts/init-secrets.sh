@@ -69,6 +69,7 @@ make_secret dvla_api_key ""
 make_secret dvsa_mot_api_key ""
 make_secret dvsa_mot_client_id ""
 make_secret dvsa_mot_client_secret ""
+make_secret dvsa_mot_scope_url ""
 make_secret dvsa_mot_token_url ""
 # Shopping (docs/shopping.md): KitchenOwl's long-lived token and the retailer logins. Usually saved from the Shopping page.
 make_secret kitchenowl_token ""

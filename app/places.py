@@ -203,13 +203,20 @@ PAGE = """<!doctype html>
 <p id="msg" class="err"></p>
 
 <div class="card"><h2>Places</h2>
-<table id="places"><tbody></tbody></table>
-<form id="addplace" class="row" style="margin-top:10px">
-  <input id="pname" placeholder="Name (e.g. Brighton)" required>
-  <input id="ppc" placeholder="Postcode" required>
-  <select id="pkind"><option>other</option><option>home</option><option>work</option></select>
-  <button>Add or update place</button>
-</form></div>
+<table id="places"><thead><tr><th>Name</th><th>Kind</th><th>Postcode</th><th>Latitude, longitude</th><th></th></tr></thead><tbody></tbody></table>
+<h3 id="ptitle" style="margin:14px 0 6px;font-size:1em">Add a place</h3>
+<form id="addplace" class="row">
+  <label>Name <input id="pname" placeholder="e.g. Brighton" required maxlength="80"></label>
+  <label>Postcode <input id="ppc" placeholder="e.g. BN1 1EE" maxlength="10"></label>
+  <label>Latitude <input id="plat" type="number" step="any" min="49.5" max="61" placeholder="e.g. 50.8225"></label>
+  <label>Longitude <input id="plon" type="number" step="any" min="-8.7" max="2" placeholder="e.g. -0.1372"></label>
+  <label>Kind <select id="pkind"><option>other</option><option>home</option><option>work</option></select></label>
+  <button id="psave" class="primary">Add place</button>
+  <button id="pcancel" type="button" hidden>Cancel</button>
+</form>
+<p class="dim">Give a postcode, or a latitude and longitude, or both. A postcode alone is placed at its centre; a latitude
+and longitude are used as given (with the postcode kept as its label).</p>
+<p id="pmsg" class="err"></p></div>
 
 <div class="card"><h2>Trips</h2>
 <table id="trips"><tbody></tbody></table>
@@ -240,9 +247,22 @@ async function api(method, path, body) {
   return r.status === 204 ? null : r.json();
 }
 function cell(tr, text) { const td = document.createElement('td'); td.textContent = text; tr.appendChild(td); }
-function delBtn(tr, path) {
+function delBtn(tr, path, what) {
   const td = document.createElement('td'), b = document.createElement('button');
-  b.textContent = 'Delete'; b.onclick = () => run(() => api('DELETE', path)); td.appendChild(b); tr.appendChild(td);
+  b.textContent = 'Delete'; b.type = 'button';
+  b.onclick = () => { if (!what || confirm('Delete ' + what + '?')) run(() => api('DELETE', path)); };
+  td.appendChild(b); tr.appendChild(td); return td;
+}
+let editingPlace = null;  // {id, postcode, lat, lon} as saved, while one is being changed
+const $p = id => document.getElementById(id);
+function editPlace(p) {
+  editingPlace = p; $p('ptitle').textContent = 'Change ' + p.name; $p('psave').textContent = 'Save changes'; $p('pcancel').hidden = false;
+  $p('pname').value = p.name; $p('ppc').value = p.postcode || ''; $p('plat').value = p.lat ?? ''; $p('plon').value = p.lon ?? '';
+  $p('pkind').value = p.kind; $p('pname').focus();
+}
+function resetPlace() {
+  editingPlace = null; $p('addplace').reset(); $p('ptitle').textContent = 'Add a place'; $p('psave').textContent = 'Add place';
+  $p('pcancel').hidden = true;
 }
 function routeBtn(tr, t) {
   const td = document.createElement('td'), b = document.createElement('button');
@@ -284,7 +304,10 @@ async function load() {
   const pb = document.querySelector('#places tbody'); pb.replaceChildren();
   for (const p of places) {
     const tr = document.createElement('tr');
-    cell(tr, p.name); cell(tr, p.kind); cell(tr, p.postcode || ''); delBtn(tr, '/v1/places/' + p.id);
+    cell(tr, p.name); cell(tr, p.kind); cell(tr, p.postcode || '');
+    cell(tr, p.lat != null && p.lon != null ? p.lat.toFixed(5) + ', ' + p.lon.toFixed(5) : '');
+    const td = delBtn(tr, '/v1/places/' + p.id, p.name), eb = document.createElement('button');
+    eb.type = 'button'; eb.textContent = 'Edit'; eb.style.marginRight = '6px'; eb.onclick = () => editPlace(p); td.prepend(eb);
     pb.appendChild(tr);
   }
   const tb = document.querySelector('#trips tbody'); tb.replaceChildren();
@@ -293,7 +316,7 @@ async function load() {
     cell(tr, t.name);
     cell(tr, t.corridor_id ? (t.distance_km.toFixed(0) + ' km, ' + Math.round(t.duration_s / 60) + ' min, ' + (t.roads || []).join(' ')) : 'route pending');
     const more = condCell(tr, t);
-    routeBtn(tr, t); delBtn(tr, '/v1/trips/' + t.id);
+    routeBtn(tr, t); delBtn(tr, '/v1/trips/' + t.id, t.name);
     tb.appendChild(tr); if (more) tb.appendChild(more);
   }
   for (const id of ['tfrom', 'tto']) {
@@ -308,13 +331,20 @@ async function run(fn, out = msg) {  // out: where a failure is shown, next to t
 document.getElementById('auth').onsubmit = e => { e.preventDefault(); run(() => Promise.resolve()); };
 document.getElementById('addplace').onsubmit = e => {
   e.preventDefault();
-  const name = document.getElementById('pname').value;
+  const name = $p('pname').value.trim(), postcode = $p('ppc').value.trim() || null;
+  let lat = $p('plat').value === '' ? null : Number($p('plat').value), lon = $p('plon').value === '' ? null : Number($p('plon').value);
+  // a changed postcode with the old position left as it was: place it at the new postcode
+  if (editingPlace && postcode && postcode !== (editingPlace.postcode || '') && lat === editingPlace.lat && lon === editingPlace.lon) lat = lon = null;
+  if (!postcode && (lat == null || lon == null)) { $p('pmsg').textContent = 'Give a postcode, or both a latitude and a longitude.'; return; }
+  if ((lat == null) !== (lon == null)) { $p('pmsg').textContent = 'Give both the latitude and the longitude, or neither.'; return; }
+  const id = editingPlace ? editingPlace.id : slug(name);
+  if (!id) { $p('pmsg').textContent = 'Give the place a name with at least one letter or digit.'; return; }
   run(async () => {
-    await api('PUT', '/v1/places/' + slug(name), { name, postcode: document.getElementById('ppc').value,
-      kind: document.getElementById('pkind').value });
-    e.target.reset();
-  });
+    await api('PUT', '/v1/places/' + id, { name, postcode, lat, lon, kind: $p('pkind').value });
+    resetPlace();
+  }, $p('pmsg'));
 };
+$p('pcancel').onclick = resetPlace;
 document.getElementById('addtrip').onsubmit = e => {
   e.preventDefault();
   const f = document.getElementById('tfrom').value, t = document.getElementById('tto').value;

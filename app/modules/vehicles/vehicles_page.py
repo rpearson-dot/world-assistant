@@ -16,7 +16,22 @@ PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>World Assistant vehicles</title>
 <style>
-/*BASE_CSS*/</style></head><body><main>
+/*BASE_CSS*/
+.veh { border-bottom: 1px solid var(--line); }
+.veh:last-child { border-bottom: 0; }
+.veh > summary { cursor: pointer; padding: 10px 2px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; list-style: none; }
+.veh > summary::-webkit-details-marker { display: none; }
+.veh > summary::before { content: '▸'; color: var(--dim); width: 1em; }
+.veh[open] > summary::before { content: '▾'; }
+.veh .vn { font-weight: 650; }
+.veh .vs { color: var(--dim); font-size: .9em; }
+.veh .vs.err { color: var(--bad); }
+.veh .body { padding: 0 2px 12px 1.4em; display: grid; gap: 8px; }
+.veh .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.vform { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 6px 0; }
+.vform h3 { margin: 0 0 6px; font-size: 1em; }
+#addpane { padding-top: 10px; }
+</style></head><body><main>
 <!--NAV-->
 <h1>Vehicles</h1>
 <form id="auth" class="bar"><input id="t" type="password" placeholder="API token" autocomplete="current-password">
@@ -24,12 +39,18 @@ PAGE = """<!doctype html>
 <p id="msg" class="err"></p>
 
 <div class="card"><h2>Your vehicles</h2>
-<table id="vehicles"><tbody></tbody></table>
-<p id="none" class="dim" hidden>No vehicles yet. Add one below: the Fuel page then shows only the fuels you use.</p>
+<p id="none" class="dim" hidden>No vehicles yet. Add one: the Fuel page then shows only the fuels you use.</p>
+<div id="vehicles"></div>
+<p id="cmsg" class="err"></p>
+<div id="addpane"><button id="addbtn" type="button" class="primary">Add a vehicle</button></div>
+<p class="dim" id="checksnote">Give a vehicle its registration: DVLA says its tax and MOT status, DVSA its MOT history, advisories and any
+outstanding recall. Checked every Monday, and with Check now. Needs the keys on Settings, Keys (DVLA, DVSA or both).</p>
 </div>
 
-<div class="card"><h2 id="formtitle">Add a vehicle</h2>
-<form id="addveh" class="row">
+<div id="formhome" hidden>
+<form id="addveh" class="vform">
+  <h3 id="formtitle">Add a vehicle</h3>
+  <div class="row">
   <label>Name <input id="vname" placeholder="e.g. Toyota Estima" required maxlength="80"></label>
   <label>Runs on <select id="vtype">
     <option value="petrol">Petrol</option><option value="diesel">Diesel</option>
@@ -46,17 +67,12 @@ PAGE = """<!doctype html>
     <label>Home electricity, p/kWh <input id="vhome" type="number" step="0.1" min="0" max="200" placeholder="blank: Energy tab"></label>
     <label>Rapid charging <select id="vconn"><option value="">not set</option><option>CCS</option><option>CHAdeMO</option><option>Type 2</option></select></label>
   </span>
-  <button id="save" class="primary">Add vehicle</button>
-  <button id="cancel" type="button" hidden>Cancel</button>
+  </div>
+  <div class="row"><button id="save" class="primary">Add vehicle</button>
+  <button id="cancel" type="button">Cancel</button></div>
+  <p id="vmsg" class="err"></p>
+  <p id="hint" class="dim"></p>
 </form>
-<p id="vmsg" class="err"></p>
-<p id="hint" class="dim"></p>
-</div>
-
-<div class="card" id="checkscard"><h2>Tax and MOT</h2>
-<p class="dim">Give a vehicle its registration: DVLA says its tax and MOT status, DVSA its MOT history and advisories and any
-outstanding recall. Checked every Monday, and with Check now. Needs the keys on Settings, Keys (DVLA, DVSA or both).</p>
-<div id="checks"></div><p id="cmsg" class="err"></p>
 </div>
 
 <script>
@@ -114,67 +130,82 @@ function describe(v) {
     + (v.connector ? ', charges on ' + v.connector : '');
   return (LABEL[v.fuel] || v.fuel) + ', ' + v.mpg + ' mpg' + (v.fuel_pence_per_litre ? ', your price ' + v.fuel_pence_per_litre + 'p/litre' : '');
 }
-function button(text, onclick) { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.onclick = onclick; return b; }
+function button(text, onclick, cls) { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.onclick = onclick; if (cls) b.className = cls; return b; }
+const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+const openIds = new Set();
+let checkData = null;  // null: tax and MOT switched off
 async function load() {
   msg.textContent = '';
   try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
   saved = await api('GET', '/v1/vehicles');
   try { cheapest = (await api('GET', '/v1/vehicles/home-rate')).cheapest; } catch (e) { cheapest = null; }
   $('vhome').placeholder = cheapest ? 'blank: ' + cheapest.pence_per_kwh + 'p (Energy tab)' : 'e.g. 15';
-  const body = document.querySelector('#vehicles tbody'); body.replaceChildren();
+  try { checkData = await api('GET', '/v1/vehicle-checks'); } catch (e) { checkData = /switched off/i.test(e.message) ? null : { vehicles: [], keys: {}, error: e.message }; }
+  $('checksnote').hidden = !checkData;
+  draw();
+}
+function draw() {
+  parkForm();
+  const box = $('vehicles'); box.replaceChildren();
+  const by = Object.fromEntries(((checkData || {}).vehicles || []).map(v => [v.id, v]));
   for (const v of saved) {
-    const tr = body.insertRow();
-    tr.insertCell().textContent = v.name;
-    tr.insertCell().textContent = describe(v);
-    const td = tr.insertCell();
-    td.append(button('Edit', () => edit(v)), ' ', button('Delete', () => {
-      if (confirm('Delete ' + v.name + '?')) run(() => api('DELETE', '/v1/vehicles/' + v.id));
+    const c = by[v.id], det = el('details', null, 'veh'); det.dataset.id = v.id; det.open = openIds.has(v.id);
+    det.ontoggle = () => { if (det.open) openIds.add(v.id); else openIds.delete(v.id); };
+    const sum = el('summary'); sum.append(el('span', v.name, 'vn'));
+    if (c) sum.append(el('span', c.registration, 'vs'));
+    const status = c ? (c.warnings.length ? c.warnings.join('; ') : [c.mot_due && 'MOT until ' + c.mot_due, c.tax_due && 'tax until ' + c.tax_due].filter(Boolean).join(' · ')) : '';
+    if (status) sum.append(el('span', status, 'vs' + (c.warnings.length ? ' err' : '')));
+    det.append(sum);
+    const body = el('div', null, 'body'); body.append(el('div', describe(v)));
+    if (checkData) {
+      const row = el('div', null, 'row');
+      const reg = el('input'); reg.maxLength = 12; reg.placeholder = 'Registration'; reg.value = c ? c.registration : ''; reg.size = 10;
+      reg.setAttribute('aria-label', 'Registration of ' + v.name);
+      row.append(el('span', 'Registration', 'dim'), reg, button('Save', () => run(() => api('PUT', '/v1/vehicle-checks/' + v.id + '/registration', { registration: reg.value }), $('cmsg'))));
+      if (c) row.append(button('Check now', () => run(() => api('POST', '/v1/vehicle-checks/' + v.id + '/check'), $('cmsg'))));
+      body.append(row);
+      if (c) body.append(el('p', c.text, c.warnings.length ? 'err' : 'dim'));
+      if (c && c.last_mot && c.last_mot.advisories.length) {
+        const d = el('details'); d.append(el('summary', 'Last MOT advisories (' + c.last_mot.advisories.length + ')'));
+        const ul = el('ul'); for (const a of c.last_mot.advisories) ul.append(el('li', a)); d.append(ul); body.append(d);
+      }
+    }
+    const acts = el('div', null, 'acts');
+    acts.append(button('Edit', () => edit(v, body)), button('Remove', () => {
+      if (confirm('Remove ' + v.name + '? Its tax and MOT record goes too.')) run(() => api('DELETE', '/v1/vehicles/' + v.id));
     }));
+    body.append(acts); det.append(body); box.append(det);
   }
   $('none').hidden = saved.length > 0;
-  await checks();
+  $('addbtn').textContent = saved.length ? 'Add another vehicle' : 'Add a vehicle';
+  $('addbtn').hidden = false;
 }
-async function checks() {
-  const box = $('checks'); box.replaceChildren();
-  let d = { vehicles: [], keys: {} };
-  try { d = await api('GET', '/v1/vehicle-checks'); } catch (e) { $('checkscard').hidden = /switched off/i.test(e.message); return; }
-  const by = Object.fromEntries(d.vehicles.map(v => [v.id, v]));
-  for (const v of saved) {
-    const c = by[v.id], row = document.createElement('div'); row.className = 'row';
-    const name = document.createElement('b'); name.textContent = v.name;
-    const reg = document.createElement('input'); reg.maxLength = 12; reg.placeholder = 'Registration'; reg.value = c ? c.registration : ''; reg.size = 10;
-    row.append(name, reg, button('Save', () => run(async () => { const r = await api('PUT', '/v1/vehicle-checks/' + v.id + '/registration', { registration: reg.value }); $('cmsg').textContent = ''; }, $('cmsg'))));
-    if (c) row.append(button('Check now', () => run(() => api('POST', '/v1/vehicle-checks/' + v.id + '/check'), $('cmsg'))));
-    box.append(row);
-    if (c) {
-      const p = document.createElement('p'); p.className = c.warnings.length ? 'err' : 'dim'; p.textContent = c.text; box.append(p);
-      if (c.last_mot && c.last_mot.advisories.length) { const det = document.createElement('details'), sum = document.createElement('summary');
-        sum.textContent = 'Last MOT advisories (' + c.last_mot.advisories.length + ')'; det.append(sum);
-        const ul = document.createElement('ul'); for (const a of c.last_mot.advisories) { const li = document.createElement('li'); li.textContent = a; ul.append(li); }
-        det.append(ul); box.append(det); }
-    }
-  }
-}
-function edit(v) {
-  editing = v.id; $('formtitle').textContent = 'Change ' + v.name; $('save').textContent = 'Save changes'; $('cancel').hidden = false;
+function parkForm() { $('formhome').append($('addveh')); }
+function edit(v, where) {
+  editing = v.id; $('formtitle').textContent = 'Change ' + v.name; $('save').textContent = 'Save changes';
   $('vname').value = v.name; $('vtype').value = v.type; showType(false);
   if (v.type === 'electric') {
     $('vbat').value = v.battery_kwh ?? ''; $('vsoh').value = v.soh_percent ?? 100; $('vmpk').value = v.miles_per_kwh ?? '';
     $('vhome').value = v.home_pence_per_kwh ?? ''; $('vconn').value = v.connector || '';
   } else { $('vfuel').value = v.fuel; $('vmpg').value = v.mpg ?? ''; $('vown').value = v.fuel_pence_per_litre ?? ''; }
-  $('vname').focus();
+  $('addbtn').hidden = false; where.append($('addveh')); $('vname').focus();
+}
+function adding() {
+  reset(); $('addbtn').hidden = true; $('addpane').append($('addveh')); $('vname').focus();
 }
 function reset() {
   editing = null; $('addveh').reset(); $('formtitle').textContent = 'Add a vehicle'; $('save').textContent = 'Add vehicle';
-  $('cancel').hidden = true; showType(false);
+  $('vmsg').textContent = ''; showType(false);
 }
+function closeForm() { reset(); parkForm(); $('addbtn').hidden = false; }
 async function run(fn, out = msg) {
-  msg.textContent = ''; vmsg.textContent = '';
+  msg.textContent = ''; vmsg.textContent = ''; $('cmsg').textContent = '';
   try { await fn(); await load(); } catch (e) { out.textContent = e.message; }
 }
 const num = id => { const v = $(id).value; return v === '' ? null : Number(v); };
 $('vtype').onchange = () => showType(true);
-$('cancel').onclick = reset;
+$('cancel').onclick = closeForm;
+$('addbtn').onclick = adding;
 $('auth').onsubmit = e => { e.preventDefault(); run(() => Promise.resolve()); };
 $('addveh').onsubmit = e => {
   e.preventDefault();
@@ -186,7 +217,7 @@ $('addveh').onsubmit = e => {
   const id = editing || slug(name);
   if (!id) { vmsg.textContent = 'Give the vehicle a name with at least one letter or digit.'; return; }
   if (!editing && saved.some(v => v.id === id) && !confirm('A vehicle called "' + name + '" is already saved. Replace it?')) return;
-  run(async () => { await api('PUT', '/v1/vehicles/' + id, body); reset(); }, vmsg);
+  run(async () => { await api('PUT', '/v1/vehicles/' + id, body); if (!editing) openIds.add(id); closeForm(); }, vmsg);
 };
 showType(false);
 if (tok.value) run(() => Promise.resolve());
