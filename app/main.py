@@ -96,6 +96,10 @@ class ErrorCount:
 
 app.add_middleware(ErrorCount)
 
+from app.clients import Audit
+
+app.add_middleware(Audit)  # who changed what (app/clients.py)
+
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:

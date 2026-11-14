@@ -56,11 +56,12 @@ CORE = Module(
         "app.backups:router", "app.ha_locations:router", "app.ha_routes:router", "app.icons:router",
         "app.places:router", "app.map_layers:router", "app.map_page:page_router", "app.assistant:router",
         "app.places:page_router", "app.settings_page:page_router", "app.webapp:router",
-        "app.modules.routes:router", "app.modules.routes:page_router", "app.notify:router", "app.watchdog:router",
+        "app.modules.routes:router", "app.modules.routes:page_router", "app.notify:router", "app.watchdog:router", "app.clients:router",
     ),
     worker=(Job("app.ha_publish:ha_sync", _ha),
             # the newest backup restored into a scratch schema and checked, early on Sunday
-            Job("app.watchdog:restore_check", {"weekday": {6}, "hour": {5}, "minute": {17}, "timeout": 3600, "max_tries": 1})),
+            Job("app.watchdog:restore_check", {"weekday": {6}, "hour": {5}, "minute": {17}, "timeout": 3600, "max_tries": 1}),
+            Job("app.clients:audit_housekeep", {"hour": {4}, "minute": {13}, "timeout": 300, "max_tries": 1})),
     tools=("list_options", "add_place", "add_trip"),
 )
 

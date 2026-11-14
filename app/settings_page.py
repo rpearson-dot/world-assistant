@@ -169,6 +169,19 @@ PAGE = """<!doctype html>
   <div class="card"><h2>System</h2><p id="sys" class="dim"></p>
     <p class="dim">API reference: <a href="/docs">/docs</a>. For AI assistants: <code>/mcp</code>. Home Assistant: <a href="/ha">/ha</a>.</p>
     <div class="row"><button id="copy" type="button">Copy status</button><button id="refresh" type="button">Refresh</button></div></div>
+  <div class="card"><h2>Health</h2><div id="hlist" class="dim">Checking…</div>
+    <p id="hmore" class="dim small"></p></div>
+  <div class="card"><h2>Clients</h2>
+    <p class="dim small">One token for each thing that calls World Assistant from outside your home network (Home Assistant,
+    Shortcuts, an AI assistant, a script), with only the access it needs. Revoke one and the others carry on. The main
+    token still works for everything.</p>
+    <table id="clist" class="small"></table>
+    <div class="row"><label>Name <input id="cname" placeholder="e.g. Home Assistant" maxlength="60"></label>
+      <label>Access <select id="caccess"><option value="read">Read only</option><option value="assistant">Read and ask the assistant</option><option value="full">Everything</option></select></label>
+      <label>Only these paths <input id="cpaths" placeholder="optional, e.g. /v1/ocpp, /v1/energy"></label>
+      <button id="cadd" type="button" class="primary">Make a token</button></div>
+    <p id="cmsg" class="dim"></p><pre id="ctok" hidden></pre></div>
+  <details class="card"><summary>Audit log: changes made and tokens refused</summary><table id="alog" class="small"></table></details>
   <details class="card"><summary>Raw status</summary><pre id="out">Loading...</pre></details>
 </section>
 
@@ -453,6 +466,50 @@ $('copy').onclick = () => {
 };
 $('refresh').onclick = () => load();
 
+// --- health, clients and the audit log ------------------------------------------------------------------
+async function healthLoad() {
+  const h = await api('/v1/health/watch'), box = $('hlist'); box.replaceChildren();
+  if (!h.problems.length) box.append(el('p', 'good', 'All well: the worker, every job, the disks and the backups.'));
+  for (const p of h.problems) box.append(el('p', 'err', p.text));
+  const r = h.restore_check;
+  $('hmore').textContent = 'Database ' + h.database_gb + ' GB. ' + (r ? 'Last restore check ' + ago(r.at) + ': ' +
+    (r.ok ? 'the newest backup (' + r.backup + ') restored, ' + r.tables + ' tables, ' + r.rows + ' rows, all as backed up.' : 'failed.')
+    : 'The restore check runs early on Sundays.') + ' Checked ' + ago(h.checked_at) + '.';
+}
+function cell(tr, text) { const td = el('td', null, text == null ? '' : String(text)); tr.append(td); return td; }
+async function clientsLoad() {
+  const d = await api('/v1/clients'), t = $('clist'); t.replaceChildren();
+  const hd = el('tr'); ['Name', 'Access', 'Token', 'Last used', ''].forEach(x => hd.append(el('th', null, x))); t.append(hd);
+  const words = { read: 'read only', assistant: 'read, assistant', full: 'everything' };
+  for (const c of d.clients) {
+    const tr = el('tr'); cell(tr, c.name); cell(tr, words[c.access] + (c.paths.length ? ' (' + c.paths.join(', ') + ')' : ''));
+    cell(tr, '…' + c.hint); cell(tr, c.revoked_at ? 'revoked ' + ago(c.revoked_at) : c.last_used_at ? ago(c.last_used_at) : 'not yet');
+    const td = cell(tr, '');
+    if (!c.revoked_at) { const b = el('button', null, 'Revoke'); b.type = 'button';
+      b.onclick = async () => { if (!confirm('Revoke ' + c.name + '? Its token stops working at once.')) return;
+        try { await api('/v1/clients/' + c.id + '/revoke', { method: 'POST' }); clientsLoad(); } catch (e) { $('cmsg').textContent = e.message; } };
+      td.append(b); }
+    t.append(tr);
+  }
+  if (!d.clients.length) { const tr = el('tr'); cell(tr, 'None yet.'); t.append(tr); }
+}
+$('cadd').onclick = async () => {
+  $('ctok').hidden = true;
+  try {
+    const r = await api('/v1/clients', { method: 'POST', body: JSON.stringify({ name: $('cname').value.trim(), access: $('caccess').value,
+      paths: $('cpaths').value.split(',').map(x => x.trim()).filter(Boolean) }) });
+    $('cmsg').textContent = 'The token for ' + r.name + ', shown this once: copy it into the client now.';
+    $('ctok').textContent = r.token; $('ctok').hidden = false; $('cname').value = ''; clientsLoad();
+  } catch (e) { $('cmsg').textContent = e.message; }
+};
+async function auditLoad() {
+  const d = await api('/v1/audit?days=30&limit=200'), t = $('alog'); t.replaceChildren();
+  const hd = el('tr'); ['When', 'Who', 'What', ''].forEach(x => hd.append(el('th', null, x))); t.append(hd);
+  for (const e of d.entries) { const tr = el('tr'); cell(tr, new Date(e.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
+    cell(tr, e.client + (e.peer ? ' (' + e.peer + ')' : '')); cell(tr, e.method + ' ' + e.path); const s = cell(tr, e.status); if (e.status >= 400) s.className = 'bad'; t.append(tr); }
+  if (!d.entries.length) { const tr = el('tr'); cell(tr, 'Nothing in the last 30 days.'); t.append(tr); }
+}
+
 // --- MQTT --------------------------------------------------------------------------------------------------
 let mq = null;
 function mqForm() {
@@ -509,6 +566,7 @@ async function load() {
   try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
   try { await refreshKeys(); } catch (e) { $('msg').textContent = 'Could not load: ' + e.message; return; }
   bkLoad(); auLoad(); upPoll(); mqLoad(); nfLoad(); sysLoad().catch(e => $('sys').textContent = e.message);
+  healthLoad().catch(e => $('hlist').textContent = e.message); clientsLoad().catch(e => $('cmsg').textContent = e.message); auditLoad().catch(() => {});
   let done = false; try { done = localStorage.getItem('wa_wizard') === 'done'; } catch (e) {}
   if (!done && setup.you.find(x => x.id === 'home').state !== 'ready') wizard(0);
 }

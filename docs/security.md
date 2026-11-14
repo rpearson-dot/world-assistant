@@ -119,7 +119,10 @@ Both are opt-in and off by default.
 
 - Redis is part of the stack, has no published port and needs the `redis_password` secret. A Redis you
   point `WA_REDIS_URL` at yourself is only as safe as you make it.
-- One shared API token, no per-user accounts or scopes. On the home network, no token at all (above).
+- No per-person accounts: on the home network, no token at all (above). From outside it, each client can have its own
+  token with only the access it needs (Settings → System → Clients: read only, read and ask the assistant, or
+  everything, optionally only some paths), revocable on its own; the main token still opens everything. Every change
+  made through the API, and every refused token, is in the audit log (Settings → System), kept 400 days.
 - The database holds your places (including home). Back it up somewhere private and treat dumps
   as sensitive. Never put real coordinates or addresses in issues, pull requests or test fixtures.
 - The dependency lock covers x86-64 Linux wheels only.

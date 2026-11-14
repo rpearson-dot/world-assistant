@@ -9,7 +9,7 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [airstage](#airstage) · [ask](#ask) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [ovms](#ovms) · [places](#places) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [ovms](#ovms) · [places](#places) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [wishlist](#wishlist) · [Other](#other)
 
 
 ## airstage
@@ -27,6 +27,12 @@ pages themselves hold no data: each one calls these endpoints.
 |---|---|---|
 | GET | `/v1/ask` | Ask Index |
 | POST | `/v1/ask/{name}` | POST the arguments as JSON. `?format=text` returns just the sentence, ready to speak. |
+
+## audit
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/audit` | Changes made through the API, and refused tokens, newest first. |
 
 ## auto-deploy
 
@@ -150,6 +156,14 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/buslog/status` | Whether it is recording now and why, the next recording days, and how today's requests went per source. |
 | GET | `/v1/buslog/stop/{stop}` | A stop's next hour: the buses the timetable has there, and the ones TfL expects (as it stood at `at`). |
 | GET | `/v1/buslog/vehicle/{vehicle}` | A bus's remaining stops to the end of its route, as TfL expected at `at`, against the timetable: on time, early or late at each, and by how much. |
+
+## clients
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/clients` | Every client: name, access, paths, the token's last four characters, made, last used, revoked. |
+| POST | `/v1/clients` | A new client and its token. The token is shown this once: copy it into the client now. |
+| POST | `/v1/clients/{cid}/revoke` | Stop a client's token working, now. The client stays listed, with when it was revoked. |
 
 ## conditions
 
