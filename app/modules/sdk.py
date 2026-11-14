@@ -12,7 +12,7 @@ from __future__ import annotations
 
 # The SDK's version. A module says which it was written for (Module(sdk=...)); one written for a newer SDK than this
 # core offers is not loaded. Additions (a new extension point, a new Module field) raise it; nothing is taken away
-# without a version that says so. 1: the first (0.52.0). 2: startup, Module.tabs, Module.occasional (0.53.0).
+# without a version that says so. 1: the first (0.52.0). 2: startup, Module.tabs, Module.occasional, app.ha_discover (0.53.0).
 SDK_VERSION = 2
 
 # The core's published interface, by module. Anything not listed is the core's own business and may change.
@@ -33,6 +33,7 @@ CORE: dict[str, str] = {
     "app.mqtt": "publish (and Message): send to the MQTT broker Home Assistant reads",
     "app.mqtt_config": "the MQTT broker as set in Settings (load) and a client for it (client), for a module that listens",
     "app.ha": "Home Assistant device and sensor shapes (Device, Sensor, Image)",
+    "app.ha_discover": "ha_api (Home Assistant's address and token, when set) and live_states, to read its states",
     "app.assistant_base": "Tool and its helpers, for assistant tools",
     "app.pagestyle": "the page shell (themed), menu and sub-tabs",
     "app.themes": "theme tokens",

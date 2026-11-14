@@ -297,6 +297,18 @@ BUILTIN: tuple[Module, ...] = (
            worker=(Job("app.modules.weather.api:weather_sync", {"minute": {7}, "timeout": 180, "max_tries": 1}),),
            tools=("weather",),
            provides={"assistant.tools": "app.modules.weather.tools:TOOLS"}),
+    Module("planner", "Home energy planner", "When to charge the car (cheap rate, free hours, solar to spare), decided "
+           "every five minutes beside Home Assistant's plan, and how predictable evening demand is from the weather",
+           category="energy", jobs=("planner_tick", "planner_demand"), sdk=2,
+           note="In shadow until you turn on \"act\": it decides and keeps each decision, and only starts or stops the "
+                "charger when told to (Auto, with the charger on World Assistant's OCPP). Reads Home Assistant",
+           tabs=(("energy", "planner", "/planner", "Planner"),),
+           routers=("app.modules.planner.api:router", "app.modules.planner.page:page_router"), prefixes=("/v1/planner", "/planner"),
+           worker=(Job("app.modules.planner.api:planner_tick", {"minute": _every(5), "timeout": 120, "max_tries": 1}),
+                   Job("app.modules.planner.api:demand_job", {"hour": {6}, "minute": {43}, "timeout": 300, "max_tries": 1})),
+           tools=("charging_plan", "evening_demand"),
+           provides={"assistant.tools": "app.modules.planner.tools:TOOLS"},
+           uses=("octopus", "weather", "ocpp", "ovms")),
     Module("conditions", "Trip conditions", "Road works, closures and floods on a saved trip's route",
            category="transport", listed=False,
            routers=("app.modules.conditions.conditions:router",), prefixes=("/v1/conditions", "re:/v1/trips/[^/]+/conditions"), tools=("road_conditions",),

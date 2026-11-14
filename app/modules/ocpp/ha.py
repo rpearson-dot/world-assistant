@@ -178,6 +178,9 @@ async def _listen(hub: Hub, cid: str) -> None:
                         await hub.keep(cid, events=[("command", f"Home Assistant asked to {want.lower()}: not done, the charger is set to {mode.capitalize()}", {})])
                         changed(hub, cid)
                         continue
+                    if hub.redis is not None and await hub.redis.get("wa:planner:acting"):
+                        await hub.keep(cid, events=[("command", f"Home Assistant asked to {want.lower()}: not done, World Assistant's planner is choosing when to charge", {})])
+                        continue
                     try:
                         if want in ("ON", "OFF"):
                             await hub.want(cid, want == "ON")  # remembered, so a fault in between does not lose it

@@ -14,7 +14,7 @@ log says to update World Assistant. Additions raise the version; nothing is take
 | Version | Release | What it added |
 |---|---|---|
 | 1 | 0.52.0 | the first: the rules, the published interface and the extension points below |
-| 2 | 0.53.0 | the `startup` extension point; `Module.tabs` (its pages as tabs of a menu section); `Module.occasional` (jobs that run only at times); `app.localnet`, `app.mqtt`, `app.mqtt_config` and `app.modules.gate` in the published interface |
+| 2 | 0.53.0 | the `startup` extension point; `Module.tabs` (its pages as tabs of a menu section); `Module.occasional` (jobs that run only at times); `app.localnet`, `app.mqtt`, `app.mqtt_config`, `app.ha_discover` and `app.modules.gate` in the published interface |
 
 ## The rules
 
@@ -55,6 +55,7 @@ log says to update World Assistant. Additions raise the version; nothing is take
 | `app.modules.model`, `app.modules.registry` | `Module` and `Job` to declare a module; what other modules provide |
 | `app.localnet` | `private_peer`, `proxied`: who connected, for an endpoint only the home network may use |
 | `app.mqtt`, `app.mqtt_config` | publishing to the MQTT broker Home Assistant reads; the broker's settings and a client, to listen |
+| `app.ha_discover` | `ha_api` (Home Assistant's address and token, when set) and `live_states`, to read its states |
 | `app.modules.gate` | `is_enabled`: whether a module is switched on (a websocket, which the gate does not cover) |
 
 Anything else in the core is its own business and may change between releases.

@@ -38,6 +38,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   and where it is going; tap a stop for its next hour (timetable and TfL's expected buses); tap a bus for its times at
   every stop to the end of its route against the timetable, on time, early or late and by how much; **Download
   schedule now**; the school's terms, holidays and INSET days as an editable table.
+- **Weather (Open-Meteo), Environment → Weather.** The weather at home now, hour by hour for a week, each day's
+  heating degree-hours (how cold, added up, which is what heating follows), and the past as it turned out (back 92
+  days the first time). In Home Assistant as sensors. No key. See `docs/weather.md`.
+- **Your meter's half-hourly readings from Octopus**, import and export, fetched each morning (back 90 days the first
+  time) and priced at the rates in force, so plans can be checked against what was really bought and sold
+  (`GET /v1/energy/usage`).
+- **Home energy planner, Energy → Planner.** Every five minutes, what World Assistant would do with the car (charge
+  on the cheap rate, a free hour, when low, or with solar to spare once the house battery is full; never from the
+  house battery) and why, beside Home Assistant's plan, with how often they agreed and each time they differed. In
+  shadow until you tick "act", when it starts and stops the charger itself (Auto, on World Assistant's OCPP) and
+  Home Assistant's start and stop stand aside. Also **how predictable your evenings are**: each evening's use against
+  how cold it was, how much the cold explains, and tomorrow evening's likely use. See `docs/planner.md`.
 - **Module SDK version 2:** a `startup` extension point, modules' own menu tabs (`Module.tabs`), jobs that run only at
   times (`Module.occasional`), and a version number a module is checked against (`docs/module-sdk.md`).
 

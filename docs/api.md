@@ -9,7 +9,7 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [ovms](#ovms) · [places](#places) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [ovms](#ovms) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
 
 
 ## airstage
@@ -185,6 +185,7 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/energy/rates` | The upcoming rates, each with its band. |
 | GET | `/v1/energy/schedule` | The inverter's six daily slots for this tariff: start times, which charge from the grid, and what each charging slot must cover until the next cheap window (for the Home Assistant energy plan). |
 | GET | `/v1/energy/sessions` | Saving Sessions (with whether you joined) and Octopus boost events: on now, next, upcoming. |
+| GET | `/v1/energy/usage` | Each day from the meter (Octopus, half-hourly): kWh bought and sold, what was bought cost at your rates, and how much was bought 16:00 to 19:00. Octopus publishes a day's readings the next day. |
 | GET | `/v1/energy/windows` | Cheapest block of `hours` in the next 24 hours, and the banded windows. |
 
 ## environment
@@ -382,6 +383,15 @@ pages themselves hold no data: each one calls these endpoints.
 | DELETE | `/v1/places/{place_id}` | Delete Place |
 | PUT | `/v1/places/{place_id}` | Put Place |
 
+## planner
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/planner/charging` | The latest decision and why; how often it matched Home Assistant's plan; and each time they differed. |
+| GET | `/v1/planner/demand` | How predictable evening demand is from the cold (a straight-line fit of each evening's kWh on its heating degree-hours), and tomorrow evening's likely need. Worked out at most every six hours unless fresh. |
+| GET | `/v1/planner/settings` | Get Settings  |
+| PUT | `/v1/planner/settings` | The demand statistic and evening; the house battery and grid power entities for solar to spare (and which sign is export); and "act": World Assistant starts and stops the charger itself (Auto only). |
+
 ## pollen
 
 | Method | Path | What it does |
@@ -524,6 +534,13 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/vehicles/home-rate` | The rate an electric vehicle's trip cost uses when no home rate is given: the Energy tab's cheapest. |
 | DELETE | `/v1/vehicles/{vehicle_id}` | Delete Vehicle |
 | PUT | `/v1/vehicles/{vehicle_id}` | Put Vehicle |
+
+## weather
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/weather` | Now, the next 48 hours, and today plus the next six days in brief (low, high, rain, sunshine, heating degree-hours all day and 16:00 to 19:00). |
+| GET | `/v1/weather/history` | Each past day as it turned out: low, high, rain, sunshine and heating degree-hours (all day and 16:00 to 19:00). |
 
 ## wishlist
 
