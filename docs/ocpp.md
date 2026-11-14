@@ -45,7 +45,8 @@ One switch at the top of the page (and `select.wa_ocpp_mode` in Home Assistant):
 - **On:** charges whenever the car is plugged in: a session is started now if the car is waiting, and again each
   time it is plugged in. Home Assistant's plan cannot stop it.
 - **Auto:** Home Assistant's charging plan starts and stops it through `switch.wa_ocpp_charging` (cheap hours,
-  free sessions, your target).
+  free sessions, your target). If the charger stops by itself while the plan wants it charging (a fault, a restart)
+  and comes back ready, World Assistant starts it again straight away rather than waiting for the plan.
 
 In Off and On, Home Assistant's start and stop are refused and recorded ("not done, the charger is set to On").
 The setting is kept and applied again whenever the charger reconnects. Everything else (allowed chargers, meter

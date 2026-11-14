@@ -23,6 +23,18 @@ through `ntfy.sh` (the ntfy project's public server). The wake-up carries only a
 fetches the message from your server. To turn this off, set `WA_NTFY_UPSTREAM=` (empty) in `.env`. Alerts then
 arrive only when the app polls.
 
+
+## Nothing arrives?
+
+Settings → Notifications → **Check each step**. World Assistant checks, in order: notifications switched on; the
+address the phone uses for the server (it must be `https://<device>.<your tailnet>.ts.net:8443`: a wrong or missing
+`WA_TAILNET` in `.env` is the usual cause); that it reaches its ntfy server; that the server calls itself by the same
+address (an iPhone is woken through ntfy.sh and then fetches the message from that address); that a test message is
+accepted; and that the server holds it for the phone. The first failure is the one to fix. The phone itself cannot
+be checked from the server: the test message is in the topic, so if the ntfy app shows it but made no sound, it is the
+phone's notification settings; if the app does not show it, it is the subscription (the address shown, with
+Tailscale on).
+
 ## What it sends
 
 | Kind | When | Starts |

@@ -179,6 +179,8 @@ async def _listen(hub: Hub, cid: str) -> None:
                         changed(hub, cid)
                         continue
                     try:
+                        if want in ("ON", "OFF"):
+                            await hub.want(cid, want == "ON")  # remembered, so a fault in between does not lose it
                         if want == "ON":
                             payload = protocol.command_payload("RemoteStartTransaction", {}, transaction_id=None)
                             await hub.command(cid, "RemoteStartTransaction", payload)

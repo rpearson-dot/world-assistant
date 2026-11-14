@@ -294,7 +294,7 @@ template:
           {% set house = states('sensor.office_inverter_battery_soc') | float(-1) %}
           {% set above = states('input_number.wa_ev_battery_above') | float(60) - (5 if status == 'Charging' else 0) %}
           {% set battery = is_state('input_boolean.wa_ev_battery_enabled', 'on') and is_number(states(cur)) and house >= above > 0 %}
-          {% if status in ['Available', 'Unavailable', 'Faulted', 'unknown', 'unavailable'] %}unplugged
+          {% if status in ['Available', 'Unavailable', 'unknown', 'unavailable'] %}unplugged
           {% elif soc >= 0 and soc >= target %}full
           {% elif held %}full
           {% elif free or low %}charge
@@ -475,29 +475,9 @@ automation:
             value_template: "{{ apply }}"
         then:
           - action: "switch.turn_{{ 'on' if start else 'off' }}"
-            continue_on_error: true  # a refused start is written down below, not a stopped automation
+            continue_on_error: true  # a start the charger refuses must not stop the automation
             target:
               entity_id: "{{ switch }}"
-          # did the charger take it? Its switch follows what the charger says; still off a minute later: refused
-          - if:
-              - condition: template
-                value_template: "{{ start }}"
-            then:
-              - wait_template: "{{ is_state(switch, 'on') or is_state('sensor.wa_charger_status', 'Charging') }}"
-                timeout: "00:01:00"
-                continue_on_timeout: true
-              - if:
-                  - condition: template
-                    value_template: "{{ not wait.completed }}"
-                then:
-                  - action: logbook.log
-                    data:
-                      name: WA car charging
-                      entity_id: input_boolean.wa_ev_apply
-                      message: >-
-                        The charger did not take the start: a minute later its switch is still
-                        {{ states(switch) }} and it is {{ states('sensor.wa_charger_status') }}. It is sent again in
-                        5 minutes.
       - if:
           - condition: template
             value_template: "{{ stop }}"
@@ -581,17 +561,15 @@ automation:
         {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else ('switch.wa_ocpp_charging' if has_value('switch.wa_ocpp_charging') else 'switch.charger_charge_control') }}
       apply: "{{ is_state('input_boolean.wa_ev_apply', 'on') }}"
       service: "{{ states('input_text.wa_ev_notify') | trim }}"
-      # the plan's own automation switched off (in Settings > Automations): nothing acts on the plan at all
-      plan_off: >-
-        {{ states.automation | selectattr('attributes.id', 'eq', 'wa_ev_plan') | selectattr('state', 'eq', 'off') | list | count > 0 }}
       text: >-
         The plan has wanted to charge the car since {{ since | timestamp_custom('%H:%M') if since is number else '?' }}
         ({{ state_attr('sensor.wa_car_charging_plan', 'why') | trim }}), but it is not charging: the charger is
         {{ status }} and its switch is {{ states(switch) }}.
-        {% if plan_off %}The automation "WA car charging: start and stop the charger" is switched off (Settings > Automations), so nothing acts on the plan: switch it on.
+        {% if status == 'Faulted' %}The charger has a fault ({{ states('sensor.charger_error_code_connector') }}): it usually clears itself and is then started again.
         {% elif not apply %}"WA car: control the charger" is off, so the plan has only been writing down what it would do.
         {% elif is_state(switch, 'off') %}Each start has been refused: check the charger (its app, or a restart) and the car's own charge timer.
-        {% else %}The start has been sent again; if it stays like this, check the charger and the car's own charge timer.{% endif %}
+        {% else %}The start has been sent again; if it stays like this, check the charger, the car's own charge timer, and
+        that the automation "WA car charging: start and stop the charger" is on (Settings > Automations).{% endif %}
         Car {{ states('sensor.wa_car_charge_level') }}%.
     conditions:
       - condition: template

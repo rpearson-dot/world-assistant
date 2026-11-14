@@ -159,9 +159,9 @@ PAGE = """<!doctype html>
     <div id="nfkinds"></div>
     <div class="row"><label>Quiet from <input id="nfqf" type="time"></label><label>until <input id="nfqt" type="time"></label></div>
     <p class="dim small">In quiet hours notifications wait until they end (a severe flood warning does not). Each is sent once.</p>
-    <div class="row"><button id="nfsave" class="primary" type="button">Save</button><button id="nftest" type="button">Send a test</button>
+    <div class="row"><button id="nfsave" class="primary" type="button">Save</button><button id="nftest" type="button">Send a test</button><button id="nfcheck" type="button">Check each step</button>
     <button id="nfnew" type="button">New topic</button></div>
-    <p id="nfmsg" class="dim"></p></div>
+    <p id="nfmsg" class="dim"></p><ol id="nfsteps" class="small"></ol></div>
   <div class="card"><h2>Sent lately</h2><div id="nflog" class="small dim">Nothing yet.</div></div>
 </section>
 
@@ -594,6 +594,19 @@ async function nfPut(extra) {
   const kinds = {}; document.querySelectorAll('#nfkinds input').forEach(c => { kinds[c.dataset.kind] = c.checked; });
   nfShow(await api('/v1/notify/settings', { method: 'PUT', body: JSON.stringify(Object.assign({ enabled: $('nfon').checked, kinds, quiet_from: $('nfqf').value, quiet_to: $('nfqt').value }, extra || {})) }));
 }
+$('nfcheck').onclick = async () => {
+  const box = $('nfsteps'); box.replaceChildren(); $('nfmsg').textContent = 'Checking…';
+  try {
+    const r = await api('/v1/notify/check', { method: 'POST' });
+    for (const s of r.steps) {
+      const li = el('li', s.ok === false ? 'bad' : s.ok ? 'good' : 'dim');
+      li.append(el('b', null, (s.ok === false ? '✗ ' : s.ok ? '✓ ' : '? ') + s.step + ': '), document.createTextNode(s.detail)); box.append(li);
+    }
+    const bad = r.steps.find(s => s.ok === false);
+    $('nfmsg').textContent = (bad ? 'The first thing to fix: ' + bad.step + '.' : 'Everything World Assistant can check works.') +
+      (r.subscribe ? ' The phone subscribes to ' + r.subscribe : '');
+  } catch (e) { $('nfmsg').textContent = e.message; }
+};
 $('nfsave').onclick = async () => { try { await nfPut(); $('nfmsg').textContent = 'Saved.'; } catch (e) { $('nfmsg').textContent = e.message; } };
 $('nftest').onclick = async () => { $('nfmsg').textContent = 'Sending…'; try { await api('/v1/notify/test', { method: 'POST' }); $('nfmsg').textContent = 'Sent: it should be on your phone now.'; nfLoad(); }
   catch (e) { $('nfmsg').textContent = 'Not sent: ' + e.message; } };

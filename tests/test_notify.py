@@ -4,6 +4,7 @@ environment check send."""
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -172,3 +173,54 @@ def test_the_environment_pages_and_their_tabs() -> None:
         assert r.status_code == 200 and 'aria-label="Environment"' in r.text and 'href="/pollen"' in r.text
     assert c.get("/environment/nope").status_code == 404
     assert 'href="/environment"' in c.get("/pollen").text  # Pollen sits under the same tabs
+
+
+@pytest.mark.skipif(not DB, reason="WA_TEST_DATABASE_URL not set")
+def test_each_step_to_the_phone_is_checked_and_the_first_failure_named(tables: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    held: dict[str, str] = {}
+
+    def server(base_url: str) -> httpx.MockTransport:
+        def handle(req: httpx.Request) -> httpx.Response:
+            p = req.url.path
+            if p == "/v1/health":
+                return httpx.Response(200, json={"healthy": True})
+            if p == "/v1/config":
+                return httpx.Response(200, json={"base_url": base_url})
+            if req.method == "POST":
+                held["id"] = "m1"
+                return httpx.Response(200, json={"id": "m1"})
+            if p.endswith("/json"):
+                return httpx.Response(200, text=json.dumps({"id": held.get("id"), "event": "message"}) + "\n")
+            return httpx.Response(404)
+
+        return httpx.MockTransport(handle)
+
+    def run(public: str, base_url: str) -> dict[str, Any]:
+        monkeypatch.setattr(N, "get_settings", lambda: type("S", (), {"ntfy_url": "http://ntfy:80", "ntfy_public_url": public,
+                                                                       "local_tz": "Europe/London"})())  # fmt: skip
+
+        async def go() -> dict[str, Any]:
+            eng = create_async_engine(DB, poolclass=NullPool)  # type: ignore[arg-type]
+            async with httpx.AsyncClient(transport=server(base_url)) as c:
+                out = await N.check_steps(eng, c)
+            await eng.dispose()
+            return out
+
+        return asyncio.run(go())
+
+    good = "https://world-assistant.tail1234.ts.net:8443"
+    out = run(good, good)
+    assert [s["ok"] for s in out["steps"]] == [True, True, True, True, True, True, None]
+    assert out["subscribe"].startswith(good + "/wa-")
+    # the tailnet's name never set: the default address, which no phone can reach
+    out = run("https://world-assistant.ts.net:8443", "https://world-assistant.ts.net:8443")
+    bad = next(s for s in out["steps"] if s["ok"] is False)
+    assert bad["step"] == "The phone's address for the server" and "WA_TAILNET" in bad["detail"]
+    # the server calls itself something else: an iPhone fetches from there and finds nothing
+    out = run(good, "https://other.tail1234.ts.net:8443")
+    assert next(s for s in out["steps"] if s["ok"] is False)["step"] == "The server's own address matches"

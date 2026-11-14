@@ -36,6 +36,10 @@ def holder_key(cid: str) -> str:
     return f"wa:ocpp:holder:{cid}"
 
 
+def wanted_key(cid: str) -> str:
+    return f"wa:ocpp:wanted:{cid}"
+
+
 def reply_key(req: str) -> str:
     return f"wa:ocpp:reply:{req}"
 
@@ -215,9 +219,14 @@ class Hub:
             log.exception("ocpp: could not record %s from %s", f.action, cid)
         if cols or eff.session_start or eff.session_stop:
             ha.changed(self, cid)
-        if (f.action == "StatusNotification" and cols.get("status") == "Preparing" and link.transaction is None
-                and await self.mode() == "on"):  # plugged in while set to On: start
-            asyncio.create_task(self._quiet(cid, "RemoteStartTransaction", protocol.command_payload("RemoteStartTransaction", {}, transaction_id=None)))
+        if f.action == "StatusNotification" and cols.get("status") == "Preparing" and link.transaction is None:
+            mode = await self.mode()
+            # plugged in while set to On; or, in Auto, back from a fault (or a restart) while the plan wants it charging
+            resume = mode == "auto" and await self.wanted(cid)
+            if mode == "on" or resume:
+                if resume:
+                    await self.keep(cid, events=[("command", "Charging again after the charger stopped: the plan still wants it", {})])
+                asyncio.create_task(self._quiet(cid, "RemoteStartTransaction", protocol.command_payload("RemoteStartTransaction", {}, transaction_id=None)))
 
     async def _send(self, link: Link, raw: str, record: tuple[int, str | None, str | None, Any] | None) -> None:
         async with link.send_lock:
@@ -249,6 +258,16 @@ class Hub:
             conf = {k.get("key"): k.get("value") for k in f.payload.get("configurationKey") or [] if isinstance(k, dict)}
             await self.keep(cid, config=conf)
         return {"ok": status in (None, "Accepted", "Unlocked", "Scheduled"), "answer": f.payload, "error": None}
+
+    async def wanted(self, cid: str) -> bool:
+        """Whether Home Assistant's plan last asked for charging (its switch on), within the last day."""
+        with contextlib.suppress(Exception):
+            return (await self.redis.get(wanted_key(cid))) == "1"
+        return False
+
+    async def want(self, cid: str, on: bool) -> None:
+        with contextlib.suppress(Exception):
+            await self.redis.set(wanted_key(cid), "1" if on else "0", ex=86400)
 
     async def mode(self) -> str:
         async with self.engine.connect() as conn:

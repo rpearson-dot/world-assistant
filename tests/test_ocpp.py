@@ -218,6 +218,13 @@ def _evening(c: Any, app: Any) -> None:
         assert got["r"]["ok"] is True and got["r"]["answer"] == {"status": "Accepted"}
         call(ws, "6", "StopTransaction", {"transactionId": 1, "meterStop": 13700, "reason": "Remote",
                                           "timestamp": datetime.now(UTC).isoformat()})  # fmt: skip
+        # in Auto, with the plan wanting a charge: a fault, then back to ready, and the session is started again
+        app.state.redis.d["wa:ocpp:wanted:U1HKP"] = "1"
+        call(ws, "6a", "StatusNotification", {"connectorId": 1, "status": "Faulted", "errorCode": "OtherError", "vendorErrorCode": "E12"})
+        call(ws, "6b", "StatusNotification", {"connectorId": 1, "status": "Preparing", "errorCode": "NoError"})
+        again = json.loads(ws.receive_text())
+        assert again[2] == "RemoteStartTransaction" and again[3]["connectorId"] == 1
+        ws.send_text(json.dumps([3, again[1], {"status": "Accepted"}]))
         # it restarts without dropping the link
         call(ws, "7", "BootNotification", {"chargePointVendor": "SyncEV", "chargePointModel": "EVCP"})
         bad = ws.send_text("[2,\"8\",\"Heartbeat\",[]]") or json.loads(ws.receive_text())
@@ -239,8 +246,11 @@ def _evening(c: Any, app: Any) -> None:
     ev = [e["text"] for e in c.get("/v1/ocpp/U1HKP/events", headers=h).json()["events"]]
     assert any("restarted while still connected" in e for e in ev) and any(e.startswith("Disconnected after") for e in ev)
     assert any(e == "RemoteStopTransaction: Accepted" for e in ev)
+    assert any(e.startswith("Charging again after the charger stopped") for e in ev)
+    assert any(e.startswith("Fault: OtherError (E12)") for e in ev)
     msgs = c.get("/v1/ocpp/U1HKP/messages", headers=h).json()["messages"]
-    assert {m["direction"] for m in msgs} == {"in", "out"} and len(msgs) == 17  # 7 calls and answers, the stop and its answer, the error
+    # 9 calls and their answers, the stop and the start sent again with their answers, the error
+    assert {m["direction"] for m in msgs} == {"in", "out"} and len(msgs) == 23
     # not a listed charger: refused once any are listed
     assert c.put("/v1/ocpp/settings", json={"chargers": ["U1HKP"]}, headers=h).status_code == 200
     with pytest.raises(WebSocketDisconnect), c.websocket_connect("/ocpp/OTHER") as ws2:

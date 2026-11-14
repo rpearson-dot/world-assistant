@@ -332,6 +332,7 @@ pages themselves hold no data: each one calls these endpoints.
 
 | Method | Path | What it does |
 |---|---|---|
+| POST | `/v1/notify/check` | Check every step to the phone that can be checked from the server, in order, and send a test message. |
 | GET | `/v1/notify/log` | Get Log |
 | GET | `/v1/notify/settings` | Get Notify |
 | PUT | `/v1/notify/settings` | Put Notify |

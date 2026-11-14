@@ -12,7 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   charger is kept, with each connection, drop, restart (told apart from a first start), fault, status change and
   command in words, so a charger that resets itself can be seen doing it; a notification for restarts, faults and
   silence. In Home Assistant: the charger's sensors, its charging switch and the Off/On/Auto mode, which the charging
-  plan (`wa_ev_plan.yaml`) uses by itself. See `docs/ocpp.md` for moving the charger across.
+  plan (`wa_ev_plan.yaml`) uses by itself. In Auto, a charger that stops by itself (a fault, a restart) while the
+  plan wants it charging is started again as soon as it is ready. See `docs/ocpp.md` for moving the charger across.
 - **The car's own module (OVMS).** Battery, range, 12 V battery, charging, locks, doors and position, read from the
   MQTT broker, on the car's pane on the Vehicles page with its warnings (12 V low, alarm, tyres, doors or boot open,
   unlocked or handbrake off while parked, battery low, gone quiet) and its own messages. Warnings and the module's
@@ -29,6 +30,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - **One token per client.** Settings → System → Clients: a token for each thing that calls World Assistant from
   outside your home network, with only the access it needs (read only; read and ask the assistant; everything;
   optionally only some paths), revocable on its own. The main token still works.
+- **Notifications: "Check each step"** (Settings → Notifications). When nothing arrives on the phone, it checks each
+  step it can from the server (switched on, the phone's address for the server, the server reachable and calling
+  itself by the same address, a test message accepted and held) and names the first one to fix.
 - **An audit log** of every change made through the API and every refused token, with who (Settings → System).
 - **Bus log:** the route drawn clearly with its stops visible at every zoom; each bus labelled with its numberplate
   and where it is going; tap a stop for its next hour (timetable and TfL's expected buses); tap a bus for its times at
@@ -41,11 +45,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - **Car charging: the start is sent again in more cases** (Home Assistant's `wa_ev_plan.yaml`). After the charger
   restarts it can come back suspended or finishing rather than ready, and the start was then never sent again (the
   car sat uncharged 04:00 to 07:00 on 14 November). Now any not-charging state for 10 minutes, with the switch on and
-  the plan wanting to charge, gets the start again (at most every 30 minutes). A start the charger does not take
-  (its switch still off a minute later) is written in the plan's notes, instead of passing silently.
+  the plan wanting to charge, gets the start again (at most every 30 minutes).
+- **Car charging: a faulted charger is a fault, not "unplugged".** The charger's faults (OtherError, clearing after
+  about 7 minutes, several a day) were filed as "unplugged", which hid them; the plan now carries on and says so.
 - **Car charging: you are told when it should be charging and is not.** After 15 minutes of the plan wanting to
-  charge with nothing happening, a notification says so and the likely why (the plan's own automation switched off,
-  as it was on the night of 13 November; "control the charger" off; starts refused; or the start sent again): in Home Assistant, and on your phone if "WA car: notify service" names one
+  charge with nothing happening, a notification says so and the likely why (a charger fault and its code; "control the
+  charger" off; starts refused; or the start sent again, and to check the plan's automation is on: it was switched
+  off on the night of 13 November): in Home Assistant, and on your phone if "WA car: notify service" names one
   (Home charging dashboard → Car settings). Copy `wa_ev_plan.yaml` and `home-charging.yaml` across again.
 - **Backups held every row of the bus log twice** (0.52.0): its monthly partitions were copied as well as the table,
   and a restore would have failed on the duplicates. A split table is now kept once, through its parent, and the bus

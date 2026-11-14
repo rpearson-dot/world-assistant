@@ -201,3 +201,79 @@ async def get_log(request: Request) -> dict[str, Any]:
         rows = (await c.execute(text("SELECT key, kind, title, body, sent_at, ok, error FROM notify_log ORDER BY sent_at DESC LIMIT 30"))).all()
     return {"sent": [{"key": r.key, "kind": r.kind, "title": r.title, "body": r.body, "at": r.sent_at.isoformat(), "ok": r.ok,
                       "error": r.error} for r in rows]}  # fmt: skip
+
+
+# --- checking each step, for when nothing arrives ------------------------------------------------------------------
+
+
+def _step(name: str, ok: bool | None, detail: str) -> dict[str, Any]:
+    return {"step": name, "ok": ok, "detail": detail}
+
+
+async def check_steps(engine: Any, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+    """Every step from World Assistant to the phone that can be checked from here, in order, each passed (True),
+    failed (False) or not checkable from the server (None); the first failure is the one to fix."""
+    from urllib.parse import urlsplit
+
+    s, st = get_settings(), await settings(engine)
+    steps: list[dict[str, Any]] = []
+    steps.append(_step("Notifications switched on", bool(st["enabled"]), "on" if st["enabled"] else
+                       "Settings → Notifications: tick \"Send notifications\""))  # fmt: skip
+    if not s.ntfy_url:
+        steps.append(_step("World Assistant knows its ntfy server", False,
+                           "no ntfy server: start the stack with docker-compose.tailscale.yml (docs/notifications.md)"))
+        return {"steps": steps, "subscribe": None}
+    public = (s.ntfy_public_url or "").rstrip("/")
+    host = urlsplit(public).hostname or ""
+    good_host = host.endswith(".ts.net") and host.count(".") >= 3  # <device>.<tailnet>.ts.net
+    steps.append(_step("The phone's address for the server", bool(public) and good_host,
+                       f"{public}" if good_host else
+                       f"{public or '(none)'}: it should be https://<device>.<your tailnet>.ts.net:8443. Set WA_TAILNET in .env "
+                       "to your tailnet's name (the Tailscale admin page, DNS), then update"))  # fmt: skip
+    own = client is None
+    client = client or httpx.AsyncClient(timeout=10)
+    try:
+        base = s.ntfy_url.rstrip("/")
+        try:
+            r = await client.get(f"{base}/v1/health")
+            healthy = r.status_code == 200 and (r.json() or {}).get("healthy") is True
+            steps.append(_step("World Assistant reaches its ntfy server", healthy, "healthy" if healthy else f"HTTP {r.status_code}"))
+        except (httpx.HTTPError, ValueError) as exc:
+            steps.append(_step("World Assistant reaches its ntfy server", False, f"{type(exc).__name__}: is the ntfy container running?"))
+            return {"steps": steps, "subscribe": None}
+        try:
+            r = await client.get(f"{base}/v1/config")
+            conf = r.json() if r.status_code == 200 else {}
+        except (httpx.HTTPError, ValueError):
+            conf = {}
+        their = (conf.get("base_url") or "").rstrip("/")
+        if their:
+            same = their == public
+            steps.append(_step("The server's own address matches", same, their if same else
+                               f"the server calls itself {their}, World Assistant tells the phone {public}: iPhones fetch "
+                               "each message from the server's own address, so they must match (WA_TAILNET in .env)"))  # fmt: skip
+        topic = st["topic"]
+        now = datetime.now(UTC)
+        r = await client.post(f"{base}/{topic}", content=b"World Assistant: checking each step to your phone.",
+                              headers={"Title": "Checking notifications", "Tags": "mag"})  # fmt: skip
+        mid = (r.json() or {}).get("id") if r.status_code < 300 else None
+        steps.append(_step("A test message is accepted", bool(mid), f"message {mid}" if mid else f"HTTP {r.status_code}: {r.text[:120]}"))
+        if mid:
+            r = await client.get(f"{base}/{topic}/json", params={"poll": "1", "since": str(int(now.timestamp()) - 5)})
+            kept = mid in r.text
+            steps.append(_step("The server holds it for the phone", kept, "yes: a subscribed phone gets it" if kept else
+                               "not found when asked for it again (the server's cache is off or full)"))  # fmt: skip
+        steps.append(_step("Your phone", None,
+                           "Not checkable from here. In the ntfy app: subscribed to exactly the address below, Tailscale on, and "
+                           "notifications allowed for ntfy in the iPhone's Settings. A message just went to the topic: if it is "
+                           "in the app but made no sound, it is the phone's settings; if it is not in the app, the subscription"))  # fmt: skip
+    finally:
+        if own:
+            await client.aclose()
+    return {"steps": steps, "subscribe": f"{public}/{st['topic']}" if public else None}
+
+
+@router.post("/check")
+async def check(request: Request) -> dict[str, Any]:
+    """Check every step to the phone that can be checked from the server, in order, and send a test message."""
+    return await check_steps(request.app.state.engine)
