@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [0.55.0] - 2026-11-14
+## [Unreleased]
 
 ### Added
 
@@ -17,6 +17,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   the like, or looked up around the clock. What a device needs is shown as "keep", and what blocking may break is
   said. Copy the list, or Add to Pi-hole for one device (its own extra group, beside yours) or one of your groups,
   with Undo. Nothing goes to Home Assistant. See `docs/network.md`.
+
+## [0.55.0] - 2026-11-14
+
+### Added
 
 - **Outside modules from GitHub repositories, Settings → Outside modules.** Paste a repository's address: World
   Assistant reads its newest release and its manifest (`wa-module.toml`), and checks its image. The image must be
