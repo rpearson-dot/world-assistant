@@ -3,7 +3,7 @@
 World Assistant talks to Fujitsu Airstage air conditioners directly on your home network, the same way the
 Airstage app does on Wi-Fi, never through Fujitsu's cloud. It replaces Home Assistant's Airstage integration.
 
-The page is **Energy → Air conditioning** (`/aircon`): each unit with the temperature inside and out, an Off/On
+The page is **In the home → Air conditioning** (`/aircon`): each unit with the temperature inside and out, an Off/On
 switch, the mode (Auto, Heat, Cool, Dry, Fan), the target (half degrees) and the fan, plus swing, Economy, Powerful,
 the quiet outdoor unit and 10° minimum heat where the unit has them.
 

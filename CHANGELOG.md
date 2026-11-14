@@ -10,6 +10,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   with the planner in charge (the same kWh at the times it said "charge", at the rates in force), with how often it
   agreed with Home Assistant. Sent to your phone and shown on the Planner tab, with the month so far.
 
+- **In the home**, a new menu page: what is running in the house at a glance (each air conditioner on or off, what it
+  is doing, the temperature, faults and filters), with **Air conditioning** as its tab (moved from Energy).
+- **Set up, and Turn off or on, on every module** in Settings → Setup. Set up opens the module's page (or the Keys
+  tab for a module that only needs a key). A module others need can't be turned off on its own.
+
 ### Changed
 
 - **The tariff comparison runs only when you ask** (Work it out again): no daily run.

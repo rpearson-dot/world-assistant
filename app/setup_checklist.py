@@ -134,8 +134,22 @@ async def checklist(request: Request) -> dict[str, Any]:
         last = json.loads(raw) if raw else None
     except Exception:  # noqa: BLE001 - the page must still show the rest
         last = None
-    keyed = [judge(x, s, runs) for x in sources() if x.keys]
-    free = [judge(x, s, runs) for x in sources() if not x.keys]
+    from app.modules import selection
+
+    mods = list(registry.modules())
+    on = selection.enabled_ids(mods, await selection.load(request.app.state.engine, fresh=True))
+
+    def row(x: Source) -> dict[str, Any]:
+        r = judge(x, s, runs)
+        r["module"], r["enabled"] = True, x.id in on
+        r["page"] = x.link if x.link.startswith("/") else next((p for p in x.prefixes if not p.startswith("/v1")), None)
+        r["needed_by"] = [m.name for m in mods if m.id in on and x.id in m.needs]
+        if not r["enabled"]:
+            r["state"] = OFF
+        return r
+
+    keyed = [row(x) for x in sources() if x.keys]
+    free = [row(x) for x in sources() if not x.keys]
     you = [
         {"id": "home", "name": "Your home", "unlocks": "The default place for fuel, events, pollen and the map",
          "state": READY if home else MISSING, "link": "/places",

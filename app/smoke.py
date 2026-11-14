@@ -30,7 +30,7 @@ from collections.abc import Callable
 from typing import Any
 
 PAGES = ("/settings", "/bus", "/trains", "/fuel", "/events", "/pollen", "/environment", "/places", "/energy", "/ha", "/graph", "/map", "/shopping",
-         "/here", "/vehicles", "/wishlist", "/outdoors", "/bikes")
+         "/here", "/vehicles", "/wishlist", "/outdoors", "/bikes", "/home", "/aircon")
 SEED = "smoke-test-place"
 SKIP_SWEEP = {"/mcp", "/healthz", "/readyz", "/v1/backups/{name}"}  # checked on their own, or a download
 # Read live from someone else's service on every call (no stored data): a slow or down source there must not fail a

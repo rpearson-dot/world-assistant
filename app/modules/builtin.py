@@ -57,6 +57,7 @@ CORE = Module(
         "app.places:router", "app.map_layers:router", "app.map_page:page_router", "app.assistant:router",
         "app.places:page_router", "app.settings_page:page_router", "app.webapp:router",
         "app.modules.routes:router", "app.modules.routes:page_router", "app.notify:router", "app.watchdog:router", "app.clients:router",
+        "app.home_page:page_router",
     ),
     worker=(Job("app.ha_publish:ha_sync", _ha),
             # the newest backup restored into a scratch schema and checked, early on Sunday
@@ -269,7 +270,7 @@ BUILTIN: tuple[Module, ...] = (
                      "shutdown": "app.modules.ocpp.server:shutdown"}),
     Module("ovms", "Car (OVMS)", "Your car's own module (OVMS): battery, range, 12 V, charging, locks and warnings, "
            "read from the MQTT broker",
-           category="energy", jobs=("ovms_watch",), sdk=2,
+           category="energy", jobs=("ovms_watch",), sdk=2, link="/vehicles",
            note="Reads the broker set in Settings → Home Assistant, where the OVMS module publishes (Server V3). "
                 "Reading only: commands wait for the broker to have TLS",
            routers=("app.modules.ovms.api:router",), prefixes=("/v1/ovms",),
@@ -280,7 +281,7 @@ BUILTIN: tuple[Module, ...] = (
                      "shutdown": "app.modules.ovms.listener:shutdown"}),
     Module("airstage", "Air conditioning (Fujitsu Airstage)", "Fujitsu Airstage air conditioners on your home network: "
            "temperatures, on and off, mode, target and fan, from the page, the assistant and Home Assistant",
-           category="home", jobs=("airstage_poll",), tabs=(("energy", "aircon", "/aircon", "Air conditioning"),), sdk=2,
+           category="home", jobs=("airstage_poll",), tabs=(("home", "aircon", "/aircon", "Air conditioning"),), sdk=2,
            note="Talks to each unit directly on your network (its address and device id), never through Fujitsu's cloud",
            routers=("app.modules.airstage.api:router", "app.modules.airstage.page:page_router"), prefixes=("/v1/airstage", "/aircon"),
            worker=(Job("app.modules.airstage.api:airstage_poll", {"minute": _every(2), "timeout": 110, "max_tries": 1}),
