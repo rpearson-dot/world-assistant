@@ -10,6 +10,7 @@ How to use it: [docs/bus-log.md](../../../docs/bus-log.md).
 |---|---|
 | Role | Source: fetches from outside |
 | Reads | TfL arrivals; Bus Open Data Service positions |
+| Gives | the school run and its reliability over time; notifications: when BODS starts saying how full buses are |
 | Keys | `bods_api_key`, `tfl_app_key` |
 | Endpoints | `/v1/buslog`, `/buslog` |
 | Scheduled jobs | `buslog_minute`, `buslog_housekeep`, `buslog_capacity_check` |

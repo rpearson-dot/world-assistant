@@ -258,7 +258,13 @@ than in your folder), the job refuses and says so on the Settings page; update t
 - **Logging in:** it pulls the private image with the server's own login (`docker login ghcr.io`, once; see "Run a
   released image"), read from `/root/.docker` (`WA_DOCKER_CONFIG` if yours is elsewhere).
 - **Log:** `auto-deploy.log` in the data folder, as before.
-- **Moving the nightly run:** `WA_UPDATE_AT=HH:MM` in `.env` (default 04:00).
+- **Moving the nightly run:** Settings → Update → Automatic updates, "Every night at" (else `WA_UPDATE_AT=HH:MM`
+  in `.env`, else 04:00). Pick a time outside your cheap charging hours.
+- **Waiting while the car charges** (on by default): the nightly run asks Home Assistant for `sensor.wa_charger_status`
+  (World Assistant's car package); while it says Charging the run waits, reports "Waiting" on the Settings page, and
+  is tried again every 10 minutes for three hours from the nightly time, then left for the next night. A restart
+  while the car charges can make the charging plan stop and start the charge. Update now never waits. If Home
+  Assistant cannot be asked, the run goes ahead.
 - **Turning it off:** `WA_UPDATER=off` in `.env`, remove `updater` from `COMPOSE_PROFILES`, then
   `docker compose rm -sf wa-updater`. A User Script can then run `bash scripts/auto-deploy.sh` (nightly) and
   `bash scripts/auto-deploy.sh --if-requested` (every minute) instead.

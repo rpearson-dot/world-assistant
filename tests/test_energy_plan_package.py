@@ -756,3 +756,20 @@ def test_it_says_when_it_should_be_charging_and_is_not() -> None:
     assert go(night | {"sensor.wa_car_charging_plan@changed": NOW - timedelta(minutes=10)})[1] is False  # give it time
     told = (NOW - timedelta(minutes=2)).timestamp()
     assert go(night | {"input_datetime.wa_ev_warned_at#timestamp": told})[1] is False  # once each time
+
+
+def test_a_restart_of_world_assistant_does_not_stop_the_charge() -> None:
+    """An update restarts World Assistant: its energy sensors are unavailable for a few minutes. The plan keeps its
+    last decision (for up to 45 minutes) instead of reading "not cheap" and stopping the charge."""
+
+    class This:
+        state = "charge"
+
+    at = datetime(2026, 10, 25, 10, 10, tzinfo=LONDON)  # outside the charging windows: only the live rate says cheap
+    restarting = CAR | {"sensor.wa_energy_cheap_now": "unavailable", "sensor.wa_energy_cheap_now@changed": at - timedelta(minutes=8)}
+    tpl = EV_SENSORS["wa_ev_plan"]["state"]
+    assert render(tpl, restarting, at, this=This()) == "charge"
+    assert "World Assistant is restarting" in words(EV_SENSORS["wa_ev_plan"]["attributes"]["why"], restarting)
+    long_gone = restarting | {"sensor.wa_energy_cheap_now@changed": at - timedelta(hours=2)}
+    assert render(tpl, long_gone, at, this=This()) == "wait"  # down for longer: the plan decides again (not cheap)
+    assert render(tpl, CAR | {"sensor.wa_energy_cheap_now": "off"}, at, this=This()) == "wait"  # back: decides as normal

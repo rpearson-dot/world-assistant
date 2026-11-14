@@ -104,6 +104,14 @@ auto_deploy_main() {
     exit 0
   fi
   running="$(printf '%s' "$state" | sed -n 's/.*"running":{"version":"\([^"]*\)".*/\1/p')"
+  # The nightly run waits while the car is charging (a restart can make Home Assistant's charging plan stop and
+  # restart the charge): exit 75 and the updater tries again in 10 minutes, for up to three hours.
+  if [ "$NOW" = 0 ] && [ "$DRY_RUN" = 0 ] && printf '%s' "$state" | grep -q '"held":true'; then
+    why="$(printf '%s' "$state" | sed -n 's/.*"hold":{"held":true,"why":"\([^"]*\)".*/\1/p')"
+    log "Holding the nightly update: ${why:-asked to wait}. Trying again in 10 minutes."
+    report held "waiting: ${why:-asked to wait}" "$running"
+    exit 75
+  fi
   prev_ref="${WA_IMAGE:-}"
   log "Running version: ${running:-unknown}. Looking for a newer release..."
 

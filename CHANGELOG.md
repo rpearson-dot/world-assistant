@@ -11,6 +11,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   the school run shows how full each bus was at Worcester Park and at the school, each stop's row shows it, and the
   playback labels each bus with it. Every BODS field is already recorded, so the days since it appeared show it too.
 
+### Fixed
+
+- **An overnight update no longer stops the car's charge.** Updates restart World Assistant at 04:00, inside most
+  cheap charging windows; its energy sensors were briefly unavailable in Home Assistant, the charging plan read that
+  as "not cheap" and the automation stopped the charge (and started it again a few minutes later). Now:
+  - the charging plan (`wa_ev_plan.yaml`) keeps its last decision while World Assistant's sensors are unavailable or
+    unknown, for up to 45 minutes, and says why;
+  - the nightly update waits while the charger says it is charging, trying again every 10 minutes for three hours
+    (Settings → Automatic updates, "Wait while the car is charging", on by default);
+  - the nightly update's time is set in Settings ("Every night at"), so it can be moved out of the cheap hours.
+
 ## [0.56.0] - 2026-11-14
 
 ### Added
