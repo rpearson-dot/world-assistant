@@ -68,3 +68,29 @@ async def windows(request: Request, hours: float = Query(3.0, ge=0.5, le=12)) ->
     wins = [w for w in R.windows(periods) if w.end > now_]
     return {"tariff": tariff, "cheapest_block": summary._window(block),
             "windows": [summary._window(w) for w in wins]}  # fmt: skip
+
+
+@router.get("/usage")
+async def usage(request: Request, days: int = Query(30, ge=1, le=400)) -> dict[str, Any]:
+    """Each day from the meter (Octopus, half-hourly): kWh bought and sold, what was bought cost at your rates, and how
+    much was bought 16:00 to 19:00. Octopus publishes a day's readings the next day."""
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+
+    from sqlalchemy import text
+
+    from app.config import get_settings
+    from app.modules.octopus import usage as U
+
+    end = datetime.now(UTC)
+    start = end - timedelta(days=days)
+    async with request.app.state.engine.connect() as conn:
+        rows = [dict(r) for r in (await conn.execute(text(
+            "SELECT direction, interval_start AS start, kwh FROM energy_usage WHERE interval_start >= :a ORDER BY interval_start"),
+            {"a": start})).mappings().all()]  # fmt: skip
+        rates = await U.rates_between(conn, start, end)
+        last = (await conn.execute(text("SELECT max(interval_start) FROM energy_usage"))).scalar()
+    out = U.days(rows, rates, ZoneInfo(get_settings().local_tz))
+    return {"days": out, "latest_reading": last,
+            "totals": {k: round(sum(d[k] for d in out), 1) for k in ("import_kwh", "export_kwh", "dear_kwh")} |
+                      {"cost_pounds": round(sum(d["cost_p"] for d in out) / 100, 2)}}  # fmt: skip
