@@ -83,6 +83,7 @@ class Fix:
     off: float = 0.0  # metres from it
     origin_departure: datetime | None = None
     destination: str | None = None
+    capacity: dict[str, Any] | None = None  # how full, when BODS says (capacity.read)
 
 
 @dataclass
@@ -321,7 +322,7 @@ def morning(route: list[dict[str, Any]], shape: list[list[float]] | None, other:
     found: list[dict[str, Any]] = []
     for vehicle, rows in positions.items():
         fx = sorted({r["recorded_at"]: Fix(r["recorded_at"], r["lat"], r["lon"], origin_departure=r.get("origin_aimed_departure"),
-                                           destination=r.get("destination_name"))
+                                           destination=r.get("destination_name"), capacity=r.get("capacity"))
                      for r in rows if r.get("lat") is not None and r.get("recorded_at")}.values(), key=lambda f: f.at)  # fmt: skip
         place(path, fx)
         for tr in trips(vehicle, fx, stops[a]["m"]):
@@ -369,6 +370,14 @@ def morning(route: list[dict[str, Any]], shape: list[list[float]] | None, other:
             "by": by, "summary": summary, "buses": buses, "events": events}  # fmt: skip
 
 
+def _capacity_at(fixes: list[Fix], at: datetime | None) -> dict[str, Any] | None:
+    """How full the bus was when it was at a stop: from the position nearest that time (within three minutes)."""
+    if at is None:
+        return None
+    near = [f for f in fixes if f.capacity and abs((f.at - at).total_seconds()) <= 180]
+    return min(near, key=lambda f: abs((f.at - at).total_seconds())).capacity if near else None
+
+
 def _norm(v: str) -> str:
     return "".join(ch for ch in v.upper() if ch.isalnum())
 
@@ -412,7 +421,8 @@ def _bus(t: dict[str, Any], stops: list[dict[str, Any]], a: int, b: int, sched: 
             note = "passed going the other way"
         rows.append({"stop": sid, "name": s.get("name"), "scheduled": sched.get(sid), "first_expected": tfl.get("first_expected"),
                      "first_seen": tfl.get("first_seen"), "last_expected": tfl.get("last_expected"), "actual": actual,
-                     "probable": gps, "late": tfl.get("late"), "note": note})  # fmt: skip
+                     "probable": gps, "late": tfl.get("late"), "note": note,
+                     "capacity": _capacity_at(tr.fixes, actual or gps)})  # fmt: skip
     reached_school = school in seen["passed"] or next((r["actual"] for r in rows if r["stop"] == school), None) is not None
     other_side = None
     if not reached_school and school_other:
@@ -487,6 +497,7 @@ def _bus(t: dict[str, Any], stops: list[dict[str, Any]], a: int, b: int, sched: 
                  "rejoined": place_name(stops, r["rejoined_m"])["words"] if r["rejoined_m"] is not None else None,
                  "missed": [names.get(s, s) for s in r["missed"]], "furthest_off_m": round(r["furthest_off_m"])}
                 for r in seen["off_route"]],
+            "capacity_first": first_row["capacity"], "capacity_school": school_row["capacity"],
             "delay": late, "stops": rows, "events": events}  # fmt: skip
 
 

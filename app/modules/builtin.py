@@ -250,7 +250,7 @@ BUILTIN: tuple[Module, ...] = (
            uses=("bods", "tfl")),
     Module("buslog", "Bus route log", "Every bus on one route (the 213) in the school-run window, recorded from TfL and "
            "BODS several times a minute, with every failed or empty request kept too",
-           category="transport", keys=("bods_api_key", "tfl_app_key"), any_key=True, jobs=("buslog",), occasional=("buslog",),
+           category="transport", keys=("bods_api_key", "tfl_app_key"), any_key=True, jobs=("buslog", "buslog_capacity_check"), occasional=("buslog", "buslog_capacity_check"),
            tabs=(("bus", "buslog", "/buslog", "Route log"),), sdk=2,
            link="https://data.bus-data.dft.gov.uk",
            note="Positions need a BODS key; TfL's predictions work without a key, faster with one. Records 07:00 to "
@@ -258,7 +258,8 @@ BUILTIN: tuple[Module, ...] = (
            routers=("app.modules.buslog.api:router", "app.modules.buslog.schoolrun:router", "app.modules.buslog.page:page_router"), prefixes=("/v1/buslog", "/buslog"),
            worker=(Job("app.modules.buslog.collect:buslog_minute",
                        {"minute": set(range(60)), "second": {0}, "timeout": 75, "max_tries": 1, "unique": True}),
-                   Job("app.modules.buslog.collect:buslog_housekeep", {"hour": {2}, "minute": {41}, "timeout": 300, "max_tries": 1})),
+                   Job("app.modules.buslog.collect:buslog_housekeep", {"hour": {2}, "minute": {41}, "timeout": 300, "max_tries": 1}),
+                   Job("app.modules.buslog.schoolrun:buslog_capacity_check", {"weekday": {0}, "hour": {10}, "minute": {13}, "timeout": 300, "max_tries": 1})),
            tools=("bus_log",),
            provides={"assistant.tools": "app.modules.buslog.tools:TOOLS"}),
     Module("ocpp", "Car charger (OCPP)", "World Assistant as your charger's OCPP server: start and stop, every restart, "

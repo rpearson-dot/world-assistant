@@ -163,7 +163,7 @@ pages themselves hold no data: each one calls these endpoints.
 | PUT | `/v1/buslog/settings` | The route, the window, and the test switch that records every day (weekends and holidays too). |
 | GET | `/v1/buslog/status` | Whether it is recording now and why, the next recording days, and how today's requests went per source. |
 | GET | `/v1/buslog/stop/{stop}` | A stop's next hour: the buses the timetable has there, and the ones TfL expects (as it stood at `at`). |
-| GET | `/v1/buslog/tracks` | Every bus's GPS positions over a day's window (and half an hour either side), for playback: {vehicle: [[epoch seconds, lat, lon, destination], ...]}. |
+| GET | `/v1/buslog/tracks` | Every bus's GPS positions over a day's window (and half an hour either side), for playback: {vehicle: [[epoch seconds, lat, lon, destination, how full (when BODS says)], ...]}. |
 | GET | `/v1/buslog/vehicle/{vehicle}` | A bus's remaining stops to the end of its route, as TfL expected at `at`, against the timetable: on time, early or late at each, and by how much. |
 
 ## clients

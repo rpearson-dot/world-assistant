@@ -122,3 +122,19 @@ def test_reliability_over_days() -> None:
     r = run.reliability(days)
     assert r["total"]["recorded"] == 20 and r["total"]["made_it"] == 16 and r["total"]["percent"] == 80
     assert r["total"]["in_time_percent"] == 75
+
+
+def test_how_full_when_bods_says() -> None:
+    from app.modules.buslog import capacity
+
+    assert capacity.read(None, {}) is None
+    assert capacity.read("seatsAvailable", None)["words"] == "seats free"
+    c = capacity.read(None, {"Extensions.VehicleJourney.SeatedOccupancy": "30", "Extensions.VehicleJourney.SeatedCapacity": "41",
+                             "Extensions.VehicleJourney.WheelchairsOccupancy": "0"})  # fmt: skip
+    assert c["words"] == "30 of 41 seats taken" and c["seats"] == 41 and c["wheelchairs"] == 0
+    assert capacity.keys_seen({"VehicleLocation.Latitude": "1", "MonitoredVehicleJourney.Occupancy": "full"}) == ["MonitoredVehicleJourney.Occupancy"]
+    fixes = [{**f, "capacity": {"words": "standing room only"} if i >= 6 else {"words": "seats free"}}
+             for i, f in enumerate(drive(9.5, [1050 + 500 * k for k in range(10)]))]  # fmt: skip
+    out = run.morning(ROUTE, SHAPE, OTHER, timetable(), {"FULL": fixes}, [], "S2", "S6", "S6E", (at(0), at(120)))
+    bus = next(x for x in out["buses"] if x["vehicle"])
+    assert bus["capacity_first"]["words"] == "seats free" and bus["capacity_school"]["words"] == "standing room only"

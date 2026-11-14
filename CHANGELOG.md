@@ -2,6 +2,15 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **How full each bus is, from the day BODS sends it.** A weekly check (Mondays) looks for occupancy in what BODS
+  sends for the route and notifies you the first time it appears (new notification kind "Bus log news"). From then
+  the school run shows how full each bus was at Worcester Park and at the school, each stop's row shows it, and the
+  playback labels each bus with it. Every BODS field is already recorded, so the days since it appeared show it too.
+
 ## [0.56.0] - 2026-11-14
 
 ### Added

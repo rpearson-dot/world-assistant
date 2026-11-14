@@ -37,8 +37,9 @@ KINDS = {"bikes": "Bike batteries and parts due", "firmware": "Firmware changes"
          "health": "World Assistant itself (a stopped worker or job, a full disk, backups)",
          "system": "System (sync failures, keys running out, recalls)",
          "modules": "Outside modules that need your attention (an update held, falling behind, a limit reached)",
-         "network": "A new device on your network"}  # fmt: skip
-DEFAULTS: dict[str, Any] = {"enabled": True, "kinds": {"bikes": True, "firmware": False, "environment": True, "home": True, "health": True, "system": False, "modules": True, "network": True},
+         "network": "A new device on your network",
+         "buses": "Bus log news (when BODS starts saying how full the buses are)"}  # fmt: skip
+DEFAULTS: dict[str, Any] = {"enabled": True, "kinds": {"bikes": True, "firmware": False, "environment": True, "home": True, "health": True, "system": False, "modules": True, "network": True, "buses": True},
                             "quiet_from": "22:00", "quiet_to": "07:00", "topic": None}  # fmt: skip
 
 

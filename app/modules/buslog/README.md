@@ -12,13 +12,14 @@ How to use it: [docs/bus-log.md](../../../docs/bus-log.md).
 | Reads | TfL arrivals; Bus Open Data Service positions |
 | Keys | `bods_api_key`, `tfl_app_key` |
 | Endpoints | `/v1/buslog`, `/buslog` |
-| Scheduled jobs | `buslog_minute`, `buslog_housekeep` |
+| Scheduled jobs | `buslog_minute`, `buslog_housekeep`, `buslog_capacity_check` |
 | Assistant tools | `bus_log` |
 | Plugs into | `assistant.tools` |
 
 ## Files
 
 - `api.py`: The bus route recorder's API (/v1/buslog): what it is doing, its settings and school calendar, "record now", and the recorded route, bus positions, requests...
+- `capacity.py`: How full a bus is, when BODS says. Pure.
 - `collect.py`: The recorder's worker jobs.
 - `compare.py`: A bus against its timetable, and a stop's next hour. Pure: given TfL's latest predictions, the day's timetable and the route, so it is tested on its own.
 - `page.py`: The bus route log page (/buslog): what the recorder is doing, its switches, and a map of the route's stops with each bus as a red box holding its...

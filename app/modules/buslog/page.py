@@ -70,7 +70,7 @@ tr.more td { background: var(--chip); }
 
 <div class="card" id="sr"><h2>School run: <span id="srtitle">Worcester Park to Coombe Girls School</span></h2>
   <div class="kpis" id="srkpi"></div>
-  <p id="srsay"></p>
+  <p id="srsay"></p><p id="srcap" class="dim"></p>
   <div class="wrap"><table class="sr" id="srtable"></table></div>
   <p class="dim small">Times in <i>italics with ≈</i> are probable, from the bus's GPS (about one position a minute); others are
   when TfL's prediction for the stop ended as the bus got there. <b>Expected</b> is TfL's last prediction before then
@@ -215,8 +215,8 @@ function trackAt(pts, t) {  // [epoch, lat, lon, dest]: where a bus was at t (be
   while (lo < hi) { const m = (lo + hi + 1) >> 1; if (pts[m][0] <= t) lo = m; else hi = m - 1; }
   const a = pts[lo], b = pts[lo + 1];
   if (t - a[0] > 180) return null;  // nothing heard for three minutes: not shown
-  if (b && b[0] - a[0] <= 150) { const f = (t - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, a[3], t - a[0]]; }
-  return [a[1], a[2], a[3], t - a[0]];
+  if (b && b[0] - a[0] <= 150) { const f = (t - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, a[3], t - a[0], a[4]]; }
+  return [a[1], a[2], a[3], t - a[0], a[4]];
 }
 const trailLayer = L.layerGroup().addTo(map);
 function drawFromTracks(at) {
@@ -226,9 +226,9 @@ function drawFromTracks(at) {
   for (const [v, pts] of Object.entries(tracks || {})) {
     const p = trackAt(pts, t); if (!p) continue; n++;
     const box = el('div', null, 'busicon' + (p[3] > 90 ? ' old' : '') + (picked && picked.kind === 'bus' && picked.id === v ? ' picked' : ''));
-    box.append(el('span', v), el('small', 'to ' + (p[2] || '?')));
+    box.append(el('span', v), el('small', 'to ' + (p[2] || '?') + (p[4] ? ' · ' + p[4] : '')));
     const m = L.marker([p[0], p[1]], { pane: 'buses', icon: L.divIcon({ html: box, className: '', iconSize: null, iconAnchor: [34, 18] }) });
-    m.bindTooltip(document.createTextNode(v + ' to ' + (p[2] || '?')));
+    m.bindTooltip(document.createTextNode(v + ' to ' + (p[2] || '?') + (p[4] ? ' · ' + p[4] : '')));
     m.on('click', () => { picked = { kind: 'bus', id: v, name: p[2] }; if (!playing) showBus(v, p[2]).catch(() => {}); });
     m.addTo(busLayer);
     if (picked && picked.kind === 'bus' && picked.id === v) {  // its last ten minutes
@@ -370,8 +370,8 @@ function jump(e) {
   $('map').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 function stopRows(b) {
-  const t = el('table', null, 'sr'), h = el('tr');
-  ['Stop', 'Timetable', 'TfL expected', 'Got there', ''].forEach(x => h.append(el('th', x))); t.append(h);
+  const t = el('table', null, 'sr'), h = el('tr'), full = b.stops.some(r => r.capacity);
+  ['Stop', 'Timetable', 'TfL expected', 'Got there', ...(full ? ['How full'] : []), ''].forEach(x => h.append(el('th', x))); t.append(h);
   for (const r of b.stops) {
     const tr = el('tr');
     tr.append(el('td', r.name || r.stop));
@@ -381,6 +381,7 @@ function stopRows(b) {
     if (r.late) ex.append(el('span', 'showed ' + mins(r.late.late_s) + ' min late at ' + hm(r.late.seen_at), 'sub'));
     tr.append(ex);
     tr.append(timeCell(r.actual, r.probable));
+    if (full) tr.append(el('td', r.capacity ? r.capacity.words : '–', 'dim'));
     const late = (r.actual || r.probable) && r.scheduled ? mins((new Date(r.actual || r.probable) - new Date(r.scheduled)) / 1000) : null;
     tr.append(el('td', r.note || (late == null ? '' : late === 0 ? 'on time' : Math.abs(late) + ' min ' + (late > 0 ? 'late' : 'early')), r.note ? 'v-late' : 'dim'));
     t.append(tr);
@@ -406,8 +407,12 @@ async function drawSchoolRun(fresh) {
     (s.other_side ? s.other_side + ' reached the school from the other side of the road. ' : '') +
     (sr.gap_minutes ? sr.gap_minutes + ' minutes of the window had no positions received. ' : '') +
     (sr.status && sr.status.length ? 'TfL: ' + sr.status.map(x => x.severity + (x.reason ? ' (' + x.reason + ')' : '')).join('; ') : '');
+  const full = sr.buses.some(b => b.capacity_first || b.capacity_school);  // shown once BODS says how full buses are
+  const cc = sr.capacity_check;
+  $('srcap').textContent = full ? '' : cc ? 'How full each bus is: BODS does not send it for the ' + sr.line + ' yet (checked each week, last ' +
+    new Date(cc.last_checked).toLocaleDateString('en-GB') + '). It will show here from the day it does.' : '';
   const h = el('tr');
-  ['Bus', sr.first.name + ': due', 'left', sr.school.name + ': due', 'expected', 'got there', 'What happened'].forEach(x => h.append(el('th', x))); t.append(h);
+  ['Bus', sr.first.name + ': due', 'left', sr.school.name + ': due', 'expected', 'got there', ...(full ? ['How full'] : []), 'What happened'].forEach(x => h.append(el('th', x))); t.append(h);
   for (const b of sr.buses) {
     const tr = el('tr', null, 'bus');
     tr.append(el('td', b.vehicle || '–'));
@@ -418,6 +423,7 @@ async function drawSchoolRun(fresh) {
     if (b.first_expected_school && b.first_expected_school !== b.expected_school) ex.append(el('span', 'first ' + hm(b.first_expected_school), 'sub'));
     tr.append(ex);
     tr.append(timeCell(b.arrived_school_actual ? b.arrived_school : null, b.arrived_school_actual ? null : b.arrived_school));
+    if (full) { const c = el('td'); c.append(el('span', b.capacity_first ? b.capacity_first.words : '–'), el('span', 'at the school: ' + (b.capacity_school ? b.capacity_school.words : '–'), 'sub')); tr.append(c); }
     const w = el('td'); w.append(badge(b), el('span', b.words, 'sub'));
     if (b.delay) w.append(el('span', 'TfL showed it ' + mins(b.delay.late_s) + ' min late at ' + hm(b.delay.seen_at), 'sub'));
     tr.append(w);
@@ -426,7 +432,7 @@ async function drawSchoolRun(fresh) {
     tr.onclick = () => {
       const open = tr.nextSibling && tr.nextSibling.classList && tr.nextSibling.classList.contains('more');
       t.querySelectorAll('tr.more').forEach(x => x.remove()); if (open) return;
-      const more = el('tr', null, 'more'), td = el('td'); td.colSpan = 7;
+      const more = el('tr', null, 'more'), td = el('td'); td.colSpan = full ? 8 : 7;
       const watch = el('button', 'Watch it on the map'); watch.type = 'button';
       watch.onclick = ev => { ev.stopPropagation(); jump({ at: b.left_first || b.due_first, vehicle: b.vehicle }); startPlay(); };
       td.append(watch, stopRows(b)); more.append(td); tr.after(more);

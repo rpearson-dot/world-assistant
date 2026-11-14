@@ -19,11 +19,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from app.auth import require_token
-from app.modules.buslog import run, store
+from app.jobs import tracked
+from app.modules.buslog import capacity, run, store
 from app.modules.buslog.api import _day, _tz
 
 router = APIRouter(prefix="/v1/buslog", tags=["buslog"], dependencies=[Depends(require_token)])
 KEY = "buslog.schoolrun"
+CAPACITY_KEY = "buslog.capacity"
 VERSION = 1  # bump when run.morning changes what it finds: kept days are worked out again
 DEFAULTS = {"first": "490001346C", "school": "490005569W", "school_other": "490005569E", "by": "08:30"}
 
@@ -75,11 +77,12 @@ async def compute(conn: Any, line: str, day: date, st: dict[str, Any], window: t
         {"l": line, "d": day, "dir": towards})).mappings().all()]  # fmt: skip
     pos: dict[str, list[dict[str, Any]]] = {}
     for r in (await conn.execute(text(
-            "SELECT DISTINCT ON (vehicle, recorded_at) vehicle, recorded_at, lat, lon, origin_aimed_departure, destination_name "
+            "SELECT DISTINCT ON (vehicle, recorded_at) vehicle, recorded_at, lat, lon, origin_aimed_departure, destination_name, occupancy, "
+            "(SELECT jsonb_object_agg(k, v) FROM jsonb_each_text(fields) e(k, v) WHERE k ~* '(occupancy|capacity)') AS cap "
             "FROM buslog_position WHERE line = :l AND service_day = :d AND seen_at BETWEEN :a AND :b AND lat IS NOT NULL "
             "ORDER BY vehicle, recorded_at, seen_at"),
             {"l": line, "d": day, "a": w0 - timedelta(minutes=30), "b": w1 + timedelta(minutes=75)})).mappings().all():  # fmt: skip
-        pos.setdefault(r["vehicle"], []).append(dict(r))
+        pos.setdefault(r["vehicle"], []).append({**r, "capacity": capacity.read(r["occupancy"], r["cap"])})
     preds = [dict(r) for r in (await conn.execute(text(
         "SELECT seen_at, vehicle, stop, change, expected_at FROM buslog_prediction "
         "WHERE line = :l AND service_day = :d AND seen_at BETWEEN :a AND :b ORDER BY seen_at"),
@@ -116,6 +119,7 @@ async def compute(conn: Any, line: str, day: date, st: dict[str, Any], window: t
                               "text": f"TfL: {s['severity']}" + (f" ({s['reason']})" if s["reason"] else "")})  # fmt: skip
     out["events"].sort(key=lambda e: e["at"])
     gap_min = sum((b - a).total_seconds() for a, b in gaps) / 60
+    out["capacity_check"] = await store.read_setting(conn, CAPACITY_KEY)
     return {"day": day.isoformat(), "line": line, "recorded": True, "window": [w0, w1], "timetable": bool(tt),
             "gaps": [{"from": a, "to": b} for a, b in gaps], "gap_minutes": round(gap_min), "status": status, **out}  # fmt: skip
 
@@ -205,18 +209,20 @@ async def put_settings(request: Request, body: SchoolRunIn) -> dict[str, Any]:
 @router.get("/tracks")
 async def tracks(request: Request, day: str | None = None) -> dict[str, Any]:
     """Every bus's GPS positions over a day's window (and half an hour either side), for playback:
-    {vehicle: [[epoch seconds, lat, lon, destination], ...]}."""
+    {vehicle: [[epoch seconds, lat, lon, destination, how full (when BODS says)], ...]}."""
     d = _day(day)
     async with request.app.state.engine.connect() as conn:
         st_, _, _ = await store.load(conn)
         a, b = _local(d, st_["start"]) - timedelta(minutes=30), _local(d, st_["end"]) + timedelta(minutes=60)
         rows = (await conn.execute(text(
-            "SELECT DISTINCT ON (vehicle, recorded_at) vehicle, recorded_at, lat, lon, destination_name FROM buslog_position "
+            "SELECT DISTINCT ON (vehicle, recorded_at) vehicle, recorded_at, lat, lon, destination_name, occupancy, "
+            "(SELECT jsonb_object_agg(k, v) FROM jsonb_each_text(fields) e(k, v) WHERE k ~* '(occupancy|capacity)') FROM buslog_position "
             "WHERE line = :l AND service_day = :d AND seen_at BETWEEN :a AND :b AND lat IS NOT NULL ORDER BY vehicle, recorded_at, seen_at"),
             {"l": st_["line"], "d": d, "a": a, "b": b})).all()  # fmt: skip
     out: dict[str, list[Any]] = {}
-    for v, at, lat, lon, dest in rows:
-        out.setdefault(v, []).append([round(at.timestamp()), round(lat, 6), round(lon, 6), dest])
+    for v, at, lat, lon, dest, occ, cap in rows:
+        c = capacity.read(occ, cap)
+        out.setdefault(v, []).append([round(at.timestamp()), round(lat, 6), round(lon, 6), dest, c["words"] if c else None])
     return {"day": d.isoformat(), "from": a, "to": b, "buses": out}
 
 
@@ -250,3 +256,40 @@ async def keep_yesterday(engine: Any) -> dict[str, Any]:
     d = datetime.now(_tz()).date() - timedelta(days=1)
     r = await day_result(engine, d, fresh=True)
     return {"schoolrun": d.isoformat(), "buses": r.get("summary", {}).get("recorded")}
+
+
+async def buslog_capacity_check(ctx: dict[str, Any]) -> Any:
+    """Each week: has BODS started saying how full the route's buses are? The first time it has, a notification (once);
+    from then on the school run shows it (it is read from every position already recorded)."""
+    engine = ctx["engine"]
+
+    async def work() -> dict[str, Any]:
+        from app import notify
+
+        async with engine.connect() as conn:
+            st_, _, _ = await store.load(conn)
+            row = (await conn.execute(text(
+                "SELECT count(*), count(*) FILTER (WHERE occupancy IS NOT NULL) FROM buslog_position "
+                "WHERE line = :l AND seen_at > now() - interval '7 days'"), {"l": st_["line"]})).first()  # fmt: skip
+            keys = [r[0] for r in (await conn.execute(text(
+                "SELECT DISTINCT k FROM (SELECT fields FROM buslog_position WHERE line = :l AND seen_at > now() - interval '7 days' "
+                "ORDER BY seen_at DESC LIMIT 20000) p, jsonb_object_keys(p.fields) k WHERE k ~* '(occupancy|capacity)' LIMIT 30"),
+                {"l": st_["line"]})).all()]  # fmt: skip
+            state = await store.read_setting(conn, CAPACITY_KEY) or {}
+        positions, with_occ = row[0] if row else 0, row[1] if row else 0
+        seen = bool(with_occ or keys)
+        now = datetime.now(UTC).isoformat()
+        state = {**state, "line": st_["line"], "last_checked": now, "positions": positions, "with_occupancy": with_occ,
+                 "fields": keys, "sent": seen}  # fmt: skip
+        first = seen and not state.get("first_seen")
+        if first:
+            state["first_seen"] = now
+        async with engine.begin() as conn:
+            await store.write_setting(conn, CAPACITY_KEY, state)
+        if first:
+            await notify.send(engine, "buses", f"buslog:capacity:{st_['line']}", f"BODS now says how full the {st_['line']} is",
+                              f"{with_occ} of {positions} positions this week carry it. The school run shows it from now on.",
+                              click="/buslog")  # fmt: skip
+        return {"positions": positions, "with_occupancy": with_occ, "fields": keys, "first_seen": first}
+
+    return await tracked(engine, "buslog_capacity_check", work)
