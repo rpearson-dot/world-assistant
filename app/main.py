@@ -42,9 +42,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     if await selection.first_start(app.state.engine):
         log.info("new install: starting from the essentials; the setup wizard asks which areas to add")
+    for _, start in registry.provided("startup"):
+        try:
+            await start(app)
+        except Exception:
+            log.exception("a module's startup failed")
+    from app import watchdog
+
+    await watchdog.WATCH.start(app)
     log.info("world-assistant api started (env=%s)", settings.env)
     yield
 
+    await watchdog.WATCH.stop()
     for _, close in registry.provided("shutdown"):
         await close()
     await app.state.redis.aclose()
@@ -86,6 +95,10 @@ class ErrorCount:
 
 
 app.add_middleware(ErrorCount)
+
+from app.clients import Audit
+
+app.add_middleware(Audit)  # who changed what (app/clients.py)
 
 
 @app.get("/healthz")

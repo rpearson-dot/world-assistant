@@ -331,7 +331,34 @@ def test_the_api_shows_the_switches_and_the_record(db: str, monkeypatch: pytest.
     assert cal["school"] == "Coombe Girls School"
     assert c.put("/v1/buslog/calendar", json={**cal, "inset": ["2026-11-20"]}, headers=h).json()["inset"] == ["2026-11-20"]
     assert c.get("/v1/buslog/raw/999", headers=h).status_code == 404
-    for path in ("/v1/buslog/route", "/v1/buslog/positions", "/v1/buslog/polls", "/v1/buslog/predictions?stop=490B"):
+    for path in ("/v1/buslog/route", "/v1/buslog/positions", "/v1/buslog/polls", "/v1/buslog/predictions?stop=490B",
+                 "/v1/buslog/stop/490B", "/v1/buslog/vehicle/LJ16EZX"):
         assert c.get(path, headers=h).status_code == 200, path
     page = c.get("/buslog", headers=h)
     assert page.status_code == 200 and "busicon" in page.text
+
+
+# --- a bus against the timetable, a stop's next hour ---------------------------------------------------------------
+
+
+def test_a_bus_is_matched_to_its_journey_and_told_early_or_late() -> None:
+    from datetime import timedelta
+
+    from app.modules.buslog import compare
+
+    t0 = datetime(2026, 11, 16, 7, 0, tzinfo=UTC)
+    stops = [{"seq": i, "stop": s, "name": n} for i, (s, n) in enumerate([("A", "Fairfield"), ("B", "Malden"), ("C", "Worcester Park"), ("D", "Sutton")])]
+    tt = [{"direction": "outbound", "journey": j, "stop": s["stop"], "scheduled_at": t0 + timedelta(minutes=10 * j + 9 * s["seq"])}
+          for j in range(4) for s in stops]  # fmt: skip
+    # journey 1 (07:10), now at B: 3 min late at Malden, 30 s late at Worcester Park, 2 min early at Sutton
+    preds = [{"stop": "B", "expected_at": t0 + timedelta(minutes=22), "direction": "outbound", "destination": "Sutton"},
+             {"stop": "C", "expected_at": t0 + timedelta(minutes=28, seconds=30), "direction": "outbound"},
+             {"stop": "D", "expected_at": t0 + timedelta(minutes=35), "direction": "outbound"}]  # fmt: skip
+    r = compare.bus_run("LJ16EZX", preds, stops, tt)
+    assert r["journey"] == 1 and r["destination"] == "Sutton" and r["now"] == "3 min late"
+    assert [(s["stop"], s["verdict"], s["words"]) for s in r["stops"]] == [
+        ("B", "late", "3 min late"), ("C", "on time", "on time"), ("D", "early", "2 min early")]
+    assert compare.bus_run("X", [], stops, tt)["stops"] == []
+    # the stop's next hour from 07:15: timetable and TfL
+    h = compare.stop_hour("B", t0 + timedelta(minutes=15), tt, [{**preds[0], "vehicle": "LJ16EZX"}], {"outbound": "Sutton"})
+    assert [e["scheduled_at"].minute for e in h["scheduled"]] == [19, 29, 39] and h["expected"][0]["to"] == "Sutton"

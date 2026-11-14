@@ -28,15 +28,23 @@
 # integration update that renamed the entity). The plan then works from the last level it was told, plus an estimate
 # of what the charger has added since (its power, or the current it was set to, into "WA car: usable battery"), so
 # the target still holds. Only with no level ever seen does it charge until the car stops by itself, and it says so.
-# NOT STARTING: if the charger's switch shows on but the charger sits ready ("Preparing" or "SuspendedEVSE") for 10
-# minutes while the plan wants to charge, the start is sent again (off, then on), at most every 30 minutes. The
-# switch can stay on after the last charge, and while it shows on no new start was ever sent.
+# NOT STARTING: if the charger's switch shows on but the charger is not charging (ready, suspended by the car or the
+# charger, or finishing: after a restart it can come back in any of them) for 10 minutes while the plan wants to
+# charge, the start is sent again (off, then on), at most every 30 minutes. The switch can stay on after the last
+# charge or a restart, and while it shows on no new start was ever sent. With the switch off, the start is sent every
+# 5 minutes until the charger takes it.
+# NOT CHARGING: if the plan has wanted to charge for 15 minutes and the car is still not charging, a notification
+# says so and why it might be (once each time the plan starts wanting to charge): in Home Assistant's notifications,
+# and on your phone too if "WA car: notify service" names one (e.g. notify.mobile_app_your_phone).
 #
 # YOUR ENTITIES: set them on the Home charging dashboard (Car settings), or in Settings > Helpers, "WA car: ..."
 # entity fields. Left empty, the names below are used (a Sync EV charger named "charger" in the OCPP integration and
 # an OVMS Nissan Leaf). The plan reads them through its own sensors (sensor.wa_car_*, sensor.wa_charger_*), so the
 # dashboard and the energy plan's outcome log follow whatever you set.
 #
+# WORLD ASSISTANT'S OCPP SERVER: when the charger is connected to World Assistant instead of Home Assistant's OCPP
+# integration, its entities (switch.wa_ocpp_charging, sensor.wa_ocpp_status, _power, _session_energy, _energy) are
+# used automatically, unless the entity fields below name others.
 # HOW: the charger's charge control switch (OCPP remote start/stop), checked every 5 minutes and whenever the rate,
 # a free hour, the plug or the car's charge level changes. The current is set as above, before each start. Every
 # start and stop (or, in a dry run, what would have happened) goes to the logbook under "WA car charging". The
@@ -58,6 +66,10 @@ input_datetime:
     has_time: true
   wa_ev_retry_at:
     name: "WA car: start last sent again"
+    has_date: true
+    has_time: true
+  wa_ev_warned_at:
+    name: "WA car: last told it was not charging"
     has_date: true
     has_time: true
 
@@ -139,6 +151,9 @@ input_number:
 
 # The entities this plan uses. No "initial": what you set is kept across restarts; empty means the default.
 input_text:
+  wa_ev_notify:
+    name: "WA car: notify service (e.g. notify.mobile_app_your_phone; empty: Home Assistant's notifications only)"
+    max: 255
   wa_ev_entity_status:
     name: "WA car: charger status entity (default sensor.charger_status_connector)"
     max: 255
@@ -174,21 +189,21 @@ template:
         icon: mdi:ev-plug-type2
         state: >-
           {% set e = states('input_text.wa_ev_entity_status') %}
-          {{ states(e if e.count('.') == 1 else 'sensor.charger_status_connector') }}
+          {{ states(e if e.count('.') == 1 else ('sensor.wa_ocpp_status' if has_value('sensor.wa_ocpp_status') else 'sensor.charger_status_connector')) }}
       - name: "WA charger power"
         unique_id: wa_charger_power
         unit_of_measurement: kW
         device_class: power
         state: >-
           {% set e = states('input_text.wa_ev_entity_power') %}
-          {{ states(e if e.count('.') == 1 else 'sensor.charger_power_active_import') | float(0) }}
+          {{ states(e if e.count('.') == 1 else ('sensor.wa_ocpp_power' if has_value('sensor.wa_ocpp_power') else 'sensor.charger_power_active_import')) | float(0) }}
       - name: "WA charger session energy"
         unique_id: wa_charger_session_energy
         unit_of_measurement: kWh
         device_class: energy
         state: >-
           {% set e = states('input_text.wa_ev_entity_session') %}
-          {{ states(e if e.count('.') == 1 else 'sensor.charger_energy_session') | float(0) }}
+          {{ states(e if e.count('.') == 1 else ('sensor.wa_ocpp_session_energy' if has_value('sensor.wa_ocpp_session_energy') else 'sensor.charger_energy_session')) | float(0) }}
       - name: "WA charger energy total"
         unique_id: wa_charger_energy_total
         unit_of_measurement: kWh
@@ -196,7 +211,7 @@ template:
         state_class: total_increasing
         state: >-
           {% set e = states('input_text.wa_ev_entity_meter') %}
-          {% set v = states(e if e.count('.') == 1 else 'sensor.charger_energy_active_import_register') %}
+          {% set v = states(e if e.count('.') == 1 else ('sensor.wa_ocpp_energy' if has_value('sensor.wa_ocpp_energy') else 'sensor.charger_energy_active_import_register')) %}
           {{ v | float if is_number(v) else none }}
       # what the car itself last said (the plan uses "WA car charge level" below, which fills the gaps)
       - name: "WA car reported charge level"
@@ -279,7 +294,7 @@ template:
           {% set house = states('sensor.office_inverter_battery_soc') | float(-1) %}
           {% set above = states('input_number.wa_ev_battery_above') | float(60) - (5 if status == 'Charging' else 0) %}
           {% set battery = is_state('input_boolean.wa_ev_battery_enabled', 'on') and is_number(states(cur)) and house >= above > 0 %}
-          {% if status in ['Available', 'Unavailable', 'Faulted', 'unknown', 'unavailable'] %}unplugged
+          {% if status in ['Available', 'Unavailable', 'unknown', 'unavailable'] %}unplugged
           {% elif soc >= 0 and soc >= target %}full
           {% elif held %}full
           {% elif free or low %}charge
@@ -356,7 +371,7 @@ script:
       - action: switch.turn_on
         target:
           entity_id: >-
-            {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else 'switch.charger_charge_control' }}
+            {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else ('switch.wa_ocpp_charging' if has_value('switch.wa_ocpp_charging') else 'switch.charger_charge_control') }}
   wa_car_charge_stop:
     alias: "WA car: stop charging now"
     icon: mdi:stop
@@ -364,7 +379,7 @@ script:
       - action: switch.turn_off
         target:
           entity_id: >-
-            {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else 'switch.charger_charge_control' }}
+            {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else ('switch.wa_ocpp_charging' if has_value('switch.wa_ocpp_charging') else 'switch.charger_charge_control') }}
 
 automation:
   - id: wa_ev_plan
@@ -382,7 +397,7 @@ automation:
         to: ~
     variables:
       switch: >-
-        {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else 'switch.charger_charge_control' }}
+        {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else ('switch.wa_ocpp_charging' if has_value('switch.wa_ocpp_charging') else 'switch.charger_charge_control') }}
       plan: "{{ states('sensor.wa_car_charging_plan') }}"
       current: >-
         {% set e = states('input_text.wa_ev_entity_current') %}{{ e if e.count('.') == 1 else 'number.charger_maximum_current' }}
@@ -399,12 +414,13 @@ automation:
         {% set t = state_attr('input_datetime.wa_ev_stopped_at', 'timestamp') %}
         {{ t is number and now().timestamp() < t + (300 if charging else 1800) }}
       stop: "{{ plan in ['wait', 'full'] and (charging or switch_on) and not stopped_recently }}"
-      # the switch shows on, but the charger has sat ready for 10 minutes: no start reached it (the switch can stay on
-      # after the last charge, and then no new start is sent); send it again, at most every 30 minutes
+      # the switch shows on, but the charger has not been charging for 10 minutes: no start reached it (the switch can
+      # stay on after the last charge or a restart, and then no new start is sent); send it again, at most every 30
+      # minutes
       stuck: >-
         {% set r = state_attr('input_datetime.wa_ev_retry_at', 'timestamp') %}
         {% set since = states.sensor.wa_charger_status.last_changed if states.sensor.wa_charger_status else none %}
-        {{ plan == 'charge' and switch_on and status in ['Preparing', 'SuspendedEVSE']
+        {{ plan == 'charge' and switch_on and status in ['Preparing', 'SuspendedEVSE', 'SuspendedEV', 'Finishing']
            and since is not none and (now() - since).total_seconds() > 600
            and not (r is number and now().timestamp() < r + 1800) }}
       soc: "{{ states('sensor.wa_car_charge_level') }}"
@@ -459,6 +475,7 @@ automation:
             value_template: "{{ apply }}"
         then:
           - action: "switch.turn_{{ 'on' if start else 'off' }}"
+            continue_on_error: true  # a start the charger refuses must not stop the automation
             target:
               entity_id: "{{ switch }}"
       - if:
@@ -529,6 +546,63 @@ automation:
             Charge current set to {{ amps }} A (was {{ now_amps | int }} A): charging from the
             {{ 'house battery' if is_state('sensor.wa_car_charge_source', 'battery') else 'grid' }}.
 
+  - id: wa_ev_not_charging
+    alias: "WA car charging: tell me when it should be charging and is not"
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+    variables:
+      # as a number: a time in a variable becomes text
+      since: "{{ as_timestamp(states.sensor.wa_car_charging_plan.last_changed) if states.sensor.wa_car_charging_plan else none }}"
+      warned: "{{ state_attr('input_datetime.wa_ev_warned_at', 'timestamp') }}"
+      status: "{{ states('sensor.wa_charger_status') }}"
+      switch: >-
+        {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else ('switch.wa_ocpp_charging' if has_value('switch.wa_ocpp_charging') else 'switch.charger_charge_control') }}
+      apply: "{{ is_state('input_boolean.wa_ev_apply', 'on') }}"
+      service: "{{ states('input_text.wa_ev_notify') | trim }}"
+      text: >-
+        The plan has wanted to charge the car since {{ since | timestamp_custom('%H:%M') if since is number else '?' }}
+        ({{ state_attr('sensor.wa_car_charging_plan', 'why') | trim }}), but it is not charging: the charger is
+        {{ status }} and its switch is {{ states(switch) }}.
+        {% if status == 'Faulted' %}The charger has a fault ({{ states('sensor.charger_error_code_connector') }}): it usually clears itself and is then started again.
+        {% elif not apply %}"WA car: control the charger" is off, so the plan has only been writing down what it would do.
+        {% elif is_state(switch, 'off') %}Each start has been refused: check the charger (its app, or a restart) and the car's own charge timer.
+        {% else %}The start has been sent again; if it stays like this, check the charger, the car's own charge timer, and
+        that the automation "WA car charging: start and stop the charger" is on (Settings > Automations).{% endif %}
+        Car {{ states('sensor.wa_car_charge_level') }}%.
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ is_state('sensor.wa_car_charging_plan', 'charge') and status != 'Charging' and since is number
+             and now().timestamp() - since > 900
+             and not (warned is number and warned >= since) }}
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.wa_ev_warned_at
+        data:
+          timestamp: "{{ now().timestamp() }}"
+      - action: persistent_notification.create
+        data:
+          notification_id: wa_ev_not_charging
+          title: "The car is not charging"
+          message: "{{ text }}"
+      - if:
+          - condition: template
+            value_template: "{{ service.startswith('notify.') }}"
+        then:
+          - action: "{{ service }}"
+            continue_on_error: true
+            data:
+              title: "The car is not charging"
+              message: "{{ text }}"
+      - action: logbook.log
+        data:
+          name: WA car charging
+          entity_id: input_boolean.wa_ev_apply
+          message: "Told you it is not charging: {{ text }}"
+
   - id: wa_ev_meter_values
     alias: "WA car charging: ask the charger for meter readings while it charges"
     mode: single
@@ -539,6 +613,9 @@ automation:
       - condition: state
         entity_id: sensor.wa_charger_status
         state: Charging
+      # through World Assistant's own OCPP server, it asks the charger itself
+      - condition: template
+        value_template: "{{ not has_value('sensor.wa_ocpp_status') }}"
     actions:
       - action: ocpp.trigger_custom_message
         continue_on_error: true

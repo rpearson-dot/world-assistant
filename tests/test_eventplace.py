@@ -42,3 +42,17 @@ def test_without_the_postcode_table_listings_are_left_as_they_came() -> None:
     events = [{"id": "a", "postcode": "SA1 1NW", "lat": 51.38, "lon": -0.25}]
     assert asyncio.run(E.check(_Broken(), events, HOME, 8)) == (events, 0, 0)
     assert asyncio.run(E.check(None, events, HOME, 8)) == (events, 0, 0)
+
+
+def test_a_listing_without_a_postcode_is_checked_against_its_towns_centre() -> None:
+    towns = {"kingston upon thames": (51.41, -0.30)}
+    events = [
+        {"id": "f", "name": "Placed in Swansea", "town": "Kingston  upon Thames", "lat": 51.62, "lon": -3.94},
+        {"id": "g", "name": "Near the centre", "town": "Kingston upon Thames", "lat": 51.40, "lon": -0.29},
+        {"id": "h", "name": "Unknown town", "town": "Nowhere", "lat": 51.62, "lon": -3.94},
+        {"id": "i", "name": "No position", "town": "Kingston upon Thames", "lat": None, "lon": None},
+    ]
+    out, moved, dropped = E.correct(events, {}, HOME, 20, towns)
+    assert [e["id"] for e in out] == ["f", "g", "h", "i"] and (moved, dropped) == (1, 0)
+    assert out[0]["lat"] == 51.41 and "from Kingston  upon Thames; shown at the town's centre" in out[0]["moved"]
+    assert out[3]["lat"] is None  # a town centre is too rough to give a position

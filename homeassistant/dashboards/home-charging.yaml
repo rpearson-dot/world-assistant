@@ -220,6 +220,8 @@ views:
                 name: Car range
               - entity: input_text.wa_ev_entity_current
                 name: Charger maximum current
+              - entity: input_text.wa_ev_notify
+                name: Tell my phone when it is not charging (notify service)
             grid_options:
               columns: full
 

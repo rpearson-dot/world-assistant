@@ -10,9 +10,15 @@ The core never imports a module: it asks the registry for what modules provide a
 
 from __future__ import annotations
 
+# The SDK's version. A module says which it was written for (Module(sdk=...)); one written for a newer SDK than this
+# core offers is not loaded. Additions (a new extension point, a new Module field) raise it; nothing is taken away
+# without a version that says so. 1: the first (0.52.0). 2: startup, Module.tabs, Module.occasional, app.ha_discover (0.53.0).
+SDK_VERSION = 2
+
 # The core's published interface, by module. Anything not listed is the core's own business and may change.
 CORE: dict[str, str] = {
     "app.config": "settings (get_settings) and their defaults",
+    "app.localnet": "private_peer, proxied: who connected (for endpoints only the home network may use)",
     "app.auth": "require_token, the dependency every /v1 router uses",
     "app.places": "saved places: place_or_default, the default place",
     "app.geo": "postcode lookup (postcodes.io, or a module's local table)",
@@ -24,7 +30,10 @@ CORE: dict[str, str] = {
     "app.keys": "the Keys page's view of a secret",
     "app.notify": "phone notifications: send, sent, settings",
     "app.notify_jobs": "send_many and page_link, for several notifications in one message",
+    "app.mqtt": "publish (and Message): send to the MQTT broker Home Assistant reads",
+    "app.mqtt_config": "the MQTT broker as set in Settings (load) and a client for it (client), for a module that listens",
     "app.ha": "Home Assistant device and sensor shapes (Device, Sensor, Image)",
+    "app.ha_discover": "ha_api (Home Assistant's address and token, when set) and live_states, to read its states",
     "app.assistant_base": "Tool and its helpers, for assistant tools",
     "app.pagestyle": "the page shell (themed), menu and sub-tabs",
     "app.themes": "theme tokens",
@@ -36,6 +45,7 @@ CORE: dict[str, str] = {
     "app.logging": "log formatting",
     "app.version": "the running version",
     "app.modules.model": "Module and Job, to declare a module",
+    "app.modules.gate": "is_enabled: whether a module is switched on (for a websocket, which the gate does not cover)",
     "app.modules.registry": "import_string, and what other modules provide",
 }
 
@@ -45,6 +55,7 @@ POINTS: dict[str, str] = {
     "key.test": "async (settings) -> (ok, message): a live check that the module's key works",
     "setup.check": "async (settings) -> dict: a line on the Setup page's 'Your setup' list",
     "shutdown": "async () -> None: close the module's own connections when the api or worker stops",
+    "startup": "async (app) -> None: start the module's long-lived work in the api (a charger's connection), once it is up",
     "ha.energy_device": "the Home Assistant energy device (the energy module)",
     "ha.energy_retired": "sensor ids the energy device no longer publishes",
     "ha.pollen_map": "(points) -> svg: the pollen map image for Home Assistant",

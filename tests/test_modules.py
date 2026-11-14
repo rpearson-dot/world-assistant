@@ -44,12 +44,17 @@ def test_every_schedule_is_one_arq_accepts() -> None:
                 cron(registry.import_string(j.func), **spec)
 
 
+from tests.test_secrets_compose import EXISTING as FILES_BEFORE_0_53
+
+
 def test_keys_are_known_secrets_and_reach_the_containers() -> None:
     known = {k.name for k in secretstore.KNOWN}
     compose = (ROOT / "docker-compose.yml").read_text()
     for m in registry.modules():
         for key in (*m.keys, *m.more_keys):
             assert key in known, f"{m.id}: {key} is not in secretstore.KNOWN"
+            if key not in FILES_BEFORE_0_53:
+                continue  # newer keys live where the Keys page saves them, never in a secret file (test_secrets_compose)
             assert re.search(rf"^\s+- {key}$", compose, re.MULTILINE), f"{m.id}: {key} is not given to a container"
             assert re.search(rf"^  {key}:$", compose, re.MULTILINE), f"{m.id}: {key} has no secret file entry"
     names = {k.name for k in secretstore.KNOWN}
@@ -246,7 +251,8 @@ def test_an_outside_module_is_added_by_import_string_and_cannot_take_a_builtin_i
         "from app.modules.model import Module\n"
         "DEMO = Module('demo', 'Demo', 'A module from outside', prefixes=('/v1/demo',), tools=('demo_tool',))\n"
         "CLASH = Module('fuel', 'Fake fuel', 'tries to replace fuel', core=True)\n"
-        "def many():\n    return [DEMO, CLASH]\n"
+        "FUTURE = Module('future', 'Future', 'written for a newer SDK', sdk=99)\n"
+        "def many():\n    return [DEMO, CLASH, FUTURE]\n"
     )
     monkeypatch.syspath_prepend(str(tmp_path))
     monkeypatch.setenv("WA_EXTRA_MODULES", "wa_demo_module:many,wa_demo_module:missing")
@@ -255,6 +261,7 @@ def test_an_outside_module_is_added_by_import_string_and_cannot_take_a_builtin_i
         demo = registry.get("demo")
         assert demo and demo.source == "wa_demo_module:many" and not demo.core
         assert registry.get("fuel").name != "Fake fuel"  # type: ignore[union-attr]
+        assert registry.get("future") is None  # needs a newer SDK than this core offers
         assert registry.module_for_path("/v1/demo/x") == "demo"
         assert registry.module_of_tool("demo_tool") == "demo"
         # and it can be switched off like any other

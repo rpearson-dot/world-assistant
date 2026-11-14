@@ -156,7 +156,7 @@ FIXED = {
     "pollen-0": "#ffffff", "pollen-1": "#8cc700", "pollen-2": "#f5e400", "pollen-3": "#f7a600", "pollen-4": "#e63a10",
     "w3w": "#e11f26",  # what3words' red, for its ///words
     # a London bus on the route log's map: red body, yellow numberplate, black letters
-    "bus": "#c8102e", "plate": "#f7d417", "plate-ink": "#111111",
+    "bus": "#c8102e", "plate": "#f7d417", "plate-ink": "#111111", "bus-ink": "#ffffff",
 }  # fmt: skip
 # A bike's own paint, chosen by name for its picture (Bikes, Its answers): real colours, the same in every theme
 PAINTS = {

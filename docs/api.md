@@ -9,8 +9,17 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [ask](#ask) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [outdoors](#outdoors) · [places](#places) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [ovms](#ovms) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
 
+
+## airstage
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/airstage` | Every unit: on or off, mode, temperatures, fan, extras, error code, filter, and when it last answered. |
+| PUT | `/v1/airstage/units` | The units: a name, the address on your home network, and the device id (the Airstage app's unit details, or the label on the unit's Wi-Fi adapter). Only private addresses: a unit is never asked about over the internet. |
+| GET | `/v1/airstage/{uid}/history` | History |
+| POST | `/v1/airstage/{uid}/set` | Change a unit: any of power, mode (auto, cool, dry, fan_only, heat), target_c (half degrees), fan (auto, quiet, low, medium_low, medium, medium_high, high), swing and the extras. Read back afterwards. |
 
 ## ask
 
@@ -18,6 +27,12 @@ pages themselves hold no data: each one calls these endpoints.
 |---|---|---|
 | GET | `/v1/ask` | Ask Index |
 | POST | `/v1/ask/{name}` | POST the arguments as JSON. `?format=text` returns just the sentence, ready to speak. |
+
+## audit
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/audit` | Changes made through the API, and refused tokens, newest first. |
 
 ## auto-deploy
 
@@ -87,6 +102,9 @@ pages themselves hold no data: each one calls these endpoints.
 | POST | `/v1/bikes/rides/import` | Garmin Connect's activities CSV. Rides already imported are skipped; outdoor rides of the last four weeks get a wet suggestion from the rain gauges. |
 | DELETE | `/v1/bikes/rides/{ride_id}` | Delete a ride (logged twice, or not a ride at all): its wear comes off the parts. An imported ride deleted here comes back if the same file is imported again. |
 | PATCH | `/v1/bikes/rides/{ride_id}` | Say whether a ride was wet (the suggestion is only that), or which bike it was on (Garmin often keeps the last bike chosen): either confirms it. |
+| GET | `/v1/bikes/routes` | The routes you ride again and again: rides from the last `routes_years` (5) ridden more than `routes_more_than` (5) times, each with how often, how far, when first and last, and whether it is watched for road events. |
+| DELETE | `/v1/bikes/routes/{route_id}/watch` | Unwatch Route |
+| POST | `/v1/bikes/routes/{route_id}/watch` | Watch a route like a trip: its corridor kept (150 m either side) so road works and closures along it are found. |
 | POST | `/v1/bikes/service` | Log what was done. A replacement retires the old part and fits the new one (a spare from the shelf, taking one off it, or a new part) in the same place, with its count from now. A service, check, charge or top-up restarts the part's count. A crash puts its checks on the due list. A cost or a note is just kept. |
 | DELETE | `/v1/bikes/service/{service_id}` | Undo a logged service, check, charge or cost: the part's count goes back to what it was. Undoing a replacement also puts the old part back where it was and takes the new one away (a spare goes back on the shelf). A replacement whose new part has had things logged since is refused: undo those first. |
 | POST | `/v1/bikes/sets` | A labelled set: a wheel (front or rear) or any group of parts. A new wheel can come with the usual parts for a bike (from its answers: tyre, tube or sealant, tyre check, rotor, cassette, hub...), and be fitted straight away, the wheel it replaces going into storage. |
@@ -135,9 +153,20 @@ pages themselves hold no data: each one calls these endpoints.
 | DELETE | `/v1/buslog/record-now` | Stop Now |
 | POST | `/v1/buslog/record-now` | Record from the next minute for a while, whatever the day and time (the worker starts within a minute). |
 | GET | `/v1/buslog/route` | The route as recorded on a day (or the newest before it): each direction's stops in order, and its line. |
+| POST | `/v1/buslog/schedule-now` | Take today's route and timetable from TfL now (as the recorder does before the window), kept like any other request. Takes a few seconds. |
 | GET | `/v1/buslog/settings` | Get Settings  |
 | PUT | `/v1/buslog/settings` | The route, the window, and the test switch that records every day (weekends and holidays too). |
 | GET | `/v1/buslog/status` | Whether it is recording now and why, the next recording days, and how today's requests went per source. |
+| GET | `/v1/buslog/stop/{stop}` | A stop's next hour: the buses the timetable has there, and the ones TfL expects (as it stood at `at`). |
+| GET | `/v1/buslog/vehicle/{vehicle}` | A bus's remaining stops to the end of its route, as TfL expected at `at`, against the timetable: on time, early or late at each, and by how much. |
+
+## clients
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/clients` | Every client: name, access, paths, the token's last four characters, made, last used, revoked. |
+| POST | `/v1/clients` | A new client and its token. The token is shown this once: copy it into the client now. |
+| POST | `/v1/clients/{cid}/revoke` | Stop a client's token working, now. The client stays listed, with when it was revoked. |
 
 ## conditions
 
@@ -159,6 +188,7 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/energy/rates` | The upcoming rates, each with its band. |
 | GET | `/v1/energy/schedule` | The inverter's six daily slots for this tariff: start times, which charge from the grid, and what each charging slot must cover until the next cheap window (for the Home Assistant energy plan). |
 | GET | `/v1/energy/sessions` | Saving Sessions (with whether you joined) and Octopus boost events: on now, next, upcoming. |
+| GET | `/v1/energy/usage` | Each day from the meter (Octopus, half-hourly): kWh bought and sold, what was bought cost at your rates, and how much was bought 16:00 to 19:00. Octopus publishes a day's readings the next day. |
 | GET | `/v1/energy/windows` | Cheapest block of `hours` in the next 24 hours, and the banded windows. |
 
 ## environment
@@ -263,6 +293,12 @@ pages themselves hold no data: each one calls these endpoints.
 | POST | `/v1/ha/zones/import` | Make World Assistant places of these Home Assistant zones (from the last "Find my setup"). |
 | GET | `/v1/ha/zones/package` | World Assistant's places that are not Home Assistant zones, as a package of zones (from the last "Find my setup"; all places if it has not run). |
 
+## health
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/health/watch` | The latest self-check: problems now (worker, jobs, disks, backups, restore check), database size, and the last restore check. Runs a check if none is recent. |
+
 ## here
 
 | Method | Path | What it does |
@@ -300,10 +336,25 @@ pages themselves hold no data: each one calls these endpoints.
 
 | Method | Path | What it does |
 |---|---|---|
+| POST | `/v1/notify/check` | Check every step to the phone that can be checked from the server, in order, and send a test message. |
 | GET | `/v1/notify/log` | Get Log |
 | GET | `/v1/notify/settings` | Get Notify |
 | PUT | `/v1/notify/settings` | Put Notify |
 | POST | `/v1/notify/test` | A test notification now (quiet hours and the switches do not apply). |
+
+## ocpp
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/ocpp` | Every charger World Assistant has heard from, with its state, the last week's restarts, drops and faults, and the address to give a charger. |
+| PUT | `/v1/ocpp/mode` | The master switch: off (the charger refuses to charge), on (charges whenever the car is plugged in) or auto (Home Assistant's charging plan decides). Kept, and applied to every connected charger now. |
+| PUT | `/v1/ocpp/settings` | Which chargers may connect (by id; none listed: any on the home network), how often to ask for meter readings while charging, and whether to publish the charger to Home Assistant. |
+| POST | `/v1/ocpp/{cid}/command` | Any of the commands in protocol.COMMANDS: Reset {type: Soft\|Hard}, GetConfiguration {keys}, ChangeConfiguration {key, value}, TriggerMessage {message}, UnlockConnector, ChangeAvailability {type}, ClearCache. |
+| GET | `/v1/ocpp/{cid}/events` | Events |
+| GET | `/v1/ocpp/{cid}/messages` | The newest messages either way, exactly as they went. |
+| GET | `/v1/ocpp/{cid}/sessions` | Sessions |
+| POST | `/v1/ocpp/{cid}/start` | Start charging now (OCPP RemoteStartTransaction on connector 1). |
+| POST | `/v1/ocpp/{cid}/stop` | Stop the charging session the charger last said it started. |
 
 ## outdoors
 
@@ -317,6 +368,16 @@ pages themselves hold no data: each one calls these endpoints.
 | PUT | `/v1/outdoors/settings` | Choose the KitchenOwl list to use (none: the one called Outdoors). Not the shopping list. |
 | GET | `/v1/outdoors/{key}/history` | Every price each product this item follows has had, newest first. |
 
+## ovms
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/ovms` | Every car heard from: battery, range, 12 V, charging, locked, where, how recently it reported, its warnings now and its last notifications. `vehicle` links an OVMS vehicle id to a vehicle on the Vehicles page. |
+| PUT | `/v1/ovms/settings` | Whether to listen, the topic prefix the car publishes under (OVMS: Config → Server V3 → topic prefix; "+" for any part), and which Vehicles-page vehicle each OVMS vehicle id is. |
+| GET | `/v1/ovms/{vehicle}/history` | Metric History |
+| GET | `/v1/ovms/{vehicle}/metrics` | Every metric the car has sent, as it stands, with when. |
+| GET | `/v1/ovms/{vehicle}/notices` | Notices |
+
 ## places
 
 | Method | Path | What it does |
@@ -324,6 +385,15 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/places` | List Places |
 | DELETE | `/v1/places/{place_id}` | Delete Place |
 | PUT | `/v1/places/{place_id}` | Put Place |
+
+## planner
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/planner/charging` | The latest decision and why; how often it matched Home Assistant's plan; and each time they differed. |
+| GET | `/v1/planner/demand` | How predictable evening demand is from the cold (a straight-line fit of each evening's kWh on its heating degree-hours), and tomorrow evening's likely need. Worked out at most every six hours unless fresh. |
+| GET | `/v1/planner/settings` | Get Settings  |
+| PUT | `/v1/planner/settings` | The demand statistic and evening; the house battery and grid power entities for solar to spare (and which sign is export); and "act": World Assistant starts and stops the charger itself (Auto only). |
 
 ## pollen
 
@@ -429,6 +499,14 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/stops/near` | Stops within a radius, nearest first. |
 | GET | `/v1/stops/{atco}` | One stop by ATCO code, the id TfL and the bus tracker use. |
 
+## tariffs
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/tariffs` | The last comparison (worked out each morning, after the meter readings) and the settings. |
+| POST | `/v1/tariffs/compare` | Work the comparison out again now (it fetches every Octopus tariff: about half a minute). |
+| PUT | `/v1/tariffs/settings` | Count readings from (when the house last changed); your house battery's usable kWh and charge rate (for the shifted costs); your region if your tariff code does not say; and tariffs from other suppliers' quotes. |
+
 ## tfl
 
 | Method | Path | What it does |
@@ -467,6 +545,13 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/vehicles/home-rate` | The rate an electric vehicle's trip cost uses when no home rate is given: the Energy tab's cheapest. |
 | DELETE | `/v1/vehicles/{vehicle_id}` | Delete Vehicle |
 | PUT | `/v1/vehicles/{vehicle_id}` | Put Vehicle |
+
+## weather
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/weather` | Now, the next 48 hours, and today plus the next six days in brief (low, high, rain, sunshine, heating degree-hours all day and 16:00 to 19:00). |
+| GET | `/v1/weather/history` | Each past day as it turned out: low, high, rain, sunshine and heating degree-hours (all day and 16:00 to 19:00). |
 
 ## wishlist
 

@@ -68,6 +68,17 @@ docker compose exec -T wa-db pg_dump -U worldassistant -Fc worldassistant > wa-$
 docker compose exec -T wa-db pg_restore -U worldassistant -d worldassistant --clean < wa-YYYY-MM-DD.dump
 ```
 
+## Watching itself
+
+Every five minutes the api checks that the worker is alive, that every scheduled job still runs (judged by how often
+it has run before) and is not failing three times in a row, that the server and backup disks are under 90% full, and
+that the newest backup is under two days old. Early on Sunday the worker **restores the newest backup into a scratch
+schema** of the same database, compares every table's rows with the backup's own count, and drops the schema again.
+Problems show under Settings → System → Health and go to your phone once a day while they last ("World Assistant
+itself" in Settings → Notifications). `GET /v1/health/watch` returns the same.
+
+The restore check needs room for a second copy of the backed-up tables while it runs.
+
 ## First data load
 
 On a new install the worker loads fuel stations (with a Fuel Finder key), bus stops and stations, and

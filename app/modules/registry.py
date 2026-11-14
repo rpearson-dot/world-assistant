@@ -74,7 +74,13 @@ def _tagged(m: Module, source: str) -> Module:
 @lru_cache(maxsize=1)
 def modules() -> tuple[Module, ...]:
     out: dict[str, Module] = {}
+    from app.modules.sdk import SDK_VERSION
+
     for m in (*BUILTIN, *_outside()):
+        if m.sdk > SDK_VERSION:
+            log.warning("module %r needs module SDK %d; this World Assistant offers %d: not loaded (update World Assistant)",
+                        m.id, m.sdk, SDK_VERSION)  # fmt: skip
+            continue
         if m.id in out:
             log.warning("module id %r declared twice; keeping the first", m.id)
             continue

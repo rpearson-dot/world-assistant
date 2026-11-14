@@ -2,6 +2,89 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.53.0] - 2026-11-14
+
+### Added
+- **Car charger (OCPP), Vehicles → Charger.** World Assistant can be your charger's OCPP server instead of Home
+  Assistant's integration. One switch, **Off / On / Auto**: Off makes the charger unavailable, On charges whenever the
+  car is plugged in, Auto lets Home Assistant's charging plan decide. Beside it, the car's charge as a five-segment
+  battery and one word: Unplugged, Connected, Charging, Fault, Switched off or Offline. Every message to and from the
+  charger is kept, with each connection, drop, restart (told apart from a first start), fault, status change and
+  command in words, so a charger that resets itself can be seen doing it; a notification for restarts, faults and
+  silence. In Home Assistant: the charger's sensors, its charging switch and the Off/On/Auto mode, which the charging
+  plan (`wa_ev_plan.yaml`) uses by itself. In Auto, a charger that stops by itself (a fault, a restart) while the
+  plan wants it charging is started again as soon as it is ready. See `docs/ocpp.md` for moving the charger across.
+- **The car's own module (OVMS).** Battery, range, 12 V battery, charging, locks, doors and position, read from the
+  MQTT broker, on the car's pane on the Vehicles page with its warnings (12 V low, alarm, tyres, doors or boot open,
+  unlocked or handbrake off while parked, battery low, gone quiet) and its own messages. Warnings and the module's
+  alerts go to your phone once each. Reading only: commands wait for the broker to have TLS. See `docs/ovms.md`.
+- **Air conditioning (Fujitsu Airstage), Energy → Air conditioning.** Each unit on your home network, directly (never
+  through Fujitsu's cloud): temperature inside and out, Off/On, mode, target, fan, swing and the extras; readings kept;
+  notifications for an error code, a dirty filter or a unit not answering; each unit a climate entity in Home
+  Assistant; "set the bedroom to 21" to the assistant. Replaces Home Assistant's Airstage integration. See
+  `docs/airstage.md`.
+- **World Assistant watches itself.** Every five minutes: the worker alive, every job still running and not failing
+  over and over, the disks under 90% full, a backup under two days old. Weekly, the newest backup is restored into a
+  scratch schema and checked table by table. Problems show in Settings → System → Health and go to your phone ("World
+  Assistant itself" notifications).
+- **One token per client.** Settings → System → Clients: a token for each thing that calls World Assistant from
+  outside your home network, with only the access it needs (read only; read and ask the assistant; everything;
+  optionally only some paths), revocable on its own. The main token still works.
+- **Notifications: "Check each step"** (Settings → Notifications). When nothing arrives on the phone, it checks each
+  step it can from the server (switched on, the phone's address for the server, the server reachable and calling
+  itself by the same address, a test message accepted and held) and names the first one to fix.
+- **An audit log** of every change made through the API and every refused token, with who (Settings → System).
+- **Bus log:** the route drawn clearly with its stops visible at every zoom; each bus labelled with its numberplate
+  and where it is going; tap a stop for its next hour (timetable and TfL's expected buses); tap a bus for its times at
+  every stop to the end of its route against the timetable, on time, early or late and by how much; **Download
+  schedule now**; the school's terms, holidays and INSET days as an editable table.
+- **Weather (Open-Meteo), Environment → Weather.** The weather at home now, hour by hour for a week, each day's
+  heating degree-hours (how cold, added up, which is what heating follows), and the past as it turned out (back 92
+  days the first time). In Home Assistant as sensors. No key. See `docs/weather.md`.
+- **Your meter's half-hourly readings from Octopus**, import and export, fetched each morning (back a year the first
+  time) and priced at the rates in force, so plans can be checked against what was really bought and sold
+  (`GET /v1/energy/usage`).
+- **Home energy planner, Energy → Planner.** Every five minutes, what World Assistant would do with the car (charge
+  on the cheap rate, a free hour, when low, or with solar to spare once the house battery is full; never from the
+  house battery) and why, beside Home Assistant's plan, with how often they agreed and each time they differed. In
+  shadow until you tick "act", when it starts and stops the charger itself (Auto, on World Assistant's OCPP) and
+  Home Assistant's start and stop stand aside. Also **how predictable your evenings are**: each evening's use against
+  how cold it was, how much the cold explains, and tomorrow evening's likely use. See `docs/planner.md`.
+- **Tariff comparison, Energy → Tariffs.** Your real half-hourly use priced at every Octopus tariff's rates today
+  (Agile and Tracker at the last 30 days' average), and at any other supplier's you type in from a quote: as used,
+  and with your house battery filling in every cheap window and covering the rest. Each tariff's cheap hours, their
+  windows and the longest gap between them; exports priced apart (Flux with its own); the best import and export to
+  move to and the saving a year. Readings count from a date you set and never from more than a year back. The meter
+  readings now go back a year. See `docs/tariffs.md`.
+- **Bike garage: routes you ride.** Routes ridden more than 5 times in the last 5 years (both settings), found
+  from your rides' GPS routes either way round, with how often and when last. Watch one and its corridor is kept,
+  so road works and closures along it are found like a trip's.
+- **Events without a postcode** are now checked against their town's centre (the middle of the venues already seen
+  there, at their postcodes): a listing more than 25 km from it is moved there, as a misplaced postcode is.
+- **Module SDK version 2:** a `startup` extension point, modules' own menu tabs (`Module.tabs`), jobs that run only at
+  times (`Module.occasional`), and a version number a module is checked against (`docs/module-sdk.md`).
+
+### Fixed
+- **Car charging: the start is sent again in more cases** (Home Assistant's `wa_ev_plan.yaml`). After the charger
+  restarts it can come back suspended or finishing rather than ready, and the start was then never sent again (the
+  car sat uncharged 04:00 to 07:00 on 14 November). Now any not-charging state for 10 minutes, with the switch on and
+  the plan wanting to charge, gets the start again (at most every 30 minutes).
+- **Car charging: a faulted charger is a fault, not "unplugged".** The charger's faults (OtherError, clearing after
+  about 7 minutes, several a day) were filed as "unplugged", which hid them; the plan now carries on and says so.
+- **Car charging: you are told when it should be charging and is not.** After 15 minutes of the plan wanting to
+  charge with nothing happening, a notification says so and the likely why (a charger fault and its code; "control the
+  charger" off; starts refused; or the start sent again, and to check the plan's automation is on: it was switched
+  off on the night of 13 November): in Home Assistant, and on your phone if "WA car: notify service" names one
+  (Home charging dashboard → Car settings). Copy `wa_ev_plan.yaml` and `home-charging.yaml` across again.
+- **Backups held every row of the bus log twice** (0.52.0): its monthly partitions were copied as well as the table,
+  and a restore would have failed on the duplicates. A split table is now kept once, through its parent, and the bus
+  log's raw answers (about 30 MB a recorded day) are left out of backups (they stay in the database a school year).
+- **The update to 0.52.1 stopped at its first step** on a server: 0.52.1 added a secret file (for the MOT ScopeURL)
+  that the updater cannot create, and Docker will not start a container whose secret file is missing (0.52.0 kept
+  running throughout). That key is now kept where the Keys page keeps keys, and a test stops any release adding a
+  new secret file.
+- **The events test aged:** it used fixed dates and failed once they passed.
+
 ## [0.52.1] - 2026-11-13
 
 ### Changed

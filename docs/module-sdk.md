@@ -5,6 +5,17 @@ folder, `app/modules/<id>/`, and talks to the rest only through a small, written
 interface is kept in code in `app/modules/sdk.py`, and `tests/test_module_boundaries.py` holds every module to it.
 To add a module, read [contributing a module](contributing-a-module.md) first.
 
+## Versions
+
+The SDK has a version, `SDK_VERSION` in `app/modules/sdk.py`. A module says which version it was written for
+(`Module(sdk=2)`); a module written for a newer SDK than the running World Assistant offers is not loaded, and the
+log says to update World Assistant. Additions raise the version; nothing is taken away without a version that says so.
+
+| Version | Release | What it added |
+|---|---|---|
+| 1 | 0.52.0 | the first: the rules, the published interface and the extension points below |
+| 2 | 0.53.0 | the `startup` extension point; `Module.tabs` (its pages as tabs of a menu section); `Module.occasional` (jobs that run only at times); `app.localnet`, `app.mqtt`, `app.mqtt_config`, `app.ha_discover` and `app.modules.gate` in the published interface |
+
 ## The rules
 
 1. **The core never imports a module.** When the core needs something a module has (an assistant tool, a map layer,
@@ -42,6 +53,10 @@ To add a module, read [contributing a module](contributing-a-module.md) first.
 | `app.integrations` | shared clients: what3words, Ordnance Survey GeoPackage reading |
 | `app.logging`, `app.version` | log formatting, the running version |
 | `app.modules.model`, `app.modules.registry` | `Module` and `Job` to declare a module; what other modules provide |
+| `app.localnet` | `private_peer`, `proxied`: who connected, for an endpoint only the home network may use |
+| `app.mqtt`, `app.mqtt_config` | publishing to the MQTT broker Home Assistant reads; the broker's settings and a client, to listen |
+| `app.ha_discover` | `ha_api` (Home Assistant's address and token, when set) and `live_states`, to read its states |
+| `app.modules.gate` | `is_enabled`: whether a module is switched on (a websocket, which the gate does not cover) |
 
 Anything else in the core is its own business and may change between releases.
 
@@ -54,6 +69,7 @@ A module plugs in with `provides={"<point>": "app.modules.<id>.<file>:<name>"}`.
 | `assistant.tools` | a list of `Tool`: its assistant tools (MCP and Siri) |
 | `key.test` | `async (settings) -> (ok, message)`: a live check that its key works |
 | `setup.check` | `async (settings) -> dict`: a line on the Setup page's "Your setup" list |
+| `startup` | `async (app) -> None`: start its long-lived work in the api once it is up (a charger's connection, an MQTT listener). Two api processes run during an update, so take a Redis lease if only one may run it |
 | `shutdown` | `async () -> None`: close its own connections when the api or worker stops |
 | `ha.energy_device`, `ha.energy_retired` | the Home Assistant energy device, and the sensors it no longer publishes |
 | `ha.pollen_map` | `(points) -> svg`: the pollen map image for Home Assistant |
@@ -66,6 +82,17 @@ A module plugs in with `provides={"<point>": "app.modules.<id>.<file>:<name>"}`.
 | `events.search` | `async (request, name, lat, lon, ...) -> events`: what is on near a point |
 
 A new point is added to `POINTS` in `app/modules/sdk.py`, with the core code that asks for it, in the same change.
+
+## More of what a module declares
+
+- **Menu tabs** (`tabs=(("bus", "buslog", "/buslog", "Route log"),)`): its pages as tabs of a menu section. The
+  section is a menu page's id; that page stays the first tab.
+- **Occasional jobs** (`occasional=("buslog",)`): of its `jobs`, the ones that run only at times (a morning window, a
+  season). World Assistant watches every other job and tells you when one goes quiet for longer than it ever has;
+  these it leaves alone.
+- **Keys:** never a new secret file in `docker-compose.yml` (an update cannot create one, and a missing secret file
+  stops the containers starting). A module's keys are saved on the Keys page; `tests/test_secrets_compose.py`
+  enforces it.
 
 ## A module's folder
 

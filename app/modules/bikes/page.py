@@ -189,6 +189,9 @@ button.small { padding: 3px 9px; font-size: 13px; }
   <details><summary class="small">Recent rides (delete one logged twice)</summary><ul class="parts" id="recentrides"></ul></details>
 </div>
 
+<div class="card" id="routecard" hidden><h2>Routes you ride</h2>
+  <p class="dim small" id="routesay"></p><ul class="parts" id="routes"></ul><p id="routemsg" class="dim"></p></div>
+
 <div class="card" id="storecard" hidden><h2>Wheels in storage</h2>
   <p class="dim small">Wheels off every bike: their parts keep their wear for when they go back on.</p><div id="store"></div></div>
 
@@ -229,6 +232,8 @@ button.small { padding: 3px 9px; font-size: 13px; }
     <label>My weight kg <input id="weight" type="number" min="25" max="240" step="0.1"></label>
     <label>A gravel ride wears the drivetrain, pads and tyres <input id="sf_gravel" type="number" min="1" max="3" step="0.1"> times</label>
     <label>A mountain-bike ride <input id="sf_mtb" type="number" min="1" max="3" step="0.1"> times</label>
+    <label>Routes from rides of the last <input id="routes_years" type="number" min="0.5" max="20" step="0.5"> years</label>
+    <label>Offer a route once ridden more than <input id="routes_more_than" type="number" min="1" max="100" step="1"> times</label>
     <button class="primary">Save</button></form>
   <details><summary class="small">Spares to keep on the shelf</summary>
     <p class="dim small">When the shelf has fewer, the part goes onto the Outdoors list (with "automatically" above) and shows under Due.</p>
@@ -838,7 +843,7 @@ function draw() {
   const sf = g.settings.surface_factors || {}; $('sf_gravel').value = sf.gravel || 1.3; $('sf_mtb').value = sf.mtb || 1.6;
   if (!MS) MS = Object.assign({}, g.settings.min_spares || {}); drawSpares();
   const rcs = g.recalls || {}; $('recallmsg').textContent = rcs.checked_at ? 'Last checked ' + new Date(rcs.checked_at).toLocaleDateString('en-GB') + (rcs.error ? ' (' + rcs.error + ')' : '') : 'Checked weekly';
-  $('to_outdoors').value = g.settings.to_outdoors; $('wet_factor').value = g.settings.wet_factor; $('trainer').checked = !!g.settings.trainer_has_cassette; $('weight').value = g.rider.weight_kg || '';
+  $('to_outdoors').value = g.settings.to_outdoors; $('wet_factor').value = g.settings.wet_factor; $('routes_years').value = g.settings.routes_years ?? 5; $('routes_more_than').value = g.settings.routes_more_than ?? 5; $('trainer').checked = !!g.settings.trainer_has_cassette; $('weight').value = g.rider.weight_kg || '';
 }
 let MS = null;
 function drawSpares() {  // the spares to keep: a number for each kind
@@ -947,6 +952,19 @@ async function load() {
   g = await api('GET', '/v1/bikes?rider=' + encodeURIComponent(rider()));
   await guard(garmin, $('gmsg'));  // first: the Garmin rules fill in the by-kind choices
   draw();
+  guard(routes, $('routemsg'));
+}
+async function routes() {
+  const r = await api('GET', '/v1/bikes/routes' + R()), ul = $('routes'); ul.replaceChildren();
+  $('routecard').hidden = false;
+  $('routesay').textContent = r.routes.length ? 'Ridden more than ' + r.more_than + ' times in the last ' + r.years + ' years. Watch one to have road works and closures along it found, like a trip.'
+    : 'No route ridden more than ' + r.more_than + ' times in the last ' + r.years + ' years yet.';
+  for (const x of r.routes) {
+    const li = el('li'); li.append(el('b', null, x.name), el('span', null, ' ' + x.km + ' km' + (x.loop ? ' loop' : '') + ', ' + x.times + ' times, last ' + new Date(x.last).toLocaleDateString('en-GB') + ' '));
+    const b = el('button', null, x.watched ? 'Stop watching' : 'Watch'); b.type = 'button';
+    b.onclick = () => guard(async () => { await api(x.watched ? 'DELETE' : 'POST', '/v1/bikes/routes/' + x.id + '/watch' + R()); await routes(); }, $('routemsg'));
+    li.append(b); ul.append(li);
+  }
 }
 const R = () => '?rider=' + encodeURIComponent(rider());
 async function garmin() {
@@ -1042,7 +1060,8 @@ $('addspare').onsubmit = e => { e.preventDefault(); guard(async () => {
 $('settings').onsubmit = e => { e.preventDefault(); guard(async () => {
   await api('PUT', '/v1/bikes/settings?rider=' + encodeURIComponent(rider()), { to_outdoors: $('to_outdoors').value, wet_factor: Number($('wet_factor').value),
     trainer_has_cassette: $('trainer').checked, weight_kg: $('weight').value ? Number($('weight').value) : null,
-    surface_factors: { gravel: Number($('sf_gravel').value || 1), mtb: Number($('sf_mtb').value || 1) } });
+    surface_factors: { gravel: Number($('sf_gravel').value || 1), mtb: Number($('sf_mtb').value || 1) },
+    routes_years: Number($('routes_years').value || 5), routes_more_than: Number($('routes_more_than').value || 5) });
   $('smsg').textContent = 'Saved.'; await load(); }, $('smsg')); };
 $('msadd').onclick = () => { const k = $('mskind').value; if (k && !(k in MS)) { MS[k] = 1; drawSpares(); } };
 $('mssave').onclick = () => guard(async () => { await api('PUT', '/v1/bikes/settings' + R(), { min_spares: MS }); MS = null; $('smsg').textContent = 'Spares saved.'; await load(); }, $('smsg'));

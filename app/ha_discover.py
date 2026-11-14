@@ -467,6 +467,11 @@ async def _places(engine: Any) -> list[dict[str, Any]]:
         return []
 
 
+async def ha_api(engine: Any) -> tuple[str, str] | None:
+    """Home Assistant's address and token, when both are set (Settings → Home Assistant). For modules (the SDK)."""
+    return await _api(engine)
+
+
 async def _api(engine: Any) -> tuple[str, str] | None:
     """Home Assistant's address and token, when both are set."""
     from app import secretstore

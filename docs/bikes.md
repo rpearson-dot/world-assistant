@@ -199,6 +199,19 @@ restart those parts' counts.
 In Settings, say how many of each kind to keep on the shelf (two chains, four pairs of pads). When the shelf has
 fewer, it shows under Due and (with "automatically") goes onto the Outdoors list once, named as the last one you had.
 
+## Routes you ride
+
+The Routes you ride card lists the routes you ride again and again. They are found from your rides' GPS routes: two
+rides are the same route when they start and finish within 400 m of each other (either way round) and run within
+250 m of each other on average. Only rides from the last 5 years count, and a route is offered only once it has been
+ridden more than 5 times. Change either number in Settings.
+
+**Watch** keeps the route's corridor (150 m either side), so road works and closures along it are found as they are
+for a trip. This needs the National Highways module. **Stop watching** removes the corridor. The bike garage is never
+linked to Home Assistant, and watching a route doesn't change that.
+
+`GET /v1/bikes/routes?rider=`, `POST`/`DELETE /v1/bikes/routes/{id}/watch?rider=`.
+
 ## Doing things
 - **Replaced** (or Serviced, Checked, Pumped, Lubed, Topped up, Bled, Charged, depending on the part): logs it and
   starts its count again. A replacement retires the old part (its history stays) and fits a new one in the same place,
