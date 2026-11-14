@@ -305,19 +305,19 @@ BUILTIN: tuple[Module, ...] = (
            tabs=(("energy", "planner", "/planner", "Planner"),),
            routers=("app.modules.planner.api:router", "app.modules.planner.page:page_router"), prefixes=("/v1/planner", "/planner"),
            worker=(Job("app.modules.planner.api:planner_tick", {"minute": _every(5), "timeout": 120, "max_tries": 1}),
-                   Job("app.modules.planner.api:demand_job", {"hour": {6}, "minute": {43}, "timeout": 300, "max_tries": 1})),
+                   Job("app.modules.planner.api:demand_job", {"hour": {6}, "minute": {43}, "timeout": 300, "max_tries": 1}),
+                   Job("app.modules.planner.review:planner_review", {"day": {1}, "hour": {8}, "minute": {17}, "timeout": 300, "max_tries": 1})),
            tools=("charging_plan", "evening_demand"),
            provides={"assistant.tools": "app.modules.planner.tools:TOOLS"},
            uses=("octopus", "weather", "ocpp", "ovms")),
     Module("tariffs", "Tariff comparison", "Your real half-hourly use priced at every Octopus tariff's rates today (and "
            "any other supplier's you add from a quote), as used and with your house battery moving use into each "
            "tariff's cheap windows, ranked, with the best import and export to move to",
-           category="energy", jobs=("tariffs_compare",), sdk=2,
-           note="Needs the Octopus module's meter readings (the account number and API key). Octopus's tariffs are public; "
-                "other suppliers' are typed in by hand",
+           category="energy", jobs=(), sdk=2,
+           note="Worked out only when you press Work it out again on Energy → Tariffs. Needs the Octopus module's meter "
+                "readings (the account number and API key). Octopus's tariffs are public; other suppliers' are typed in by hand",
            tabs=(("energy", "tariffs", "/tariffs", "Tariffs"),),
            routers=("app.modules.tariffs.api:router", "app.modules.tariffs.page:page_router"), prefixes=("/v1/tariffs", "/tariffs"),
-           worker=(Job("app.modules.tariffs.api:tariffs_compare", {"hour": {11}, "minute": {13}, "timeout": 300, "max_tries": 1}),),
            tools=("best_tariff",),
            provides={"assistant.tools": "app.modules.tariffs.tools:TOOLS"},
            uses=("octopus",)),

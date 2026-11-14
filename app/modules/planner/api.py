@@ -250,6 +250,21 @@ async def charging(request: Request, days: int = Query(3, ge=1, le=60)) -> dict[
             "agreed_pct": round(100 * sum(agree) / len(agree)) if agree else None, "differences": differ[-50:]}  # fmt: skip
 
 
+@router.get("/reviews")
+async def reviews(request: Request) -> dict[str, Any]:
+    """Each month (the last 12): what charging the car really cost and what it would have with the planner in charge,
+    worked out on the 1st. Also the month so far."""
+    from app.modules.planner import review as R
+
+    tz = _tz()
+    today = datetime.now(tz).date()
+    async with request.app.state.engine.connect() as conn:
+        past = await R.months(conn)
+    so_far = await R.review(request.app.state.engine, today.replace(day=1), today + timedelta(days=1), tz)
+    so_far["summary"] = R.summary(so_far).replace(datetime.now(tz).strftime("%B") + ":", "So far this month:", 1)
+    return {"so_far": so_far, "months": past}
+
+
 class SettingsIn(BaseModel):
     demand_statistic: str = Field("", max_length=200)
     demand_days: int = Field(90, ge=14, le=365)

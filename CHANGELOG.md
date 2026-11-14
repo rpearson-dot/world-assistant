@@ -4,7 +4,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+
+- **The planner's month.** On the 1st, what charging the car really cost last month against what it would have cost
+  with the planner in charge (the same kWh at the times it said "charge", at the rates in force), with how often it
+  agreed with Home Assistant. Sent to your phone and shown on the Planner tab, with the month so far.
+
+### Changed
+
+- **The tariff comparison runs only when you ask** (Work it out again): no daily run.
+
 ### Fixed
+
+- **Modules with nothing set up say so.** The charger, car, air conditioning and tariffs modules showed "Starting"
+  indefinitely until a charger connected, a car was heard, a unit was added or meter readings arrived. They now show
+  "Not set up" with the step that is missing.
 
 - **A slow endpoint no longer stops an update.** The page and endpoint check that gates a staged update counted an
   endpoint taking over 30 seconds as a failure, so a slow police data service (`/v1/crime`) sent 0.53.0's first

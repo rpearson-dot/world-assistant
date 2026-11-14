@@ -392,6 +392,7 @@ pages themselves hold no data: each one calls these endpoints.
 |---|---|---|
 | GET | `/v1/planner/charging` | The latest decision and why; how often it matched Home Assistant's plan; and each time they differed. |
 | GET | `/v1/planner/demand` | How predictable evening demand is from the cold (a straight-line fit of each evening's kWh on its heating degree-hours), and tomorrow evening's likely need. Worked out at most every six hours unless fresh. |
+| GET | `/v1/planner/reviews` | Each month (the last 12): what charging the car really cost and what it would have with the planner in charge, worked out on the 1st. Also the month so far. |
 | GET | `/v1/planner/settings` | Get Settings  |
 | PUT | `/v1/planner/settings` | The demand statistic and evening; the house battery and grid power entities for solar to spare (and which sign is export); and "act": World Assistant starts and stops the charger itself (Auto only). |
 
@@ -503,7 +504,7 @@ pages themselves hold no data: each one calls these endpoints.
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/v1/tariffs` | The last comparison (worked out each morning, after the meter readings) and the settings. |
+| GET | `/v1/tariffs` | The last comparison (worked out only when asked: POST /v1/tariffs/compare) and the settings. |
 | POST | `/v1/tariffs/compare` | Work the comparison out again now (it fetches every Octopus tariff: about half a minute). |
 | PUT | `/v1/tariffs/settings` | Count readings from (when the house last changed); your house battery's usable kWh and charge rate (for the shifted costs); your region if your tariff code does not say; and tariffs from other suppliers' quotes. |
 
