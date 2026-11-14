@@ -102,7 +102,7 @@ def test_home_assistant_sees_the_charger() -> None:
     st = ha.state({"status": "Charging", "meter": {"energy_wh": 13600, "power_w": 4600}, "error_code": "NoError"},
                   {"transaction_id": 3, "meter_start_wh": 12000, "last_meter_wh": 13600, "stopped_at": None})  # fmt: skip
     assert st == {"status": "Charging", "power_kw": 4.6, "energy_kwh": 13.6, "session_kwh": 1.6, "current_a": None,
-                  "error": "NoError", "booted_at": None, "session": True, "transaction": 3}  # fmt: skip
+                  "error": "NoError", "booted_at": None, "session": True, "transaction": 3, "mode": "auto"}  # fmt: skip
     idle = ha.state({"status": "Available", "meter": {"power_w": 4600}}, None)
     assert idle["power_kw"] == 0.0 and idle["session"] is False
 
@@ -246,3 +246,12 @@ def _evening(c: Any, app: Any) -> None:
     with pytest.raises(WebSocketDisconnect), c.websocket_connect("/ocpp/OTHER") as ws2:
         ws2.receive_text()
     assert c.post("/v1/ocpp/U1HKP/start", headers=h).status_code == 409  # not connected now
+
+
+def test_the_master_switch_is_offered_to_home_assistant() -> None:
+    from app.modules.ocpp import ha
+
+    topics = {t: json.loads(p) for t, p, _ in ha.discovery("U1HKP")}
+    sel = next(v for t, v in topics.items() if "/select/" in t)
+    assert sel["options"] == ["Off", "On", "Auto"] and sel["command_topic"].endswith("/ocpp/U1HKP/mode/set")
+    assert ha.state({"status": "Charging"}, None, "on")["mode"] == "on"

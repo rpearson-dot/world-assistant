@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse
 
 from app.pagestyle import themed
 
-PAGE = """<!doctype html>
+PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>World Assistant vehicles</title>
@@ -134,6 +134,7 @@ function button(text, onclick, cls) { const b = document.createElement('button')
 const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
 const openIds = new Set();
 let checkData = null;  // null: tax and MOT switched off
+let ovms = [];  // cars heard through OVMS, matched by link or registration
 async function load() {
   msg.textContent = '';
   try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
@@ -142,6 +143,7 @@ async function load() {
   $('vhome').placeholder = cheapest ? 'blank: ' + cheapest.pence_per_kwh + 'p (Energy tab)' : 'e.g. 15';
   try { checkData = await api('GET', '/v1/vehicle-checks'); } catch (e) { checkData = /switched off/i.test(e.message) ? null : { vehicles: [], keys: {}, error: e.message }; }
   $('checksnote').hidden = !checkData;
+  try { ovms = (await api('GET', '/v1/ovms')).cars; } catch (e) { ovms = []; }  // the OVMS module off: none
   draw();
 }
 function draw() {
@@ -153,10 +155,24 @@ function draw() {
     det.ontoggle = () => { if (det.open) openIds.add(v.id); else openIds.delete(v.id); };
     const sum = el('summary'); sum.append(el('span', v.name, 'vn'));
     if (c) sum.append(el('span', c.registration, 'vs'));
+    const car = ovms.find(o => o.vehicle === v.id || (c && c.registration && o.id.toUpperCase() === c.registration.split(' ').join('').toUpperCase()));
+    const carWarn = car ? car.warnings.filter(w => w.level !== 'info') : [];
+    if (carWarn.length) sum.append(el('span', carWarn.map(w => w.text).join('; '), 'vs err'));
     const status = c ? (c.warnings.length ? c.warnings.join('; ') : [c.mot_due && 'MOT until ' + c.mot_due, c.tax_due && 'tax until ' + c.tax_due].filter(Boolean).join(' · ')) : '';
     if (status) sum.append(el('span', status, 'vs' + (c.warnings.length ? ' err' : '')));
     det.append(sum);
     const body = el('div', null, 'body'); body.append(el('div', describe(v)));
+    if (car) {
+      const bits = [car.soc != null && 'battery ' + Math.round(car.soc) + '%', car.range_km != null && 'about ' + Math.round(car.range_km * 0.621) + ' miles',
+        car.volts_12v != null && '12 V ' + car.volts_12v.toFixed(2) + ' V', car.charging ? 'charging' : car.charge_state, car.locked === false ? 'unlocked' : car.locked ? 'locked' : null,
+        car.last && 'reported ' + new Date(car.last).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })].filter(Boolean);
+      body.append(el('div', 'From the car (OVMS): ' + bits.join(' · ')));
+      for (const w of car.warnings) body.append(el('div', w.text, w.level === 'info' ? 'dim' : 'err'));
+      if (car.notices.length) {
+        const d = el('details'); d.append(el('summary', 'The car’s recent messages (' + car.notices.length + ')'));
+        const ul = el('ul'); for (const n of car.notices) ul.append(el('li', new Date(n.at).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) + ' · ' + n.kind + ': ' + n.text)); d.append(ul); body.append(d);
+      }
+    }
     if (checkData) {
       const row = el('div', null, 'row');
       const reg = el('input'); reg.maxLength = 12; reg.placeholder = 'Registration'; reg.value = c ? c.registration : ''; reg.size = 10;

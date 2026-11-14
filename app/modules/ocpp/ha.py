@@ -64,10 +64,15 @@ def discovery(cid: str) -> list[tuple[str, str, bool]]:
         "name": "Charger charging", "unique_id": uid, "default_entity_id": "switch.wa_ocpp_charging", "device": dev,
         "state_topic": _topic(cid, "state"), "value_template": "{{ 'ON' if value_json.session else 'OFF' }}",
         "command_topic": _topic(cid, "charging/set"), "icon": "mdi:ev-plug-type2", **avail}), True))  # fmt: skip
+    uid = f"wa_ocpp_{cid.lower()}_mode"
+    out.append((f"{s.mqtt_discovery_prefix}/select/{uid}/config", json.dumps({
+        "name": "Charger mode", "unique_id": uid, "default_entity_id": "select.wa_ocpp_mode", "device": dev,
+        "state_topic": _topic(cid, "state"), "value_template": "{{ value_json.mode | capitalize }}",
+        "command_topic": _topic(cid, "mode/set"), "options": ["Off", "On", "Auto"], "icon": "mdi:ev-station", **avail}), True))  # fmt: skip
     return out
 
 
-def state(row: dict[str, Any], session: dict[str, Any] | None) -> dict[str, Any]:
+def state(row: dict[str, Any], session: dict[str, Any] | None, mode: str = "auto") -> dict[str, Any]:
     m = row.get("meter") or {}
     session_kwh = None
     if session and session.get("meter_start_wh") is not None:
@@ -84,6 +89,7 @@ def state(row: dict[str, Any], session: dict[str, Any] | None) -> dict[str, Any]
         "booted_at": row["booted_at"].isoformat() if row.get("booted_at") else None,
         "session": bool(session and not session.get("stopped_at")),
         "transaction": session.get("transaction_id") if session else None,
+        "mode": mode,
     }  # fmt: skip
 
 
@@ -95,7 +101,7 @@ async def _snapshot(hub: Hub, cid: str) -> tuple[dict[str, Any], bool]:
         ses = (await conn.execute(text(
             "SELECT * FROM ocpp_session WHERE charger = :c ORDER BY started_at DESC LIMIT 1"), {"c": cid})).mappings().first()  # fmt: skip
     row = dict(row or {})
-    return state(row, dict(ses) if ses else None), bool(row.get("connected"))
+    return state(row, dict(ses) if ses else None, await hub.mode()), bool(row.get("connected"))
 
 
 async def _publish(hub: Hub, cid: str, with_discovery: bool) -> None:
@@ -150,11 +156,28 @@ async def _listen(hub: Hub, cid: str) -> None:
                 continue
             async with client(conf, timeout=15) as c:
                 await c.subscribe(_topic(cid, "charging/set"), qos=1)
+                await c.subscribe(_topic(cid, "mode/set"), qos=1)
                 async for msg in c.messages:
                     if cid not in hub.links:
                         return
                     want = msg.payload.decode(errors="replace").strip().upper() if isinstance(msg.payload, bytes) else str(msg.payload).upper()
                     link = hub.links[cid]
+                    if str(msg.topic).endswith("/mode/set"):
+                        from app.modules.ocpp import server, store
+
+                        mode = want.lower()
+                        if mode in store.MODES:
+                            async with hub.engine.begin() as conn:
+                                st = await store.settings(conn)
+                                await store.save_settings(conn, {**st, "mode": mode})
+                            with contextlib.suppress(Exception):
+                                await server.apply_mode(hub, cid, mode, "from Home Assistant")
+                        continue
+                    mode = await hub.mode()
+                    if mode != "auto":
+                        await hub.keep(cid, events=[("command", f"Home Assistant asked to {want.lower()}: not done, the charger is set to {mode.capitalize()}", {})])
+                        changed(hub, cid)
+                        continue
                     try:
                         if want == "ON":
                             payload = protocol.command_payload("RemoteStartTransaction", {}, transaction_id=None)

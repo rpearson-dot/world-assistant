@@ -36,10 +36,21 @@ Connections are accepted only from the home network: never through Tailscale or 
 A notification ("Car, charger and home" in Settings → Notifications) goes out when the charger restarts, reports a
 fault, or has been silent for 15 minutes.
 
-## Charging
+## Charging: Off, On, Auto
 
-- **Start charging** sends OCPP RemoteStartTransaction on connector 1; **Stop charging** stops the session the
-  charger last said it started.
+One switch at the top of the page (and `select.wa_ocpp_mode` in Home Assistant):
+
+- **Off:** the charger is made unavailable (OCPP ChangeAvailability Inoperative), after stopping any session. It
+  will not charge even with the car plugged in.
+- **On:** charges whenever the car is plugged in: a session is started now if the car is waiting, and again each
+  time it is plugged in. Home Assistant's plan cannot stop it.
+- **Auto:** Home Assistant's charging plan starts and stops it through `switch.wa_ocpp_charging` (cheap hours,
+  free sessions, your target).
+
+In Off and On, Home Assistant's start and stop are refused and recorded ("not done, the charger is set to On").
+The setting is kept and applied again whenever the charger reconnects. Everything else (allowed chargers, meter
+readings, restarts, configuration, the raw messages) is under "Settings and tools".
+
 - While it charges, World Assistant asks for meter readings every minute (the Sync EV never sends them by itself).
 - The Sync EV on its 2020 firmware has no current setting, so charging is start and stop at about 4.6 kW.
 
@@ -47,8 +58,8 @@ fault, or has been silent for 15 minutes.
 
 Over MQTT, as the device "Charger U1HKP": `sensor.wa_ocpp_status`, `sensor.wa_ocpp_power` (kW),
 `sensor.wa_ocpp_energy` (kWh meter), `sensor.wa_ocpp_session_energy`, `sensor.wa_ocpp_current`,
-`sensor.wa_ocpp_error`, `sensor.wa_ocpp_last_boot`, `binary_sensor.wa_ocpp_connected` and `switch.wa_ocpp_charging`
-(on starts a session, off stops it).
+`sensor.wa_ocpp_error`, `sensor.wa_ocpp_last_boot`, `binary_sensor.wa_ocpp_connected`, `switch.wa_ocpp_charging`
+(on starts a session, off stops it; obeyed in Auto) and `select.wa_ocpp_mode` (Off, On, Auto).
 
 ## API
 
@@ -56,6 +67,7 @@ Over MQTT, as the device "Charger U1HKP": `sensor.wa_ocpp_status`, `sensor.wa_oc
 |---|---|
 | `GET /v1/ocpp` | every charger, its state, the week's restarts, drops and faults, and its current session |
 | `PUT /v1/ocpp/settings` | allowed chargers, meter reading interval, Home Assistant on or off |
-| `POST /v1/ocpp/{id}/start`, `/stop` | start or stop charging |
+| `PUT /v1/ocpp/mode` | `{"mode": "off" \| "on" \| "auto"}`, applied to every connected charger |
+| `POST /v1/ocpp/{id}/start`, `/stop` | start or stop a session once |
 | `POST /v1/ocpp/{id}/command` | `{"action": "Reset", "args": {"type": "Soft"}}`, GetConfiguration, ChangeConfiguration, TriggerMessage, UnlockConnector, ChangeAvailability, ClearCache |
 | `GET /v1/ocpp/{id}/events`, `/messages`, `/sessions` | the record |

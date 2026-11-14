@@ -130,6 +130,7 @@ class Hub:
                         connected=True, connected_at=_now(), last_seen=_now())  # fmt: skip
         await self.redis.set(holder_key(cid), self.process, ex=HOLDER_S)
         ha.started(self, cid)
+        asyncio.create_task(self._apply_after_connect(link))
         meter_task = asyncio.create_task(self._meter(link, int(st.get("meter_every_s") or 60)))
         close_code, why = None, ""
         try:
@@ -214,6 +215,9 @@ class Hub:
             log.exception("ocpp: could not record %s from %s", f.action, cid)
         if cols or eff.session_start or eff.session_stop:
             ha.changed(self, cid)
+        if (f.action == "StatusNotification" and cols.get("status") == "Preparing" and link.transaction is None
+                and await self.mode() == "on"):  # plugged in while set to On: start
+            asyncio.create_task(self._quiet(cid, "RemoteStartTransaction", protocol.command_payload("RemoteStartTransaction", {}, transaction_id=None)))
 
     async def _send(self, link: Link, raw: str, record: tuple[int, str | None, str | None, Any] | None) -> None:
         async with link.send_lock:
@@ -245,6 +249,20 @@ class Hub:
             conf = {k.get("key"): k.get("value") for k in f.payload.get("configurationKey") or [] if isinstance(k, dict)}
             await self.keep(cid, config=conf)
         return {"ok": status in (None, "Accepted", "Unlocked", "Scheduled"), "answer": f.payload, "error": None}
+
+    async def mode(self) -> str:
+        async with self.engine.connect() as conn:
+            return str((await store.settings(conn)).get("mode") or "auto")
+
+    async def _quiet(self, cid: str, action: str, payload: dict[str, Any]) -> None:
+        with contextlib.suppress(Exception):
+            await self.command(cid, action, payload)
+
+    async def _apply_after_connect(self, link: Link) -> None:
+        await asyncio.sleep(8)  # after its start-up messages
+        if self.links.get(link.cid) is link:
+            with contextlib.suppress(Exception):
+                await apply_mode(self, link.cid, await self.mode(), reason="on connecting")
 
     async def _meter(self, link: Link, every: int) -> None:
         """While it charges, ask for meter readings (some chargers, the Sync EV among them, never send them)."""
@@ -287,7 +305,10 @@ class Hub:
 
     async def _answer(self, req: dict[str, Any]) -> None:
         try:
-            out = await self.command(req["charger"], req["action"], req.get("payload") or {})
+            if req["action"] == "WA.Mode":
+                out = {"ok": True, "answer": await apply_mode(self, req["charger"], req["payload"]["mode"], "set here"), "error": None}
+            else:
+                out = await self.command(req["charger"], req["action"], req.get("payload") or {})
         except Exception as exc:  # noqa: BLE001 - goes back to whoever asked
             out = {"ok": False, "answer": None, "error": str(exc)}
         await self.redis.set(reply_key(req["id"]), json.dumps(out, default=str), ex=120)
@@ -303,6 +324,8 @@ HUB = Hub()
 async def ask(redis: Any, cid: str, action: str, payload: dict[str, Any], wait_s: float = REPLY_S + 5) -> dict[str, Any]:
     """Send a command to a charger through whichever api process holds it, and wait for its answer."""
     if HUB.links.get(cid) is not None:
+        if action == "WA.Mode":
+            return {"ok": True, "answer": await apply_mode(HUB, cid, payload["mode"], "set here"), "error": None}
         return await HUB.command(cid, action, payload)
     if not await redis.get(holder_key(cid)):
         raise LookupError("the charger is not connected to World Assistant")
@@ -315,6 +338,27 @@ async def ask(redis: Any, cid: str, action: str, payload: dict[str, Any], wait_s
             return json.loads(v)
         await asyncio.sleep(0.3)
     return {"ok": False, "answer": None, "error": "no answer from the process holding the charger"}
+
+
+async def apply_mode(hub: Hub, cid: str, mode: str, reason: str = "") -> dict[str, Any]:
+    """Make the charger follow the master switch: Off makes it unavailable (stopping a session first); On makes it
+    available and starts a session if none is running; Auto makes it available and leaves starting and stopping to
+    Home Assistant's plan. Runs in the process holding the charger."""
+    link = hub.links.get(cid)
+    if link is None:
+        raise LookupError("the charger is not connected here")
+    done: dict[str, Any] = {}
+    if mode == "off":
+        if link.transaction is not None:
+            done["stop"] = await hub.command(cid, "RemoteStopTransaction", {"transactionId": link.transaction})
+        done["availability"] = await hub.command(cid, "ChangeAvailability", {"connectorId": 0, "type": "Inoperative"})
+    else:
+        done["availability"] = await hub.command(cid, "ChangeAvailability", {"connectorId": 0, "type": "Operative"})
+        if mode == "on" and link.transaction is None and link.status in ("Preparing", "SuspendedEV", "SuspendedEVSE", "Finishing"):
+            done["start"] = await hub.command(cid, "RemoteStartTransaction", protocol.command_payload("RemoteStartTransaction", {}, transaction_id=None))
+    await hub.keep(cid, events=[("mode", f"Set to {mode.capitalize()}" + (f" ({reason})" if reason else ""), {"done": done})])
+    ha.changed(hub, cid)
+    return done
 
 
 @ws_router.websocket("/ocpp/{cid}")

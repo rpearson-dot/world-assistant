@@ -60,10 +60,33 @@ async def put_settings(request: Request, body: SettingsIn) -> dict[str, Any]:
     ids = [c.strip() for c in body.chargers if c.strip()]
     if any(len(c) > 48 or not c.replace("-", "").replace("_", "").isalnum() for c in ids):
         raise HTTPException(422, "a charger id is letters, digits, - and _ (up to 48)")
-    st = {"chargers": ids, "meter_every_s": body.meter_every_s, "publish_ha": body.publish_ha}
+    async with request.app.state.engine.connect() as conn:
+        mode = (await store.settings(conn)).get("mode", "auto")
+    st = {"chargers": ids, "meter_every_s": body.meter_every_s, "publish_ha": body.publish_ha, "mode": mode}
     async with request.app.state.engine.begin() as conn:
         await store.save_settings(conn, st)
     return st
+
+
+class ModeIn(BaseModel):
+    mode: str = Field(pattern="^(off|on|auto)$")
+
+
+@router.put("/mode")
+async def put_mode(request: Request, body: ModeIn) -> dict[str, Any]:
+    """The master switch: off (the charger refuses to charge), on (charges whenever the car is plugged in) or auto
+    (Home Assistant's charging plan decides). Kept, and applied to every connected charger now."""
+    async with request.app.state.engine.begin() as conn:
+        st = await store.settings(conn)
+        await store.save_settings(conn, {**st, "mode": body.mode})
+        ids = [r["id"] for r in await store.chargers(conn)]
+    applied = {}
+    for cid in ids:
+        try:
+            applied[cid] = await server.ask(request.app.state.redis, cid, "WA.Mode", {"mode": body.mode})
+        except LookupError as exc:
+            applied[cid] = {"ok": False, "error": str(exc)}
+    return {"mode": body.mode, "applied": applied}
 
 
 async def _send(request: Request, cid: str, action: str, args: dict[str, Any]) -> dict[str, Any]:

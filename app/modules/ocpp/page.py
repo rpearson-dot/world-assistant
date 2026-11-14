@@ -21,6 +21,11 @@ PAGE = """<!doctype html>
 .ev { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; font-size: .92em; }
 .ev .when { white-space: nowrap; color: var(--dim); font-variant-numeric: tabular-nums; }
 .ev .k-boot, .ev .k-fault { color: var(--bad); } .ev .k-disconnected, .ev .k-refused { color: var(--warn); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--chip); gap: 2px; }
+.seg button { border: 0; border-radius: 999px; padding: 10px 26px; font-size: 1.05em; font-weight: 650; background: transparent; color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.seg button[data-m="off"][aria-pressed="true"] { background: var(--bad); }
+details.box > summary { cursor: pointer; font-weight: 650; padding: 4px 0; }
 pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-height: 360px; overflow: auto; }
 </style></head><body><main>
 <!--NAV-->
@@ -37,9 +42,11 @@ pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-hei
 <section id="view" hidden>
 <div class="card hero"><div class="say" id="say"></div><div><span id="state" class="pill"></span><div class="dim" id="seen"></div></div></div>
 <div class="card">
+  <div class="seg" role="group" aria-label="Charging">
+    <button type="button" data-m="off" aria-pressed="false">Off</button><button type="button" data-m="on" aria-pressed="false">On</button><button type="button" data-m="auto" aria-pressed="false">Auto</button>
+  </div>
+  <p class="dim" id="modewhy"></p><p id="cmsg" class="dim"></p>
   <div class="stats" id="stats"></div>
-  <div class="row"><button id="start" class="primary" type="button">Start charging</button><button id="stop" type="button">Stop charging</button>
-    <span id="cmsg" class="dim"></span></div>
 </div>
 <div class="card"><h2>What happened</h2>
   <div class="row"><label>Show <select id="kind"><option value="">everything</option><option value="boot">restarts</option>
@@ -48,7 +55,8 @@ pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-hei
     <label>Over <select id="days"><option value="1">a day</option><option value="7" selected>a week</option><option value="30">a month</option><option value="365">a year</option></select></label></div>
   <div class="ev" id="events"></div></div>
 <div class="card"><h2>Sessions</h2><table id="sessions"></table></div>
-<div class="card"><h2>Settings</h2>
+<div class="card"><details class="box"><summary>Settings and tools</summary>
+<h3>Settings</h3>
   <div class="form">
     <label>Chargers allowed to connect <input id="ids" placeholder="e.g. U1HKP (blank: any on the home network)">
       <span class="hint">Separate several with commas.</span></label>
@@ -57,13 +65,13 @@ pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-hei
       <button id="save" type="button">Save</button></div>
     <p class="dim">The address for a charger: <b id="addr2"></b><i>its id</i></p>
     <p id="smsg" class="dim"></p>
-  </div></div>
-<div class="card"><h2>More</h2>
+  </div>
+<h3>Tools</h3>
   <div class="row"><button id="cfg" type="button">Read its configuration</button><button id="soft" type="button">Restart (soft)</button>
     <button id="hard" type="button">Restart (hard)</button><button id="trig" type="button">Ask for its status</button></div>
   <table id="config"></table>
   <details><summary>The last 100 messages, as sent</summary><pre class="raw" id="raw"></pre></details>
-</div>
+</details></div>
 </section>
 
 <script>
@@ -109,7 +117,12 @@ async function draw() {
       ['Restarts this week', c.week.boots], ['Drops this week', c.week.drops], ['Faults this week', c.week.faults]]) {
     const d = el('div', k, 'dim'); d.appendChild(el('b', String(v))); st.appendChild(d);
   }
-  $('start').disabled = !c.connected || live; $('stop').disabled = !c.connected || !live;
+  const mode = data.settings.mode || 'auto';
+  document.querySelectorAll('.seg button').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.m === mode)); b.disabled = false; });
+  $('modewhy').textContent = { off: 'Off: the charger will not charge, even if the car is plugged in.',
+    on: 'On: charges whenever the car is plugged in, whatever the plan says.',
+    auto: 'Auto: Home Assistant’s charging plan starts and stops it (cheap hours, free sessions, your target).' }[mode] +
+    (c.connected ? '' : ' The charger is not connected, so this applies when it next connects.');
   const ev = await api('GET', '/v1/ocpp/' + c.id + '/events?days=' + $('days').value + ($('kind').value ? '&kind=' + $('kind').value : ''));
   const box = $('events'); box.replaceChildren();
   if (!ev.events.length) box.appendChild(el('div', 'Nothing in this time.', 'dim'));
@@ -131,8 +144,15 @@ async function cmd(path, body, confirmText) {
   } catch (e) { $('cmsg').textContent = e.message; }
   setTimeout(load, 1500);
 }
-$('start').onclick = () => cmd('/start');
-$('stop').onclick = () => cmd('/stop');
+document.querySelectorAll('.seg button').forEach(b => b.onclick = async () => {
+  document.querySelectorAll('.seg button').forEach(x => x.disabled = true); $('cmsg').textContent = 'Setting ' + b.textContent + '…';
+  try {
+    const r = await api('PUT', '/v1/ocpp/mode', { mode: b.dataset.m });
+    const bad = Object.entries(r.applied).filter(([, v]) => !v.ok);
+    $('cmsg').textContent = bad.length ? 'Saved; ' + bad.map(([k, v]) => k + ': ' + v.error).join('; ') : 'Done.';
+  } catch (e) { $('cmsg').textContent = e.message; }
+  load();
+});
 $('soft').onclick = () => cmd('/command', { action: 'Reset', args: { type: 'Soft' } }, 'Restart the charger (soft)? A session in progress stops.');
 $('hard').onclick = () => cmd('/command', { action: 'Reset', args: { type: 'Hard' } }, 'Restart the charger (hard, like switching it off and on)? A session in progress stops.');
 $('trig').onclick = () => cmd('/command', { action: 'TriggerMessage', args: { message: 'StatusNotification' } });

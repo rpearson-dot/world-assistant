@@ -9,7 +9,7 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [ask](#ask) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [places](#places) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [ask](#ask) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [ovms](#ovms) · [places](#places) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [wishlist](#wishlist) · [Other](#other)
 
 
 ## ask
@@ -313,6 +313,7 @@ pages themselves hold no data: each one calls these endpoints.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/v1/ocpp` | Every charger World Assistant has heard from, with its state, the last week's restarts, drops and faults, and the address to give a charger. |
+| PUT | `/v1/ocpp/mode` | The master switch: off (the charger refuses to charge), on (charges whenever the car is plugged in) or auto (Home Assistant's charging plan decides). Kept, and applied to every connected charger now. |
 | PUT | `/v1/ocpp/settings` | Which chargers may connect (by id; none listed: any on the home network), how often to ask for meter readings while charging, and whether to publish the charger to Home Assistant. |
 | POST | `/v1/ocpp/{cid}/command` | Any of the commands in protocol.COMMANDS: Reset {type: Soft\|Hard}, GetConfiguration {keys}, ChangeConfiguration {key, value}, TriggerMessage {message}, UnlockConnector, ChangeAvailability {type}, ClearCache. |
 | GET | `/v1/ocpp/{cid}/events` | Events |
@@ -332,6 +333,16 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/outdoors/settings` | Which KitchenOwl list is the Outdoors list, and the household's lists to choose from. |
 | PUT | `/v1/outdoors/settings` | Choose the KitchenOwl list to use (none: the one called Outdoors). Not the shopping list. |
 | GET | `/v1/outdoors/{key}/history` | Every price each product this item follows has had, newest first. |
+
+## ovms
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/ovms` | Every car heard from: battery, range, 12 V, charging, locked, where, how recently it reported, its warnings now and its last notifications. `vehicle` links an OVMS vehicle id to a vehicle on the Vehicles page. |
+| PUT | `/v1/ovms/settings` | Whether to listen, the topic prefix the car publishes under (OVMS: Config → Server V3 → topic prefix; "+" for any part), and which Vehicles-page vehicle each OVMS vehicle id is. |
+| GET | `/v1/ovms/{vehicle}/history` | Metric History |
+| GET | `/v1/ovms/{vehicle}/metrics` | Every metric the car has sent, as it stands, with when. |
+| GET | `/v1/ovms/{vehicle}/notices` | Notices |
 
 ## places
 

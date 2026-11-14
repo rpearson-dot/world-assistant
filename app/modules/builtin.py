@@ -261,6 +261,17 @@ BUILTIN: tuple[Module, ...] = (
            tools=("charger",),
            provides={"assistant.tools": "app.modules.ocpp.tools:TOOLS", "startup": "app.modules.ocpp.server:startup",
                      "shutdown": "app.modules.ocpp.server:shutdown"}),
+    Module("ovms", "Car (OVMS)", "Your car's own module (OVMS): battery, range, 12 V, charging, locks and warnings, "
+           "read from the MQTT broker",
+           category="energy", jobs=("ovms_watch",),
+           note="Reads the broker set in Settings → Home Assistant, where the OVMS module publishes (Server V3). "
+                "Reading only: commands wait for the broker to have TLS",
+           routers=("app.modules.ovms.api:router",), prefixes=("/v1/ovms",),
+           worker=(Job("app.modules.ovms.api:ovms_watch", {"minute": _every(15), "timeout": 120, "max_tries": 1}),
+                   Job("app.modules.ovms.api:ovms_housekeep", {"hour": {3}, "minute": {37}, "timeout": 300, "max_tries": 1})),
+           tools=("car_status",),
+           provides={"assistant.tools": "app.modules.ovms.tools:TOOLS", "startup": "app.modules.ovms.listener:startup",
+                     "shutdown": "app.modules.ovms.listener:shutdown"}),
     Module("conditions", "Trip conditions", "Road works, closures and floods on a saved trip's route",
            category="transport", listed=False,
            routers=("app.modules.conditions.conditions:router",), prefixes=("/v1/conditions", "re:/v1/trips/[^/]+/conditions"), tools=("road_conditions",),

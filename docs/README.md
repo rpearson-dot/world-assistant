@@ -23,7 +23,7 @@ New here? Read the [project README](../README.md) first: what World Assistant is
 
 | Area | Pages |
 |---|---|
-| Getting about | [Bus tracker](bus.md), [bus route log](bus-log.md), [car charger (OCPP)](ocpp.md), [live buses](live-buses.md), [bus disruptions](bus-disruptions.md), [trains](trains.md), [TfL stations](stations.md), [stops (NaPTAN)](naptan.md) |
+| Getting about | [Bus tracker](bus.md), [bus route log](bus-log.md), [car charger (OCPP)](ocpp.md), [car (OVMS)](ovms.md), [live buses](live-buses.md), [bus disruptions](bus-disruptions.md), [trains](trains.md), [TfL stations](stations.md), [stops (NaPTAN)](naptan.md) |
 | Roads and trips | [Trip conditions](trip-conditions.md), [TfL road disruptions](tfl-roads.md), [map](map.md), [Here](here.md) |
 | Fuel, charging and vehicles | [EV chargers](ev.md), [Leaf dashboard](leaf.md) |
 | Home | [Energy](energy.md), [power cuts](power.md) |
