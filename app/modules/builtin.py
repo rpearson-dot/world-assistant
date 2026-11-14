@@ -309,6 +309,18 @@ BUILTIN: tuple[Module, ...] = (
            tools=("charging_plan", "evening_demand"),
            provides={"assistant.tools": "app.modules.planner.tools:TOOLS"},
            uses=("octopus", "weather", "ocpp", "ovms")),
+    Module("tariffs", "Tariff comparison", "Your real half-hourly use priced at every Octopus tariff's rates today (and "
+           "any other supplier's you add from a quote), as used and with your house battery moving use into each "
+           "tariff's cheap windows, ranked, with the best import and export to move to",
+           category="energy", jobs=("tariffs_compare",), sdk=2,
+           note="Needs the Octopus module's meter readings (the account number and API key). Octopus's tariffs are public; "
+                "other suppliers' are typed in by hand",
+           tabs=(("energy", "tariffs", "/tariffs", "Tariffs"),),
+           routers=("app.modules.tariffs.api:router", "app.modules.tariffs.page:page_router"), prefixes=("/v1/tariffs", "/tariffs"),
+           worker=(Job("app.modules.tariffs.api:tariffs_compare", {"hour": {11}, "minute": {13}, "timeout": 300, "max_tries": 1}),),
+           tools=("best_tariff",),
+           provides={"assistant.tools": "app.modules.tariffs.tools:TOOLS"},
+           uses=("octopus",)),
     Module("conditions", "Trip conditions", "Road works, closures and floods on a saved trip's route",
            category="transport", listed=False,
            routers=("app.modules.conditions.conditions:router",), prefixes=("/v1/conditions", "re:/v1/trips/[^/]+/conditions"), tools=("road_conditions",),

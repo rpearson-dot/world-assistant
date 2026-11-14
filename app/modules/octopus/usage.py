@@ -1,6 +1,7 @@
 """Your electricity meter's half-hourly readings from Octopus (import, and export where there is an export meter),
 kept so every plan can be checked against what was really bought and sold. Octopus publishes a day's readings the
-next day; the worker fetches what is new each morning, back 90 days the first time.
+next day; the worker fetches what is new each morning, back a year the first time (and back-fills to a year where
+an earlier version fetched only 90 days).
 
 REST: /v1/electricity-meter-points/{mpan}/meters/{serial}/consumption/ (HTTP Basic, the API key as the user name).
 The meter points and serials come from the account (/v1/accounts/{account}/). The reading and the sums are pure.
@@ -15,7 +16,7 @@ import httpx
 
 from app.modules.octopus.octopus import BASE, OctopusError, _parse_time
 
-FIRST_DAYS = 90
+FIRST_DAYS = 366  # a year: what the tariff comparison counts at most
 
 
 def meters(account: dict[str, Any]) -> list[dict[str, Any]]:
@@ -143,7 +144,12 @@ async def sync_usage(engine: Any, client: httpx.AsyncClient | None = None) -> di
             async with engine.connect() as conn:
                 last = (await conn.execute(text("SELECT max(interval_start) FROM energy_usage WHERE direction = :d"),
                                            {"d": m["direction"]})).scalar()  # fmt: skip
+                first = (await conn.execute(text("SELECT min(interval_start) FROM energy_usage WHERE direction = :d"),
+                                            {"d": m["direction"]})).scalar()  # fmt: skip
             rows = await fetch(client, s.octopus_api_key, m["mpan"], m["serial"], since_for(last, now), now)
+            year = now - timedelta(days=FIRST_DAYS)
+            if first is not None and first > year + timedelta(days=2):  # the year before what is kept
+                rows += await fetch(client, s.octopus_api_key, m["mpan"], m["serial"], year, first)
             if rows:
                 async with engine.begin() as conn:
                     await conn.execute(text(

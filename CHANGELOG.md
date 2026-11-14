@@ -50,6 +50,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   shadow until you tick "act", when it starts and stops the charger itself (Auto, on World Assistant's OCPP) and
   Home Assistant's start and stop stand aside. Also **how predictable your evenings are**: each evening's use against
   how cold it was, how much the cold explains, and tomorrow evening's likely use. See `docs/planner.md`.
+- **Tariff comparison, Energy → Tariffs.** Your real half-hourly use priced at every Octopus tariff's rates today
+  (Agile and Tracker at the last 30 days' average), and at any other supplier's you type in from a quote: as used,
+  and with your house battery filling in every cheap window and covering the rest. Each tariff's cheap hours, their
+  windows and the longest gap between them; exports priced apart (Flux with its own); the best import and export to
+  move to and the saving a year. Readings count from a date you set and never from more than a year back. The meter
+  readings now go back a year. See `docs/tariffs.md`.
 - **Module SDK version 2:** a `startup` extension point, modules' own menu tabs (`Module.tabs`), jobs that run only at
   times (`Module.occasional`), and a version number a module is checked against (`docs/module-sdk.md`).
 
