@@ -37,6 +37,9 @@ NETWORK = "wa-modules"
 ISSUER = "https://token.actions.githubusercontent.com"
 ID = re.compile(r"^[a-z][a-z0-9_]{1,23}$")
 REF = re.compile(r"^ghcr\.io/[a-z0-9_.-]+/[a-z0-9_.-]+@sha256:[0-9a-f]{64}$")
+# CI only (scripts/ci-stack.sh): one locally built image name the runner may start, to prove the sealing and the
+# removal on a real Docker. The updater never sets it, so a real module is always a signed ghcr.io image by digest.
+TEST_IMAGE = os.environ.get("WA_RUNNER_TEST_IMAGE", "")
 
 
 # --- pure: what to run --------------------------------------------------------------------------------------------
@@ -59,7 +62,7 @@ def name(module: str) -> str:
 def run_args(spec: dict[str, Any]) -> list[str]:
     """`docker run` for a module: isolated, limited, labelled. Keys and the gate's address come as environment."""
     ref, module = spec["ref"], spec["module"]
-    if not REF.fullmatch(ref):
+    if not REF.fullmatch(ref) and not (TEST_IMAGE and ref == TEST_IMAGE):
         raise ValueError("image reference must be ghcr.io/owner/name@sha256:…")
     n = name(module)
     args = ["docker", "run", "-d", "--name", n, "--hostname", n, "--network", NETWORK,

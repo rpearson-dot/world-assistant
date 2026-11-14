@@ -174,6 +174,7 @@ here so nobody is surprised. If you would rather hand a module over yourself, sa
 - [ ] `wa-module.toml` passes (read it in Settings → Outside modules before your first tag)
 - [ ] Works with nothing personal ticked
 - [ ] Asks only for what it uses, with a purpose for each outside host when it asks for personal data
-- [ ] Runs as uid 10001, writes only to `/data` and `/tmp`, serves pages on 8080
+- [ ] Runs as uid 10001, writes only to `/data` and `/tmp`, serves pages on 8080 (make `/data` in the image, owned
+      by 10001, so its volume starts writable)
 - [ ] The release workflow signs, attests and attaches the lock file
 - [ ] An open-source `LICENSE` matching the manifest
