@@ -274,3 +274,4 @@ def test_the_address_given_to_a_charger_is_on_the_home_network() -> None:
     assert address("192.168.1.5") == "ws://192.168.1.5:8010/ocpp/"
     for other in ("world-assistant.tailad4b24.ts.net", "100.101.2.3:8010", "localhost:8010", None):
         assert address(other) == "ws://<this server's home network address>:8010/ocpp/"
+    assert address("world-assistant.tailad4b24.ts.net", "10.0.2.29") == "ws://10.0.2.29:8010/ocpp/"  # set on the page

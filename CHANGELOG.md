@@ -13,7 +13,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - **Charger set-up text.** "its id" is now "charge point ID", with what it is (the name the charger gives itself,
   set next to the address in its settings), filled in when one charger is listed as allowed. The address shown
   is the server's home-network address with port 8010; opened through Tailscale, the page no longer offers the
-  Tailscale name, which a charger on the home network cannot use.
+  Tailscale name, which a charger on the home network cannot use. The server's home address can be set on the
+  Charger page (Settings and tools), so the right address is shown wherever the page is opened.
 
 ## [0.53.1] - 2026-11-14
 

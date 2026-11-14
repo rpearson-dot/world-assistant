@@ -19,12 +19,14 @@ router = APIRouter(prefix="/v1/ocpp", tags=["ocpp"], dependencies=[Depends(requi
 QUIET_S = 900  # disconnected this long is worth a notification
 
 
-def address(host_header: str | None) -> str:
+def address(host_header: str | None, saved: str = "") -> str:
     """The address a charger on the home network uses: this server's home-network address and port 8010. Opened by
     a home-network address it is that one; opened another way (through Tailscale or a name) it cannot be known here,
     so it is left for you to fill in."""
     import ipaddress
 
+    if saved:
+        return address(saved)
     host = (host_header or "").split(",")[0].strip().rsplit(":", 1)[0].strip("[]")
     try:
         ip = ipaddress.ip_address(host)
@@ -56,13 +58,14 @@ async def overview(request: Request) -> dict[str, Any]:
                     "connected_at": r["connected_at"], "booted_at": r["booted_at"], "boot": r["boot"], "meter": r["meter"],
                     "status_info": r["status_info"], "config": r["config"], "week": week.get(r["id"], {"boots": 0, "drops": 0, "faults": 0}),
                     "session": sessions.get(r["id"])})  # fmt: skip
-    return {"settings": st, "chargers": out, "address": address(request.headers.get("host"))}
+    return {"settings": st, "chargers": out, "address": address(request.headers.get("host"), st.get("server_address") or "")}
 
 
 class SettingsIn(BaseModel):
     chargers: list[str] = Field(default_factory=list, max_length=10)
     meter_every_s: int = Field(60, ge=15, le=900)
     publish_ha: bool = True
+    server_address: str = Field("", max_length=45, description="this server's address on the home network, e.g. 10.0.2.29")
 
 
 @router.put("/settings")
@@ -72,9 +75,13 @@ async def put_settings(request: Request, body: SettingsIn) -> dict[str, Any]:
     ids = [c.strip() for c in body.chargers if c.strip()]
     if any(len(c) > 48 or not c.replace("-", "").replace("_", "").isalnum() for c in ids):
         raise HTTPException(422, "a charger id is letters, digits, - and _ (up to 48)")
+    server = body.server_address.strip()
+    if server and address(server, "") != f"ws://{server}:8010/ocpp/":
+        raise HTTPException(422, "the server's address is its IP address on your home network, such as 10.0.2.29")
     async with request.app.state.engine.connect() as conn:
         mode = (await store.settings(conn)).get("mode", "auto")
-    st = {"chargers": ids, "meter_every_s": body.meter_every_s, "publish_ha": body.publish_ha, "mode": mode}
+    st = {"chargers": ids, "meter_every_s": body.meter_every_s, "publish_ha": body.publish_ha, "mode": mode,
+          "server_address": server}  # fmt: skip
     async with request.app.state.engine.begin() as conn:
         await store.save_settings(conn, st)
     return st

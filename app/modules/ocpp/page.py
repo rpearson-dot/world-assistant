@@ -73,6 +73,7 @@ pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-hei
     <label>Chargers allowed to connect <input id="ids" placeholder="e.g. U1HKP (blank: any on the home network)">
       <span class="hint">Separate several with commas.</span></label>
     <div class="row"><label>Ask for meter readings while charging every <input id="every" type="number" min="15" max="900" style="width:6em"> s</label>
+      <label>This server's home network address <input id="srv" placeholder="e.g. 10.0.2.29"></label>
       <label class="tick"><input id="ha" type="checkbox"> Show the charger in Home Assistant</label>
       <button id="save" type="button">Save</button></div>
     <p class="dim">The address for a charger: <b id="addr2"></b><b class="cpid">charge point ID</b> (the charger's own
@@ -112,7 +113,7 @@ async function load() {
     const keep = $('cp').value; $('cp').replaceChildren(...data.chargers.map(c => new Option(c.id, c.id)));
     if (keep && data.chargers.some(c => c.id === keep)) $('cp').value = keep;
     $('none').hidden = data.chargers.length > 0; $('view').hidden = !data.chargers.length;
-    if (document.activeElement.tagName !== 'INPUT') { $('ids').value = data.settings.chargers.join(', '); $('every').value = data.settings.meter_every_s; $('ha').checked = data.settings.publish_ha; }
+    if (document.activeElement.tagName !== 'INPUT') { $('ids').value = data.settings.chargers.join(', '); $('every').value = data.settings.meter_every_s; $('ha').checked = data.settings.publish_ha; $('srv').value = data.settings.server_address || ''; }
     if (data.chargers.length) await draw();
   } catch (e) { msg.textContent = e.message; }
 }
@@ -197,7 +198,7 @@ $('hard').onclick = () => cmd('/command', { action: 'Reset', args: { type: 'Hard
 $('trig').onclick = () => cmd('/command', { action: 'TriggerMessage', args: { message: 'StatusNotification' } });
 $('cfg').onclick = () => cmd('/command', { action: 'GetConfiguration', args: {} });
 $('save').onclick = async () => {
-  try { await api('PUT', '/v1/ocpp/settings', { chargers: $('ids').value.split(',').map(x => x.trim()).filter(Boolean), meter_every_s: Number($('every').value) || 60, publish_ha: $('ha').checked });
+  try { await api('PUT', '/v1/ocpp/settings', { chargers: $('ids').value.split(',').map(x => x.trim()).filter(Boolean), meter_every_s: Number($('every').value) || 60, publish_ha: $('ha').checked, server_address: $('srv').value.trim() });
     $('smsg').textContent = 'Saved.'; load(); } catch (e) { $('smsg').textContent = e.message; }
 };
 $('raw').parentElement.ontoggle = async e => { if (!e.target.open || !cur()) return;
