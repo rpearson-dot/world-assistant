@@ -4,6 +4,51 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+- **Car charger (OCPP), Vehicles → Charger.** World Assistant can be your charger's OCPP server instead of Home
+  Assistant's integration. One switch, **Off / On / Auto**: Off makes the charger unavailable, On charges whenever the
+  car is plugged in, Auto lets Home Assistant's charging plan decide. Beside it, the car's charge as a five-segment
+  battery and one word: Unplugged, Connected, Charging, Fault, Switched off or Offline. Every message to and from the
+  charger is kept, with each connection, drop, restart (told apart from a first start), fault, status change and
+  command in words, so a charger that resets itself can be seen doing it; a notification for restarts, faults and
+  silence. In Home Assistant: the charger's sensors, its charging switch and the Off/On/Auto mode, which the charging
+  plan (`wa_ev_plan.yaml`) uses by itself. See `docs/ocpp.md` for moving the charger across.
+- **The car's own module (OVMS).** Battery, range, 12 V battery, charging, locks, doors and position, read from the
+  MQTT broker, on the car's pane on the Vehicles page with its warnings (12 V low, alarm, tyres, doors or boot open,
+  unlocked or handbrake off while parked, battery low, gone quiet) and its own messages. Warnings and the module's
+  alerts go to your phone once each. Reading only: commands wait for the broker to have TLS. See `docs/ovms.md`.
+- **Air conditioning (Fujitsu Airstage), Energy → Air conditioning.** Each unit on your home network, directly (never
+  through Fujitsu's cloud): temperature inside and out, Off/On, mode, target, fan, swing and the extras; readings kept;
+  notifications for an error code, a dirty filter or a unit not answering; each unit a climate entity in Home
+  Assistant; "set the bedroom to 21" to the assistant. Replaces Home Assistant's Airstage integration. See
+  `docs/airstage.md`.
+- **World Assistant watches itself.** Every five minutes: the worker alive, every job still running and not failing
+  over and over, the disks under 90% full, a backup under two days old. Weekly, the newest backup is restored into a
+  scratch schema and checked table by table. Problems show in Settings → System → Health and go to your phone ("World
+  Assistant itself" notifications).
+- **One token per client.** Settings → System → Clients: a token for each thing that calls World Assistant from
+  outside your home network, with only the access it needs (read only; read and ask the assistant; everything;
+  optionally only some paths), revocable on its own. The main token still works.
+- **An audit log** of every change made through the API and every refused token, with who (Settings → System).
+- **Bus log:** the route drawn clearly with its stops visible at every zoom; each bus labelled with its numberplate
+  and where it is going; tap a stop for its next hour (timetable and TfL's expected buses); tap a bus for its times at
+  every stop to the end of its route against the timetable, on time, early or late and by how much; **Download
+  schedule now**; the school's terms, holidays and INSET days as an editable table.
+- **Module SDK version 2:** a `startup` extension point, modules' own menu tabs (`Module.tabs`), jobs that run only at
+  times (`Module.occasional`), and a version number a module is checked against (`docs/module-sdk.md`).
+
+### Fixed
+- **Backups held every row of the bus log twice** (0.52.0): its monthly partitions were copied as well as the table,
+  and a restore would have failed on the duplicates. A split table is now kept once, through its parent, and the bus
+  log's raw answers (about 30 MB a recorded day) are left out of backups (they stay in the database a school year).
+- **The update to 0.52.1 stopped at its first step** on a server: 0.52.1 added a secret file (for the MOT ScopeURL)
+  that the updater cannot create, and Docker will not start a container whose secret file is missing (0.52.0 kept
+  running throughout). That key is now kept where the Keys page keeps keys, and a test stops any release adding a
+  new secret file.
+- **The events test aged:** it used fixed dates and failed once they passed.
+
+## [0.52.1] - 2026-11-13
+
 ### Changed
 - **Keys page: the MOT History keys are named as DVSA's email names them** (Client ID, Client Secret, API Key,
   ScopeURL, TokenURL), so each value goes in the box with the same name. ScopeURL is new and optional: the usual
