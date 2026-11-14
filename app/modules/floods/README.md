@@ -6,6 +6,9 @@ How to use it: [docs/floods.md](../../../docs/floods.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | Environment Agency flood warnings |
+| Gives | Home Assistant: flood warnings |
 | Endpoints | `/v1/floods` |
 | Scheduled jobs | `flood_poll` |
 | Assistant tools | `floods_near` |

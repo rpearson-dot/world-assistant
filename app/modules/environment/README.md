@@ -8,6 +8,9 @@ How to use it: [docs/environment.md](../../../docs/environment.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | Defra air quality; Environment Agency river, rain and tide gauges; NRFA river flows; storm overflows (Thames Water) |
+| Gives | Home Assistant: air, rivers and tides; notifications: environment warnings |
 | Uses when there | [pollen](../pollen/) |
 | Endpoints | `/v1/environment`, `/environment` |
 | Scheduled jobs | `environment_alerts` |

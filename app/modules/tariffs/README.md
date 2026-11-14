@@ -6,6 +6,8 @@ Worked out only when you press Work it out again on Energy → Tariffs. Needs th
 
 | | |
 |---|---|
+| Role | Processor: works from other data |
+| Reads | Octopus Energy's public tariffs |
 | Uses when there | [octopus](../octopus/) |
 | Endpoints | `/v1/tariffs`, `/tariffs` |
 | Assistant tools | `best_tariff` |

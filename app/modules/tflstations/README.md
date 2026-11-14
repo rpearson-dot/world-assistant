@@ -8,6 +8,8 @@ How to use it: [docs/stations.md](../../../docs/stations.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | TfL station layouts, facilities and lift status |
 | Keys | `tfl_app_key` (optional) |
 | Uses when there | [tfl](../tfl/) |
 | Endpoints | `/v1/stations` |

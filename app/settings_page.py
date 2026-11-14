@@ -29,7 +29,9 @@ PAGE = """<!doctype html>
   .sum .big { font-size: 28px; font-weight: 750; } .sum .meter { flex: 1 1 160px; height: 10px; }
   .item { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
   .item:last-child { border-bottom: 0; } .item .name { font-weight: 650; } .item .badge { white-space: nowrap; align-self: start; }
-  .item .what, .item .more, .item .acts { grid-column: 1 / -1; }
+  .item .what, .item .more, .item .acts, .item .flow { grid-column: 1 / -1; }
+  .item .flow { font-size: 13px; color: var(--dim); } .item .flow summary { cursor: pointer; } .item .flow div { margin: 2px 0 0 14px; }
+  .item .flow .ctl { color: var(--ink); }
   .item .acts { display: flex; gap: 8px; margin-top: 6px; } .item .acts .btn, .item .acts button { padding: 6px 14px; font-size: 14px; }
   .item .acts .btn { border: 1px solid var(--line); border-radius: var(--pill, 999px); text-decoration: none; color: var(--ink); } .item .what { color: var(--dim); font-size: 13px; } .item .more { font-size: 14px; }
   .group { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--dim); margin: 14px 0 0; }
@@ -232,6 +234,15 @@ function item(x) {
     const b = el('button', 'link', 'Add the key here'); b.type = 'button'; b.onclick = () => tab('keys'); more.append(' ', b);
   }
   d.append(more);
+  if (x.flow && (x.flow.inputs.length || x.flow.outputs.length || x.flow.controls.length)) {
+    const fd = el('details', 'flow'), sm = el('summary', null, { source: 'Source', processor: 'Processor', output: 'Output' }[x.flow.role] || 'What it does with data');
+    fd.append(sm);
+    for (const [label, list] of [['Reads', x.flow.inputs], ['Gives', x.flow.outputs], ['Controls', x.flow.controls]]) {
+      if (!list.length) continue;
+      const p = el('div', label === 'Controls' ? 'ctl' : null); p.append(el('b', null, label + ': '), document.createTextNode(list.join('; '))); fd.append(p);
+    }
+    d.append(fd);
+  }
   if (x.module) {
     const acts = el('div', 'acts');
     if (x.enabled && x.page) { const a = el('a', 'btn', 'Set up'); a.href = x.page; acts.append(a); }

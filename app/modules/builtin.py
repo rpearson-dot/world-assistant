@@ -6,8 +6,10 @@ nothing else in the core: its routes, jobs, tools and Setup row come from the en
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
+from app.modules.flows import FLOWS
 from app.modules.model import Job, Module
 
 
@@ -259,7 +261,7 @@ BUILTIN: tuple[Module, ...] = (
     Module("ocpp", "Car charger (OCPP)", "World Assistant as your charger's OCPP server: start and stop, every restart, "
            "drop and fault recorded, and the charger in Home Assistant",
            category="energy", jobs=("ocpp_watch",), tabs=(("vehicles", "charger", "/charger", "Charger"),), sdk=2,
-           note="Point the charger's OCPP 1.6J central system at ws://<this server>:8010/ocpp/<charger id> on your home "
+           note="Point the charger's OCPP 1.6J central system at ws://<this server>:8010/ocpp/<charge point ID> on your home "
                 "network. It replaces Home Assistant's OCPP integration (a charger talks to one central system)",
            routers=("app.modules.ocpp.api:router", "app.modules.ocpp.page:page_router", "app.modules.ocpp.server:ws_router"),
            prefixes=("/v1/ocpp", "/charger", "/ocpp"),
@@ -429,3 +431,6 @@ BUILTIN: tuple[Module, ...] = (
     Module("routing", "Routing (Valhalla)", "Real road routes for trips, so road events, fuel and conditions follow them",
            category="service", listed=False, services=("docker-compose.routing.yml",)),
 )
+
+# What each does with data (role, reads, gives, controls): kept as one table in flows.py, set on the declarations here.
+BUILTIN = tuple(replace(m, **FLOWS.get(m.id, {})) for m in BUILTIN)

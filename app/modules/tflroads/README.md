@@ -6,6 +6,9 @@ How to use it: [docs/tfl-roads.md](../../../docs/tfl-roads.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | TfL road disruptions |
+| Gives | Home Assistant: London road disruptions |
 | Uses when there | [tfl](../tfl/) |
 | Endpoints | `/v1/roads/tfl` |
 | Scheduled jobs | `tflroads_poll` |

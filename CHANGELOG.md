@@ -11,7 +11,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   as forecast the evening before is kept and set against what the panels made, from Home Assistant's statistics.
   Arrays can be copied from Home Assistant's Forecast.Solar integration. In Home Assistant as sensors, and shown on
   the Planner tab next to tomorrow evening's likely use. See `docs/solar.md`.
-- **Module SDK version 3:** `app.ha_stats` (Home Assistant's states and long-term statistics) and
+- **What each module does with data**, on Settings → Setup and in each module's README: its role (source,
+  processor or output), what it reads, what it gives (Home Assistant entities, notifications, pages, assistant
+  tools) and what it controls in the real world (the charger, the air conditioners, the planner when it acts). A
+  test checks these against the code.
+- **Module SDK version 3:** `Module.role`, `reads`, `gives` and `controls`; `app.ha_stats` (Home Assistant's states and long-term statistics) and
   `app.ha_smb.read_config_file` in the published interface.
 
 ## [0.53.2] - 2026-11-14

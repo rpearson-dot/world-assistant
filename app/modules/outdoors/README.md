@@ -8,6 +8,9 @@ How to use it: [docs/outdoors.md](../../../docs/outdoors.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | GO Outdoors, Decathlon and other shops' prices |
+| Gives | Home Assistant: outdoor gear prices |
 | Keys | `kitchenowl_token` |
 | Needs | [shopping](../shopping/) |
 | Uses when there | [wishlist](../wishlist/) |

@@ -6,6 +6,8 @@ How to use it: [docs/bus.md](../../../docs/bus.md).
 
 | | |
 |---|---|
+| Role | Processor: works from other data |
+| Gives | Home Assistant: bus tracker |
 | Uses when there | [bods](../bods/), [tfl](../tfl/) |
 | Endpoints | `/v1/bus`, `/bus` |
 | Scheduled jobs | `poll_bus` |

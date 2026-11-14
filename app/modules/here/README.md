@@ -8,6 +8,7 @@ How to use it: [docs/here.md](../../../docs/here.md).
 
 | | |
 |---|---|
+| Role | Output: gets things to you |
 | Keys | `what3words_api_key` (optional) |
 | Uses when there | [codepoint](../codepoint/) |
 | Endpoints | `/v1/here`, `/here` |

@@ -6,6 +6,8 @@ How to use it: [docs/live-buses.md](../../../docs/live-buses.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | Bus Open Data Service: live bus positions |
 | Keys | `bods_api_key` |
 | Uses when there | [bus](../bus/), [naptan](../naptan/), [tfl](../tfl/) |
 | Endpoints | `/v1/live-buses` |

@@ -6,6 +6,8 @@ How to use it: [docs/trip-conditions.md](../../../docs/trip-conditions.md).
 
 | | |
 |---|---|
+| Role | Processor: works from other data |
+| Gives | Home Assistant: trip conditions |
 | Uses when there | [tflroads](../tflroads/) |
 | Endpoints | `/v1/conditions`, `re:/v1/trips/[^/]+/conditions` |
 | Assistant tools | `road_conditions` |

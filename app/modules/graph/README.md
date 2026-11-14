@@ -6,6 +6,8 @@ How to use it: [docs/graph.md](../../../docs/graph.md).
 
 | | |
 |---|---|
+| Role | Output: gets things to you |
+| Reads | Neo4j (the optional graph container) |
 | Uses when there | [events](../events/), [gridserve](../gridserve/) |
 | Endpoints | `/v1/graph`, `/graph` |
 | Scheduled jobs | `graph_build` |

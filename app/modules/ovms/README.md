@@ -8,6 +8,9 @@ How to use it: [docs/ovms.md](../../../docs/ovms.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | the car's OVMS module (through the MQTT broker) |
+| Gives | notifications: car warnings, car gone quiet |
 | Endpoints | `/v1/ovms` |
 | Scheduled jobs | `ovms_watch`, `ovms_housekeep` |
 | Assistant tools | `car_status` |

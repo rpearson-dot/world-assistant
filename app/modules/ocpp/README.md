@@ -2,12 +2,16 @@
 
 World Assistant as your charger's OCPP server: start and stop, every restart, drop and fault recorded, and the charger in Home Assistant.
 
-Point the charger's OCPP 1.6J central system at ws://<this server>:8010/ocpp/<charger id> on your home network. It replaces Home Assistant's OCPP integration (a charger talks to one central system)
+Point the charger's OCPP 1.6J central system at ws://<this server>:8010/ocpp/<charge point ID> on your home network. It replaces Home Assistant's OCPP integration (a charger talks to one central system)
 
 How to use it: [docs/ocpp.md](../../../docs/ocpp.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | the car charger (OCPP 1.6J, on the home network) |
+| Gives | Home Assistant: charger sensors and switch; notifications: charger restarts, faults and drops |
+| **Controls** | the car charger: start and stop charging, Off/On/Auto, availability |
 | Endpoints | `/v1/ocpp`, `/charger`, `/ocpp` |
 | Scheduled jobs | `ocpp_watch`, `ocpp_housekeep` |
 | Assistant tools | `charger` |

@@ -66,6 +66,11 @@ class Module:
     services: tuple[str, ...] = ()  # optional containers: compose file names
     coverage: tuple[str, ...] = ()  # region words ("london"); empty = everywhere
     area: tuple[float, float, float, float] | None = None  # (min lat, min lon, max lat, max lon) of its coverage
+    # what it does with data (app/modules/flows.py explains each; the Setup page and the README show them)
+    role: str = ""  # source | processor | output
+    reads: tuple[str, ...] = ()  # outside services, devices, Home Assistant (modules it uses are added from needs/uses)
+    gives: tuple[str, ...] = ()  # Home Assistant entities, notifications (pages and tools are added from tabs/tools)
+    controls: tuple[str, ...] = ()  # what it changes in the real world; empty for most
     source: str = "builtin"  # builtin | the distribution name of an outside package
     extra: dict[str, Any] = field(default_factory=dict, compare=False)
 

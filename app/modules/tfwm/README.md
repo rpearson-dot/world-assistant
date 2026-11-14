@@ -8,6 +8,9 @@ How to use it: [docs/bus.md](../../../docs/bus.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | Transport for West Midlands: predicted bus and tram times |
+| Gives | predicted times for the bus tracker |
 | Keys | `tfwm_app_id`, `tfwm_app_key` |
 | Uses when there | [bods](../bods/), [bus](../bus/) |
 | Plugs into | `key.test` |

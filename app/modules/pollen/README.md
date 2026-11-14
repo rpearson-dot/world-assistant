@@ -8,6 +8,9 @@ How to use it: [docs/environment.md](../../../docs/environment.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | Polleninformation: pollen by allergen |
+| Gives | Home Assistant: pollen |
 | Keys | `pollen_api_key` |
 | Endpoints | `/v1/pollen`, `/pollen` |
 | Scheduled jobs | `pollen_sync`, `pollen_grid_sync` |

@@ -8,6 +8,9 @@ How to use it: [docs/power.md](../../../docs/power.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | UK Power Networks open data: power cuts and street works |
+| Gives | Home Assistant: power cuts and works |
 | Keys | `ukpn_api_key` (optional) |
 | Endpoints | `/v1/power` |
 | Scheduled jobs | `ukpn_places`, `ukpn_faults`, `ukpn_works_open`, `ukpn_works_proposed` |

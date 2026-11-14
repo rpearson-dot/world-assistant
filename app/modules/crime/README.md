@@ -8,6 +8,8 @@ How to use it: [docs/data-sources.md](../../../docs/data-sources.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | data.police.uk; Nomis (populations) |
 | Uses when there | [codepoint](../codepoint/) |
 | Endpoints | `/v1/crime` |
 | Assistant tools | `crime` |

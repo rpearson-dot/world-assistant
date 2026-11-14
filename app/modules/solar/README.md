@@ -6,6 +6,9 @@ No key: 12 requests an hour from one address, one for each array. The accuracy c
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | forecast.solar; Home Assistant: the panels' output statistic (accuracy check); Home Assistant: Forecast.Solar arrays (copying, through the share) |
+| Gives | Home Assistant: solar expected today, still to come, tomorrow, power now |
 | Endpoints | `/v1/solar`, `/solar` |
 | Scheduled jobs | `solar_sync` |
 | Assistant tools | `solar_forecast` |

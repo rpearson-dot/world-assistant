@@ -6,6 +6,9 @@ How to use it: [docs/trains.md](../../../docs/trains.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | National Rail Darwin (Rail Data Marketplace): departures |
+| Gives | departures for the Trains page and Here |
 | Keys | `nr_access_token` |
 
 ## Files
