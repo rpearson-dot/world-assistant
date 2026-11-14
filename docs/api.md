@@ -146,6 +146,7 @@ pages themselves hold no data: each one calls these endpoints.
 |---|---|---|
 | GET | `/v1/buslog/calendar` | The school calendar from today on (what is over is taken out each night). |
 | PUT | `/v1/buslog/calendar` | The school's terms, holidays and INSET days: {school, terms: [{name, from, to}], breaks: [...], inset: [dates], notes}. |
+| GET | `/v1/buslog/export` | A day's recording as one file (gzip JSON): the route, timetable, positions, predictions, status and every request's outcome (not the raw answers). |
 | GET | `/v1/buslog/polls` | Every minute of a day, per source: requests that answered with data, answered empty, or failed. A gap in the record shows here as a failed (or missing) request, never as a bus that did not come. |
 | GET | `/v1/buslog/positions` | Each bus's last BODS position at a moment (default now) within `within_s` before it, and how old it was then. |
 | GET | `/v1/buslog/predictions` | TfL's prediction changes on a day: new, moved (by how much) and gone, for one stop or bus if given. |
@@ -154,10 +155,15 @@ pages themselves hold no data: each one calls these endpoints.
 | POST | `/v1/buslog/record-now` | Record from the next minute for a while, whatever the day and time (the worker starts within a minute). |
 | GET | `/v1/buslog/route` | The route as recorded on a day (or the newest before it): each direction's stops in order, and its line. |
 | POST | `/v1/buslog/schedule-now` | Take today's route and timetable from TfL now (as the recorder does before the window), kept like any other request. Takes a few seconds. |
+| GET | `/v1/buslog/schoolrun` | The morning's buses from the first stop towards Kingston: timetabled and actual departure, the school's stop (timetabled, expected, actual or probable), what happened (reached it, from the other side, turned and where, left the route and what it missed), each stop's times, and the moments to mark on the playback. |
+| GET | `/v1/buslog/schoolrun/reliability` | Each recorded day's figures (buses recorded, how many made it to the school, in time, turned, skipped, not seen) and the totals, newest first. |
+| GET | `/v1/buslog/schoolrun/settings` | The stops the school run looks at (by NaPTAN id) and when the school must be reached by. |
+| PUT | `/v1/buslog/schoolrun/settings` | Put Settings |
 | GET | `/v1/buslog/settings` | Get Settings  |
 | PUT | `/v1/buslog/settings` | The route, the window, and the test switch that records every day (weekends and holidays too). |
 | GET | `/v1/buslog/status` | Whether it is recording now and why, the next recording days, and how today's requests went per source. |
 | GET | `/v1/buslog/stop/{stop}` | A stop's next hour: the buses the timetable has there, and the ones TfL expects (as it stood at `at`). |
+| GET | `/v1/buslog/tracks` | Every bus's GPS positions over a day's window (and half an hour either side), for playback: {vehicle: [[epoch seconds, lat, lon, destination], ...]}. |
 | GET | `/v1/buslog/vehicle/{vehicle}` | A bus's remaining stops to the end of its route, as TfL expected at `at`, against the timetable: on time, early or late at each, and by how much. |
 
 ## clients
@@ -352,7 +358,7 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/network/groups` | Your Pi-hole groups (Kids, Adults, IoT...), each with its devices, and what gets past your lists for them this week. |
 | POST | `/v1/network/pihole/test` | Sign in to Pi-hole and read its groups: says whether the address and app password work. |
 | GET | `/v1/network/settings` | Get Settings  |
-| PUT | `/v1/network/settings` | How long events are kept, Pi-hole's address on your network (such as http://10.0.2.29:8080), and the new-device notification. |
+| PUT | `/v1/network/settings` | How long events are kept, Pi-hole's address on your network (such as http://10.0.2.49:8080), and the new-device notification. |
 
 ## notify
 

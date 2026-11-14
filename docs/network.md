@@ -47,12 +47,12 @@ fetched each week. They're used only to recognise a domain, never added to Pi-ho
 
 1. **The UniFi gateway** (UniFi Network 9 or later; menu names move between versions):
    - Settings → CyberSecure → Traffic Logging → Activity Logging (Syslog) → **SIEM Server**: this server's address
-     (such as 10.0.2.29) and port **5514**;
+     (such as 10.0.2.49) and port **5514**;
    - Settings → Control Plane → Integrations → the same, for system events;
    - in the Policy Engine, turn on **Syslog Logging** for the firewall rules you want to see. Start with block rules
      and the default deny, not "allow all", which is very chatty.
 2. **Pi-hole v6:** Settings → Web interface / API → **Configure app password**. Put it on World Assistant's Keys page
-   (Pi-hole app password), and Pi-hole's address (such as `http://10.0.2.29:8080`) in Settings on the Network page.
+   (Pi-hole app password), and Pi-hole's address (such as `http://10.0.2.49:8080`) in Settings on the Network page.
    **Test Pi-hole** checks both.
 3. Keep a device's address the same: a DHCP reservation in UniFi helps Pi-hole's per-address view line up.
 

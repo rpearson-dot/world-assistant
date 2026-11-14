@@ -255,7 +255,7 @@ BUILTIN: tuple[Module, ...] = (
            link="https://data.bus-data.dft.gov.uk",
            note="Positions need a BODS key; TfL's predictions work without a key, faster with one. Records 07:00 to "
                 "09:00 on school days (the school calendar is on the page); a test switch records every day",
-           routers=("app.modules.buslog.api:router", "app.modules.buslog.page:page_router"), prefixes=("/v1/buslog", "/buslog"),
+           routers=("app.modules.buslog.api:router", "app.modules.buslog.schoolrun:router", "app.modules.buslog.page:page_router"), prefixes=("/v1/buslog", "/buslog"),
            worker=(Job("app.modules.buslog.collect:buslog_minute",
                        {"minute": set(range(60)), "second": {0}, "timeout": 75, "max_tries": 1, "unique": True}),
                    Job("app.modules.buslog.collect:buslog_housekeep", {"hour": {2}, "minute": {41}, "timeout": 300, "max_tries": 1})),

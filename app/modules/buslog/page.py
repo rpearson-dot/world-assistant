@@ -44,6 +44,21 @@ PAGE = """<!doctype html>
 .legend span { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px 0 10px; vertical-align: middle; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
 #t2 { width: 100%; }
+.marks { position: relative; height: 18px; margin: 2px 0 0; }
+.marks button { position: absolute; top: 2px; width: 10px; height: 14px; min-height: 0; padding: 0; border-radius: 3px; border: 1px solid var(--card);
+  transform: translateX(-5px); background: var(--dim); cursor: pointer; }
+.marks button.turned, .marks button.off_route { background: var(--bad); } .marks button.school { background: var(--good); }
+.marks button.delay, .marks button.status { background: var(--warn); } .marks button.rejoined { background: var(--accent); }
+.marks button.left { background: var(--line); height: 8px; margin-top: 3px; width: 6px; transform: translateX(-3px); }
+.play { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.wrap { overflow-x: auto; }
+table.sr { width: 100%; border-collapse: collapse; font-size: .92em; }
+table.sr td, table.sr th { padding: 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-variant-numeric: tabular-nums; }
+table.sr th { font-weight: 600; } table.sr tr.bus { cursor: pointer; } table.sr tr.bus:hover td { background: var(--chip); }
+table.sr td.n { white-space: nowrap; } .sub { color: var(--dim); font-size: .85em; display: block; }
+.prob { font-style: italic; } .bar { display: inline-block; height: 8px; border-radius: 4px; background: var(--good); vertical-align: middle; margin-left: 6px; }
+tr.more td { background: var(--chip); }
+.kpis { display: flex; gap: 18px; flex-wrap: wrap; margin: 6px 0 10px; } .kpis div { min-width: 7em; } .kpis b { display: block; font-size: 1.6em; }
 </style></head><body><main>
 <!--NAV-->
 <h1>Bus log</h1>
@@ -53,11 +68,29 @@ PAGE = """<!doctype html>
 
 <div class="card hero"><div class="say" id="say">Loading…</div><div><span id="state" class="pill"></span><div class="dim" id="why"></div></div></div>
 
+<div class="card" id="sr"><h2>School run: <span id="srtitle">Worcester Park to Coombe Girls School</span></h2>
+  <div class="kpis" id="srkpi"></div>
+  <p id="srsay"></p>
+  <div class="wrap"><table class="sr" id="srtable"></table></div>
+  <p class="dim small">Times in <i>italics with ≈</i> are probable, from the bus's GPS (about one position a minute); others are
+  when TfL's prediction for the stop ended as the bus got there. <b>Expected</b> is TfL's last prediction before then
+  (its first, at the start, is underneath). Tap a bus for every stop, and to watch it on the map.</p>
+  <div class="row"><button id="srfresh" type="button">Work it out again</button><button id="srdl" type="button">Download this day</button>
+    <span id="srmsg" class="dim"></span></div>
+</div>
+
 <div class="card">
   <div class="row">
     <label>Day <input id="day" type="date"></label>
     <label style="flex:1 1 260px">Time <span id="tlabel" class="dim"></span><input id="t2" type="range" min="0" max="7200" step="10"></label>
     <label class="tick"><input id="follow" type="checkbox" checked> Live</label>
+  </div>
+  <div class="marks" id="marks" aria-label="Moments to watch: tap one to jump to it"></div>
+  <div class="play"><button id="play" type="button">▶ Play</button>
+    <label>Speed <select id="speed"><option value="1">1×</option><option value="10" selected>10×</option><option value="30">30×</option><option value="60">60×</option></select></label>
+    <span class="dim small" id="marknote">Marks: <span style="color:var(--good)">■</span> at the school <span style="color:var(--bad)">■</span> turned or left the route
+      <span style="color:var(--warn)">■</span> delay shown <span style="color:var(--accent)">■</span> back on the route</span></div>
+  <div class="row">
     <button id="sched" type="button">Download schedule now</button>
   </div>
   <p class="dim" id="schedmsg"></p>
@@ -67,6 +100,18 @@ PAGE = """<!doctype html>
 </div>
 
 <div class="card" id="detail" hidden><h2 id="dtitle"></h2><p class="dim" id="dsub"></p><div id="dbody"></div></div>
+
+<div class="card"><h2>Reliability over time</h2>
+  <p class="dim">Each recorded school morning: the buses seen leaving Worcester Park towards Kingston, how many reached
+  Coombe Girls School (from either side of the road), and how many by the time set below. Timetabled journeys with
+  no bus seen are counted apart, as are minutes with no positions received.</p>
+  <div class="kpis" id="relkpi"></div>
+  <div class="wrap"><table class="sr" id="reltable"></table></div>
+  <details><summary>Stops and time</summary><div class="row" style="margin-top:8px">
+    <label>From <select id="srfirst"></select></label><label>School <select id="srschool"></select></label>
+    <label>School, other side <select id="srother"></select></label><label>In time by <input id="srby" type="time"></label>
+    <button id="srsave" type="button">Save</button></div><p id="srsetmsg" class="dim"></p></details>
+</div>
 
 <div class="card"><h2>Every request that day</h2>
   <p class="dim legend">One mark a minute.<span style="background:var(--good)"></span>answered with data<span style="background:var(--warn)"></span>answered empty<span style="background:var(--bad)"></span>failed<span style="background:var(--chip)"></span>not asked</p>
@@ -156,9 +201,57 @@ async function drawRoute() {
     : 'No route recorded yet: press Download schedule now, or it is read at the start of the first recording minute.';
 }
 
+// a day's GPS tracks, for playing a recorded day back without asking the server each step
+let tracks = null, tracksDay = null, playing = null, srDay = null, sr = null;
+async function loadTracks() {
+  if (tracksDay === $('day').value) return;
+  tracksDay = $('day').value; tracks = null;
+  const r = await api('GET', '/v1/buslog/tracks?day=' + tracksDay);
+  tracks = r.buses;
+}
+function trackAt(pts, t) {  // [epoch, lat, lon, dest]: where a bus was at t (between two fixes a minute apart), or null
+  let lo = 0, hi = pts.length - 1;
+  if (!pts.length || pts[0][0] > t) return null;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (pts[m][0] <= t) lo = m; else hi = m - 1; }
+  const a = pts[lo], b = pts[lo + 1];
+  if (t - a[0] > 180) return null;  // nothing heard for three minutes: not shown
+  if (b && b[0] - a[0] <= 150) { const f = (t - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, a[3], t - a[0]]; }
+  return [a[1], a[2], a[3], t - a[0]];
+}
+const trailLayer = L.layerGroup().addTo(map);
+function drawFromTracks(at) {
+  const t = at.getTime() / 1000;
+  busLayer.clearLayers(); trailLayer.clearLayers();
+  let n = 0;
+  for (const [v, pts] of Object.entries(tracks || {})) {
+    const p = trackAt(pts, t); if (!p) continue; n++;
+    const box = el('div', null, 'busicon' + (p[3] > 90 ? ' old' : '') + (picked && picked.kind === 'bus' && picked.id === v ? ' picked' : ''));
+    box.append(el('span', v), el('small', 'to ' + (p[2] || '?')));
+    const m = L.marker([p[0], p[1]], { pane: 'buses', icon: L.divIcon({ html: box, className: '', iconSize: null, iconAnchor: [34, 18] }) });
+    m.bindTooltip(document.createTextNode(v + ' to ' + (p[2] || '?')));
+    m.on('click', () => { picked = { kind: 'bus', id: v, name: p[2] }; if (!playing) showBus(v, p[2]).catch(() => {}); });
+    m.addTo(busLayer);
+    if (picked && picked.kind === 'bus' && picked.id === v) {  // its last ten minutes
+      const trail = pts.filter(q => q[0] <= t && q[0] > t - 600).map(q => [q[1], q[2]]); trail.push([p[0], p[1]]);
+      if (trail.length > 1) L.polyline(trail, { pane: 'buses', color: tok_('--accent'), weight: 4, opacity: .8 }).addTo(trailLayer);
+    }
+  }
+  $('mapnote').textContent = n + ' bus' + (n === 1 ? '' : 'es') + ' at ' + hms(at) + ' (from their GPS positions, about one a minute).';
+}
+
 async function drawBuses() {
   const at = shownAt();
   $('tlabel').textContent = hms(at);
+  const live = $('follow').checked && $('day').value === today();
+  if (!live) {
+    try { await loadTracks(); } catch (e) { tracks = null; }
+    if (tracks) {
+      drawFromTracks(at);
+      if (picked && !playing) (picked.kind === 'stop' ? showStop(picked.id, picked.name, true) : showBus(picked.id, picked.name, true)).catch(() => {});
+      return;
+    }
+  }
+  trailLayer.clearLayers();
   const p = await api('GET', '/v1/buslog/positions?day=' + $('day').value + '&at=' + encodeURIComponent(at.toISOString()));
   busLayer.clearLayers();
   p.buses.forEach(b => {
@@ -236,6 +329,169 @@ async function drawStrips() {
   $('errs').textContent = errs.size ? 'Failures: ' + [...errs].slice(0, 5).join('; ') : '';
 }
 
+const hmv = (v, probable) => v ? (probable ? '≈' : '') + hm(v) : '–';
+function timeCell(actual, probable, extra) {
+  const td = el('td', null, 'n');
+  if (actual) td.append(el('span', hm(actual)));
+  else if (probable) { const sp = el('span', '≈' + hm(probable), 'prob'); sp.title = 'probable, from its GPS'; td.append(sp); }
+  else td.append(el('span', '–', 'dim'));
+  if (extra) td.append(el('span', extra, 'sub'));
+  return td;
+}
+function badge(b) {
+  const cls = b.outcome === 'made_it' ? (b.in_time ? 'good' : 'warn') : b.outcome === 'other_side' ? 'warn'
+    : ['turned', 'skipped', 'left_route'].includes(b.outcome) ? 'bad' : '';
+  const label = { made_it: b.in_time ? 'Made it' : 'Made it, late', other_side: 'Other side', turned: 'Turned', skipped: 'Skipped the school',
+    left_route: 'Left the route', lost: 'Not known', not_seen: 'Not seen', no_data: 'No data' }[b.outcome] || b.outcome;
+  return el('span', label, 'badge ' + cls);
+}
+const mins = s => Math.round(s / 60);
+function drawMarks() {
+  const box = $('marks'); box.replaceChildren();
+  if (!sr || !sr.events) return;
+  const start = dayStart().getTime(), len = Number($('t2').max) * 1000, w = box.clientWidth || 600;
+  const lanes = [];  // marks close together go in rows, so each can be tapped
+  for (const e of sr.events) {
+    const x = (new Date(e.at).getTime() - start) / len; if (x < 0 || x > 1) continue;
+    const px = x * w; let lane = lanes.findIndex(r => px - r >= 12); if (lane < 0) { lane = lanes.length; lanes.push(-1e9); } lanes[lane] = px;
+    const b = el('button', null, e.kind); b.type = 'button'; b.style.left = (x * 100) + '%'; b.style.top = (2 + lane * 16) + 'px';
+    b.title = hm(e.at) + ' ' + e.text; b.setAttribute('aria-label', b.title);
+    b.onclick = () => jump(e);
+    box.append(b);
+  }
+  box.style.height = (4 + Math.max(1, lanes.length) * 16) + 'px';
+}
+window.addEventListener('resize', () => drawMarks());
+function jump(e) {
+  stopPlay(); $('follow').checked = false;
+  $('t2').value = Math.max(0, Math.round((new Date(e.at).getTime() - dayStart().getTime()) / 1000) - 45);
+  if (e.vehicle) picked = { kind: 'bus', id: e.vehicle, name: null };
+  drawBuses().catch(err => msg.textContent = err.message);
+  $('map').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function stopRows(b) {
+  const t = el('table', null, 'sr'), h = el('tr');
+  ['Stop', 'Timetable', 'TfL expected', 'Got there', ''].forEach(x => h.append(el('th', x))); t.append(h);
+  for (const r of b.stops) {
+    const tr = el('tr');
+    tr.append(el('td', r.name || r.stop));
+    tr.append(el('td', hm(r.scheduled), 'n'));
+    const ex = el('td', null, 'n'); ex.append(el('span', hm(r.last_expected)));
+    if (r.first_expected && r.first_expected !== r.last_expected) ex.append(el('span', 'first ' + hm(r.first_expected) + ' (at ' + hm(r.first_seen) + ')', 'sub'));
+    if (r.late) ex.append(el('span', 'showed ' + mins(r.late.late_s) + ' min late at ' + hm(r.late.seen_at), 'sub'));
+    tr.append(ex);
+    tr.append(timeCell(r.actual, r.probable));
+    const late = (r.actual || r.probable) && r.scheduled ? mins((new Date(r.actual || r.probable) - new Date(r.scheduled)) / 1000) : null;
+    tr.append(el('td', r.note || (late == null ? '' : late === 0 ? 'on time' : Math.abs(late) + ' min ' + (late > 0 ? 'late' : 'early')), r.note ? 'v-late' : 'dim'));
+    t.append(tr);
+  }
+  return t;
+}
+async function drawSchoolRun(fresh) {
+  const day = $('day').value;
+  if (srDay === day && !fresh) return;
+  srDay = day;
+  $('srmsg').textContent = fresh ? 'Working it out…' : '';
+  try { sr = await api('GET', '/v1/buslog/schoolrun?day=' + day + (fresh ? '&fresh=true' : '')); }
+  catch (e) { sr = null; $('srsay').textContent = e.message; $('srtable').replaceChildren(); $('srkpi').replaceChildren(); return; }
+  $('srmsg').textContent = '';
+  if (sr.first && sr.school) $('srtitle').textContent = sr.first.name + ' to ' + sr.school.name;
+  const t = $('srtable'); t.replaceChildren(); $('srkpi').replaceChildren();
+  if (!sr.recorded) { $('srsay').textContent = 'Nothing to show for ' + day + ': ' + sr.why + '.'; drawMarks(); return; }
+  const s = sr.summary, by = sr.by ? hm(sr.by) : null;
+  [[s.recorded, 'buses recorded'], [s.made_it + (s.percent != null ? ' (' + s.percent + '%)' : ''), 'reached the school'],
+   [s.in_time, by ? 'by ' + by : 'in time'], [s.turned, 'turned early'], [s.skipped, 'skipped or left the route'], [s.not_seen + s.no_data, 'timetabled, not seen']]
+    .forEach(([v, l]) => { const d = el('div'); d.append(el('b', String(v)), el('span', l, 'dim')); $('srkpi').append(d); });
+  $('srsay').textContent = (sr.timetable ? '' : 'No timetable was taken this day, so times are against nothing. ') +
+    (s.other_side ? s.other_side + ' reached the school from the other side of the road. ' : '') +
+    (sr.gap_minutes ? sr.gap_minutes + ' minutes of the window had no positions received. ' : '') +
+    (sr.status && sr.status.length ? 'TfL: ' + sr.status.map(x => x.severity + (x.reason ? ' (' + x.reason + ')' : '')).join('; ') : '');
+  const h = el('tr');
+  ['Bus', sr.first.name + ': due', 'left', sr.school.name + ': due', 'expected', 'got there', 'What happened'].forEach(x => h.append(el('th', x))); t.append(h);
+  for (const b of sr.buses) {
+    const tr = el('tr', null, 'bus');
+    tr.append(el('td', b.vehicle || '–'));
+    tr.append(el('td', hm(b.due_first), 'n'));
+    tr.append(timeCell(b.left_first_actual ? b.left_first : null, b.left_first_actual ? null : b.left_first));
+    tr.append(el('td', hm(b.due_school), 'n'));
+    const ex = el('td', null, 'n'); ex.append(el('span', hm(b.expected_school)));
+    if (b.first_expected_school && b.first_expected_school !== b.expected_school) ex.append(el('span', 'first ' + hm(b.first_expected_school), 'sub'));
+    tr.append(ex);
+    tr.append(timeCell(b.arrived_school_actual ? b.arrived_school : null, b.arrived_school_actual ? null : b.arrived_school));
+    const w = el('td'); w.append(badge(b), el('span', b.words, 'sub'));
+    if (b.delay) w.append(el('span', 'TfL showed it ' + mins(b.delay.late_s) + ' min late at ' + hm(b.delay.seen_at), 'sub'));
+    tr.append(w);
+    t.append(tr);
+    if (!b.vehicle) { tr.classList.remove('bus'); continue; }
+    tr.onclick = () => {
+      const open = tr.nextSibling && tr.nextSibling.classList && tr.nextSibling.classList.contains('more');
+      t.querySelectorAll('tr.more').forEach(x => x.remove()); if (open) return;
+      const more = el('tr', null, 'more'), td = el('td'); td.colSpan = 7;
+      const watch = el('button', 'Watch it on the map'); watch.type = 'button';
+      watch.onclick = ev => { ev.stopPropagation(); jump({ at: b.left_first || b.due_first, vehicle: b.vehicle }); startPlay(); };
+      td.append(watch, stopRows(b)); more.append(td); tr.after(more);
+    };
+  }
+  drawMarks();
+}
+async function drawReliability() {
+  const r = await api('GET', '/v1/buslog/schoolrun/reliability');
+  const t = $('reltable'); t.replaceChildren(); $('relkpi').replaceChildren();
+  const s = r.total;
+  if (!r.days.length) { t.append(el('tr')); $('relkpi').append(el('p', 'No recorded mornings yet.', 'dim')); return; }
+  [[r.days.length, 'mornings'], [s.recorded, 'buses recorded'], [s.made_it + ' (' + s.percent + '%)', 'reached the school'],
+   [s.in_time + ' (' + s.in_time_percent + '%)', 'in time'], [s.turned + s.skipped, 'turned early or skipped it']]
+    .forEach(([v, l]) => { const d = el('div'); d.append(el('b', String(v)), el('span', l, 'dim')); $('relkpi').append(d); });
+  const h = el('tr'); ['Day', 'Recorded', 'Made it', '%', 'In time', 'Other side', 'Turned', 'Skipped', 'Not seen'].forEach(x => h.append(el('th', x))); t.append(h);
+  for (const d of r.days) {
+    const x = d.summary, tr = el('tr', null, 'bus');
+    const day = new Date(d.day + 'T12:00:00');
+    tr.append(el('td', day.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + (d.gap_minutes ? ' *' : ''), 'n'));
+    tr.append(el('td', String(x.recorded)), el('td', String(x.made_it)));
+    const p = el('td', null, 'n'); p.append(el('span', (x.percent ?? '–') + '%')); const bar = el('span', null, 'bar'); bar.style.width = (x.percent || 0) * .6 + 'px'; p.append(bar); tr.append(p);
+    tr.append(el('td', String(x.in_time)), el('td', String(x.other_side)), el('td', String(x.turned)), el('td', String(x.skipped)), el('td', String(x.not_seen + x.no_data)));
+    if (d.gap_minutes) tr.title = d.gap_minutes + ' minutes with no positions received';
+    tr.onclick = () => { $('day').value = d.day; $('follow').checked = false; load(); $('sr').scrollIntoView({ behavior: 'smooth' }); };
+    t.append(tr);
+  }
+}
+async function loadSrSettings() {
+  const [cfg, rt] = await Promise.all([api('GET', '/v1/buslog/schoolrun/settings'), api('GET', '/v1/buslog/route?day=' + $('day').value)]);
+  const fill = (sel, stops, v, none) => { sel.replaceChildren(); if (none) { const o = el('option', '(none)'); o.value = ''; sel.append(o); }
+    stops.forEach(s => { const o = el('option', (s.name || s.stop) + (s.letter ? ' (' + s.letter + ')' : '') + ' · ' + s.dir); o.value = s.stop; sel.append(o); }); sel.value = v || ''; };
+  const all = rt.directions.flatMap(d => d.stops.map(s => ({ ...s, dir: 'towards ' + (d.stops.length ? d.stops[d.stops.length - 1].name : '') })));
+  fill($('srfirst'), all, cfg.first); fill($('srschool'), all, cfg.school); fill($('srother'), all, cfg.school_other, true);
+  $('srby').value = cfg.by || '';
+}
+$('srsave').onclick = async () => {
+  try { await api('PUT', '/v1/buslog/schoolrun/settings', { first: $('srfirst').value, school: $('srschool').value, school_other: $('srother').value || null, by: $('srby').value || null });
+    $('srsetmsg').textContent = 'Saved.'; srDay = null; await drawSchoolRun(); await drawReliability(); } catch (e) { $('srsetmsg').textContent = e.message; }
+};
+$('srfresh').onclick = () => drawSchoolRun(true).then(drawReliability).catch(e => $('srmsg').textContent = e.message);
+$('srdl').onclick = async () => {
+  $('srmsg').textContent = 'Preparing the file…';
+  try {
+    const r = await fetch('/v1/buslog/export?day=' + $('day').value, { headers: { Authorization: 'Bearer ' + tok.value } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = 'buslog-' + $('day').value + '.json.gz'; a.click();
+    $('srmsg').textContent = 'Saved as buslog-' + $('day').value + '.json.gz.';
+  } catch (e) { $('srmsg').textContent = e.message; }
+};
+function startPlay() {
+  if (playing) return;
+  $('follow').checked = false; $('play').textContent = '❚❚ Pause';
+  let last = performance.now();
+  playing = setInterval(() => {
+    const now = performance.now(), step = (now - last) / 1000 * Number($('speed').value); last = now;
+    const v = Math.min(Number($('t2').max), Number($('t2').value) + step);
+    $('t2').value = v;
+    if (v >= Number($('t2').max)) stopPlay();
+    drawBuses().catch(() => {});
+  }, 250);
+}
+function stopPlay() { if (playing) clearInterval(playing); playing = null; $('play').textContent = '▶ Play'; }
+$('play').onclick = () => playing ? stopPlay() : startPlay();
+
 async function load() {
   try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
   msg.textContent = '';
@@ -253,11 +509,13 @@ async function load() {
     const [sh, sm] = s.start.split(':').map(Number), [eh, em] = s.end.split(':').map(Number);
     $('t2').max = Math.max(60, (eh * 60 + em - sh * 60 - sm) * 60);
     await drawRoute(); await drawBuses(); await drawStrips();
+    drawSchoolRun().catch(e => $('srsay').textContent = e.message);
   } catch (e) { msg.textContent = e.message; }
 }
 $('day').value = today();
 $('t2').oninput = () => { $('follow').checked = false; drawBuses().catch(e => msg.textContent = e.message); };
-$('day').onchange = () => { $('follow').checked = $('day').value === today(); load(); };
+$('day').onchange = () => { stopPlay(); $('follow').checked = $('day').value === today(); load(); };
+$('follow').onchange = () => { if ($('follow').checked) stopPlay(); drawBuses().catch(() => {}); };
 $('save').onclick = async () => {
   try { await api('PUT', '/v1/buslog/settings', { line: $('line').value.trim(), start: $('start').value, end: $('end').value, every_day: $('every').checked });
     $('setmsg').textContent = 'Saved.'; routeDay = null; load(); } catch (e) { $('setmsg').textContent = e.message; }
@@ -308,10 +566,12 @@ $('sched').onclick = async () => {
   } catch (e) { $('schedmsg').textContent = e.message; } finally { $('sched').disabled = false; }
 };
 loadCal().catch(e => $('calmsg').textContent = e.message);
+drawReliability().catch(e => $('relkpi').textContent = e.message);
+loadSrSettings().catch(e => $('srsetmsg').textContent = e.message);
 $('go').onclick = load;
 load();
 setInterval(() => { if (!document.hidden && $('follow').checked) drawBuses().catch(() => {}); }, 10000);
-setInterval(() => { if (!document.hidden) load(); }, 60000);
+setInterval(() => { if (!document.hidden && !playing) load(); }, 60000);
 </script></main></body></html>"""
 
 

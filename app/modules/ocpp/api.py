@@ -65,7 +65,7 @@ class SettingsIn(BaseModel):
     chargers: list[str] = Field(default_factory=list, max_length=10)
     meter_every_s: int = Field(60, ge=15, le=900)
     publish_ha: bool = True
-    server_address: str = Field("", max_length=45, description="this server's address on the home network, e.g. 10.0.2.29")
+    server_address: str = Field("", max_length=45, description="this server's address on the home network, e.g. 10.0.2.49")
 
 
 @router.put("/settings")
@@ -77,7 +77,7 @@ async def put_settings(request: Request, body: SettingsIn) -> dict[str, Any]:
         raise HTTPException(422, "a charger id is letters, digits, - and _ (up to 48)")
     server = body.server_address.strip()
     if server and address(server, "") != f"ws://{server}:8010/ocpp/":
-        raise HTTPException(422, "the server's address is its IP address on your home network, such as 10.0.2.29")
+        raise HTTPException(422, "the server's address is its IP address on your home network, such as 10.0.2.49")
     async with request.app.state.engine.connect() as conn:
         mode = (await store.settings(conn)).get("mode", "auto")
     st = {"chargers": ids, "meter_every_s": body.meter_every_s, "publish_ha": body.publish_ha, "mode": mode,

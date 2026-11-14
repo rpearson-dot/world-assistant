@@ -237,7 +237,7 @@ async def get_settings_(request: Request) -> dict[str, Any]:
 
 @router.put("/settings")
 async def put_settings(request: Request, body: SettingsIn) -> dict[str, Any]:
-    """How long events are kept, Pi-hole's address on your network (such as http://10.0.2.29:8080), and the new-device
+    """How long events are kept, Pi-hole's address on your network (such as http://10.0.2.49:8080), and the new-device
     notification."""
     import ipaddress
     from urllib.parse import urlparse
@@ -250,7 +250,7 @@ async def put_settings(request: Request, body: SettingsIn) -> dict[str, Any]:
         except ValueError:
             ok = False
         if not ok:
-            raise HTTPException(422, "Pi-hole's address on your home network, such as http://10.0.2.29:8080")
+            raise HTTPException(422, "Pi-hole's address on your home network, such as http://10.0.2.49:8080")
     async with request.app.state.engine.begin() as conn:
         st = {**await store.settings(conn), "keep_days": body.keep_days, "pihole_url": url, "notify_new": body.notify_new}
         await conn.execute(text(

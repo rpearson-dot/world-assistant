@@ -48,7 +48,7 @@ table.t td.n, table.t th.n { text-align: right; } table.t tr.dev { cursor: point
   <p class="dim small">The UniFi gateway: Settings → CyberSecure → Traffic Logging, and Settings → Control Plane → Integrations:
   Activity Logging (Syslog) → SIEM Server, with this server's address and port <b id="port"></b>. Turn on Syslog Logging for the
   firewall rules you want to see (in the Policy Engine).</p>
-  <label>Pi-hole's address on your network <input id="phurl" placeholder="http://10.0.2.29:8080"></label>
+  <label>Pi-hole's address on your network <input id="phurl" placeholder="http://10.0.2.49:8080"></label>
   <p class="dim small">Its app password goes on the Keys page (in Pi-hole: Settings → Web interface / API → Configure app password).
   <span id="phpw"></span></p>
   <label>Keep events for (days) <input id="keep_days" type="number" min="1" max="365"></label>

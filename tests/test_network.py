@@ -107,7 +107,7 @@ def test_blocking_keeps_your_groups_and_undo_takes_back_only_what_was_added() ->
     tv = {"mac": "aa:bb:cc:dd:ee:ff", "ip": "10.0.2.50", "name": "Living-Room-TV", "label": "Living Room TV"}
 
     async def go() -> None:
-        async with httpx.AsyncClient(transport=httpx.MockTransport(fake)) as c, pihole.Pihole("http://10.0.2.29:8080", "pw", c) as ph:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(fake)) as c, pihole.Pihole("http://10.0.2.49:8080", "pw", c) as ph:
             assert pihole.groups_of(await ph.clients(), await ph.groups(), tv) == ["IoT"]
             done = await ph.block(tv, ["lgtvsdp.com", "ngfts.lge.com"])
             assert done["group"] == "wa-living-room-tv" and fake.clients[0]["groups"] == [0, 3, 10]  # still in IoT
