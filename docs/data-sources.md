@@ -93,6 +93,9 @@ with a personal or non-commercial key, and keep within each provider's rate limi
   GPL-3.0, by Gerd Hagezi): the manufacturers' tracker domains, fetched weekly from GitHub and used only to recognise
   a domain in the suggestions.
 
+- **The IEEE MA-L register** ([standards-oui.ieee.org/oui/oui.csv](https://standards-oui.ieee.org/oui/oui.csv),
+  public): which company each MAC address prefix belongs to, fetched weekly (about 4 MB) for Discovery.
+
 ## Not used yet (candidates)
 
 - Live-traffic journey times from a routing provider (terms for personal use unchecked).

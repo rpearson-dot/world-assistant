@@ -326,6 +326,15 @@ BUILTIN: tuple[Module, ...] = (
            worker=(Job("app.modules.network.api:network_pihole", {"minute": set(range(60)), "timeout": 55, "max_tries": 1}),
                    Job("app.modules.network.api:network_lists", {"weekday": {0}, "hour": {3}, "minute": {51}, "timeout": 600, "max_tries": 1}),
                    Job("app.modules.network.api:network_housekeep", {"hour": {2}, "minute": {41}, "timeout": 900, "max_tries": 1}))),
+    Module("discovery", "Discovery", "What each device on your network probably is (its adapter's maker, its name, what it "
+           "looks up) and the module that would suit it",
+           category="home", needs=("network",), occasional=("discovery_oui",), jobs=("discovery_oui",), sdk=3,
+           link="https://standards.ieee.org/products-programs/regauth/",
+           note="Reads what the Network module has seen and the IEEE register of adapter makers. Changes nothing",
+           tabs=(("home", "discovery", "/discovery", "Discovery"),),
+           routers=("app.modules.discovery.api:router", "app.modules.discovery.page:page_router"), prefixes=("/v1/discovery", "/discovery"),
+           worker=(Job("app.modules.discovery.api:discovery_oui", {"weekday": {1}, "hour": {3}, "minute": {57}, "timeout": 600, "max_tries": 1}),),
+           tools=("what_is_on_the_network",), provides={"assistant.tools": "app.modules.discovery.tools:TOOLS"}),
     Module("planner", "Home energy planner", "When to charge the car (cheap rate, free hours, solar to spare), decided "
            "every five minutes beside Home Assistant's plan, and how predictable evening demand is from the weather",
            category="energy", jobs=("planner_tick", "planner_demand"), sdk=2,

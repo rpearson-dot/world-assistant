@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Added
 
+- **Discovery, In the home → Discovery.** What each device on your network probably is (likely or possibly, and
+  why: its network adapter's maker from the IEEE register, the name the router gave it, what it looks up, the ports
+  it uses), and the module that would suit it: turn one on, set it up for this device (with its address), or that
+  it is already looked after. It changes nothing. Needs the Network module. See `docs/discovery.md`.
 - **Network, In the home → Network.** Every device on your network and what it does, from the UniFi gateway's syslog
   (a new `wa-syslog` listener on UDP 5514) and Pi-hole v6's own API. You see joining and leaving, DNS lookups
   allowed or blocked, and firewall decisions, plus your Pi-hole groups and a notification for a new device. **Suggested

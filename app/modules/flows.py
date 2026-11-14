@@ -66,6 +66,8 @@ FLOWS: dict[str, dict[str, Any]] = {
                                             "HaGeZi's manufacturer tracker lists (to recognise what gets past Pi-hole)"),
                 "gives": ("notifications: a new device on the network",),
                 "controls": ("Pi-hole: blocks the domains you tick, for one device or one of your groups, only when you press Add to Pi-hole (Undo takes them back)",)},
+    "discovery": {"role": "processor", "reads": ("the IEEE register of MAC address prefixes (weekly)",),
+                  "gives": ("what each device probably is, and the module that would suit it",)},
     "planner": {"role": "processor", "reads": (f"{HA}: the house's use statistic, the plan, the charger and car sensors, the battery and grid entities",),
                 "gives": ("notifications: the planner's month",),
                 "controls": ("the car charger: start and stop, only with \"act\" ticked and the switch on Auto",)},
