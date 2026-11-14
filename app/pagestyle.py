@@ -149,6 +149,7 @@ PAGES = (  # (id, path, label, icon, on the phone's tab bar)
 # shows as current while one of them is open.
 SECTIONS = {"bus": (("bus", "/bus", "Tracker"), ("buslog", "/buslog", "Route log")),
             "vehicles": (("vehicles", "/vehicles", "Vehicles"), ("charger", "/charger", "Charger")),
+            "energy": (("energy", "/energy", "Energy"), ("aircon", "/aircon", "Air conditioning")),
             "shopping": (("shopping", "/shopping", "List"), ("wishlist", "/wishlist", "Wishlist"),
                          ("outdoors", "/outdoors", "Outdoors")),
             "environment": (("environment", "/environment", "Air"), ("pollen", "/pollen", "Pollen"),

@@ -9,8 +9,17 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [ask](#ask) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [ovms](#ovms) · [places](#places) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [airstage](#airstage) · [ask](#ask) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [ovms](#ovms) · [places](#places) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [wishlist](#wishlist) · [Other](#other)
 
+
+## airstage
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/airstage` | Every unit: on or off, mode, temperatures, fan, extras, error code, filter, and when it last answered. |
+| PUT | `/v1/airstage/units` | The units: a name, the address on your home network, and the device id (the Airstage app's unit details, or the label on the unit's Wi-Fi adapter). Only private addresses: a unit is never asked about over the internet. |
+| GET | `/v1/airstage/{uid}/history` | History |
+| POST | `/v1/airstage/{uid}/set` | Change a unit: any of power, mode (auto, cool, dry, fan_only, heat), target_c (half degrees), fan (auto, quiet, low, medium_low, medium, medium_high, high), swing and the extras. Read back afterwards. |
 
 ## ask
 
