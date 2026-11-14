@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.53.0] - 2026-11-14
 
 ### Added
 - **Car charger (OCPP), Vehicles → Charger.** World Assistant can be your charger's OCPP server instead of Home
