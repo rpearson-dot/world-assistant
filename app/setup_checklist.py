@@ -75,8 +75,11 @@ def judge(src: Source, s: Settings, runs: dict[str, dict[str, Any]]) -> dict[str
         out["state"] = MISSING
         return out
     latest = max(mine, key=lambda r: r["started_at"], default=None)
+    waiting_for = (latest.get("result") or {}).get("not_set_up") if latest and isinstance(latest.get("result"), dict) else None
     if latest and latest["status"] == "error":
         out["state"], out["error"] = FAILING, (latest.get("error") or "")[:300]
+    elif waiting_for:  # it runs, but there is nothing to do until something is set up
+        out["state"], out["note"] = MISSING, str(waiting_for)
     elif src.jobs and not mine:
         out["state"] = WAITING
     elif src.key_optional and missing:
@@ -122,7 +125,7 @@ async def checklist(request: Request) -> dict[str, Any]:
     s = get_settings()
     async with request.app.state.engine.connect() as conn:
         rows = (await conn.execute(text(
-            "SELECT DISTINCT ON (job) job, started_at, finished_at, status, error FROM job_run "
+            "SELECT DISTINCT ON (job) job, started_at, finished_at, status, error, result FROM job_run "
             "ORDER BY job, started_at DESC"))).mappings().all()  # fmt: skip
         home = (await conn.execute(text("SELECT count(*) FROM place WHERE kind = 'home' OR id = 'home'"))).scalar_one()
     runs = {r["job"]: dict(r) for r in rows}

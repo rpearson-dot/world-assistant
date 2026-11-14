@@ -182,7 +182,11 @@ async def ocpp_watch(ctx: dict[str, Any]) -> Any:
             "SELECT id, at, charger, kind, text FROM ocpp_event WHERE kind IN ('boot', 'fault') AND at > now() - interval '1 day' "
             "ORDER BY id"))).all()  # fmt: skip
     if not rows:
-        return None
+        async def nothing() -> dict[str, Any]:
+            return {"not_set_up": "No charger has connected yet: point its OCPP 1.6J central system at "
+                                  "ws://<this server>:8010/ocpp/<charger id> (see docs/ocpp.md)"}
+
+        return await tracked(engine, "ocpp_watch", nothing)
 
     async def work() -> dict[str, Any]:
         sent = 0

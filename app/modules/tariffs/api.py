@@ -85,8 +85,9 @@ async def work_out(engine: Any, client: httpx.AsyncClient | None = None) -> dict
     imports = [r for r in rows if r["direction"] == "import"]
     exports = [r for r in rows if r["direction"] == "export"]
     if not imports:
-        out = {"error": "no meter readings yet: the Octopus module fetches them each morning (it needs the account number "
-                        "and API key)", "computed_at": now.isoformat()}  # fmt: skip
+        why = ("No meter readings yet: the Octopus module fetches them each morning (it needs the account number and API "
+               "key), then press Work it out again on Energy → Tariffs")
+        out = {"error": why, "not_set_up": why, "computed_at": now.isoformat()}
         async with engine.begin() as conn:
             await _put(conn, RESULT, out)
         return out
@@ -136,7 +137,7 @@ async def get_result(request: Request) -> dict[str, Any]:
 async def compare_now(request: Request) -> dict[str, Any]:
     """Work the comparison out again now (it fetches every Octopus tariff: about half a minute)."""
     try:
-        return await work_out(request.app.state.engine)
+        return await tracked(request.app.state.engine, "tariffs_compare", lambda: work_out(request.app.state.engine))
     except httpx.HTTPError as exc:
         raise HTTPException(502, f"Octopus: {exc}") from exc
 
