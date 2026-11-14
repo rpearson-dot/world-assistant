@@ -15,6 +15,7 @@ log says to update World Assistant. Additions raise the version; nothing is take
 |---|---|---|
 | 1 | 0.52.0 | the first: the rules, the published interface and the extension points below |
 | 2 | 0.53.0 | the `startup` extension point; `Module.tabs` (its pages as tabs of a menu section); `Module.occasional` (jobs that run only at times); `app.localnet`, `app.mqtt`, `app.mqtt_config`, `app.ha_discover` and `app.modules.gate` in the published interface |
+| 3 | 0.54.0 | `app.ha_stats` (Home Assistant's states and long-term statistics) and `app.ha_smb.read_config_file` (a file from Home Assistant's config folder) in the published interface |
 
 ## The rules
 

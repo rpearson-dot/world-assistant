@@ -97,6 +97,12 @@ async def demand_report(engine: Any, redis: Any = None) -> dict[str, Any]:
     tdh = meteo.degree_hours(meteo.window(wrows, datetime(tomorrow.year, tomorrow.month, tomorrow.day, st["evening_from"], tzinfo=tz).astimezone(UTC),
                                           datetime(tomorrow.year, tomorrow.month, tomorrow.day, st["evening_to"], tzinfo=tz).astimezone(UTC)))
     out |= {"fit": f, "tomorrow": demand.predict(f, tdh), "days": table[-60:], "computed_at": now.isoformat()}
+    try:  # what the panels should make tomorrow, from the solar forecast module when it is on
+        from app.modules.solar.api import summary as solar
+
+        out["solar_tomorrow_kwh"] = (await solar(engine))["tomorrow_kwh"]
+    except Exception:  # noqa: BLE001 - optional
+        out["solar_tomorrow_kwh"] = None
     if redis is not None:
         await redis.set("wa:planner:demand", json.dumps(out, default=str), ex=6 * 3600)
     return out

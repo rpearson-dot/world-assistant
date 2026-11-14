@@ -112,7 +112,8 @@ async function load() {
       ' evenings): about ' + f.base_kwh + ' kWh plus ' + f.kwh_per_degree_hour + ' kWh per degree-hour, give or take ' + f.spread_kwh + ' kWh.';
     scatter(d.days || [], f);
     $('tomorrow').textContent = d.tomorrow ? 'Tomorrow evening (' + d.tomorrow.degree_hours + ' degree-hours): likely ' + d.tomorrow.likely_kwh +
-      ' kWh; 9 evenings in 10 under ' + d.tomorrow.nine_in_ten_kwh + ' kWh, and at least ' + d.tomorrow.at_least_kwh + ' kWh.' : '';
+      ' kWh; 9 evenings in 10 under ' + d.tomorrow.nine_in_ten_kwh + ' kWh, and at least ' + d.tomorrow.at_least_kwh + ' kWh.' +
+      (d.solar_tomorrow_kwh != null ? ' The panels should make about ' + d.solar_tomorrow_kwh.toFixed(1) + ' kWh tomorrow.' : '') : '';
   } catch (e) { msg.textContent = e.message; }
 }
 $('save').onclick = async () => {

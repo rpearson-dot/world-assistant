@@ -298,6 +298,16 @@ BUILTIN: tuple[Module, ...] = (
            worker=(Job("app.modules.weather.api:weather_sync", {"minute": {7}, "timeout": 180, "max_tries": 1}),),
            tools=("weather",),
            provides={"assistant.tools": "app.modules.weather.tools:TOOLS"}),
+    Module("solar", "Solar forecast (forecast.solar)", "How much your solar panels should make today and tomorrow, hour "
+           "by hour, refreshed every hour, and how far off it has been against what they really made",
+           category="energy", jobs=("solar_sync",), link="https://forecast.solar/", sdk=3,
+           note="No key: 12 requests an hour from one address, one for each array. The accuracy check reads your panels' "
+                "output from Home Assistant",
+           tabs=(("energy", "solar", "/solar", "Solar"),),
+           routers=("app.modules.solar.api:router", "app.modules.solar.page:page_router"), prefixes=("/v1/solar", "/solar"),
+           worker=(Job("app.modules.solar.api:solar_sync", {"hour": set(range(4, 22)), "minute": {11}, "timeout": 180, "max_tries": 1}),),
+           tools=("solar_forecast",),
+           provides={"assistant.tools": "app.modules.solar.tools:TOOLS"}),
     Module("planner", "Home energy planner", "When to charge the car (cheap rate, free hours, solar to spare), decided "
            "every five minutes beside Home Assistant's plan, and how predictable evening demand is from the weather",
            category="energy", jobs=("planner_tick", "planner_demand"), sdk=2,
@@ -310,7 +320,7 @@ BUILTIN: tuple[Module, ...] = (
                    Job("app.modules.planner.review:planner_review", {"day": {1}, "hour": {8}, "minute": {17}, "timeout": 300, "max_tries": 1})),
            tools=("charging_plan", "evening_demand"),
            provides={"assistant.tools": "app.modules.planner.tools:TOOLS"},
-           uses=("octopus", "weather", "ocpp", "ovms")),
+           uses=("octopus", "weather", "ocpp", "ovms", "solar")),
     Module("tariffs", "Tariff comparison", "Your real half-hourly use priced at every Octopus tariff's rates today (and "
            "any other supplier's you add from a quote), as used and with your house battery moving use into each "
            "tariff's cheap windows, ranked, with the best import and export to move to",

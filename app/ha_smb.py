@@ -304,6 +304,26 @@ class CopyIn(BaseModel):
     base_url: str = Field("", max_length=200)
 
 
+async def read_config_file(engine: Any, *parts: str) -> str | None:
+    """A file from Home Assistant's config folder (for example ".storage", "core.config_entries") over the share set
+    on the Home Assistant page; None when it is not there. Raises LookupError when no share is set and SmbError when
+    the share cannot be read. Reading only."""
+    saved = await _get(engine, KEY)
+    if not saved:
+        raise LookupError("set the Home Assistant share on the Home Assistant page first")
+    share, user, password = parse_share(saved["address"]), saved.get("user", ""), secretstore.read_secret(SECRET, SECRETS_DIR)
+
+    def read() -> str | None:
+        cache: dict[str, Any] = {}
+        try:
+            _session(share, user, password, cache)
+            return _read(share.unc(*parts), cache, share.port)
+        finally:
+            _close(cache)
+
+    return await asyncio.to_thread(read)
+
+
 async def _conf(request: Request) -> tuple[Share, str, str]:
     saved = await _get(request.app.state.engine, KEY)
     if not saved:
