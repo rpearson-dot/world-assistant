@@ -10,6 +10,11 @@ The core never imports a module: it asks the registry for what modules provide a
 
 from __future__ import annotations
 
+# The SDK's version. A module says which it was written for (Module(sdk=...)); one written for a newer SDK than this
+# core offers is not loaded. Additions (a new extension point, a new Module field) raise it; nothing is taken away
+# without a version that says so. 1: the first (0.52.0). 2: startup, Module.tabs, Module.occasional (0.53.0).
+SDK_VERSION = 2
+
 # The core's published interface, by module. Anything not listed is the core's own business and may change.
 CORE: dict[str, str] = {
     "app.config": "settings (get_settings) and their defaults",

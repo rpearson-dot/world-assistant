@@ -44,6 +44,8 @@ EXCLUDE = frozenset(
         "fuel_station", "fuel_price", "fuel_price_change",
         "nh_event", "nh_event_corridor", "nh_sign", "nh_sign_message",
         "shopping_search",
+        # the bus log's raw answers: about 30 MB a recorded day, kept in the database a school year, not in backups
+        "buslog_raw",
     }
 )  # fmt: skip
 NAME_RE = re.compile(r"^wa-\d{8}-\d{6}(?:-[A-Za-z0-9._]+)?\.tar\.gz$")
@@ -71,8 +73,12 @@ def _conninfo() -> str:
 
 
 def _tables(cur: psycopg.Cursor[Any], schema: str, exclude: frozenset[str]) -> list[str]:
+    # a partitioned table is kept through its parent; its partitions (each month of the bus log) are not tables of
+    # their own here, or every row would be kept, and restored, twice
     cur.execute(
-        "SELECT tablename FROM pg_tables WHERE schemaname = %s ORDER BY tablename", (schema,)
+        "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+        "WHERE n.nspname = %s AND c.relkind IN ('r', 'p') AND NOT c.relispartition ORDER BY c.relname",
+        (schema,),
     )
     return [r[0] for r in cur.fetchall() if r[0] not in exclude]
 

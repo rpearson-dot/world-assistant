@@ -47,9 +47,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await start(app)
         except Exception:
             log.exception("a module's startup failed")
+    from app import watchdog
+
+    await watchdog.WATCH.start(app)
     log.info("world-assistant api started (env=%s)", settings.env)
     yield
 
+    await watchdog.WATCH.stop()
     for _, close in registry.provided("shutdown"):
         await close()
     await app.state.redis.aclose()

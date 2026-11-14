@@ -43,6 +43,7 @@ class Module:
     extra_ready: tuple[str, ...] = ()  # settings attributes that count as "set up" too
     # status
     jobs: tuple[str, ...] = ()  # job_run names; empty = asked live, no stored runs
+    occasional: tuple[str, ...] = ()  # of those, ones that run only at times (a window, a season): not watched for going quiet
     switch: str = ""  # settings attribute that turns the poll on
     link: str = ""
     note: str = ""
@@ -52,6 +53,10 @@ class Module:
     prefixes: tuple[str, ...] = ()  # URL path prefixes that go dark when it is switched off
     worker: tuple[Job, ...] = ()
     tools: tuple[str, ...] = ()  # assistant (MCP) tool names
+    # Its pages as tabs of a menu section: (section, page id, path, label), e.g. ("bus", "buslog", "/buslog", "Route log").
+    # The section is a menu page's id; its own page stays the first tab.
+    tabs: tuple[tuple[str, str, str, str], ...] = ()
+    sdk: int = 1  # the module SDK version it was written for (app/modules/sdk.py: SDK_VERSION)
     # What it plugs into the core, by extension point: {"assistant.tools": "app.modules.crime.tools:TOOLS"}. The
     # points are listed in docs/module-sdk.md; the core asks the registry (provided, provider), never the module.
     provides: dict[str, str] = field(default_factory=dict, compare=False)

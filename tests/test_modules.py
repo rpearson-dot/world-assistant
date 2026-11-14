@@ -251,7 +251,8 @@ def test_an_outside_module_is_added_by_import_string_and_cannot_take_a_builtin_i
         "from app.modules.model import Module\n"
         "DEMO = Module('demo', 'Demo', 'A module from outside', prefixes=('/v1/demo',), tools=('demo_tool',))\n"
         "CLASH = Module('fuel', 'Fake fuel', 'tries to replace fuel', core=True)\n"
-        "def many():\n    return [DEMO, CLASH]\n"
+        "FUTURE = Module('future', 'Future', 'written for a newer SDK', sdk=99)\n"
+        "def many():\n    return [DEMO, CLASH, FUTURE]\n"
     )
     monkeypatch.syspath_prepend(str(tmp_path))
     monkeypatch.setenv("WA_EXTRA_MODULES", "wa_demo_module:many,wa_demo_module:missing")
@@ -260,6 +261,7 @@ def test_an_outside_module_is_added_by_import_string_and_cannot_take_a_builtin_i
         demo = registry.get("demo")
         assert demo and demo.source == "wa_demo_module:many" and not demo.core
         assert registry.get("fuel").name != "Fake fuel"  # type: ignore[union-attr]
+        assert registry.get("future") is None  # needs a newer SDK than this core offers
         assert registry.module_for_path("/v1/demo/x") == "demo"
         assert registry.module_of_tool("demo_tool") == "demo"
         # and it can be switched off like any other

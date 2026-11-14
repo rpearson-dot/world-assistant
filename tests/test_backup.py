@@ -147,3 +147,19 @@ def test_bad_data_mid_restore_rolls_back(db, tmp_path: Path) -> None:  # type: i
     with pytest.raises(backup.BackupError, match="nothing was changed"):
         backup.restore(broken, schema=SCHEMA, conninfo=_conninfo())
     assert db.execute(f"SELECT count(*) FROM {SCHEMA}.trip").fetchone() == (2,)
+
+
+def test_partitioned_tables_are_kept_once(db, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    """A table split by month (the bus log, 0.52.0) is backed up through its parent alone: its partitions copied as
+    well would double every row, and a restore would then fail on the duplicate keys."""
+    db.execute(f"""
+        CREATE TABLE {SCHEMA}.log (at timestamptz NOT NULL, n int, PRIMARY KEY (at, n)) PARTITION BY RANGE (at);
+        CREATE TABLE {SCHEMA}.log_2026 PARTITION OF {SCHEMA}.log FOR VALUES FROM ('2026-01-01') TO ('2027-01-01');
+        CREATE TABLE {SCHEMA}.log_default PARTITION OF {SCHEMA}.log DEFAULT;
+        INSERT INTO {SCHEMA}.log VALUES ('2026-11-14', 1), ('2030-01-01', 2);
+    """)
+    info = backup.create(tmp_path, schema=SCHEMA, conninfo=_conninfo())
+    assert info["tables"]["log"] == 2 and "log_2026" not in info["tables"] and "log_default" not in info["tables"]
+    done = backup.restore(tmp_path / info["name"], schema=SCHEMA, conninfo=_conninfo())
+    assert done["log"] == 2
+    assert db.execute(f"SELECT count(*) FROM {SCHEMA}.log").fetchone() == (2,)

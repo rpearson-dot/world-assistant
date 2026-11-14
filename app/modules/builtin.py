@@ -56,9 +56,11 @@ CORE = Module(
         "app.backups:router", "app.ha_locations:router", "app.ha_routes:router", "app.icons:router",
         "app.places:router", "app.map_layers:router", "app.map_page:page_router", "app.assistant:router",
         "app.places:page_router", "app.settings_page:page_router", "app.webapp:router",
-        "app.modules.routes:router", "app.modules.routes:page_router", "app.notify:router",
+        "app.modules.routes:router", "app.modules.routes:page_router", "app.notify:router", "app.watchdog:router",
     ),
-    worker=(Job("app.ha_publish:ha_sync", _ha),),
+    worker=(Job("app.ha_publish:ha_sync", _ha),
+            # the newest backup restored into a scratch schema and checked, early on Sunday
+            Job("app.watchdog:restore_check", {"weekday": {6}, "hour": {5}, "minute": {17}, "timeout": 3600, "max_tries": 1})),
     tools=("list_options", "add_place", "add_trip"),
 )
 
@@ -239,7 +241,8 @@ BUILTIN: tuple[Module, ...] = (
            uses=("bods", "tfl")),
     Module("buslog", "Bus route log", "Every bus on one route (the 213) in the school-run window, recorded from TfL and "
            "BODS several times a minute, with every failed or empty request kept too",
-           category="transport", keys=("bods_api_key", "tfl_app_key"), any_key=True, jobs=("buslog",),
+           category="transport", keys=("bods_api_key", "tfl_app_key"), any_key=True, jobs=("buslog",), occasional=("buslog",),
+           tabs=(("bus", "buslog", "/buslog", "Route log"),), sdk=2,
            link="https://data.bus-data.dft.gov.uk",
            note="Positions need a BODS key; TfL's predictions work without a key, faster with one. Records 07:00 to "
                 "09:00 on school days (the school calendar is on the page); a test switch records every day",
@@ -251,7 +254,7 @@ BUILTIN: tuple[Module, ...] = (
            provides={"assistant.tools": "app.modules.buslog.tools:TOOLS"}),
     Module("ocpp", "Car charger (OCPP)", "World Assistant as your charger's OCPP server: start and stop, every restart, "
            "drop and fault recorded, and the charger in Home Assistant",
-           category="energy", jobs=("ocpp_watch",),
+           category="energy", jobs=("ocpp_watch",), tabs=(("vehicles", "charger", "/charger", "Charger"),), sdk=2,
            note="Point the charger's OCPP 1.6J central system at ws://<this server>:8010/ocpp/<charger id> on your home "
                 "network. It replaces Home Assistant's OCPP integration (a charger talks to one central system)",
            routers=("app.modules.ocpp.api:router", "app.modules.ocpp.page:page_router", "app.modules.ocpp.server:ws_router"),
@@ -263,7 +266,7 @@ BUILTIN: tuple[Module, ...] = (
                      "shutdown": "app.modules.ocpp.server:shutdown"}),
     Module("ovms", "Car (OVMS)", "Your car's own module (OVMS): battery, range, 12 V, charging, locks and warnings, "
            "read from the MQTT broker",
-           category="energy", jobs=("ovms_watch",),
+           category="energy", jobs=("ovms_watch",), sdk=2,
            note="Reads the broker set in Settings → Home Assistant, where the OVMS module publishes (Server V3). "
                 "Reading only: commands wait for the broker to have TLS",
            routers=("app.modules.ovms.api:router",), prefixes=("/v1/ovms",),
@@ -274,7 +277,7 @@ BUILTIN: tuple[Module, ...] = (
                      "shutdown": "app.modules.ovms.listener:shutdown"}),
     Module("airstage", "Air conditioning (Fujitsu Airstage)", "Fujitsu Airstage air conditioners on your home network: "
            "temperatures, on and off, mode, target and fan, from the page, the assistant and Home Assistant",
-           category="home", jobs=("airstage_poll",),
+           category="home", jobs=("airstage_poll",), tabs=(("energy", "aircon", "/aircon", "Air conditioning"),), sdk=2,
            note="Talks to each unit directly on your network (its address and device id), never through Fujitsu's cloud",
            routers=("app.modules.airstage.api:router", "app.modules.airstage.page:page_router"), prefixes=("/v1/airstage", "/aircon"),
            worker=(Job("app.modules.airstage.api:airstage_poll", {"minute": _every(2), "timeout": 110, "max_tries": 1}),

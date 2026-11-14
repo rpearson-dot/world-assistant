@@ -9,7 +9,7 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [airstage](#airstage) · [ask](#ask) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [ovms](#ovms) · [places](#places) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [airstage](#airstage) · [ask](#ask) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [ovms](#ovms) · [places](#places) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [wishlist](#wishlist) · [Other](#other)
 
 
 ## airstage
@@ -274,6 +274,12 @@ pages themselves hold no data: each one calls these endpoints.
 | POST | `/v1/ha/zones/copy` | Write that package into Home Assistant's packages folder over the saved Samba share. |
 | POST | `/v1/ha/zones/import` | Make World Assistant places of these Home Assistant zones (from the last "Find my setup"). |
 | GET | `/v1/ha/zones/package` | World Assistant's places that are not Home Assistant zones, as a package of zones (from the last "Find my setup"; all places if it has not run). |
+
+## health
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/health/watch` | The latest self-check: problems now (worker, jobs, disks, backups, restore check), database size, and the last restore check. Runs a check if none is recent. |
 
 ## here
 
