@@ -26,12 +26,16 @@ PAGE = """<!doctype html>
 .seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 .seg button[data-m="off"][aria-pressed="true"] { background: var(--bad); }
 details.box > summary { cursor: pointer; font-weight: 650; padding: 4px 0; }
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 28px; }
+.batt { display: flex; align-items: center; gap: 10px; } .batt b { font-size: 1.6em; font-variant-numeric: tabular-nums; }
+.now b { display: block; font-size: 1.6em; } .now span { display: block; }
+@keyframes fill { 0%, 100% { opacity: .25; } 50% { opacity: 1; } } .filling { animation: fill 1.6s ease-in-out infinite; }
 pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-height: 360px; overflow: auto; }
 </style></head><body><main>
 <!--NAV-->
 <h1>Charger</h1>
 <div class="bar"><input id="t" type="password" placeholder="API token" autocomplete="current-password">
-<select id="cp" aria-label="Charger"></select><button id="go" class="primary" type="button">Load</button></div>
+<select id="cp" aria-label="Charger" hidden></select><button id="go" class="primary" type="button">Load</button></div>
 <p id="msg" class="err"></p>
 
 <div class="card hero" id="none" hidden><div class="say">No charger has connected yet.</div>
@@ -40,13 +44,15 @@ pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-hei
   Assistant's OCPP integration. World Assistant must be reached on your home network, not through Tailscale.</div></div>
 
 <section id="view" hidden>
-<div class="card hero"><div class="say" id="say"></div><div><span id="state" class="pill"></span><div class="dim" id="seen"></div></div></div>
 <div class="card">
+  <div class="top">
   <div class="seg" role="group" aria-label="Charging">
     <button type="button" data-m="off" aria-pressed="false">Off</button><button type="button" data-m="on" aria-pressed="false">On</button><button type="button" data-m="auto" aria-pressed="false">Auto</button>
   </div>
+  <div class="batt"><svg id="batt" viewBox="0 0 132 52" width="132" height="52" role="img" aria-label="Car battery"></svg><b id="pct">–</b></div>
+  <div class="now"><b id="status">–</b><span id="sub" class="dim"></span></div>
+  </div>
   <p class="dim" id="modewhy"></p><p id="cmsg" class="dim"></p>
-  <div class="stats" id="stats"></div>
 </div>
 <div class="card"><h2>What happened</h2>
   <div class="row"><label>Show <select id="kind"><option value="">everything</option><option value="boot">restarts</option>
@@ -56,6 +62,8 @@ pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-hei
   <div class="ev" id="events"></div></div>
 <div class="card"><h2>Sessions</h2><table id="sessions"></table></div>
 <div class="card"><details class="box"><summary>Settings and tools</summary>
+<p class="dim" id="seen"></p>
+<div class="stats" id="stats"></div>
 <h3>Settings</h3>
   <div class="form">
     <label>Chargers allowed to connect <input id="ids" placeholder="e.g. U1HKP (blank: any on the home network)">
@@ -101,15 +109,30 @@ async function load() {
     if (data.chargers.length) await draw();
   } catch (e) { msg.textContent = e.message; }
 }
+let soc = null;  // the car's charge, from its OVMS module when that module is on
+function battery(charging) {
+  const svg = $('batt'), NS = 'http://www.w3.org/2000/svg', mk = (t, a) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
+  svg.replaceChildren();
+  svg.append(mk('rect', { x: 2, y: 2, width: 118, height: 48, rx: 8, fill: 'none', stroke: 'var(--ink)', 'stroke-width': 3 }),
+             mk('rect', { x: 122, y: 16, width: 8, height: 20, rx: 2, fill: 'var(--ink)' }));
+  const full = soc == null ? 0 : Math.ceil(soc / 20), low = soc != null && soc <= 20;
+  for (let i = 0; i < 5; i++) {
+    const r = mk('rect', { x: 8 + i * 22.4, y: 8, width: 19, height: 36, rx: 3,
+      fill: i < full ? (low ? 'var(--bad)' : 'var(--good)') : 'var(--chip)' });
+    if (charging && (i === full || (full === 5 && i === 4))) { r.setAttribute('fill', 'var(--good)'); r.classList.add('filling'); }
+    svg.append(r);
+  }
+  $('pct').textContent = soc == null ? '–' : Math.round(soc) + '%';
+  svg.setAttribute('aria-label', soc == null ? 'Car charge not known' : 'Car charged to ' + Math.round(soc) + '%');
+}
 async function draw() {
+  try { const o = await api('GET', '/v1/ovms'); const car = o.cars.find(x => x.soc != null); soc = car ? car.soc : null; } catch (e) { soc = null; }
   const c = cur(); if (!c) return;
   const m = c.meter || {}, s = c.session, live = s && !s.stopped_at;
-  $('state').textContent = c.connected ? (c.status || 'connected') : 'not connected';
-  $('state').className = 'pill ' + (!c.connected ? 'bad' : c.error_code && c.error_code !== 'NoError' ? 'bad' : c.status === 'Charging' ? 'good' : '');
-  $('seen').textContent = 'Last heard ' + ago(c.last_seen) + (c.booted_at ? ' · started up ' + when(c.booted_at) : '');
   const b = c.boot || {};
-  $('say').textContent = (b.chargePointVendor ? b.chargePointVendor + ' ' + (b.chargePointModel || '') : 'Charger ' + c.id) +
-    (c.error_code && c.error_code !== 'NoError' ? ': fault ' + c.error_code : live ? ': charging session ' + s.transaction_id + ' since ' + when(s.started_at) : '');
+  $('seen').textContent = (b.chargePointVendor ? b.chargePointVendor + ' ' + (b.chargePointModel || '') + ' · ' : '') + 'last heard ' + ago(c.last_seen) +
+    (c.booted_at ? ' · started up ' + when(c.booted_at) : '') + (live ? ' · session ' + s.transaction_id + ' since ' + when(s.started_at) : '');
+  $('cp').hidden = data.chargers.length < 2;
   const kwh = live && s.meter_start_wh != null && (s.last_meter_wh ?? m.energy_wh) != null ? (((s.last_meter_wh ?? m.energy_wh) - s.meter_start_wh) / 1000).toFixed(2) : null;
   const st = $('stats'); st.replaceChildren();
   for (const [k, v] of [['Power', c.status === 'Charging' && m.power_w != null ? (m.power_w / 1000).toFixed(2) + ' kW' : '0 kW'],
@@ -117,6 +140,15 @@ async function draw() {
       ['Restarts this week', c.week.boots], ['Drops this week', c.week.drops], ['Faults this week', c.week.faults]]) {
     const d = el('div', k, 'dim'); d.appendChild(el('b', String(v))); st.appendChild(d);
   }
+  const fault = c.error_code && c.error_code !== 'NoError';
+  const word = !c.connected ? 'Offline' : fault || c.status === 'Faulted' ? 'Fault' : c.status === 'Charging' ? 'Charging'
+    : c.status === 'Available' ? 'Unplugged' : c.status === 'Unavailable' ? 'Switched off'
+    : ['Preparing', 'SuspendedEV', 'SuspendedEVSE', 'Finishing', 'Reserved'].includes(c.status) ? 'Connected' : (c.status || '–');
+  $('status').textContent = word;
+  $('status').style.color = word === 'Charging' ? 'var(--good)' : word === 'Fault' || word === 'Offline' ? 'var(--bad)' : '';
+  $('sub').textContent = word === 'Charging' && m.power_w != null ? (m.power_w / 1000).toFixed(1) + ' kW' + (kwh != null ? ' · ' + kwh + ' kWh added' : '')
+    : word === 'Fault' ? c.error_code : word === 'Connected' && c.status === 'SuspendedEV' ? 'the car is not taking charge' : '';
+  battery(c.status === 'Charging');
   const mode = data.settings.mode || 'auto';
   document.querySelectorAll('.seg button').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.m === mode)); b.disabled = false; });
   $('modewhy').textContent = { off: 'Off: the charger will not charge, even if the car is plugged in.',
