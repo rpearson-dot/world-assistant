@@ -2,13 +2,12 @@
 
 Your real half-hourly use priced at every Octopus tariff's rates today (and any other supplier's you add from a quote), as used and with your house battery moving use into each tariff's cheap windows, ranked, with the best import and export to move to.
 
-Needs the Octopus module's meter readings (the account number and API key). Octopus's tariffs are public; other suppliers' are typed in by hand
+Worked out only when you press Work it out again on Energy → Tariffs. Needs the Octopus module's meter readings (the account number and API key). Octopus's tariffs are public; other suppliers' are typed in by hand
 
 | | |
 |---|---|
 | Uses when there | [octopus](../octopus/) |
 | Endpoints | `/v1/tariffs`, `/tariffs` |
-| Scheduled jobs | `tariffs_compare` |
 | Assistant tools | `best_tariff` |
 | Plugs into | `assistant.tools` |
 

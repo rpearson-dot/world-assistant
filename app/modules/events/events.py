@@ -143,6 +143,22 @@ def is_muted(e: dict[str, Any], m: dict[str, list[str]]) -> str | None:
     return None
 
 
+def upcoming(out: dict[str, Any], now: datetime) -> dict[str, Any]:
+    """Without today's events whose start time has passed (local time). An event with no time, or running on past
+    today (an end date later than today), stays."""
+    today, clock = now.date().isoformat(), now.strftime("%H:%M")
+
+    def started(e: dict[str, Any]) -> bool:
+        t = e.get("doors_open")
+        if str(e.get("date") or "")[:10] != today or not t or len(str(t)) < 5:
+            return False
+        return not (e.get("end_date") and str(e["end_date"])[:10] > today) and str(t)[:5] < clock
+
+    events = out.get("events") or []
+    kept = [e for e in events if not started(e)]
+    return {**out, "events": kept, "started": len(events) - len(kept)} if len(kept) != len(events) else out
+
+
 async def apply_mutes(engine: Any, out: dict[str, Any], show: bool = False) -> dict[str, Any]:
     """Leave the muted events out (or, with `show`, mark them), and say how many."""
     m = await mutes(engine)
@@ -244,7 +260,7 @@ async def search(
         cached = None
     engine = getattr(request.app.state, "engine", None)
     if cached:
-        return await apply_mutes(engine, {**json.loads(cached), "cached": True}, show_muted)
+        return await apply_mutes(engine, upcoming({**json.loads(cached), "cached": True}, datetime.now(zone)), show_muted)
 
     async def from_skiddle() -> dict[str, Any]:
         async with _client(request) as c:
@@ -305,7 +321,7 @@ async def search(
     if not errors:
         with contextlib.suppress(Exception):  # the cache is optional
             await redis.set(key, json.dumps(out), ex=cache_seconds)
-    return await apply_mutes(engine, {**out, "cached": False}, show_muted)
+    return await apply_mutes(engine, upcoming({**out, "cached": False}, datetime.now(zone)), show_muted)
 
 
 PAGE = """<!doctype html>

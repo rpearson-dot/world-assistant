@@ -75,8 +75,11 @@ def judge(src: Source, s: Settings, runs: dict[str, dict[str, Any]]) -> dict[str
         out["state"] = MISSING
         return out
     latest = max(mine, key=lambda r: r["started_at"], default=None)
+    waiting_for = (latest.get("result") or {}).get("not_set_up") if latest and isinstance(latest.get("result"), dict) else None
     if latest and latest["status"] == "error":
         out["state"], out["error"] = FAILING, (latest.get("error") or "")[:300]
+    elif waiting_for:  # it runs, but there is nothing to do until something is set up
+        out["state"], out["note"] = MISSING, str(waiting_for)
     elif src.jobs and not mine:
         out["state"] = WAITING
     elif src.key_optional and missing:
@@ -122,7 +125,7 @@ async def checklist(request: Request) -> dict[str, Any]:
     s = get_settings()
     async with request.app.state.engine.connect() as conn:
         rows = (await conn.execute(text(
-            "SELECT DISTINCT ON (job) job, started_at, finished_at, status, error FROM job_run "
+            "SELECT DISTINCT ON (job) job, started_at, finished_at, status, error, result FROM job_run "
             "ORDER BY job, started_at DESC"))).mappings().all()  # fmt: skip
         home = (await conn.execute(text("SELECT count(*) FROM place WHERE kind = 'home' OR id = 'home'"))).scalar_one()
     runs = {r["job"]: dict(r) for r in rows}
@@ -131,8 +134,22 @@ async def checklist(request: Request) -> dict[str, Any]:
         last = json.loads(raw) if raw else None
     except Exception:  # noqa: BLE001 - the page must still show the rest
         last = None
-    keyed = [judge(x, s, runs) for x in sources() if x.keys]
-    free = [judge(x, s, runs) for x in sources() if not x.keys]
+    from app.modules import selection
+
+    mods = list(registry.modules())
+    on = selection.enabled_ids(mods, await selection.load(request.app.state.engine, fresh=True))
+
+    def row(x: Source) -> dict[str, Any]:
+        r = judge(x, s, runs)
+        r["module"], r["enabled"] = True, x.id in on
+        r["page"] = x.link if x.link.startswith("/") else next((p for p in x.prefixes if not p.startswith("/v1")), None)
+        r["needed_by"] = [m.name for m in mods if m.id in on and x.id in m.needs]
+        if not r["enabled"]:
+            r["state"] = OFF
+        return r
+
+    keyed = [row(x) for x in sources() if x.keys]
+    free = [row(x) for x in sources() if not x.keys]
     you = [
         {"id": "home", "name": "Your home", "unlocks": "The default place for fuel, events, pollen and the map",
          "state": READY if home else MISSING, "link": "/places",

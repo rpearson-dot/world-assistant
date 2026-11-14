@@ -128,3 +128,27 @@ def test_tick_keeps_a_decision_beside_home_assistant(db: str, monkeypatch: pytes
     r, row = asyncio.run(go())
     assert r["plan"] == "wait" and r["ha"] == "wait" and r["acted"] is None
     assert row["plan"] == "wait" and row["inputs"]["soc"] == 40.0 and row["inputs"]["battery_soc"] == 100.0
+
+
+def test_the_month_with_the_planner_in_charge() -> None:
+    from app.modules.planner import review as R
+
+    t0 = datetime(2026, 10, 1, 0, 0, tzinfo=UTC)
+    rates = [(t0, t0 + timedelta(hours=5), 7.0), (t0 + timedelta(hours=5), t0 + timedelta(days=1), 25.0)]
+    ds = []
+    for i in range(12 * 24):  # a day of five-minute decisions
+        at = t0 + timedelta(minutes=5 * i)
+        cheap = at.hour < 5
+        charging = 18 <= at.hour < 20  # Home Assistant charged in the evening at 25p: 2 h at 4.6 kW
+        ds.append({"at": at, "plan": "charge" if cheap else "wait", "ha_plan": "charge" if charging else "wait",
+                   "inputs": {"status": "Charging" if charging else "Preparing", "car_w": 4600 if charging else 0}})
+    r = R.judge(ds, rates)
+    assert r["car_kwh"] == 9.2 and r["real_pounds"] == 2.3 and r["planner_pounds"] == 0.64 and r["saving_pounds"] == 1.66
+    assert r["short_kwh"] == 0 and r["agreed_pct"] == round(100 * (24 * 12 - 60 - 24) / (24 * 12))
+    tight = [d if d["at"].hour >= 1 else {**d, "plan": "wait"} for d in ds]  # only 4 h of charge times: 18.4 kWh fits
+    assert R.judge(tight, rates)["short_kwh"] == 0
+    few = [{**d, "plan": "charge" if d["at"].hour < 1 else "wait"} for d in ds]  # 1 h holds 4.6 of 9.2 kWh
+    f = R.judge(few, rates)
+    assert f["short_kwh"] == 4.6 and f["planner_pounds"] == round((4.6 * 7 + 4.6 * 25) / 100, 2)
+    assert R.last_month(datetime(2026, 11, 1).date()) == (datetime(2026, 10, 1).date(), datetime(2026, 11, 1).date())
+    assert "would have been about £0.64, which saved £1.66" in R.summary({"month": "2026-10", **r})

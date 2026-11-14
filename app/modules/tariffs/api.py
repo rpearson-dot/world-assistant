@@ -85,8 +85,9 @@ async def work_out(engine: Any, client: httpx.AsyncClient | None = None) -> dict
     imports = [r for r in rows if r["direction"] == "import"]
     exports = [r for r in rows if r["direction"] == "export"]
     if not imports:
-        out = {"error": "no meter readings yet: the Octopus module fetches them each morning (it needs the account number "
-                        "and API key)", "computed_at": now.isoformat()}  # fmt: skip
+        why = ("No meter readings yet: the Octopus module fetches them each morning (it needs the account number and API "
+               "key), then press Work it out again on Energy → Tariffs")
+        out = {"error": why, "not_set_up": why, "computed_at": now.isoformat()}
         async with engine.begin() as conn:
             await _put(conn, RESULT, out)
         return out
@@ -127,7 +128,7 @@ async def work_out(engine: Any, client: httpx.AsyncClient | None = None) -> dict
 
 @router.get("")
 async def get_result(request: Request) -> dict[str, Any]:
-    """The last comparison (worked out each morning, after the meter readings) and the settings."""
+    """The last comparison (worked out only when asked: POST /v1/tariffs/compare) and the settings."""
     async with request.app.state.engine.connect() as conn:
         return {"result": await _get(conn, RESULT), "settings": await settings(conn)}
 
@@ -136,7 +137,7 @@ async def get_result(request: Request) -> dict[str, Any]:
 async def compare_now(request: Request) -> dict[str, Any]:
     """Work the comparison out again now (it fetches every Octopus tariff: about half a minute)."""
     try:
-        return await work_out(request.app.state.engine)
+        return await tracked(request.app.state.engine, "tariffs_compare", lambda: work_out(request.app.state.engine))
     except httpx.HTTPError as exc:
         raise HTTPException(502, f"Octopus: {exc}") from exc
 
@@ -187,11 +188,3 @@ async def put_settings(request: Request, body: SettingsIn) -> dict[str, Any]:
     async with request.app.state.engine.begin() as conn:
         await _put(conn, SETTINGS, st)
     return st
-
-
-async def tariffs_compare(ctx: dict[str, Any]) -> Any:
-    async def run() -> dict[str, Any]:
-        r = await work_out(ctx["engine"])
-        return {"error": r.get("error"), "best": (r.get("suggestion") or {}).get("import_name"), "tariffs": len(r.get("import") or [])}
-
-    return await tracked(ctx["engine"], "tariffs_compare", run)

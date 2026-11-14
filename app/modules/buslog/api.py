@@ -23,6 +23,7 @@ from app.modules.buslog.schedule import (
     DEFAULT_CALENDAR,
     check_calendar,
     check_settings,
+    drop_past,
     recording,
     school_day,
 )
@@ -32,6 +33,10 @@ router = APIRouter(prefix="/v1/buslog", tags=["buslog"], dependencies=[Depends(r
 
 def _tz() -> ZoneInfo:
     return ZoneInfo(get_settings().local_tz)
+
+
+def _today() -> date:
+    return datetime.now(_tz()).date()
 
 
 def _day(v: str | None) -> date:
@@ -123,15 +128,17 @@ async def put_settings(request: Request, body: SettingsIn) -> dict[str, Any]:
 
 @router.get("/calendar")
 async def get_calendar(request: Request) -> dict[str, Any]:
+    """The school calendar from today on (what is over is taken out each night)."""
     async with request.app.state.engine.connect() as conn:
-        return await store.read_setting(conn, store.CALENDAR_KEY) or DEFAULT_CALENDAR
+        cal = await store.read_setting(conn, store.CALENDAR_KEY) or DEFAULT_CALENDAR
+    return drop_past(cal, _today())
 
 
 @router.put("/calendar")
 async def put_calendar(request: Request, body: dict[str, Any]) -> dict[str, Any]:
     """The school's terms, holidays and INSET days: {school, terms: [{name, from, to}], breaks: [...], inset: [dates], notes}."""
     try:
-        cal = check_calendar(body)
+        cal = drop_past(check_calendar(body), _today())
     except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(422, f"calendar: {exc}") from exc
     async with request.app.state.engine.begin() as conn:

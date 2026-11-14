@@ -75,3 +75,11 @@ def test_home_assistant_states() -> None:
 def test_every_source_says_what_it_unlocks() -> None:
     assert all(s.unlocks and s.name for s in SOURCES)
     assert all(s.link.startswith("https://") for s in SOURCES if s.keys)
+
+
+def test_a_module_with_nothing_set_up_says_what_to_do_instead_of_starting() -> None:
+    assert judge(BY_ID["ocpp"], settings(), {})["state"] == "waiting"  # not run yet
+    waiting = {**run("skipped"), "result": {"not_set_up": "No charger has connected yet"}}
+    row = judge(BY_ID["ocpp"], settings(), {"ocpp_watch": waiting})
+    assert row["state"] == "missing" and row["note"] == "No charger has connected yet"
+    assert judge(BY_ID["ocpp"], settings(), {"ocpp_watch": {**run(), "result": {"sent": 0}}})["state"] == "ready"

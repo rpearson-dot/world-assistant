@@ -36,6 +36,10 @@ form.grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, mi
 <div class="card"><h2>When they differed</h2><table class="t" id="diff"></table>
   <p class="dim small">Each disagreement once, from when it began. Differences are expected where Home Assistant's own rules
   differ on purpose (charging from the house battery, the rest after full); the rest show where one is wrong.</p></div>
+<div class="card"><h2>Month by month</h2><p id="sofar"></p><table class="t" id="months"></table>
+  <p class="dim small">What charging the car really cost, and what it would have with the planner in charge: the same kWh
+  bought at the times it said "charge", at the rates in force. Worked out on the 1st and sent to your phone. An estimate
+  from five-minute readings of the car's power.</p></div>
 <div class="card"><h2>How predictable are your evenings?</h2><p id="dsay">Loading…</p>
   <svg class="scatter" id="sc" viewBox="0 0 600 220" role="img" aria-label="Each evening's use against how cold it was"></svg>
   <p class="dim small">Each dot an evening: across, how cold (heating degree-hours below 15.5 °C); up, the kWh the house used.
@@ -93,6 +97,11 @@ async function load() {
     else { const h = el('tr'); ['From', 'World Assistant', 'Home Assistant', 'Why World Assistant'].forEach(x => h.append(el('th', x))); t.append(h);
       c.differences.slice().reverse().forEach(d => { const r = el('tr'); [when(d.at), d.planner, d.home_assistant, d.why].forEach(x => r.append(el('td', x))); t.append(r); }); }
     FIELDS.forEach(k => { const e = $(k); if (!e || k === 'demand_statistic') return; if (e.type === 'checkbox') e.checked = !!st[k]; else e.value = st[k] ?? ''; });
+    const rv = await api('/v1/planner/reviews'), mt = $('months');
+    $('sofar').textContent = rv.so_far.summary; mt.replaceChildren();
+    if (rv.months.length) { const h = el('tr'); ['Month', 'Car kWh', 'Real', 'With the planner', 'Difference', 'Agreed'].forEach(x => h.append(el('th', x))); mt.append(h);
+      rv.months.forEach(m => { const r = el('tr'); [m.month, m.car_kwh, '£' + m.real_pounds.toFixed(2), '£' + m.planner_pounds.toFixed(2),
+        (m.saving_pounds >= 0 ? '£' + m.saving_pounds.toFixed(2) + ' less' : '£' + (-m.saving_pounds).toFixed(2) + ' more'), m.agreed_pct == null ? '–' : m.agreed_pct + '%'].forEach(x => r.append(el('td', String(x)))); mt.append(r); }); }
     const d = await api('/v1/planner/demand'), sel = $('demand_statistic');
     sel.replaceChildren(el('option', '(choose)')); sel.firstChild.value = '';
     (d.choices || []).forEach(o => { const e = el('option', o.name + ' (' + o.id + ')'); e.value = o.id; sel.append(e); });

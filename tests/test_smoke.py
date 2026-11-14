@@ -20,7 +20,7 @@ PAGE = "<html><nav>n</nav><script>1</script></html>"
 
 
 def toy(*, broken_route: bool = False, bad_page: bool = False, open_api: bool = False,
-        plain_503: bool = False, json_503: bool = False, off: tuple[str, ...] = ()) -> FastAPI:  # fmt: skip
+        plain_503: bool = False, json_503: bool = False, slow: bool = False, off: tuple[str, ...] = ()) -> FastAPI:  # fmt: skip
     app = FastAPI()
 
     def auth(
@@ -64,6 +64,12 @@ def toy(*, broken_route: bool = False, bad_page: bool = False, open_api: bool = 
         @app.get("/v1/needs-key", dependencies=[Depends(auth)])
         def needs_key() -> dict:
             raise HTTPException(503, "key not set")
+
+    if slow:
+        @app.get("/v1/crime", dependencies=[Depends(auth)])
+        def crime() -> dict:
+            time.sleep(1.5)
+            return {}
 
     if plain_503:
         @app.get("/v1/down", dependencies=[Depends(auth)])
@@ -185,3 +191,10 @@ def test_a_switched_off_page_is_said_and_not_a_failure() -> None:
     assert code == 0, text
     assert "off  page /wishlist  (switched off at /modules)" in text and "FAIL" not in text
     assert "2 pages switched off, not checked" in text
+
+
+def test_a_slow_endpoint_is_reported_but_does_not_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(smoke, "TIMEOUT", 0.5)
+    code, text = go(toy(slow=True))
+    assert code == 0, text
+    assert "slow GET /v1/crime" in text and "1 too slow to answer, not counted" in text

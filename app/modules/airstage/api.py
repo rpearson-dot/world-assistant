@@ -151,7 +151,10 @@ async def airstage_poll(ctx: dict[str, Any]) -> Any:
     async with engine.connect() as conn:
         us = await units(conn)
     if not us:
-        return None
+        async def nothing() -> dict[str, Any]:
+            return {"not_set_up": "No units added yet: add each one's address and device id on the Air conditioning page"}
+
+        return await tracked(engine, "airstage_poll", nothing)
 
     async def work() -> dict[str, Any]:
         states, failed = {}, 0

@@ -123,6 +123,7 @@ ICONS = {
     "here": '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/>',
     "bikes": '<circle cx="6" cy="16" r="4"/><circle cx="18" cy="16" r="4"/><path d="M6 16l4-8h5l3 8M10 8l2 8h-6M14 5h3"/>',
     "outdoors": '<path d="M3 20 12 4l9 16z"/><path d="M12 4v16M9 20l3-5 3 5"/>',
+    "aircon": '<rect x="3" y="5" width="18" height="8" rx="2"/><path d="M6 10h12"/><path d="M8 16c0 1.5-1 2-1 3M12 16c0 1.5-1 2-1 3M16 16c0 1.5-1 2-1 3"/>',
     "more": '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
 }  # fmt: skip
 
@@ -137,6 +138,7 @@ PAGES = (  # (id, path, label, icon, on the phone's tab bar)
     ("environment", "/environment", "Environment", "pollen", False),
     ("places", "/places", "Places", "places", False),
     ("vehicles", "/vehicles", "Vehicles", "vehicles", False),
+    ("home", "/home", "In the home", "aircon", False),
     ("bikes", "/bikes", "Bikes", "bikes", False),
     ("shopping", "/shopping", "Shopping", "shopping", False),
     ("graph", "/graph", "Graph", "graph", False),
@@ -154,7 +156,7 @@ SECTIONS = {"shopping": (("shopping", "/shopping", "List"), ("wishlist", "/wishl
                             ("env-overflows", "/environment/overflows", "Overflows"))}  # fmt: skip
 # The tabs a module declares (Module.tabs) join their section; a section that had none starts with its menu page,
 # whose label becomes the first tab ("Tracker" for the buses).
-_FIRST = {"bus": "Tracker"}
+_FIRST = {"bus": "Tracker", "home": "Overview"}
 
 
 def _module_tabs() -> None:

@@ -50,7 +50,8 @@ fill in the rest the next morning.
 
 This is a comparison, not advice: check a tariff's terms before you switch.
 
-It is worked out each day at 11:13, after the morning's meter readings arrive, or when you press "Work it out again".
+It is worked out only when you press "Work it out again". Nothing runs on a schedule, and nothing is sent to
+your phone.
 
 ## API
 

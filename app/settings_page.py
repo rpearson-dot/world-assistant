@@ -29,7 +29,9 @@ PAGE = """<!doctype html>
   .sum .big { font-size: 28px; font-weight: 750; } .sum .meter { flex: 1 1 160px; height: 10px; }
   .item { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
   .item:last-child { border-bottom: 0; } .item .name { font-weight: 650; } .item .badge { white-space: nowrap; align-self: start; }
-  .item .what, .item .more { grid-column: 1 / -1; } .item .what { color: var(--dim); font-size: 13px; } .item .more { font-size: 14px; }
+  .item .what, .item .more, .item .acts { grid-column: 1 / -1; }
+  .item .acts { display: flex; gap: 8px; margin-top: 6px; } .item .acts .btn, .item .acts button { padding: 6px 14px; font-size: 14px; }
+  .item .acts .btn { border: 1px solid var(--line); border-radius: var(--pill, 999px); text-decoration: none; color: var(--ink); } .item .what { color: var(--dim); font-size: 13px; } .item .more { font-size: 14px; }
   .group { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--dim); margin: 14px 0 0; }
   .wiz { border-color: var(--accent); } .steps { display: flex; gap: 6px; margin-bottom: 12px; }
   .steps span { flex: 1; height: 4px; border-radius: 2px; background: var(--line); } .steps span.done { background: var(--accent); }
@@ -223,15 +225,26 @@ function item(x) {
   const d = el('div', 'item');
   d.append(el('div', 'name', x.name), badge(x.state), el('div', 'what', x.unlocks));
   const more = el('div', 'more', details(x));
-  if (x.link) {
-    const a = el('a', null, x.link.startsWith('/') ? ' Open' : ' Get a key'); a.href = x.link;
-    if (!x.link.startsWith('/')) { a.target = '_blank'; a.rel = 'noopener'; }
-    if (x.link.startsWith('/') || ['missing', 'limited', 'off'].includes(x.state)) more.append(a);
+  if (x.link && !x.link.startsWith('/') && ['missing', 'limited', 'off'].includes(x.state) && x.enabled !== false) {
+    const a = el('a', null, ' Get a key'); a.href = x.link; a.target = '_blank'; a.rel = 'noopener'; more.append(a);
   }
   if (x.keys && x.keys.length && x.state !== 'ready') {
     const b = el('button', 'link', 'Add the key here'); b.type = 'button'; b.onclick = () => tab('keys'); more.append(' ', b);
   }
   d.append(more);
+  if (x.module) {
+    const acts = el('div', 'acts');
+    if (x.enabled && x.page) { const a = el('a', 'btn', 'Set up'); a.href = x.page; acts.append(a); }
+    else if (x.enabled && x.keys && x.keys.length) { const k = el('button', null, 'Set up'); k.type = 'button'; k.onclick = () => tab('keys'); acts.append(k); }
+    const b = el('button', x.enabled ? '' : 'primary', x.enabled ? 'Turn off' : 'Turn on'); b.type = 'button';
+    if (x.enabled && x.needed_by && x.needed_by.length) { b.disabled = true; b.title = 'Needed by ' + x.needed_by.join(', '); }
+    b.onclick = async () => {
+      b.disabled = true;
+      try { await api('/v1/modules/' + x.id + (x.enabled ? '/disable' : '/enable'), { method: 'POST' }); setup = await api('/v1/setup'); renderSetup(); }
+      catch (e) { b.disabled = false; more.append(el('div', 'err', e.message)); }
+    };
+    acts.append(b); d.append(acts);
+  }
   return d;
 }
 function renderSetup() {

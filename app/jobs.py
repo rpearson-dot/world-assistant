@@ -35,7 +35,8 @@ async def tracked(
     except Exception as exc:
         await _finish(engine, run_id, "error", None, f"{type(exc).__name__}: {exc}")
         raise
-    status = "skipped" if isinstance(result, str) and result in _SKIPPED else "ok"
+    skipped = (isinstance(result, str) and result in _SKIPPED) or (isinstance(result, dict) and bool(result.get("not_set_up")))
+    status = "skipped" if skipped else "ok"
     await _finish(engine, run_id, status, result, None)
     return result
 

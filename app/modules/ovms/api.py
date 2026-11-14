@@ -88,8 +88,15 @@ async def ovms_housekeep(ctx: dict[str, Any]) -> Any:
 async def ovms_watch(ctx: dict[str, Any]) -> Any:
     """Every 15 minutes: warnings that come from time passing (the car gone quiet), which no message would raise."""
     engine = ctx["engine"]
-    async with engine.connect() as conn:
-        cars = await store.vehicles(conn)
-    for v in cars:
-        await listener.check(engine, v)
-    return {"cars": len(cars)} if cars else None
+
+    async def work() -> dict[str, Any]:
+        async with engine.connect() as conn:
+            cars = await store.vehicles(conn)
+        if not cars:
+            return {"not_set_up": "Nothing heard from a car yet: the OVMS module publishes to the broker in Settings → "
+                                  "Home Assistant (Server V3), and World Assistant's broker user must be able to read ovms/#"}
+        for v in cars:
+            await listener.check(engine, v)
+        return {"cars": len(cars)}
+
+    return await tracked(engine, "ovms_watch", work)
