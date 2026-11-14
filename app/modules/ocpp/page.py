@@ -40,8 +40,12 @@ pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-hei
 
 <div class="card hero" id="none" hidden><div class="say">No charger has connected yet.</div>
   <div class="dim">In the charger's settings (its app or web page), set the central system (OCPP server) address to
-  <b id="addr"></b><i>its id</i>, OCPP 1.6J. The charger can talk to only one central system, so this replaces Home
-  Assistant's OCPP integration. World Assistant must be reached on your home network, not through Tailscale.</div></div>
+  <b id="addr"></b><b class="cpid">charge point ID</b>, OCPP 1.6J.
+  The <b>charge point ID</b> is the name the charger gives itself, set in the same settings next to the address
+  (keep the one it has: Home Assistant's OCPP integration shows it, and it can be put under Chargers allowed to
+  connect below). The address is the server's address on your home
+  network, never a Tailscale one, because the charger is on your home network. The charger can talk to only one
+  central system, so this replaces Home Assistant's OCPP integration.</div></div>
 
 <section id="view" hidden>
 <div class="card">
@@ -71,7 +75,8 @@ pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-hei
     <div class="row"><label>Ask for meter readings while charging every <input id="every" type="number" min="15" max="900" style="width:6em"> s</label>
       <label class="tick"><input id="ha" type="checkbox"> Show the charger in Home Assistant</label>
       <button id="save" type="button">Save</button></div>
-    <p class="dim">The address for a charger: <b id="addr2"></b><i>its id</i></p>
+    <p class="dim">The address for a charger: <b id="addr2"></b><b class="cpid">charge point ID</b> (the charger's own
+    name for itself, set next to the address in its settings)</p>
     <p id="smsg" class="dim"></p>
   </div>
 <h3>Tools</h3>
@@ -102,6 +107,8 @@ async function load() {
   try {
     data = await api('GET', '/v1/ocpp');
     $('addr').textContent = $('addr2').textContent = data.address;
+    const ids = data.settings.chargers || [];
+    if (Array.isArray(ids) && ids.length === 1) document.querySelectorAll('.cpid').forEach(x => x.textContent = ids[0]);
     const keep = $('cp').value; $('cp').replaceChildren(...data.chargers.map(c => new Option(c.id, c.id)));
     if (keep && data.chargers.some(c => c.id === keep)) $('cp').value = keep;
     $('none').hidden = data.chargers.length > 0; $('view').hidden = !data.chargers.length;

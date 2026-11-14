@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import logging
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -18,6 +19,7 @@ from app.auth import require_token
 from app.jobs import tracked
 from app.modules.airstage import ha, unit
 
+log = logging.getLogger("wa.airstage")
 router = APIRouter(prefix="/v1/airstage", tags=["airstage"], dependencies=[Depends(require_token)])
 KEY = "airstage.units"
 QUIET_MIN = 30
@@ -29,13 +31,26 @@ async def units(conn: Any) -> list[dict[str, str]]:
     return list(v or [])
 
 
+def _state(uid: str, raw: Any) -> tuple[dict[str, Any] | None, str | None]:
+    """A unit's state from a kept reading, or why it could not be read (one odd reading never stops the page)."""
+    try:
+        return unit.state(raw), None
+    except Exception as exc:
+        log.exception("air conditioning: unit %s sent a reading that could not be read: %r", uid, raw)
+        return None, f"its answer could not be read ({type(exc).__name__}: {exc})"[:200]
+
+
 async def latest(conn: Any) -> dict[str, dict[str, Any]]:
     rows = (await conn.execute(text(
         "SELECT DISTINCT ON (unit) unit, at, ok, error, raw FROM airstage_reading ORDER BY unit, at DESC"))).all()  # fmt: skip
-    good = {r[0]: (r[1], r[4]) for r in (await conn.execute(text(
+    good = {r[0]: (r[1], r[2]) for r in (await conn.execute(text(
         "SELECT DISTINCT ON (unit) unit, at, raw FROM airstage_reading WHERE ok ORDER BY unit, at DESC"))).all()}  # fmt: skip
-    return {r[0]: {"at": r[1], "ok": r[2], "error": r[3], "good_at": good.get(r[0], (None, None))[0],
-                   "state": unit.state(good[r[0]][1]) if r[0] in good else None} for r in rows}  # fmt: skip
+    out = {}
+    for r in rows:
+        st, why = _state(r[0], good[r[0]][1]) if r[0] in good else (None, None)
+        out[r[0]] = {"at": r[1], "ok": r[2] and why is None, "error": why or r[3],
+                     "good_at": good.get(r[0], (None, None))[0], "state": st}  # fmt: skip
+    return out
 
 
 @router.get("")

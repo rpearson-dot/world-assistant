@@ -33,13 +33,25 @@ class UnitError(Exception):
 
 
 def _v(raw: dict[str, Any], name: str) -> str | None:
-    v = raw.get(name)
-    return None if v in (None, "", NOT_AVAILABLE) else str(v)
+    v = raw.get(name) if isinstance(raw, dict) else None
+    if isinstance(v, (list, tuple)):  # some firmware answers a value as a one-item list
+        v = v[0] if len(v) == 1 else None
+    if isinstance(v, dict) or v is None:
+        return None
+    v = str(v).strip()
+    return None if v in ("", NOT_AVAILABLE) else v
 
 
 def _flag(raw: dict[str, Any], name: str) -> bool | None:
     v = _v(raw, name)
     return None if v is None else v == "1"
+
+
+def _num(v: str | None) -> float | None:
+    try:
+        return float(v) if v is not None else None
+    except ValueError:
+        return None
 
 
 def state(raw: dict[str, Any]) -> dict[str, Any]:
@@ -48,8 +60,8 @@ def state(raw: dict[str, Any]) -> dict[str, Any]:
     def temp(name: str, f: Any) -> float | None:
         v = _v(raw, name)
         try:
-            return round(f(int(v)), 1) if v is not None else None
-        except ValueError:
+            return round(f(int(float(v))), 1) if v is not None else None
+        except (TypeError, ValueError, OverflowError):
             return None
 
     power = _flag(raw, "iu_onoff")
@@ -58,7 +70,7 @@ def state(raw: dict[str, Any]) -> dict[str, Any]:
         "power": power, "mode": MODES.get(_v(raw, "iu_op_mode") or ""), "fan": FANS.get(_v(raw, "iu_fan_spd") or ""),
         "target_c": temp("iu_set_tmp", lambda x: x / 10), "indoor_c": temp("iu_indoor_tmp", lambda x: (x - 5000) / 100),
         "outdoor_c": temp("iu_outdoor_tmp", lambda x: (x - 5000) / 100),
-        "energy": float(_v(raw, "iu_pow_cons")) if (_v(raw, "iu_pow_cons") or "").isdigit() else None,
+        "energy": _num(_v(raw, "iu_pow_cons")),
         "swing_vertical": _flag(raw, "iu_af_swg_vrt"), "swing_horizontal": _flag(raw, "iu_af_swg_hrz"),
         "economy": _flag(raw, "iu_economy"), "powerful": _flag(raw, "iu_powerful"), "low_noise": _flag(raw, "ou_low_noise"),
         "minimum_heat": _flag(raw, "iu_min_heat"), "filter_due": _flag(raw, "iu_fltr_sign_reset"),
@@ -119,7 +131,11 @@ async def read(client: httpx.AsyncClient, ip: str, device_id: str) -> dict[str, 
         r = await _post(client, ip, "GetParam", body)
         if r.get("result") != "OK":
             raise UnitError(f"the unit refused to answer ({r.get('error') or r.get('result')})")
-        raw.update(r.get("value") or {})
+        value = r.get("value") or {}
+        if isinstance(value, list):  # [{"name": ..., "value": ...}] from some firmware
+            value = {x.get("name"): x.get("value") for x in value if isinstance(x, dict) and x.get("name")}
+        if isinstance(value, dict):
+            raw.update(value)
     return raw
 
 

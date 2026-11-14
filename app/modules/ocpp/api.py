@@ -19,8 +19,20 @@ router = APIRouter(prefix="/v1/ocpp", tags=["ocpp"], dependencies=[Depends(requi
 QUIET_S = 900  # disconnected this long is worth a notification
 
 
-def _host(request: Request) -> str:
-    return (request.headers.get("host") or "your-server:8010").split(",")[0]
+def address(host_header: str | None) -> str:
+    """The address a charger on the home network uses: this server's home-network address and port 8010. Opened by
+    a home-network address it is that one; opened another way (through Tailscale or a name) it cannot be known here,
+    so it is left for you to fill in."""
+    import ipaddress
+
+    host = (host_header or "").split(",")[0].strip().rsplit(":", 1)[0].strip("[]")
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_private and not ip.is_loopback and not str(ip).startswith("100."):
+            return f"ws://{ip}:8010/ocpp/"
+    except ValueError:
+        pass
+    return "ws://<this server's home network address>:8010/ocpp/"
 
 
 @router.get("")
@@ -44,7 +56,7 @@ async def overview(request: Request) -> dict[str, Any]:
                     "connected_at": r["connected_at"], "booted_at": r["booted_at"], "boot": r["boot"], "meter": r["meter"],
                     "status_info": r["status_info"], "config": r["config"], "week": week.get(r["id"], {"boots": 0, "drops": 0, "faults": 0}),
                     "session": sessions.get(r["id"])})  # fmt: skip
-    return {"settings": st, "chargers": out, "address": f"ws://{_host(request)}/ocpp/"}
+    return {"settings": st, "chargers": out, "address": address(request.headers.get("host"))}
 
 
 class SettingsIn(BaseModel):
