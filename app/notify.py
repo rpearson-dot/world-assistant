@@ -35,8 +35,9 @@ KEY = "notify"
 KINDS = {"bikes": "Bike batteries and parts due", "firmware": "Firmware changes",
          "environment": "Environment warnings", "home": "Car, charger and home (charger faults and restarts, car warnings)",
          "health": "World Assistant itself (a stopped worker or job, a full disk, backups)",
-         "system": "System (sync failures, keys running out, recalls)"}  # fmt: skip
-DEFAULTS: dict[str, Any] = {"enabled": True, "kinds": {"bikes": True, "firmware": False, "environment": True, "home": True, "health": True, "system": False},
+         "system": "System (sync failures, keys running out, recalls)",
+         "modules": "Outside modules that need your attention (an update held, falling behind, a limit reached)"}  # fmt: skip
+DEFAULTS: dict[str, Any] = {"enabled": True, "kinds": {"bikes": True, "firmware": False, "environment": True, "home": True, "health": True, "system": False, "modules": True},
                             "quiet_from": "22:00", "quiet_to": "07:00", "topic": None}  # fmt: skip
 
 
