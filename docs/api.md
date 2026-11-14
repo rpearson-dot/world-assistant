@@ -9,7 +9,7 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [ovms](#ovms) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [ovms](#ovms) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
 
 
 ## airstage
@@ -102,6 +102,9 @@ pages themselves hold no data: each one calls these endpoints.
 | POST | `/v1/bikes/rides/import` | Garmin Connect's activities CSV. Rides already imported are skipped; outdoor rides of the last four weeks get a wet suggestion from the rain gauges. |
 | DELETE | `/v1/bikes/rides/{ride_id}` | Delete a ride (logged twice, or not a ride at all): its wear comes off the parts. An imported ride deleted here comes back if the same file is imported again. |
 | PATCH | `/v1/bikes/rides/{ride_id}` | Say whether a ride was wet (the suggestion is only that), or which bike it was on (Garmin often keeps the last bike chosen): either confirms it. |
+| GET | `/v1/bikes/routes` | The routes you ride again and again: rides from the last `routes_years` (5) ridden more than `routes_more_than` (5) times, each with how often, how far, when first and last, and whether it is watched for road events. |
+| DELETE | `/v1/bikes/routes/{route_id}/watch` | Unwatch Route |
+| POST | `/v1/bikes/routes/{route_id}/watch` | Watch a route like a trip: its corridor kept (150 m either side) so road works and closures along it are found. |
 | POST | `/v1/bikes/service` | Log what was done. A replacement retires the old part and fits the new one (a spare from the shelf, taking one off it, or a new part) in the same place, with its count from now. A service, check, charge or top-up restarts the part's count. A crash puts its checks on the due list. A cost or a note is just kept. |
 | DELETE | `/v1/bikes/service/{service_id}` | Undo a logged service, check, charge or cost: the part's count goes back to what it was. Undoing a replacement also puts the old part back where it was and takes the new one away (a spare goes back on the shelf). A replacement whose new part has had things logged since is refused: undo those first. |
 | POST | `/v1/bikes/sets` | A labelled set: a wheel (front or rear) or any group of parts. A new wheel can come with the usual parts for a bike (from its answers: tyre, tube or sealant, tyre check, rotor, cassette, hub...), and be fitted straight away, the wheel it replaces going into storage. |
@@ -495,6 +498,14 @@ pages themselves hold no data: each one calls these endpoints.
 |---|---|---|
 | GET | `/v1/stops/near` | Stops within a radius, nearest first. |
 | GET | `/v1/stops/{atco}` | One stop by ATCO code, the id TfL and the bus tracker use. |
+
+## tariffs
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/tariffs` | The last comparison (worked out each morning, after the meter readings) and the settings. |
+| POST | `/v1/tariffs/compare` | Work the comparison out again now (it fetches every Octopus tariff: about half a minute). |
+| PUT | `/v1/tariffs/settings` | Count readings from (when the house last changed); your house battery's usable kWh and charge rate (for the shifted costs); your region if your tariff code does not say; and tariffs from other suppliers' quotes. |
 
 ## tfl
 

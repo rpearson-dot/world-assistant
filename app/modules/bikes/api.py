@@ -54,7 +54,7 @@ router = APIRouter(prefix="/v1/bikes", tags=["bikes"], dependencies=[Depends(req
 TZ = ZoneInfo("Europe/London")
 BIKE_KG = 10.0  # a bike's weight when none is given (for tyre pressures)
 SETTINGS = {"to_outdoors": "auto", "wet_factor": W.WET_FACTOR, "trainer_has_cassette": True,
-            "surface_factors": dict(W.SURFACE_FACTORS), "min_spares": {}}
+            "surface_factors": dict(W.SURFACE_FACTORS), "min_spares": {}, "routes_years": 5, "routes_more_than": 5}
 
 
 def _slug(s: str) -> str:
@@ -167,6 +167,8 @@ class SettingsIn(BaseModel):
     weight_kg: float | None = Field(None, gt=20, lt=250)
     surface_factors: dict[Literal["gravel", "mtb"], float] | None = Field(None, description="each 1 to 3")
     min_spares: dict[str, int] | None = Field(None, description="kind: how many to keep on the shelf (0 for none)")
+    routes_years: float | None = Field(None, ge=0.5, le=20, description="rides from the last this many years make routes")
+    routes_more_than: int | None = Field(None, ge=1, le=100, description="a route is offered once ridden more than this")
 
 
 @router.get("/settings")
@@ -189,6 +191,66 @@ async def put_settings(request: Request, body: SettingsIn, rider: str = Query(..
         await c.execute(text("UPDATE bike_rider SET settings = CAST(:s AS jsonb), weight_kg = COALESCE(:w, weight_kg) WHERE id = :r"),
                         {"s": json.dumps(st), "w": body.weight_kg, "r": rider})  # fmt: skip
     return await get_settings_(request, rider)
+
+
+# --- the routes you ride again and again ---------------------------------------------------------------------------
+async def _routes(engine: AsyncEngine, rider: str) -> list[dict[str, Any]]:
+    from app.modules.bikes import ride_routes as RR
+
+    r = await _rider(engine, rider)
+    st = {**SETTINGS, **(r["settings"] or {})}
+    async with engine.connect() as c:
+        rows = [dict(x) for x in (await c.execute(text(
+            "SELECT id, started, km, route, indoor, title FROM bike_ride WHERE rider_id = :r AND route IS NOT NULL "
+            "AND NOT indoor AND started > now() - make_interval(days => :d)"),
+            {"r": rider, "d": round(365.25 * float(st["routes_years"]))})).mappings().all()]  # fmt: skip
+        try:
+            watched = [(x[0], x[1]) for x in await c.execute(text("SELECT id, centreline FROM nh_corridor WHERE source = 'rides' AND enabled"))]
+        except Exception:  # noqa: BLE001 - no corridors kept (the National Highways module is off)
+            watched = []
+    out = RR.common(rows, datetime.now(UTC), float(st["routes_years"]), int(st["routes_more_than"]))
+    for g in out:
+        shape = RR.resample(g["route"])
+        g["watched"] = next((cid for cid, line in watched if len(line or []) > 1 and RR.same(shape, RR.resample(line))), None)
+    return out
+
+
+@router.get("/routes")
+async def ride_routes(request: Request, rider: str = Query(...)) -> dict[str, Any]:
+    """The routes you ride again and again: rides from the last `routes_years` (5) ridden more than `routes_more_than`
+    (5) times, each with how often, how far, when first and last, and whether it is watched for road events."""
+    r = await _rider(request.app.state.engine, rider)
+    st = {**SETTINGS, **(r["settings"] or {})}
+    return {"years": st["routes_years"], "more_than": st["routes_more_than"],
+            "routes": await _routes(request.app.state.engine, rider)}  # fmt: skip
+
+
+@router.post("/routes/{route_id}/watch")
+async def watch_route(request: Request, route_id: str, rider: str = Query(...)) -> dict[str, Any]:
+    """Watch a route like a trip: its corridor kept (150 m either side) so road works and closures along it are found."""
+    from app.corridor import Corridor
+    from app.modules import registry
+
+    g = next((x for x in await _routes(request.app.state.engine, rider) if x["id"] == route_id), None)
+    if g is None:
+        raise HTTPException(404, "no such route (the routes change as you ride: reload them)")
+    save, rematch = registry.provider("corridors.save"), registry.provider("corridors.rematch")
+    if save is None:
+        raise HTTPException(409, "road events are kept by the National Highways module: turn it on to watch a route")
+    cid = g["watched"] or f"ride-{route_id}"
+    await save(request.app.state.engine, Corridor(cid, f"Ride: {g['name']}", tuple((p[0], p[1]) for p in g["route"]), 150.0), source="rides")
+    if rematch:
+        await rematch(request.app.state.engine)
+    return {"corridor": cid, "name": g["name"]}
+
+
+@router.delete("/routes/{route_id}/watch", status_code=204)
+async def unwatch_route(request: Request, route_id: str, rider: str = Query(...)) -> None:
+    g = next((x for x in await _routes(request.app.state.engine, rider) if x["id"] == route_id), None)
+    if g is None or not g["watched"]:
+        raise HTTPException(404, "that route is not watched")
+    async with request.app.state.engine.begin() as c:
+        await c.execute(text("DELETE FROM nh_corridor WHERE id = :i AND source = 'rides'"), {"i": g["watched"]})
 
 
 # --- bikes, sets and parts -------------------------------------------------------------------------------------------

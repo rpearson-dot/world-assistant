@@ -17,7 +17,7 @@ PAGE = """<!doctype html>
 <title>World Assistant planner</title>
 <style>
 /*BASE_CSS*/
-.big { font-size: 1.5em; font-weight: 650; text-transform: capitalize; }
+.big { font-size: 1.5em; font-weight: 650; } .big::first-letter { text-transform: uppercase; }
 .pair { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 table.t { width: 100%; border-collapse: collapse; font-size: .9em; } table.t td, table.t th { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; }
 .scatter { width: 100%; height: 220px; } .scatter circle { fill: var(--series-1); opacity: .75; } .scatter line.fit { stroke: var(--series-2); stroke-width: 2; }
@@ -29,7 +29,7 @@ form.grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, mi
 <div class="bar"><input id="t" type="password" placeholder="API token" autocomplete="current-password">
 <button id="go" class="primary" type="button">Load</button></div>
 <p id="msg" class="err"></p>
-<div class="card hero"><h2>Charging, in shadow</h2>
+<div class="card"><h2>Charging, in shadow</h2>
   <div class="pair"><div><div class="dim">World Assistant would</div><div class="big" id="wa">–</div><div id="why"></div></div>
   <div><div class="dim">Home Assistant's plan</div><div class="big" id="ha">–</div><div class="dim" id="agree"></div></div></div>
   <p class="dim small" id="mode"></p></div>
@@ -89,7 +89,7 @@ async function load() {
     $('agree').textContent = c.agreed_pct == null ? '' : 'Agreed ' + c.agreed_pct + '% of ' + c.checks + ' checks in the last 7 days';
     $('mode').textContent = (c.act ? 'World Assistant is acting on this (in Auto).' : 'Shadow only: World Assistant decides but does not act.') + (l && l.acted ? ' Last: ' + l.acted + '.' : '');
     const t = $('diff'); t.replaceChildren();
-    if (!c.differences.length) t.append(el('tr')).append(el('td', 'No differences in the last 7 days.'));
+    if (!c.differences.length) { const r = el('tr'); r.append(el('td', 'No differences in the last 7 days.')); t.append(r); }
     else { const h = el('tr'); ['From', 'World Assistant', 'Home Assistant', 'Why World Assistant'].forEach(x => h.append(el('th', x))); t.append(h);
       c.differences.slice().reverse().forEach(d => { const r = el('tr'); [when(d.at), d.planner, d.home_assistant, d.why].forEach(x => r.append(el('td', x))); t.append(r); }); }
     FIELDS.forEach(k => { const e = $(k); if (!e || k === 'demand_statistic') return; if (e.type === 'checkbox') e.checked = !!st[k]; else e.value = st[k] ?? ''; });
@@ -97,7 +97,7 @@ async function load() {
     sel.replaceChildren(el('option', '(choose)')); sel.firstChild.value = '';
     (d.choices || []).forEach(o => { const e = el('option', o.name + ' (' + o.id + ')'); e.value = o.id; sel.append(e); });
     sel.value = d.statistic || st.demand_statistic || '';
-    if (d.error) { $('dsay').textContent = d.error; return; }
+    $('sc').hidden = !!d.error; if (d.error) { $('dsay').textContent = d.error; return; }
     const f = d.fit;
     $('dsay').textContent = !f.enough ? f.why : 'Evenings ' + d.window + ' are ' + f.verdict + ' from the cold (R² ' + f.r2 + ', over ' + f.days +
       ' evenings): about ' + f.base_kwh + ' kWh plus ' + f.kwh_per_degree_hour + ' kWh per degree-hour, give or take ' + f.spread_kwh + ' kWh.';

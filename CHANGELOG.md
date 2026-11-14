@@ -41,7 +41,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - **Weather (Open-Meteo), Environment → Weather.** The weather at home now, hour by hour for a week, each day's
   heating degree-hours (how cold, added up, which is what heating follows), and the past as it turned out (back 92
   days the first time). In Home Assistant as sensors. No key. See `docs/weather.md`.
-- **Your meter's half-hourly readings from Octopus**, import and export, fetched each morning (back 90 days the first
+- **Your meter's half-hourly readings from Octopus**, import and export, fetched each morning (back a year the first
   time) and priced at the rates in force, so plans can be checked against what was really bought and sold
   (`GET /v1/energy/usage`).
 - **Home energy planner, Energy → Planner.** Every five minutes, what World Assistant would do with the car (charge
@@ -56,6 +56,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   windows and the longest gap between them; exports priced apart (Flux with its own); the best import and export to
   move to and the saving a year. Readings count from a date you set and never from more than a year back. The meter
   readings now go back a year. See `docs/tariffs.md`.
+- **Bike garage: routes you ride.** Routes ridden more than 5 times in the last 5 years (both settings), found
+  from your rides' GPS routes either way round, with how often and when last. Watch one and its corridor is kept,
+  so road works and closures along it are found like a trip's.
+- **Events without a postcode** are now checked against their town's centre (the middle of the venues already seen
+  there, at their postcodes): a listing more than 25 km from it is moved there, as a misplaced postcode is.
 - **Module SDK version 2:** a `startup` extension point, modules' own menu tabs (`Module.tabs`), jobs that run only at
   times (`Module.occasional`), and a version number a module is checked against (`docs/module-sdk.md`).
 

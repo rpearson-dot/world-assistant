@@ -19,7 +19,7 @@ PAGE = """<!doctype html>
 /*BASE_CSS*/
 .wrap { overflow-x: auto; }
 table.t { width: 100%; border-collapse: collapse; font-size: .9em; } table.t td, table.t th { padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
-table.t td.n, table.t th.n { text-align: right; white-space: nowrap; } tr.mine td { font-weight: 650; } tr.best td:first-child::before { content: "★ "; color: var(--series-2); }
+table.t td.n, table.t th.n { text-align: right; white-space: nowrap; } tr.mine td { font-weight: 650; } tr.best td:first-child > div:first-child::before { content: "★ "; color: var(--series-2); }
 .day { display: flex; height: 10px; width: 144px; border-radius: 3px; overflow: hidden; margin-top: 3px; } .day i { flex: 1; background: var(--line); } .day i.c { background: var(--series-1); }
 .cond { font-size: .85em; color: var(--dim); } .say { font-size: 1.15em; }
 form.grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); } form.grid label { display: grid; gap: 3px; }
@@ -111,7 +111,7 @@ function show(res) {
     [r => mine && !r.current ? (r.rank_year_pounds <= mine.rank_year_pounds ? gbp(mine.rank_year_pounds - r.rank_year_pounds) + ' less' : gbp(r.rank_year_pounds - mine.rank_year_pounds) + ' more') : '', 'n'],
   ], s && r.code === s.import)));
   const e = $('exp'); e.replaceChildren(); head(e, [['Tariff'], ['Rate', 'n'], ['A year', 'n']]);
-  if (!res.export.length) e.append(el('tr')).append(el('td', 'No export readings yet.'));
+  if (!res.export.length) { const r = el('tr'); r.append(el('td', 'No export readings yet.')); e.append(r); }
   res.export.forEach(r => e.append(row(r, [[r => r.average_p == null ? '–' : r.average_p.toFixed(1) + 'p', 'n'], [r => gbp(-r.year_pounds), 'n']], s && r.code === s.export)));
 }
 function manualList() {
