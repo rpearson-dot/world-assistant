@@ -13,7 +13,7 @@ SETTINGS_KEY = "ocpp.settings"
 # mode: "off" (the charger refuses to charge), "on" (charges whenever a car is plugged in), "auto" (Home Assistant's
 # charging plan decides through its switch)
 MODES = ("off", "on", "auto")
-DEFAULTS: dict[str, Any] = {"chargers": [], "meter_every_s": 60, "publish_ha": True, "mode": "auto"}
+DEFAULTS: dict[str, Any] = {"chargers": [], "meter_every_s": 60, "publish_ha": True, "mode": "auto", "server_address": ""}
 KEEP_DAYS = 730
 _COLS = ("last_seen", "connected", "connected_at", "boot", "booted_at", "status", "error_code", "status_info", "meter",
          "config", "heartbeat_s")  # fmt: skip

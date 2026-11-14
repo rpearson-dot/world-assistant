@@ -2,6 +2,20 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.53.2] - 2026-11-14
+
+### Fixed
+
+- **Air conditioning: the page failed (500) as soon as a unit had answered.** Reading each unit's last good reading
+  looked one column past the end. The two-minute read hit the same fault after keeping each reading, so its
+  notifications were not sent either. Units saved before the fix are kept and appear once it is installed. An
+  answer a unit sends in an unexpected shape is now shown against that unit instead of stopping the page.
+- **Charger set-up text.** "its id" is now "charge point ID", with what it is (the name the charger gives itself,
+  set next to the address in its settings), filled in when one charger is listed as allowed. The address shown
+  is the server's home-network address with port 8010; opened through Tailscale, the page no longer offers the
+  Tailscale name, which a charger on the home network cannot use. The server's home address can be set on the
+  Charger page (Settings and tools), so the right address is shown wherever the page is opened.
+
 ## [0.53.1] - 2026-11-14
 
 ### Added

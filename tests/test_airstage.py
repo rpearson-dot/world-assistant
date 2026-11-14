@@ -68,3 +68,52 @@ def test_home_assistant_sees_a_climate_entity_and_its_commands_are_changes() -> 
     assert ha.command("mode", "cool") == {"power": True, "mode": "cool"}
     assert ha.command("target_c", "21.5") == {"target_c": 21.5}
     assert ha.command("swing", "on") == {"swing_vertical": True}
+
+
+def test_odd_answers_never_break_the_reading() -> None:
+    s = unit.state({**RAW, "iu_onoff": ["1"], "iu_set_tmp": "215.0", "iu_pow_cons": "12.5", "iu_indoor_tmp": {"x": 1}})
+    assert s["power"] is True and s["target_c"] == 21.5 and s["energy"] == 12.5 and s["indoor_c"] is None
+    assert unit.state("not a reading")["power"] is None  # type: ignore[arg-type]
+
+
+URL = __import__("os").environ.get("WA_TEST_DATABASE_URL")
+
+
+@pytest.mark.skipif(not URL, reason="needs WA_TEST_DATABASE_URL")
+def test_the_page_lists_units_that_have_answered() -> None:
+    """The 14 November fault: once a unit had answered, listing the units failed (500)."""
+    import importlib
+
+    import sqlalchemy as sa
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.modules.airstage import api
+
+    sync = sa.create_engine(URL)  # type: ignore[arg-type]
+    with sync.begin() as conn:
+        conn.execute(sa.text("DROP TABLE IF EXISTS airstage_reading"))
+        mig = importlib.import_module("migrations.versions.0051_airstage")
+        mig.op = Operations(MigrationContext.configure(conn))  # type: ignore[attr-defined]
+        mig.upgrade()
+
+    async def go() -> dict[str, Any]:
+        engine = create_async_engine(URL)  # type: ignore[arg-type]
+        try:
+            await api._keep(engine, "lounge", RAW, None)
+            await api._keep(engine, "lounge", None, "no answer")
+            await api._keep(engine, "hall", None, "no answer")
+            async with engine.connect() as conn:
+                return await api.latest(conn)
+        finally:
+            await engine.dispose()
+
+    try:
+        got = asyncio.run(go())
+    finally:
+        with sync.begin() as conn:
+            conn.execute(sa.text("DROP TABLE IF EXISTS airstage_reading"))
+        sync.dispose()
+    assert got["lounge"]["ok"] is False and got["lounge"]["state"]["target_c"] == 21.5 and got["lounge"]["good_at"] is not None
+    assert got["hall"]["state"] is None and got["hall"]["error"] == "no answer"

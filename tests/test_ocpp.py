@@ -265,3 +265,13 @@ def test_the_master_switch_is_offered_to_home_assistant() -> None:
     sel = next(v for t, v in topics.items() if "/select/" in t)
     assert sel["options"] == ["Off", "On", "Auto"] and sel["command_topic"].endswith("/ocpp/U1HKP/mode/set")
     assert ha.state({"status": "Charging"}, None, "on")["mode"] == "on"
+
+
+def test_the_address_given_to_a_charger_is_on_the_home_network() -> None:
+    from app.modules.ocpp.api import address
+
+    assert address("10.0.2.20:8010") == "ws://10.0.2.20:8010/ocpp/"
+    assert address("192.168.1.5") == "ws://192.168.1.5:8010/ocpp/"
+    for other in ("world-assistant.tailad4b24.ts.net", "100.101.2.3:8010", "localhost:8010", None):
+        assert address(other) == "ws://<this server's home network address>:8010/ocpp/"
+    assert address("world-assistant.tailad4b24.ts.net", "10.0.2.29") == "ws://10.0.2.29:8010/ocpp/"  # set on the page
