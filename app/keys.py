@@ -118,13 +118,13 @@ def write_key(name: str, value: str) -> None:
     value = value.strip()
     if not value or any(c in value for c in "\r\n\0"):
         raise HTTPException(422, "a key is one line of text")
-    d = secretstore.keys_dir().resolve()
-    safe = os.path.basename(name)  # a name is letters, digits and _ (checked above): never a path
-    target = (d / f"{safe}.txt").resolve()
-    if safe != name or target.parent != d:
+    base = os.path.realpath(secretstore.keys_dir())
+    # A name is letters, digits and _ (checked above), never a path; checked again the way path checkers expect.
+    target = os.path.normpath(os.path.join(base, name + ".txt"))
+    if not target.startswith(base + os.sep) or os.path.dirname(target) != base:
         raise HTTPException(422, "not a key name")
     # Write a new file and move it into place, so a reader never sees half a key.
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=f".{safe}.")
+    fd, tmp = tempfile.mkstemp(dir=base, prefix=".key.")
     try:
         with os.fdopen(fd, "w") as f:
             f.write(value)
@@ -140,8 +140,9 @@ def write_key(name: str, value: str) -> None:
 async def delete_key(name: str) -> dict[str, Any]:
     """Forget the key saved here; the secret file (if any) applies again."""
     _check(name)
-    path = secretstore.keys_dir() / f"{name}.txt"
-    if path.exists():
-        path.unlink()
+    base = os.path.realpath(secretstore.keys_dir())
+    path = os.path.normpath(os.path.join(base, name + ".txt"))
+    if path.startswith(base + os.sep) and os.path.exists(path):
+        os.unlink(path)
     _, source = secretstore.resolve(name, SECRETS_DIR)
     return {"name": name, "set": source not in ("missing", "default"), "source": source}
