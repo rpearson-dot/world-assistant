@@ -272,7 +272,14 @@ async def buslog_minute(ctx: dict[str, Any]) -> Any:
 
 async def buslog_housekeep(ctx: dict[str, Any]) -> Any:
     async def work() -> dict[str, Any]:
+        from app.modules.buslog import schoolrun
+
         async with ctx["engine"].begin() as conn:
-            return await store.housekeep(conn)
+            out = await store.housekeep(conn)
+        try:
+            out.update(await schoolrun.keep_yesterday(ctx["engine"]))
+        except Exception as exc:  # noqa: BLE001 - kept next time it is looked at
+            out["schoolrun_error"] = str(exc)[:200]
+        return out
 
     return await tracked(ctx["engine"], "buslog_housekeep", work)

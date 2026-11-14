@@ -6,6 +6,57 @@ everything TfL and Bus Open Data (BODS) said, several times a minute, so it can 
 
 The page is **Buses → Route log** (`/buslog`).
 
+## The school run
+
+The top of the page answers "what happened to the buses this morning?" for the journey to school: every timetabled
+bus from **Worcester Park** (stop C) towards Kingston in the window, and what happened at **Coombe Girls School**.
+
+| Column | What it is |
+|---|---|
+| Worcester Park: due / left | The timetable, and when it left |
+| Coombe Girls School: due | The timetable (as taken before the window) |
+| expected | TfL's last prediction before it got there; its first (the start-of-day expectation) underneath |
+| got there | When it got there |
+| What happened | Made it (and whether by 08:30); from the other side of the road; turned (where); skipped the school; left the route; not seen; no data |
+
+**Actual and probable.** A time in plain type is when TfL's prediction for that stop ended as the bus got there (TfL
+stops predicting a bus at a stop when it arrives). A time in *italics with ≈* is probable: worked out from the bus's
+GPS, which comes about once a minute, from where it was either side of the stop. A prediction that ends while the
+GPS shows the bus somewhere else (turned, or off the route) is "dropped", never an arrival.
+
+**How a bus is followed.** Each GPS position is placed on the route's line towards Kingston: how far along it is, and
+how far from the line.
+
+- **Turned:** 400 m or more back from the furthest point it reached. The place is the last stop it passed: a bus
+  that turns after Blakes Lane (it shows Blakes Lane towards Kingston, then Blakes Lane towards Sutton) turned at
+  **the A3 roundabout** (St James Church / Kingston By-Pass); one that reaches the Fountain and comes back turned at
+  **the Fountain roundabout**.
+- **Left the route:** more than 150 m from the line. Where it comes back says what it missed: further along, the
+  stops in between were skipped; heading back towards Sutton, it turned off the route.
+- **From the other side:** a bus that comes back past the school heading towards Sutton, or that TfL says reached the
+  stop on the return side. It counts as having got there (the pupils can get off at the school).
+- **Delays:** the first time TfL showed it 5 minutes or more late at any stop, and when.
+- **Not seen / no data:** a timetabled journey no bus was seen running. If no positions came in around its time, it is
+  "no data" (not known), not "not seen".
+
+Tap a bus for every stop from Worcester Park to Kingston (timetable, TfL's first and last predictions, when it got
+there, and notes such as "not reached: turned at the A3 roundabout"), and **Watch it on the map**.
+
+**Playback.** Below the time slider, marks show the morning's moments: green at the school, red turned or left the
+route, blue back on the route, amber a delay shown. Tap one to jump to just before it with that bus picked (its last
+ten minutes drawn behind it). **Play** runs the morning at 1×, 10×, 30× or 60× (10× shows a two-hour window in 12
+minutes; 60× in 2). A recorded day plays from the buses' GPS positions, drawn between fixes.
+
+**Reliability over time.** Each recorded morning: buses recorded, made it (and the percentage), in time, from the
+other side, turned, skipped, not seen, with the totals. Days with minutes of no positions are marked with *.
+A day is worked out once it is over and kept (`buslog_schoolrun`); the nightly job keeps yesterday's.
+
+**The stops and the time** are set under "Stops and time" (NaPTAN ids; defaults Worcester Park C `490001346C`,
+Coombe Girls School `490005569W` and, on the other side, `490005569E`; by 08:30).
+
+**Download this day** gives the day's whole recording (route, timetable, positions, predictions, status, requests)
+as one gzip JSON file.
+
 ## What is recorded
 
 From 07:00 to 09:00 on school days (the window and route are changeable on the page):
@@ -78,3 +129,8 @@ Expect about 30 MB a day of recording, mostly raw answers: about 6 GB over a sch
 | `GET /v1/buslog/vehicle/{vehicle}?day=&at=` | a bus's remaining stops against the timetable |
 | `POST /v1/buslog/schedule-now` | take today's route and timetable now |
 | `GET /v1/buslog/raw/{poll}` | a request's answer exactly as it came (a download) |
+| `GET /v1/buslog/schoolrun?day=&fresh=` | the school run: each bus, what happened, each stop's times, the moments to mark |
+| `GET /v1/buslog/schoolrun/reliability?days=` | each recorded morning's figures and the totals |
+| `GET`/`PUT /v1/buslog/schoolrun/settings` | the first stop, the school's stops (both sides) and the time to be there by |
+| `GET /v1/buslog/tracks?day=` | every bus's GPS positions over the window, for playback |
+| `GET /v1/buslog/export?day=` | the day's recording as one gzip JSON file |

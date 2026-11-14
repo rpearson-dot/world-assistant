@@ -73,7 +73,7 @@ pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-hei
     <label>Chargers allowed to connect <input id="ids" placeholder="e.g. U1HKP (blank: any on the home network)">
       <span class="hint">Separate several with commas.</span></label>
     <div class="row"><label>Ask for meter readings while charging every <input id="every" type="number" min="15" max="900" style="width:6em"> s</label>
-      <label>This server's home network address <input id="srv" placeholder="e.g. 10.0.2.29"></label>
+      <label>This server's home network address <input id="srv" placeholder="e.g. 10.0.2.49"></label>
       <label class="tick"><input id="ha" type="checkbox"> Show the charger in Home Assistant</label>
       <button id="save" type="button">Save</button></div>
     <p class="dim">The address for a charger: <b id="addr2"></b><b class="cpid">charge point ID</b> (the charger's own

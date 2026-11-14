@@ -2,6 +2,30 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.56.0] - 2026-11-14
+
+### Added
+
+- **The school run, Buses → Route log.** Every timetabled 213 from Worcester Park towards Kingston in the morning
+  and what happened to it at Coombe Girls School: due and left at Worcester Park; due, expected (TfL's first and last
+  predictions) and arrived at the school, actual (TfL's prediction ended as it arrived) or probable (from its GPS).
+  It says when a bus turned and where (the A3 roundabout after Blakes Lane, the Fountain roundabout), left the route
+  and what it missed, or reached the school from the other side of the road (counted as made it), and when TfL first
+  showed it 5 minutes late. Tap a bus for every stop. **Reliability over time**: per morning, buses recorded, made
+  it, the percentage and in time by 08:30. **Playback**: marks on the timeline for each moment, tap to jump; play at
+  1×, 10×, 30× or 60× from the buses' GPS. **Download this day** gives the whole recording as one file.
+- **Discovery, In the home → Discovery.** What each device on your network probably is (likely or possibly, and
+  why: its network adapter's maker from the IEEE register, the name the router gave it, what it looks up, the ports
+  it uses), and the module that would suit it: turn one on, set it up for this device (with its address), or that
+  it is already looked after. It changes nothing. Needs the Network module. See `docs/discovery.md`.
+- **Network, In the home → Network.** Every device on your network and what it does, from the UniFi gateway's syslog
+  (a new `wa-syslog` listener on UDP 5514) and Pi-hole v6's own API. You see joining and leaving, DNS lookups
+  allowed or blocked, and firewall decisions, plus your Pi-hole groups and a notification for a new device. **Suggested
+  blocks** cover only what gets past your Pi-hole lists: on a manufacturer's tracker list, named for telemetry and
+  the like, or looked up around the clock. What a device needs is shown as "keep", and what blocking may break is
+  said. Copy the list, or Add to Pi-hole for one device (its own extra group, beside yours) or one of your groups,
+  with Undo. Nothing goes to Home Assistant. See `docs/network.md`.
+
 ## [0.55.0] - 2026-11-14
 
 ### Added

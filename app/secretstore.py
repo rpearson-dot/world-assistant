@@ -66,6 +66,7 @@ KNOWN: tuple[Known, ...] = (
     Known("datathistle_refresh_token", False, "Data Thistle refresh token (World Assistant renews both every 25 days)"),
     Known("what3words_api_key", False, "what3words API key: the three words for a place on Here, and three words to a place"),
     Known("octopus_api_key", False, "Octopus Energy API key (finds your tariff from the account number)"),
+    Known("pihole_app_password", False, "Pi-hole app password, for the Network module (Pi-hole: Settings, Web interface / API)"),
     Known("dvla_api_key", False, "DVLA Vehicle Enquiry Service key: each vehicle's tax and MOT status"),
     Known("dvsa_mot_client_id", False, "DVSA MOT History \"Client ID\" (from DVSA's email)"),
     Known("dvsa_mot_client_secret", False, "DVSA MOT History \"Client Secret\" (from DVSA's email; lasts two years)"),
@@ -288,6 +289,7 @@ WEB_KEYS = frozenset({
     "tfwm_app_id", "tfwm_app_key", "pollen_api_key", "ukpn_api_key",
     "gridserve_api_key", "dvla_api_key", "dvsa_mot_api_key", "dvsa_mot_client_id", "dvsa_mot_client_secret", "dvsa_mot_scope_url",
     "dvsa_mot_token_url", "kitchenowl_token", "sainsburys_email", "sainsburys_password", "ocado_email", "ocado_password",
+    "pihole_app_password",
 })  # fmt: skip
 
 

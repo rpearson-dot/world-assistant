@@ -112,6 +112,7 @@ class Settings(BaseSettings):
     # Live polling of closures, speed limits and signs, stored in Postgres.
     nh_poll_enabled: bool = False
     local_tz: str = "Europe/London"
+    syslog_port: int = 5514  # the host's UDP port for the network module's syslog listener (WA_SYSLOG_PORT)
     bus_poll_enabled: bool = True
     bus_live_enabled: bool = True  # GPS positions of followed buses (needs the BODS key), inside the journey window only
     ticketmaster_base_url: str = ""  # empty = https://app.ticketmaster.com/discovery/v2
@@ -232,6 +233,10 @@ class Settings(BaseSettings):
     @property
     def octopus_api_key(self) -> str:
         return read_secret("octopus_api_key")
+
+    @property
+    def pihole_app_password(self) -> str:
+        return read_secret("pihole_app_password")
 
     @property
     def bods_api_key(self) -> str:
