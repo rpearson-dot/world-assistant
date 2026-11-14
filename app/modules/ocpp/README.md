@@ -4,6 +4,8 @@ World Assistant as your charger's OCPP server: start and stop, every restart, dr
 
 Point the charger's OCPP 1.6J central system at ws://<this server>:8010/ocpp/<charger id> on your home network. It replaces Home Assistant's OCPP integration (a charger talks to one central system)
 
+How to use it: [docs/ocpp.md](../../../docs/ocpp.md).
+
 | | |
 |---|---|
 | Endpoints | `/v1/ocpp`, `/charger`, `/ocpp` |

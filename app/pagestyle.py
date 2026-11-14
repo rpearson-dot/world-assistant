@@ -91,6 +91,8 @@ BASE_CSS = themes.css() + """
   h3 { font-size: 14px; margin: 14px 0 4px; color: var(--dim); }
   .card h2 .push { float: right; } .scroll { overflow-x: auto; }
   .row label, .fields label { display: grid; gap: 2px; font-size: 13px; color: var(--dim); font-weight: 600; }
+  .row label.tick { display: inline-flex; align-items: center; gap: 6px; align-self: end; padding-bottom: 8px; }
+  .row label.tick input { width: auto; }
   .checks label { display: inline-flex; flex-direction: row; align-items: center; gap: 5px; margin: 3px 14px 3px 0;
     color: var(--ink); font-weight: 400; font-size: 14px; }
   .checks input { padding: 0; }

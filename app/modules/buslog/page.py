@@ -49,7 +49,7 @@ PAGE = """<!doctype html>
   <div class="row">
     <label>Day <input id="day" type="date"></label>
     <label style="flex:1 1 260px">Time <span id="tlabel" class="dim"></span><input id="t2" type="range" min="0" max="7200" step="10"></label>
-    <label style="flex-direction:row;align-items:center;gap:6px"><input id="follow" type="checkbox" checked style="width:auto"> Live</label>
+    <label class="tick"><input id="follow" type="checkbox" checked> Live</label>
   </div>
   <div id="map" role="img" aria-label="Map of the route, its stops and its buses"></div>
   <p class="dim" id="mapnote"></p>
@@ -65,7 +65,7 @@ PAGE = """<!doctype html>
       <label>Route <input id="line" maxlength="8" style="width:6em"></label>
       <label>From <input id="start" type="time"></label>
       <label>To <input id="end" type="time"></label>
-      <label style="flex-direction:row;align-items:center;gap:6px"><input id="every" type="checkbox" style="width:auto">
+      <label class="tick"><input id="every" type="checkbox">
         Every day, weekends and holidays too <span class="hint">(a test)</span></label>
       <button id="save" type="button">Save</button>
     </div>

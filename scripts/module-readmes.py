@@ -24,7 +24,7 @@ DOCS = {"nh": "trip-conditions.md", "fuel": "data-sources.md", "tfl": "trains.md
         "conditions": "trip-conditions.md", "vehicles": "leaf.md", "vehiclechecks": "data-sources.md",
         "shopping": "shopping.md", "here": "here.md", "crime": "data-sources.md", "food": "data-sources.md",
         "wishlist": "wishlist.md", "bikes": "bikes.md", "outdoors": "outdoors.md", "graph": "graph.md",
-        "buslog": "bus-log.md"}  # fmt: skip
+        "buslog": "bus-log.md", "ocpp": "ocpp.md", "ovms": "ovms.md", "airstage": "airstage.md"}  # fmt: skip
 
 
 def _summary(p: Path) -> str:

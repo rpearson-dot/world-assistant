@@ -18,8 +18,8 @@ PAGE = """<!doctype html>
 /*BASE_CSS*/
 .stats { display: flex; flex-wrap: wrap; gap: 18px; margin: 6px 0; }
 .stats div { min-width: 7em; } .stats b { display: block; font-size: 1.3em; }
-.ev { display: grid; grid-template-columns: 9.5em 1fr; gap: 2px 10px; font-size: .92em; }
-.ev .when { color: var(--dim); font-variant-numeric: tabular-nums; }
+.ev { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; font-size: .92em; }
+.ev .when { white-space: nowrap; color: var(--dim); font-variant-numeric: tabular-nums; }
 .ev .k-boot, .ev .k-fault { color: var(--bad); } .ev .k-disconnected, .ev .k-refused { color: var(--warn); }
 pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-height: 360px; overflow: auto; }
 </style></head><body><main>
@@ -53,7 +53,7 @@ pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-hei
     <label>Chargers allowed to connect <input id="ids" placeholder="e.g. U1HKP (blank: any on the home network)">
       <span class="hint">Separate several with commas.</span></label>
     <div class="row"><label>Ask for meter readings while charging every <input id="every" type="number" min="15" max="900" style="width:6em"> s</label>
-      <label style="flex-direction:row;align-items:center;gap:6px"><input id="ha" type="checkbox" style="width:auto"> Show the charger in Home Assistant</label>
+      <label class="tick"><input id="ha" type="checkbox"> Show the charger in Home Assistant</label>
       <button id="save" type="button">Save</button></div>
     <p class="dim">The address for a charger: <b id="addr2"></b><i>its id</i></p>
     <p id="smsg" class="dim"></p>
