@@ -8,6 +8,9 @@ How to use it: [docs/data-sources.md](../../../docs/data-sources.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | Fuel Finder (GOV.UK): every station's prices |
+| Gives | Home Assistant: fuel prices |
 | Keys | `fuel_finder_client_id`, `fuel_finder_client_secret` |
 | Uses when there | [nh](../nh/), [vehicles](../vehicles/) |
 | Endpoints | `/v1/fuel`, `/fuel` |

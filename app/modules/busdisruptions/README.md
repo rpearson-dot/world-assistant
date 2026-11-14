@@ -8,6 +8,8 @@ How to use it: [docs/bus-disruptions.md](../../../docs/bus-disruptions.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | Bus Open Data Service disruptions |
 | Keys | `bods_api_key` |
 | Needs | [bods](../bods/) |
 | Uses when there | [bus](../bus/) |

@@ -8,6 +8,9 @@ How to use it: [docs/energy.md](../../../docs/energy.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | Octopus Energy: rates, Saving Sessions, meter readings |
+| Gives | Home Assistant: rates, cheap windows, sessions |
 | Keys | `octopus_api_key` |
 | Endpoints | `/v1/energy`, `/energy` |
 | Scheduled jobs | `energy_sync`, `energy_usage` |

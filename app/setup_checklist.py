@@ -135,6 +135,7 @@ async def checklist(request: Request) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 - the page must still show the rest
         last = None
     from app.modules import selection
+    from app.modules.flows import flow
 
     mods = list(registry.modules())
     on = selection.enabled_ids(mods, await selection.load(request.app.state.engine, fresh=True))
@@ -144,6 +145,7 @@ async def checklist(request: Request) -> dict[str, Any]:
         r["module"], r["enabled"] = True, x.id in on
         r["page"] = x.link if x.link.startswith("/") else next((p for p in x.prefixes if not p.startswith("/v1")), None)
         r["needed_by"] = [m.name for m in mods if m.id in on and x.id in m.needs]
+        r["flow"] = flow(x)
         if not r["enabled"]:
             r["state"] = OFF
         return r

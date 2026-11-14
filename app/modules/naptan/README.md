@@ -8,6 +8,8 @@ How to use it: [docs/naptan.md](../../../docs/naptan.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | NaPTAN: every stop and station (a download) |
 | Endpoints | `/v1/stops` |
 | Scheduled jobs | `naptan_sync` |
 | Assistant tools | `stops_near` |

@@ -8,6 +8,9 @@ How to use it: [docs/weather.md](../../../docs/weather.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | Open-Meteo forecast and archive |
+| Gives | Home Assistant: temperature and heating degree-hours |
 | Endpoints | `/v1/weather`, `/weather` |
 | Scheduled jobs | `weather_sync` |
 | Assistant tools | `weather` |

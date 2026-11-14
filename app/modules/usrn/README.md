@@ -8,6 +8,9 @@ How to use it: [docs/boundaries.md](../../../docs/boundaries.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | OS Open USRN (a download) |
+| Gives | street lines for road works |
 | Uses when there | [boundary](../boundary/) |
 | Scheduled jobs | `usrn_sync` |
 

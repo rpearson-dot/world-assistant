@@ -8,6 +8,9 @@ How to use it: [docs/wishlist.md](../../../docs/wishlist.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | Aldi and Lidl special offers |
+| Gives | Home Assistant: wishlist matches |
 | Keys | `kitchenowl_token` |
 | Needs | [shopping](../shopping/) |
 | Endpoints | `/v1/wishlist`, `/wishlist` |

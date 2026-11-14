@@ -8,6 +8,9 @@ How to use it: [docs/trains.md](../../../docs/trains.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | TfL Unified API: arrivals, boards, road works |
+| Gives | Home Assistant: train boards |
 | Keys | `tfl_app_key` (optional) |
 | Uses when there | [nr](../nr/) |
 | Endpoints | `/v1/tfl`, `/trains` |

@@ -47,6 +47,15 @@ def build(module_id: str) -> str:
     if doc and (ROOT / "docs" / doc).exists():
         out += [f"How to use it: [docs/{doc}](../../../docs/{doc}).", ""]
     rows = []
+    if m.role:
+        rows.append(("Role", {"source": "Source: fetches from outside", "processor": "Processor: works from other data",
+                              "output": "Output: gets things to you"}.get(m.role, m.role)))  # fmt: skip
+    if m.reads:
+        rows.append(("Reads", "; ".join(m.reads)))
+    if m.gives:
+        rows.append(("Gives", "; ".join(m.gives)))
+    if m.controls:
+        rows.append(("**Controls**", "; ".join(m.controls)))
     if m.keys or m.more_keys:
         rows.append(("Keys", ", ".join(f"`{k}`" for k in (*m.keys, *m.more_keys)) + (" (optional)" if m.key_optional else "")))
     if m.needs:

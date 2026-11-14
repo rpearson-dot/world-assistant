@@ -203,7 +203,7 @@ async def ocpp_watch(ctx: dict[str, Any]) -> Any:
     if not rows:
         async def nothing() -> dict[str, Any]:
             return {"not_set_up": "No charger has connected yet: point its OCPP 1.6J central system at "
-                                  "ws://<this server>:8010/ocpp/<charger id> (see docs/ocpp.md)"}
+                                  "ws://<this server>:8010/ocpp/<charge point ID> (see docs/ocpp.md)"}
 
         return await tracked(engine, "ocpp_watch", nothing)
 

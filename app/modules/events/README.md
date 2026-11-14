@@ -8,6 +8,9 @@ How to use it: [docs/data-sources.md](../../../docs/data-sources.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | Skiddle; Ticketmaster; Data Thistle |
+| Gives | Home Assistant: events near home |
 | Keys | `skiddle_api_key`, `ticketmaster_api_key`, `datathistle_token`, `datathistle_refresh_token` |
 | Endpoints | `/v1/events`, `/events` |
 | Scheduled jobs | `events_sync`, `datathistle_renew` |

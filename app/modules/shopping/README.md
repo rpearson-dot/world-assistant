@@ -8,6 +8,8 @@ How to use it: [docs/shopping.md](../../../docs/shopping.md).
 
 | | |
 |---|---|
+| Role | Processor: works from other data |
+| Reads | KitchenOwl (your list); Sainsbury's and Ocado prices (the supermarket service) |
 | Keys | `kitchenowl_token` |
 | Endpoints | `/v1/shopping`, `/shopping` |
 | Assistant tools | `shopping`, `add_to_list`, `price_list`, `send_to_basket`, `orders`, `tick_off_order`, `clear_list` |

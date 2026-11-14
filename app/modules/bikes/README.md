@@ -8,6 +8,9 @@ How to use it: [docs/bikes.md](../../../docs/bikes.md).
 
 | | |
 |---|---|
+| Role | Processor: works from other data |
+| Reads | Garmin Connect (your rides, Personal API); GOV.UK product recalls; BikeRegister |
+| Gives | notifications: bike batteries, parts due, firmware |
 | Uses when there | [environment](../environment/), [outdoors](../outdoors/), [shopping](../shopping/), [wishlist](../wishlist/) |
 | Endpoints | `/v1/bikes`, `/bikes` |
 | Scheduled jobs | `garmin_sync`, `bikes_check` |

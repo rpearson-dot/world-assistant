@@ -9,7 +9,7 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [ovms](#ovms) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [ovms](#ovms) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [solar](#solar) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
 
 
 ## airstage
@@ -474,6 +474,17 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/shopping/slots` | The next delivery slots at one retailer, read only, kept for an hour (Sainsbury's needs a browser: 10-20 s). |
 | GET | `/v1/shopping/status` | What is set up and reachable. Always answers; each part says what is wrong with it. |
 | POST | `/v1/shopping/tick` | Take these items off the list (they have been ordered, say). They stay in KitchenOwl's recent items. |
+
+## solar
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/solar` | Today's and tomorrow's expected kWh, what is still to come today, the power expected now, and each hour. |
+| GET | `/v1/solar/accuracy` | Each recent day: the total forecast the evening before, and what the panels made (Home Assistant's statistic chosen on the page). How far off it usually is says how far to trust tomorrow's. |
+| POST | `/v1/solar/from-home-assistant` | The arrays set in Home Assistant's Forecast.Solar integration, read from its files over the share set on the Home Assistant page (not saved: check them, then Save). |
+| POST | `/v1/solar/refresh` | Fetch the forecast now (uses one of the hour's 12 requests for each array). |
+| GET | `/v1/solar/settings` | Get Settings  |
+| PUT | `/v1/solar/settings` | Your arrays (up to 6: forecast.solar allows 12 requests an hour, one an array) and the Home Assistant statistic that is the panels' total output (for the accuracy check). |
 
 ## stations
 

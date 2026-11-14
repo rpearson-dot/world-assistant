@@ -2,6 +2,22 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.54.0] - 2026-11-14
+
+### Added
+
+- **Solar forecast, Energy → Solar** (forecast.solar, no key). Your arrays' expected output today and tomorrow,
+  hour by hour, refreshed every hour, with what is still to come today and the power expected now. Each day's total
+  as forecast the evening before is kept and set against what the panels made, from Home Assistant's statistics.
+  Arrays can be copied from Home Assistant's Forecast.Solar integration. In Home Assistant as sensors, and shown on
+  the Planner tab next to tomorrow evening's likely use. See `docs/solar.md`.
+- **What each module does with data**, on Settings → Setup and in each module's README: its role (source,
+  processor or output), what it reads, what it gives (Home Assistant entities, notifications, pages, assistant
+  tools) and what it controls in the real world (the charger, the air conditioners, the planner when it acts). A
+  test checks these against the code.
+- **Module SDK version 3:** `Module.role`, `reads`, `gives` and `controls`; `app.ha_stats` (Home Assistant's states and long-term statistics) and
+  `app.ha_smb.read_config_file` in the published interface.
+
 ## [0.53.2] - 2026-11-14
 
 ### Fixed
@@ -15,7 +31,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   is the server's home-network address with port 8010; opened through Tailscale, the page no longer offers the
   Tailscale name, which a charger on the home network cannot use. The server's home address can be set on the
   Charger page (Settings and tools), so the right address is shown wherever the page is opened.
-
 ## [0.53.1] - 2026-11-14
 
 ### Added

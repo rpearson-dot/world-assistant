@@ -8,6 +8,9 @@ How to use it: [docs/boundaries.md](../../../docs/boundaries.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | OS Boundary-Line (a download) |
+| Gives | which council and region places, stops and road works are in, for other modules |
 | Scheduled jobs | `boundary_sync` |
 
 ## Files

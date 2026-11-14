@@ -8,6 +8,10 @@ How to use it: [docs/airstage.md](../../../docs/airstage.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | the air conditioners (Fujitsu Airstage, on the home network) |
+| Gives | Home Assistant: a climate entity for each unit; notifications: error codes, filters, units not answering |
+| **Controls** | the air conditioners: on and off, mode, target, fan, swing and extras (from the page, the assistant or Home Assistant) |
 | Endpoints | `/v1/airstage`, `/aircon` |
 | Scheduled jobs | `airstage_poll`, `airstage_housekeep` |
 | Assistant tools | `aircon`, `aircon_set` |

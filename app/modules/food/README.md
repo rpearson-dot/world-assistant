@@ -8,6 +8,9 @@ How to use it: [docs/data-sources.md](../../../docs/data-sources.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | Food Standards Agency: hygiene ratings, allergy alerts and recalls |
+| Gives | Home Assistant: food alerts |
 | Uses when there | [crime](../crime/), [shopping](../shopping/), [wishlist](../wishlist/) |
 | Endpoints | `/v1/food` |
 | Scheduled jobs | `food_alerts_check` |

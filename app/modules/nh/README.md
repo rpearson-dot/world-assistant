@@ -6,6 +6,9 @@ How to use it: [docs/trip-conditions.md](../../../docs/trip-conditions.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | National Highways road events and signs (API) |
+| Gives | Home Assistant: road events |
 | Keys | `nh_subscription_key`, `nh_subscription_key_secondary` |
 | Scheduled jobs | `capture_job`, `poll_live`, `poll_planned` |
 | Plugs into | `corridors.save`, `corridors.rematch` |

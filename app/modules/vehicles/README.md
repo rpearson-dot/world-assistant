@@ -6,6 +6,7 @@ How to use it: [docs/leaf.md](../../../docs/leaf.md).
 
 | | |
 |---|---|
+| Role | Processor: works from other data |
 | Uses when there | [fuel](../fuel/), [gridserve](../gridserve/), [nh](../nh/), [octopus](../octopus/) |
 | Endpoints | `/v1/vehicles`, `/vehicles`, `re:/v1/trips/[^/]+/cost` |
 | Assistant tools | `trip_cost` |

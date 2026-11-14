@@ -8,6 +8,9 @@ How to use it: [docs/ev.md](../../../docs/ev.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | GRIDSERVE chargers and their status |
+| Gives | Home Assistant: EV chargers |
 | Keys | `gridserve_api_key` |
 | Uses when there | [conditions](../conditions/) |
 | Endpoints | `/v1/ev` |

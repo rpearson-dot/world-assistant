@@ -8,6 +8,8 @@ How to use it: [docs/postcodes.md](../../../docs/postcodes.md).
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | OS Code-Point Open (a download) |
 | Endpoints | `/v1/postcodes` |
 | Scheduled jobs | `codepoint_sync` |
 | Assistant tools | `postcode` |

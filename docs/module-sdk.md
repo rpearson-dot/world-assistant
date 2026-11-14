@@ -15,6 +15,23 @@ log says to update World Assistant. Additions raise the version; nothing is take
 |---|---|---|
 | 1 | 0.52.0 | the first: the rules, the published interface and the extension points below |
 | 2 | 0.53.0 | the `startup` extension point; `Module.tabs` (its pages as tabs of a menu section); `Module.occasional` (jobs that run only at times); `app.localnet`, `app.mqtt`, `app.mqtt_config`, `app.ha_discover` and `app.modules.gate` in the published interface |
+| 3 | 0.54.0 | `Module.role`, `reads`, `gives` and `controls` (what a module does with data, shown on the Setup page and in its README); `app.ha_stats` (Home Assistant's states and long-term statistics) and `app.ha_smb.read_config_file` (a file from Home Assistant's config folder) in the published interface |
+
+## What a module does with data
+
+Every module says what it does with data, on its declaration:
+
+- `role`: **source** (fetches from outside), **processor** (works from what other modules and Home Assistant hold)
+  or **output** (gets things to you). Most do a little of each; the role is the main one.
+- `reads`: outside services, devices on the home network and Home Assistant. The modules it uses come from `needs`
+  and `uses` and are not repeated.
+- `gives`: Home Assistant entities, notifications and anything else that leaves World Assistant. Its pages and
+  assistant tools come from `tabs`, `prefixes` and `tools`.
+- `controls`: what it changes in the real world (a charger, an air conditioner). Empty for most.
+
+The Setup page shows them under each module, and its README lists them. `tests/test_module_flows.py` checks them
+against the code: a module that sends notifications, publishes to Home Assistant, reads Home Assistant or commands a
+device must say so. The built-in modules' entries are one table in `app/modules/flows.py`.
 
 ## The rules
 
