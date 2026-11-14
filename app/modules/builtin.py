@@ -249,6 +249,18 @@ BUILTIN: tuple[Module, ...] = (
                    Job("app.modules.buslog.collect:buslog_housekeep", {"hour": {2}, "minute": {41}, "timeout": 300, "max_tries": 1})),
            tools=("bus_log",),
            provides={"assistant.tools": "app.modules.buslog.tools:TOOLS"}),
+    Module("ocpp", "Car charger (OCPP)", "World Assistant as your charger's OCPP server: start and stop, every restart, "
+           "drop and fault recorded, and the charger in Home Assistant",
+           category="energy", jobs=("ocpp_watch",),
+           note="Point the charger's OCPP 1.6J central system at ws://<this server>:8010/ocpp/<charger id> on your home "
+                "network. It replaces Home Assistant's OCPP integration (a charger talks to one central system)",
+           routers=("app.modules.ocpp.api:router", "app.modules.ocpp.page:page_router", "app.modules.ocpp.server:ws_router"),
+           prefixes=("/v1/ocpp", "/charger", "/ocpp"),
+           worker=(Job("app.modules.ocpp.api:ocpp_watch", {"minute": _every(5), "timeout": 120, "max_tries": 1}),
+                   Job("app.modules.ocpp.api:ocpp_housekeep", {"hour": {3}, "minute": {33}, "timeout": 300, "max_tries": 1})),
+           tools=("charger",),
+           provides={"assistant.tools": "app.modules.ocpp.tools:TOOLS", "startup": "app.modules.ocpp.server:startup",
+                     "shutdown": "app.modules.ocpp.server:shutdown"}),
     Module("conditions", "Trip conditions", "Road works, closures and floods on a saved trip's route",
            category="transport", listed=False,
            routers=("app.modules.conditions.conditions:router",), prefixes=("/v1/conditions", "re:/v1/trips/[^/]+/conditions"), tools=("road_conditions",),

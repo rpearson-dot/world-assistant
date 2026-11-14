@@ -146,6 +146,7 @@ PAGES = (  # (id, path, label, icon, on the phone's tab bar)
 # Pages that are parts of another: not in the menu themselves, but tabs along the top of their section, which the menu
 # shows as current while one of them is open.
 SECTIONS = {"bus": (("bus", "/bus", "Tracker"), ("buslog", "/buslog", "Route log")),
+            "vehicles": (("vehicles", "/vehicles", "Vehicles"), ("charger", "/charger", "Charger")),
             "shopping": (("shopping", "/shopping", "List"), ("wishlist", "/wishlist", "Wishlist"),
                          ("outdoors", "/outdoors", "Outdoors")),
             "environment": (("environment", "/environment", "Air"), ("pollen", "/pollen", "Pollen"),

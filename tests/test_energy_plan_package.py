@@ -84,7 +84,8 @@ def _env(states: dict[str, Any], now: datetime = NOW) -> tuple[Any, dict[str, An
     funcs = {"states": _States(), "is_state": lambda e, v: states.get(e) == v,
              "state_attr": lambda e, a: states.get(f"{e}#{a}"), "as_datetime": as_dt, "now": lambda: now,
              "timedelta": timedelta, "none": None, "range": range,
-             "is_number": lambda v: str(v).lstrip("-").replace(".", "", 1).isdigit()}  # fmt: skip
+             "is_number": lambda v: str(v).lstrip("-").replace(".", "", 1).isdigit(),
+             "has_value": lambda e: states.get(e) not in (None, "unknown", "unavailable")}  # fmt: skip
     return env, funcs
 
 

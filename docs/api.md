@@ -9,7 +9,7 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [ask](#ask) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [outdoors](#outdoors) · [places](#places) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [ask](#ask) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [places](#places) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [stations](#stations) · [status](#status) · [stops](#stops) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [wishlist](#wishlist) · [Other](#other)
 
 
 ## ask
@@ -304,6 +304,19 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/notify/settings` | Get Notify |
 | PUT | `/v1/notify/settings` | Put Notify |
 | POST | `/v1/notify/test` | A test notification now (quiet hours and the switches do not apply). |
+
+## ocpp
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/ocpp` | Every charger World Assistant has heard from, with its state, the last week's restarts, drops and faults, and the address to give a charger. |
+| PUT | `/v1/ocpp/settings` | Which chargers may connect (by id; none listed: any on the home network), how often to ask for meter readings while charging, and whether to publish the charger to Home Assistant. |
+| POST | `/v1/ocpp/{cid}/command` | Any of the commands in protocol.COMMANDS: Reset {type: Soft\|Hard}, GetConfiguration {keys}, ChangeConfiguration {key, value}, TriggerMessage {message}, UnlockConnector, ChangeAvailability {type}, ClearCache. |
+| GET | `/v1/ocpp/{cid}/events` | Events |
+| GET | `/v1/ocpp/{cid}/messages` | The newest messages either way, exactly as they went. |
+| GET | `/v1/ocpp/{cid}/sessions` | Sessions |
+| POST | `/v1/ocpp/{cid}/start` | Start charging now (OCPP RemoteStartTransaction on connector 1). |
+| POST | `/v1/ocpp/{cid}/stop` | Stop the charging session the charger last said it started. |
 
 ## outdoors
 

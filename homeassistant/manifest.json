@@ -38,8 +38,8 @@
       "sha256": "7366e744dd9e52593782f0ec313062bd66f2cd9a43dab056bf182393b82b1ad6"
     },
     "packages/wa_ev_plan.yaml": {
-      "changed_in": "0.52.0",
-      "sha256": "4aa25b17b4fef72b7e1f93138d93455e61d3255f8a4fcfb72e4a1918cdc68987"
+      "changed_in": "0.53.0",
+      "sha256": "c79b3add0c73a66693a631141b04ffdcf2ec89d0b06e550f09a6b80f0b030652"
     },
     "packages/world_assistant_bus.yaml": {
       "changed_in": "0.7.5",

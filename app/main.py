@@ -42,6 +42,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     if await selection.first_start(app.state.engine):
         log.info("new install: starting from the essentials; the setup wizard asks which areas to add")
+    for _, start in registry.provided("startup"):
+        try:
+            await start(app)
+        except Exception:
+            log.exception("a module's startup failed")
     log.info("world-assistant api started (env=%s)", settings.env)
     yield
 

@@ -37,6 +37,9 @@
 # an OVMS Nissan Leaf). The plan reads them through its own sensors (sensor.wa_car_*, sensor.wa_charger_*), so the
 # dashboard and the energy plan's outcome log follow whatever you set.
 #
+# WORLD ASSISTANT'S OCPP SERVER: when the charger is connected to World Assistant instead of Home Assistant's OCPP
+# integration, its entities (switch.wa_ocpp_charging, sensor.wa_ocpp_status, _power, _session_energy, _energy) are
+# used automatically, unless the entity fields below name others.
 # HOW: the charger's charge control switch (OCPP remote start/stop), checked every 5 minutes and whenever the rate,
 # a free hour, the plug or the car's charge level changes. The current is set as above, before each start. Every
 # start and stop (or, in a dry run, what would have happened) goes to the logbook under "WA car charging". The
@@ -174,21 +177,21 @@ template:
         icon: mdi:ev-plug-type2
         state: >-
           {% set e = states('input_text.wa_ev_entity_status') %}
-          {{ states(e if e.count('.') == 1 else 'sensor.charger_status_connector') }}
+          {{ states(e if e.count('.') == 1 else ('sensor.wa_ocpp_status' if has_value('sensor.wa_ocpp_status') else 'sensor.charger_status_connector')) }}
       - name: "WA charger power"
         unique_id: wa_charger_power
         unit_of_measurement: kW
         device_class: power
         state: >-
           {% set e = states('input_text.wa_ev_entity_power') %}
-          {{ states(e if e.count('.') == 1 else 'sensor.charger_power_active_import') | float(0) }}
+          {{ states(e if e.count('.') == 1 else ('sensor.wa_ocpp_power' if has_value('sensor.wa_ocpp_power') else 'sensor.charger_power_active_import')) | float(0) }}
       - name: "WA charger session energy"
         unique_id: wa_charger_session_energy
         unit_of_measurement: kWh
         device_class: energy
         state: >-
           {% set e = states('input_text.wa_ev_entity_session') %}
-          {{ states(e if e.count('.') == 1 else 'sensor.charger_energy_session') | float(0) }}
+          {{ states(e if e.count('.') == 1 else ('sensor.wa_ocpp_session_energy' if has_value('sensor.wa_ocpp_session_energy') else 'sensor.charger_energy_session')) | float(0) }}
       - name: "WA charger energy total"
         unique_id: wa_charger_energy_total
         unit_of_measurement: kWh
@@ -196,7 +199,7 @@ template:
         state_class: total_increasing
         state: >-
           {% set e = states('input_text.wa_ev_entity_meter') %}
-          {% set v = states(e if e.count('.') == 1 else 'sensor.charger_energy_active_import_register') %}
+          {% set v = states(e if e.count('.') == 1 else ('sensor.wa_ocpp_energy' if has_value('sensor.wa_ocpp_energy') else 'sensor.charger_energy_active_import_register')) %}
           {{ v | float if is_number(v) else none }}
       # what the car itself last said (the plan uses "WA car charge level" below, which fills the gaps)
       - name: "WA car reported charge level"
@@ -356,7 +359,7 @@ script:
       - action: switch.turn_on
         target:
           entity_id: >-
-            {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else 'switch.charger_charge_control' }}
+            {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else ('switch.wa_ocpp_charging' if has_value('switch.wa_ocpp_charging') else 'switch.charger_charge_control') }}
   wa_car_charge_stop:
     alias: "WA car: stop charging now"
     icon: mdi:stop
@@ -364,7 +367,7 @@ script:
       - action: switch.turn_off
         target:
           entity_id: >-
-            {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else 'switch.charger_charge_control' }}
+            {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else ('switch.wa_ocpp_charging' if has_value('switch.wa_ocpp_charging') else 'switch.charger_charge_control') }}
 
 automation:
   - id: wa_ev_plan
@@ -382,7 +385,7 @@ automation:
         to: ~
     variables:
       switch: >-
-        {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else 'switch.charger_charge_control' }}
+        {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else ('switch.wa_ocpp_charging' if has_value('switch.wa_ocpp_charging') else 'switch.charger_charge_control') }}
       plan: "{{ states('sensor.wa_car_charging_plan') }}"
       current: >-
         {% set e = states('input_text.wa_ev_entity_current') %}{{ e if e.count('.') == 1 else 'number.charger_maximum_current' }}
@@ -539,6 +542,9 @@ automation:
       - condition: state
         entity_id: sensor.wa_charger_status
         state: Charging
+      # through World Assistant's own OCPP server, it asks the charger itself
+      - condition: template
+        value_template: "{{ not has_value('sensor.wa_ocpp_status') }}"
     actions:
       - action: ocpp.trigger_custom_message
         continue_on_error: true

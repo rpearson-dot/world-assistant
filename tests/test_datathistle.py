@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import httpx
@@ -97,7 +97,11 @@ async def test_merged_with_the_others_and_credited(monkeypatch: pytest.MonkeyPat
         async def search(self, *a: Any, **kw: Any) -> dict[str, Any]:
             calls.append(kw)
             Search.requests = 2  # two pages
-            return {"total": 1, "events": DT.events_of(EVENT, kw["first"], kw["last"])}
+            # the fixture's performances moved to the days asked about, so the test does not age
+            soon = {**EVENT, "schedules": [{**EVENT["schedules"][0], "performances": [
+                {**p, "ts": (kw["first"] + timedelta(days=i + 1)).isoformat() + "T20:00:00+00:00"}
+                for i, p in enumerate(EVENT["schedules"][0]["performances"][:2])]}]}
+            return {"total": 1, "events": DT.events_of(soon, kw["first"], kw["last"])}
 
     class Redis:
         def __init__(self) -> None:

@@ -33,8 +33,9 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/notify", tags=["notifications"], dependencies=[Depends(require_token)])
 KEY = "notify"
 KINDS = {"bikes": "Bike batteries and parts due", "firmware": "Firmware changes",
-         "environment": "Environment warnings", "system": "System (sync failures, keys running out, recalls)"}  # fmt: skip
-DEFAULTS: dict[str, Any] = {"enabled": True, "kinds": {"bikes": True, "firmware": False, "environment": True, "system": False},
+         "environment": "Environment warnings", "home": "Car, charger and home (charger faults and restarts, car warnings)",
+         "system": "System (sync failures, keys running out, recalls)"}  # fmt: skip
+DEFAULTS: dict[str, Any] = {"enabled": True, "kinds": {"bikes": True, "firmware": False, "environment": True, "home": True, "system": False},
                             "quiet_from": "22:00", "quiet_to": "07:00", "topic": None}  # fmt: skip
 
 
