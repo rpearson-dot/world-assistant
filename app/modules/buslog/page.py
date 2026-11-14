@@ -27,8 +27,16 @@ PAGE = """<!doctype html>
 :root[data-dark] .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.95) contrast(.9); }
 @media (prefers-color-scheme: dark) { :root:not([data-mode]) .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.95) contrast(.9); } }
 .busicon { background: var(--bus); border-radius: 5px; padding: 3px; box-shadow: 0 1px 3px var(--shadow); display: inline-block; }
+.busicon { cursor: pointer; text-align: center; }
 .busicon span { display: block; background: var(--plate); color: var(--plate-ink); font: 700 11px/1.1 ui-monospace, Menlo, Consolas, monospace;
   padding: 2px 4px; border-radius: 2px; white-space: nowrap; letter-spacing: .03em; }
+.busicon small { display: block; color: var(--bus-ink); font: 600 10px/1.2 system-ui, sans-serif; padding: 2px 2px 0; white-space: nowrap; }
+.busicon.picked { outline: 3px solid var(--accent); outline-offset: 1px; }
+#detail table { width: 100%; border-collapse: collapse; font-size: .92em; }
+#detail td, #detail th { padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: left; font-variant-numeric: tabular-nums; }
+.v-late { color: var(--bad); font-weight: 600; } .v-early { color: var(--warn); font-weight: 600; } .v-on { color: var(--good); font-weight: 600; }
+#cal table { width: 100%; border-collapse: collapse; } #cal td, #cal th { padding: 4px; border-bottom: 1px solid var(--line); text-align: left; }
+#cal input, #cal select { width: 100%; min-width: 0; } #cal td.x { width: 1%; white-space: nowrap; }
 .busicon.old { opacity: .55; }
 .strip { display: flex; gap: 1px; height: 14px; margin: 4px 0 2px; overflow: hidden; }
 .strip i { flex: 1 1 0; min-width: 0; background: var(--chip); }
@@ -50,14 +58,27 @@ PAGE = """<!doctype html>
     <label>Day <input id="day" type="date"></label>
     <label style="flex:1 1 260px">Time <span id="tlabel" class="dim"></span><input id="t2" type="range" min="0" max="7200" step="10"></label>
     <label class="tick"><input id="follow" type="checkbox" checked> Live</label>
+    <button id="sched" type="button">Download schedule now</button>
   </div>
+  <p class="dim" id="schedmsg"></p>
   <div id="map" role="img" aria-label="Map of the route, its stops and its buses"></div>
   <p class="dim" id="mapnote"></p>
+  <p class="dim">Tap a stop for its next hour, or a bus for its times to the end of its route.</p>
 </div>
+
+<div class="card" id="detail" hidden><h2 id="dtitle"></h2><p class="dim" id="dsub"></p><div id="dbody"></div></div>
 
 <div class="card"><h2>Every request that day</h2>
   <p class="dim legend">One mark a minute.<span style="background:var(--good)"></span>answered with data<span style="background:var(--warn)"></span>answered empty<span style="background:var(--bad)"></span>failed<span style="background:var(--chip)"></span>not asked</p>
   <div id="strips"></div><p id="errs" class="dim"></p></div>
+
+<div class="card" id="cal"><h2>School days</h2>
+  <p class="dim">Recording follows these on weekdays (and never on bank holidays). Terms are school days; holidays and INSET days inside them are not.</p>
+  <label>School <input id="school" maxlength="80"></label>
+  <table><thead><tr><th>What</th><th>Name</th><th>From</th><th>To</th><th></th></tr></thead><tbody id="calrows"></tbody></table>
+  <div class="row" style="margin-top:8px"><button id="caladd" type="button">Add a row</button><button id="calsave" type="button" class="primary">Save the dates</button></div>
+  <p id="calmsg" class="dim"></p>
+</div>
 
 <div class="card"><h2>Recording</h2>
   <div class="form">
@@ -95,54 +116,99 @@ const today = () => new Date().toLocaleDateString('en-CA');
 
 const map = L.map('map', { zoomControl: true }).setView([51.385, -0.26], 12);
 L.tileLayer(CFG.tile_url, { maxZoom: CFG.max_zoom, attribution: CFG.attribution }).addTo(map);
-const routeLayer = L.layerGroup().addTo(map), busLayer = L.layerGroup().addTo(map);
-let st = null, fitted = false, routeDay = null;
+// the route under the stops, the stops under the buses
+map.createPane('route').style.zIndex = 410; map.createPane('stops').style.zIndex = 620; map.createPane('buses').style.zIndex = 640;
+const routeLayer = L.layerGroup().addTo(map), stopLayer = L.layerGroup().addTo(map), busLayer = L.layerGroup().addTo(map);
+let st = null, fitted = false, routeDay = null, picked = null;  // picked: {kind: 'stop'|'bus', id}
 
 function dayStart() {  // the window's start on the chosen day, local time
   const [h, m] = (st ? st.settings.start : '07:00').split(':').map(Number);
   const d = new Date($('day').value + 'T00:00:00'); d.setHours(h, m, 0, 0); return d;
 }
 function moment() { return new Date(dayStart().getTime() + Number($('t2').value) * 1000); }
+function shownAt() { return $('follow').checked && $('day').value === today() ? new Date() : moment(); }
+const stopRadius = () => { const z = map.getZoom(); return z >= 16 ? 8 : z >= 14 ? 6 : z >= 12 ? 4.5 : 3; };
+map.on('zoomend', () => stopLayer.eachLayer(l => l.setRadius && l.setRadius(stopRadius())));
 
 async function drawRoute() {
   if (routeDay === $('day').value) return;
   routeDay = $('day').value;
   const r = await api('GET', '/v1/buslog/route?day=' + routeDay);
-  routeLayer.clearLayers();
+  routeLayer.clearLayers(); stopLayer.clearLayers();
   const pts = [];
   r.directions.forEach((d, i) => {
-    if (d.shape) L.geoJSON(d.shape, { style: { color: tok_(i ? '--series-3' : '--series-1'), weight: 4, opacity: .7 } }).addTo(routeLayer);
+    if (d.shape) {
+      L.geoJSON(d.shape, { pane: 'route', style: { color: tok_('--ink'), weight: 10, opacity: .35 } }).addTo(routeLayer);
+      L.geoJSON(d.shape, { pane: 'route', style: { color: tok_('--bus'), weight: 5, opacity: .95 } }).addTo(routeLayer);
+    }
+    const end = d.stops.length ? (d.stops[d.stops.length - 1].name || '') : '';
     d.stops.forEach(s => {
       if (s.lat == null) return;
       pts.push([s.lat, s.lon]);
-      const c = L.circleMarker([s.lat, s.lon], { radius: 4, weight: 1, color: tok_('--ink'), fillColor: tok_('--card'), fillOpacity: 1 });
-      c.bindTooltip(document.createTextNode((s.name || s.stop) + (s.letter ? ' (' + s.letter + ')' : '') + ' · ' + d.direction));
-      c.addTo(routeLayer);
+      const c = L.circleMarker([s.lat, s.lon], { pane: 'stops', radius: stopRadius(), weight: 2.5, color: tok_('--ink'), fillColor: tok_('--card'), fillOpacity: 1 });
+      c.bindTooltip(document.createTextNode((s.name || s.stop) + (s.letter ? ' (' + s.letter + ')' : '') + ' · towards ' + end));
+      c.on('click', () => showStop(s.stop, s.name));
+      c.addTo(stopLayer);
     });
   });
   if (pts.length && !fitted) { map.fitBounds(pts, { padding: [20, 20] }); fitted = true; }
   $('mapnote').textContent = r.directions.length ? 'Route as read on ' + r.directions.map(d => d.day).filter((v, i, a) => a.indexOf(v) === i).join(', ') + ' (TfL’s stop order, NaPTAN’s positions).'
-    : 'No route recorded yet: it is read at the start of the first recording minute.';
+    : 'No route recorded yet: press Download schedule now, or it is read at the start of the first recording minute.';
 }
 
 async function drawBuses() {
-  const at = $('follow').checked && $('day').value === today() ? new Date() : moment();
+  const at = shownAt();
   $('tlabel').textContent = hms(at);
   const p = await api('GET', '/v1/buslog/positions?day=' + $('day').value + '&at=' + encodeURIComponent(at.toISOString()));
   busLayer.clearLayers();
   p.buses.forEach(b => {
     if (b.lat == null) return;
-    const box = el('div', null, 'busicon' + (b.age_s > 90 ? ' old' : '')), plate = el('span', b.vehicle); box.appendChild(plate);
-    const m = L.marker([b.lat, b.lon], { icon: L.divIcon({ html: box, className: '', iconSize: null, iconAnchor: [30, 12] }) });
+    const box = el('div', null, 'busicon' + (b.age_s > 90 ? ' old' : '') + (picked && picked.kind === 'bus' && picked.id === b.vehicle ? ' picked' : ''));
+    box.append(el('span', b.vehicle), el('small', 'to ' + (b.destination || '?')));
+    const m = L.marker([b.lat, b.lon], { pane: 'buses', icon: L.divIcon({ html: box, className: '', iconSize: null, iconAnchor: [34, 18] }) });
     m.bindTooltip(document.createTextNode(b.vehicle + ' to ' + (b.destination || '?') + ' · position ' + (b.age_s != null ? b.age_s + ' s old' : 'of unknown age') +
       (b.off_route_m != null ? ' · ' + b.off_route_m + ' m from the route' : '') + (b.occupancy ? ' · ' + b.occupancy : '')));
+    m.on('click', () => showBus(b.vehicle, b.destination));
     m.addTo(busLayer);
   });
   const last = p.last_ok_poll ? new Date(p.last_ok_poll) : null;
-  $('mapnote').dataset.buses = p.buses.length;
   if (!p.last_poll) $('mapnote').textContent = 'No BODS request recorded by ' + hms(at) + ' on this day: nothing is known, which is not the same as no buses.';
   else if (!last || at - last > 60000) $('mapnote').textContent = 'BODS last answered at ' + (last ? hms(last) : 'no time this day') + ': the buses shown may be out of date.';
   else $('mapnote').textContent = p.buses.length + ' bus' + (p.buses.length === 1 ? '' : 'es') + ' in BODS’s answers in the 3 minutes to ' + hms(at) + '.';
+  if (picked) (picked.kind === 'stop' ? showStop(picked.id, picked.name, true) : showBus(picked.id, picked.name, true)).catch(() => {});
+}
+
+const hm = v => v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '–';
+function table(head, rows) {
+  const t = el('table'), th = el('thead'), tr = el('tr'); head.forEach(h => tr.append(el('th', h))); th.append(tr); t.append(th);
+  const tb = el('tbody'); rows.forEach(r => { const row = el('tr'); r.forEach(c => row.append(c instanceof Node ? (() => { const td = el('td'); td.append(c); return td; })() : el('td', c))); tb.append(row); });
+  t.append(tb); return t;
+}
+async function showStop(stop, name, quiet) {
+  picked = { kind: 'stop', id: stop, name };
+  const at = shownAt();
+  const r = await api('GET', '/v1/buslog/stop/' + encodeURIComponent(stop) + '?day=' + $('day').value + '&at=' + encodeURIComponent(at.toISOString()));
+  $('detail').hidden = false; $('dtitle').textContent = (r.name || name || stop) + ': the next hour from ' + hm(at);
+  $('dsub').textContent = r.timetable_taken_at ? 'Timetable as taken at ' + hm(r.timetable_taken_at) + '; expected times are TfL’s as they stood then.' : 'No timetable taken for this day: press Download schedule now.';
+  const box = $('dbody'); box.replaceChildren();
+  box.append(el('h3', 'Expected (TfL)'));
+  box.append(r.expected.length ? table(['Bus', 'To', 'Expected'], r.expected.map(e => [e.vehicle, e.to || '', hm(e.expected_at)])) : el('p', 'No bus predicted here in this hour.', 'dim'));
+  box.append(el('h3', 'Timetable'));
+  box.append(r.scheduled.length ? table(['Due', 'To'], r.scheduled.map(e => [hm(e.scheduled_at), e.to || e.direction])) : el('p', r.timetable_taken_at ? 'Nothing timetabled here in this hour.' : 'No timetable.', 'dim'));
+  if (!quiet) $('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+async function showBus(vehicle, dest, quiet) {
+  picked = { kind: 'bus', id: vehicle, name: dest };
+  const at = shownAt();
+  const r = await api('GET', '/v1/buslog/vehicle/' + encodeURIComponent(vehicle) + '?day=' + $('day').value + '&at=' + encodeURIComponent(at.toISOString()));
+  $('detail').hidden = false; $('dtitle').textContent = vehicle + ' to ' + (r.destination || dest || '?') + (r.stops.length ? ': ' + r.now : '');
+  $('dsub').textContent = r.note || ((r.departed ? 'Running the ' + hm(r.departed) + ' journey' : 'No timetabled journey matches it') + ' · as TfL expected at ' + hm(at) + '. On time is within a minute either way.');
+  const box = $('dbody'); box.replaceChildren();
+  if (r.stops.length) box.append(table(['Stop', 'Due', 'Expected', ''], r.stops.map(s => {
+    const v = el('span', s.words, s.verdict === 'late' ? 'v-late' : s.verdict === 'early' ? 'v-early' : s.verdict === 'on time' ? 'v-on' : 'dim');
+    return [s.name || s.stop, hm(s.scheduled_at), hm(s.expected_at), v];
+  })));
+  if (!quiet) $('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function drawStrips() {
@@ -198,6 +264,50 @@ $('save').onclick = async () => {
 };
 $('now').onclick = async () => { try { const r = await api('POST', '/v1/buslog/record-now', { minutes: Number($('mins').value) }); $('setmsg').textContent = 'Recording from the next minute until ' + hms(new Date(r.record_until)) + '.'; load(); } catch (e) { $('setmsg').textContent = e.message; } };
 $('stop').onclick = async () => { try { await api('DELETE', '/v1/buslog/record-now'); $('setmsg').textContent = 'Stopped (the window and test switch still apply).'; load(); } catch (e) { $('setmsg').textContent = e.message; } };
+
+const KINDS = [['terms', 'Term'], ['breaks', 'Holiday'], ['inset', 'INSET day'], ['notes', 'Note']];
+let cal = null;
+function calRow(kind, name, from, to) {
+  const tr = el('tr'), sel = el('select');
+  KINDS.forEach(([k, label]) => { const o = el('option', label); o.value = k; sel.append(o); }); sel.value = kind;
+  const n = el('input'); n.value = name || ''; n.maxLength = 120;
+  const f = el('input'); f.type = 'date'; f.value = from || '';
+  const t = el('input'); t.type = 'date'; t.value = to || '';
+  const sync = () => { t.disabled = sel.value === 'inset' || sel.value === 'notes'; if (t.disabled) t.value = ''; }; sel.onchange = sync; sync();
+  const x = el('td', null, 'x'), b = button('Remove', () => tr.remove()); x.append(b);
+  [sel, n, f, t].forEach(i => { const td = el('td'); td.append(i); tr.append(td); }); tr.append(x);
+  $('calrows').append(tr);
+}
+function button(text, fn) { const b = el('button', text); b.type = 'button'; b.onclick = fn; return b; }
+async function loadCal() {
+  cal = await api('GET', '/v1/buslog/calendar');
+  $('school').value = cal.school || ''; $('calrows').replaceChildren();
+  const rows = [...(cal.terms || []).map(t => ['terms', t.name, t.from, t.to]), ...(cal.breaks || []).map(t => ['breaks', t.name, t.from, t.to]),
+    ...(cal.inset || []).map(d => ['inset', 'INSET day', d, '']), ...(cal.notes || []).map(n => ['notes', n.note, n.date, ''])];
+  rows.sort((a, b) => a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0).forEach(r => calRow(...r));
+}
+$('caladd').onclick = () => calRow('breaks', '', '', '');
+$('calsave').onclick = async () => {
+  const out = { school: $('school').value.trim(), terms: [], breaks: [], inset: [], notes: [] };
+  for (const tr of $('calrows').children) {
+    const [k, n, f, t] = [...tr.querySelectorAll('select, input')].map(i => i.value);
+    if (!f) continue;
+    if (k === 'inset') out.inset.push(f);
+    else if (k === 'notes') out.notes.push({ date: f, note: n });
+    else out[k].push({ name: n, from: f, to: t || f });
+  }
+  try { await api('PUT', '/v1/buslog/calendar', out); $('calmsg').textContent = 'Saved.'; await loadCal(); load(); } catch (e) { $('calmsg').textContent = e.message; }
+};
+$('sched').onclick = async () => {
+  $('schedmsg').textContent = 'Asking TfL for today’s route and timetable…'; $('sched').disabled = true;
+  try {
+    const r = await api('POST', '/v1/buslog/schedule-now');
+    const t = r.taken || {};
+    $('schedmsg').textContent = (r.ok ? 'Taken: ' : 'Only partly taken: ') + ['outbound', 'inbound'].map(d => d + ' ' + (t[d] != null ? t[d] + ' stops' : 'failed') + (t[d + '_schedule'] ? ' (' + t[d + '_schedule'] + ')' : '')).join(', ') + '.';
+    routeDay = null; await load();
+  } catch (e) { $('schedmsg').textContent = e.message; } finally { $('sched').disabled = false; }
+};
+loadCal().catch(e => $('calmsg').textContent = e.message);
 $('go').onclick = load;
 load();
 setInterval(() => { if (!document.hidden && $('follow').checked) drawBuses().catch(() => {}); }, 10000);

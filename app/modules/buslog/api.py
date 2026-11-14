@@ -252,3 +252,96 @@ async def raw(request: Request, poll_id: int) -> Response:
     return Response(gzip.decompress(row[1]), media_type="application/octet-stream",
                     headers={"Content-Disposition": f'attachment; filename="buslog-{poll_id}.{ext}"',
                              "X-Content-Type-Options": "nosniff"})
+
+
+# --- a stop's next hour, a bus against its timetable, and taking the timetable now -------------------------------
+
+
+async def _moment(at: str | None) -> datetime:
+    try:
+        m = datetime.fromisoformat(at) if at else datetime.now(UTC)
+    except ValueError as exc:
+        raise HTTPException(422, "at: an ISO time") from exc
+    return m if m.tzinfo else m.replace(tzinfo=_tz())
+
+
+async def _context(conn: Any, line: str, d: date, at: datetime) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]], list[dict[str, Any]], datetime | None]:
+    """The route's stops by direction, the day's timetable (as last taken), TfL's predictions standing at `at`, and
+    when the timetable was taken."""
+    routes = {r[0]: r[1] for r in (await conn.execute(text(
+        "SELECT DISTINCT ON (direction) direction, stops FROM buslog_route WHERE line = :l AND service_day <= :d "
+        "ORDER BY direction, service_day DESC, taken_at DESC"), {"l": line, "d": d})).all()}  # fmt: skip
+    tt = (await conn.execute(text(
+        "SELECT t.direction, t.journey, t.stop, t.stop_name, t.scheduled_at, t.taken_at FROM buslog_timetable t "
+        "JOIN (SELECT direction, max(taken_at) AS taken_at FROM buslog_timetable WHERE line = :l AND service_day = :d "
+        "      GROUP BY direction) n ON n.direction = t.direction AND n.taken_at = t.taken_at "
+        "WHERE t.line = :l AND t.service_day = :d"), {"l": line, "d": d})).mappings().all()  # fmt: skip
+    preds = (await conn.execute(text(
+        "SELECT * FROM (SELECT DISTINCT ON (vehicle, stop) vehicle, stop, stop_name, direction, destination, change, "
+        "expected_at, seen_at FROM buslog_prediction WHERE line = :l AND service_day = :d AND seen_at <= :at "
+        "AND seen_at > :at - interval '3 hours' ORDER BY vehicle, stop, seen_at DESC) p "
+        "WHERE change <> 'gone' AND expected_at > :at - interval '2 minutes'"), {"l": line, "d": d, "at": at})).mappings().all()  # fmt: skip
+    taken = max((r["taken_at"] for r in tt), default=None)
+    return routes, [dict(r) for r in tt], [dict(r) for r in preds], taken
+
+
+def _ends(routes: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
+    return {d: (s[-1].get("name") or s[-1].get("stop")) for d, s in routes.items() if s}
+
+
+@router.get("/stop/{stop}")
+async def stop_hour(request: Request, stop: str, day: str | None = None, at: str | None = None) -> dict[str, Any]:
+    """A stop's next hour: the buses the timetable has there, and the ones TfL expects (as it stood at `at`)."""
+    from app.modules.buslog.compare import stop_hour as hour
+
+    d, moment = _day(day), await _moment(at)
+    async with request.app.state.engine.connect() as conn:
+        st, _, _ = await store.load(conn)
+        routes, tt, preds, taken = await _context(conn, st["line"], d, moment)
+    name = next((s.get("name") for ss in routes.values() for s in ss if s.get("stop") == stop), None)
+    out = hour(stop, moment, tt, preds, _ends(routes))
+    return {**out, "name": name, "line": st["line"], "timetable_taken_at": taken}
+
+
+@router.get("/vehicle/{vehicle}")
+async def vehicle_run(request: Request, vehicle: str, day: str | None = None, at: str | None = None) -> dict[str, Any]:
+    """A bus's remaining stops to the end of its route, as TfL expected at `at`, against the timetable: on time,
+    early or late at each, and by how much."""
+    from app.modules.buslog.compare import bus_run
+
+    d, moment = _day(day), await _moment(at)
+    async with request.app.state.engine.connect() as conn:
+        st, _, _ = await store.load(conn)
+        routes, tt, preds, taken = await _context(conn, st["line"], d, moment)
+    def norm(v: str) -> str:  # "LJ16 EZX" and "lj16ezx" are the same bus
+        return v.replace(" ", "").upper()
+
+    mine = [p for p in preds if norm(p["vehicle"]) == norm(vehicle)]
+    direction = mine[0]["direction"] if mine else None
+    out = bus_run(vehicle, mine, routes.get(direction or "", []), tt)
+    if not out["destination"] and direction:
+        out["destination"] = _ends(routes).get(direction)
+    return {**out, "line": st["line"], "at": moment, "timetable_taken_at": taken,
+            "note": None if mine else "TfL has no prediction for this bus at that time (it may be out of service, or "
+                                      "TfL and BODS name it differently)"}  # fmt: skip
+
+
+@router.post("/schedule-now")
+async def schedule_now(request: Request) -> dict[str, Any]:
+    """Take today's route and timetable from TfL now (as the recorder does before the window), kept like any other
+    request. Takes a few seconds."""
+    import httpx
+
+    from app.modules.buslog.collect import Recorder
+
+    engine = request.app.state.engine
+    async with engine.connect() as conn:
+        st, _, _ = await store.load(conn)
+    day = datetime.now(_tz()).date()
+    async with httpx.AsyncClient(follow_redirects=True, headers={"User-Agent": "WorldAssistant bus log"}) as client:
+        rec = Recorder(engine, request.app.state.redis, client, st["line"], day)
+        out = await rec.prepare()
+    failed = {k: v for k, v in rec.counts.items() if v[1]}
+    return {"day": day.isoformat(), "line": st["line"], "taken": out,
+            "requests": {k: {"ok": v[0], "failed": v[1], "empty": v[2]} for k, v in rec.counts.items()},
+            "ok": not failed and bool(out.get("outbound") or out.get("inbound"))}

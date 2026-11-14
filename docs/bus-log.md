@@ -25,10 +25,24 @@ without it does.
 
 API keys are never stored with the requests.
 
+## The map
+
+The route is drawn in red with the stops on it, kept visible at every zoom. Each bus is a red box with its
+numberplate and where it is going ("LD72YAH / to Sutton").
+
+- **Tap a stop** for its next hour: the buses TfL expects there, and the timetable.
+- **Tap a bus** for its times at every stop to the end of its route, against the timetable: on time (within a minute
+  either way), early or late, and by how much. Which timetabled journey a bus is running is worked out from its
+  predictions (TfL does not say), so it is the closest journey in its direction.
+- Move the time slider (or untick Live) to see any moment of a recorded day the same way.
+- **Download schedule now** takes today's route and timetable from TfL straight away, instead of waiting for the
+  first recording minute.
+
 ## When it records
 
 - **School days:** weekdays in term, outside half terms, holidays and INSET days, and not a bank holiday. The
-  calendar starts as Coombe Girls School's 2026/27 dates; change it with `PUT /v1/buslog/calendar`.
+  calendar starts as Coombe Girls School's 2026/27 dates, and is a table on the page ("School days"): terms,
+  holidays, INSET days and notes, each editable, with rows added and removed.
 - **Every day (a test):** the tick box on the page records the window on every day, weekends and holidays too.
   Use it for a baseline over a weekend, then untick it.
 - **Record now:** records straight away for 15 minutes to 4 hours, whatever the day and time.
@@ -60,4 +74,7 @@ Expect about 30 MB a day of recording, mostly raw answers: about 6 GB over a sch
 | `GET /v1/buslog/positions?day=&at=` | each bus's last position before a moment |
 | `GET /v1/buslog/polls?day=` | each minute's requests by source and outcome |
 | `GET /v1/buslog/predictions?day=&stop=&vehicle=` | TfL's prediction changes |
+| `GET /v1/buslog/stop/{stop}?day=&at=` | a stop's next hour: timetable and TfL's expected buses |
+| `GET /v1/buslog/vehicle/{vehicle}?day=&at=` | a bus's remaining stops against the timetable |
+| `POST /v1/buslog/schedule-now` | take today's route and timetable now |
 | `GET /v1/buslog/raw/{poll}` | a request's answer exactly as it came (a download) |

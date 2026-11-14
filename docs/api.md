@@ -135,9 +135,12 @@ pages themselves hold no data: each one calls these endpoints.
 | DELETE | `/v1/buslog/record-now` | Stop Now |
 | POST | `/v1/buslog/record-now` | Record from the next minute for a while, whatever the day and time (the worker starts within a minute). |
 | GET | `/v1/buslog/route` | The route as recorded on a day (or the newest before it): each direction's stops in order, and its line. |
+| POST | `/v1/buslog/schedule-now` | Take today's route and timetable from TfL now (as the recorder does before the window), kept like any other request. Takes a few seconds. |
 | GET | `/v1/buslog/settings` | Get Settings  |
 | PUT | `/v1/buslog/settings` | The route, the window, and the test switch that records every day (weekends and holidays too). |
 | GET | `/v1/buslog/status` | Whether it is recording now and why, the next recording days, and how today's requests went per source. |
+| GET | `/v1/buslog/stop/{stop}` | A stop's next hour: the buses the timetable has there, and the ones TfL expects (as it stood at `at`). |
+| GET | `/v1/buslog/vehicle/{vehicle}` | A bus's remaining stops to the end of its route, as TfL expected at `at`, against the timetable: on time, early or late at each, and by how much. |
 
 ## conditions
 
