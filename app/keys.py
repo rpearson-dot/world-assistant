@@ -118,14 +118,18 @@ def write_key(name: str, value: str) -> None:
     value = value.strip()
     if not value or any(c in value for c in "\r\n\0"):
         raise HTTPException(422, "a key is one line of text")
-    d = secretstore.keys_dir()
+    d = secretstore.keys_dir().resolve()
+    safe = os.path.basename(name)  # a name is letters, digits and _ (checked above): never a path
+    target = (d / f"{safe}.txt").resolve()
+    if safe != name or target.parent != d:
+        raise HTTPException(422, "not a key name")
     # Write a new file and move it into place, so a reader never sees half a key.
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=f".{name}.")
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=f".{safe}.")
     try:
         with os.fdopen(fd, "w") as f:
             f.write(value)
         os.chmod(tmp, 0o600)
-        os.replace(tmp, d / f"{name}.txt")
+        os.replace(tmp, target)
     except BaseException:
         if os.path.exists(tmp):
             os.unlink(tmp)

@@ -240,9 +240,11 @@ async def api_notify(body: NoteIn, m: Me) -> dict[str, Any]:
 
 def gate_key() -> str:
     """What World Assistant's api sends to fetch a module's page: modules (which share this network) never have it."""
+    import hmac
+
     from app.config import get_settings
 
-    return hashlib.sha256(("wa-gate-pages:" + get_settings().api_token).encode()).hexdigest()
+    return hmac.new(get_settings().api_token.encode(), b"wa-gate-pages", "sha256").hexdigest()
 
 
 @app.api_route("/pages/{mid}/{path:path}", methods=["GET", "POST"])
