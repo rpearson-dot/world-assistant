@@ -9,7 +9,7 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [outside](#outside) · [ovms](#ovms) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [solar](#solar) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [network](#network) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [outside](#outside) · [ovms](#ovms) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [solar](#solar) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
 
 
 ## airstage
@@ -331,6 +331,22 @@ pages themselves hold no data: each one calls these endpoints.
 | POST | `/v1/modules/{module_id}/disable` | Disable |
 | POST | `/v1/modules/{module_id}/enable` | Enable |
 | POST | `/v1/modules/{module_id}/test` | Try the module's key with one small live call. Never returns the key. |
+
+## network
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/network/devices` | Every device, newest first: its name, address, when first and last seen, and today's lookups, blocks and firewall decisions; with your Pi-hole groups when Pi-hole is set up. |
+| GET | `/v1/network/devices/{mac}` | One device's timeline (newest first) and its most looked-up and most blocked domains. |
+| PUT | `/v1/network/devices/{mac}/alias` | Alias |
+| POST | `/v1/network/devices/{mac}/block` | Add the domains you ticked to Pi-hole: for this device only (its own extra group, beside the groups it is in) or for one of your groups. Your groups and lists are never changed otherwise. |
+| GET | `/v1/network/devices/{mac}/suggestions` | Suggested blocks for this device: what got past your Pi-hole lists over the last days that does not serve you, each with why, and what blocking it may break. Things it needs are shown as "keep". |
+| POST | `/v1/network/devices/{mac}/unblock` | Undo: the domains World Assistant added for this device taken out of Pi-hole (all of them by default, and then its own group too). |
+| GET | `/v1/network/events` | The newest events: kind dns, firewall, client, dhcp or system; action allow, block, join, leave, lease. |
+| GET | `/v1/network/groups` | Your Pi-hole groups (Kids, Adults, IoT...), each with its devices, and what gets past your lists for them this week. |
+| POST | `/v1/network/pihole/test` | Sign in to Pi-hole and read its groups: says whether the address and app password work. |
+| GET | `/v1/network/settings` | Get Settings  |
+| PUT | `/v1/network/settings` | How long events are kept, Pi-hole's address on your network (such as http://10.0.2.29:8080), and the new-device notification. |
 
 ## notify
 

@@ -84,6 +84,15 @@ with a personal or non-commercial key, and keep within each provider's rate limi
 - A few stations have wrong coordinates. Anything outside a UK bounding box is flagged
   (`coords_ok = false`) and left out of queries.
 
+## Your own network (the Network module)
+
+- **The UniFi gateway's syslog:** sent by your own router to this server; nothing is fetched. Kept 30 days by default.
+- **Pi-hole v6:** your own Pi-hole's API on your network, signed in with an app password you make. Read every minute;
+  changed only when you press Add to Pi-hole.
+- **HaGeZi's native tracker lists** ([github.com/hagezi/dns-blocklists](https://github.com/hagezi/dns-blocklists),
+  GPL-3.0, by Gerd Hagezi): the manufacturers' tracker domains, fetched weekly from GitHub and used only to recognise
+  a domain in the suggestions.
+
 ## Not used yet (candidates)
 
 - Live-traffic journey times from a routing provider (terms for personal use unchecked).

@@ -313,6 +313,19 @@ BUILTIN: tuple[Module, ...] = (
            worker=(Job("app.modules.solar.api:solar_sync", {"hour": set(range(4, 22)), "minute": {11}, "timeout": 180, "max_tries": 1}),),
            tools=("solar_forecast",),
            provides={"assistant.tools": "app.modules.solar.tools:TOOLS"}),
+    Module("network", "Network (UniFi and Pi-hole)", "Every device on your network and what it does: joining and leaving, "
+           "its DNS lookups through Pi-hole, firewall decisions, and suggested blocks for what gets past your Pi-hole lists "
+           "that does not serve you",
+           category="home", jobs=("network_pihole", "network_housekeep"), occasional=("network_lists",), sdk=3,
+           keys=("pihole_app_password",), key_optional=True, link="https://docs.pi-hole.net/api/",
+           tools=("network_devices",), provides={"assistant.tools": "app.modules.network.tools:TOOLS"},
+           note="The UniFi gateway sends its syslog to this server (UDP 5514 unless WA_SYSLOG_PORT says otherwise); Pi-hole is read "
+                "through its own API. Nothing goes to Home Assistant",
+           tabs=(("home", "network", "/network", "Network"),),
+           routers=("app.modules.network.api:router", "app.modules.network.page:page_router"), prefixes=("/v1/network", "/network"),
+           worker=(Job("app.modules.network.api:network_pihole", {"minute": set(range(60)), "timeout": 55, "max_tries": 1}),
+                   Job("app.modules.network.api:network_lists", {"weekday": {0}, "hour": {3}, "minute": {51}, "timeout": 600, "max_tries": 1}),
+                   Job("app.modules.network.api:network_housekeep", {"hour": {2}, "minute": {41}, "timeout": 900, "max_tries": 1}))),
     Module("planner", "Home energy planner", "When to charge the car (cheap rate, free hours, solar to spare), decided "
            "every five minutes beside Home Assistant's plan, and how predictable evening demand is from the weather",
            category="energy", jobs=("planner_tick", "planner_demand"), sdk=2,

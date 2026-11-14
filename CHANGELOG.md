@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Added
 
+- **Network, In the home → Network.** Every device on your network and what it does, from the UniFi gateway's syslog
+  (a new `wa-syslog` listener on UDP 5514) and Pi-hole v6's own API. You see joining and leaving, DNS lookups
+  allowed or blocked, and firewall decisions, plus your Pi-hole groups and a notification for a new device. **Suggested
+  blocks** cover only what gets past your Pi-hole lists: on a manufacturer's tracker list, named for telemetry and
+  the like, or looked up around the clock. What a device needs is shown as "keep", and what blocking may break is
+  said. Copy the list, or Add to Pi-hole for one device (its own extra group, beside yours) or one of your groups,
+  with Undo. Nothing goes to Home Assistant. See `docs/network.md`.
+
 - **Outside modules from GitHub repositories, Settings → Outside modules.** Paste a repository's address: World
   Assistant reads its newest release and its manifest (`wa-module.toml`), and checks its image. The image must be
   signed by the repository's own release workflow for that tag, carry a build attestation and an SBOM, and pass a

@@ -63,7 +63,7 @@ def test_settings_send_once_and_quiet_hours(tables: Any, monkeypatch: pytest.Mon
     monkeypatch.setattr(N, "get_settings", lambda: type("S", (), {"ntfy_url": "http://ntfy:80", "ntfy_public_url": "https://wa.tail1.ts.net:8443",
                                                                    "local_tz": "Europe/London"})())  # fmt: skip
     s = c.get("/v1/notify/settings").json()
-    assert s["topic"].startswith("wa-") and len(s["topic"]) > 20 and s["kinds"] == {"bikes": True, "firmware": False, "environment": True, "home": True, "health": True, "system": False, "modules": True}
+    assert s["topic"].startswith("wa-") and len(s["topic"]) > 20 and s["kinds"] == {"bikes": True, "firmware": False, "environment": True, "home": True, "health": True, "system": False, "modules": True, "network": True}
     assert s["subscribe"] == f"https://wa.tail1.ts.net:8443/{s['topic']}" and c.get("/v1/notify/settings").json()["topic"] == s["topic"]
     assert c.put("/v1/notify/settings", json={"kinds": {"nonsense": True}}).status_code == 422
     assert c.put("/v1/notify/settings", json={"quiet_from": "25:00"}).status_code == 422

@@ -278,6 +278,18 @@ services:
       retries: 3
       start_period: 15s
 
+  # The network module's syslog listener (app/modules/network/listener.py): the UniFi gateway sends its logs here.
+  # Only lines from private addresses are kept. WA_SYSLOG_PORT moves the host's port.
+  wa-syslog:
+    <<: *app
+    command: ["python", "-m", "app.modules.network.listener"]
+    secrets: [postgres_password, redis_password]
+    ports:
+      - "${WA_SYSLOG_PORT:-5514}:5514/udp"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
   # Updates this server: every night at 04:00 when automatic updates are on, and within a minute of "Update now" in
   # Settings (scripts/updater.sh runs scripts/auto-deploy.sh). It replaces the User Scripts the runbook used to set
   # up. It drives Docker on this server through its socket, which is full control of the server, so it publishes
