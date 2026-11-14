@@ -1,0 +1,44 @@
+# Releases an outside module the way World Assistant checks for: on a version tag (v1.2.3), build the image, push
+# it to GitHub's registry, sign it (keyless, with this workflow's identity), attach a build-provenance attestation
+# and an SBOM, and attach wa-module.lock.json (the image digest) to the GitHub release.
+name: release
+on:
+  push:
+    tags: ["v*.*.*"]
+permissions:
+  contents: write        # the release and its lock file
+  packages: write        # the image on ghcr.io
+  id-token: write        # keyless signing
+  attestations: write    # build provenance
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign the image
+        run: cosign sign --yes "ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}"
+      - name: Build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: SBOM, attested to the image
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft "ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}" -o spdx-json=sbom.spdx.json
+          cosign attest --yes --type spdxjson --predicate sbom.spdx.json "ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}"
+      - name: The lock file and the release
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          printf '{"image":"ghcr.io/%s","digest":"%s","tag":"%s","commit":"%s"}\n' "${{ github.repository }}" \
+            "${{ steps.build.outputs.digest }}" "${{ github.ref_name }}" "${{ github.sha }}" > wa-module.lock.json
+          gh release create "${{ github.ref_name }}" wa-module.lock.json sbom.spdx.json --title "${{ github.ref_name }}" --generate-notes

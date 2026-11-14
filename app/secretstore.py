@@ -301,8 +301,12 @@ def keys_dir() -> Path:
 SETTINGS_SECRETS = WEB_KEYS | {"mqtt_password", "ha_smb_password", "ha_token"}
 
 
+# Outside modules' keys and tokens (app/outside): x_<module>_<key>, and x_<module>__token
+OUTSIDE_KEY = re.compile(r"^x_[a-z][a-z0-9_]{1,23}_[a-z0-9_]{1,41}$")
+
+
 def web_value(name: str) -> str | None:
-    if name not in SETTINGS_SECRETS:
+    if name not in SETTINGS_SECRETS and not OUTSIDE_KEY.match(name):
         return None
     value = _file_value(name, keys_dir())
     return value or None

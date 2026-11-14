@@ -2,12 +2,18 @@
 
 [![CI](https://github.com/rpearson-dot/World-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/rpearson-dot/World-assistant/actions/workflows/ci.yml)
 
-**The other half of a smart home.** Home Assistant knows what is happening inside the house. World Assistant knows
-what is happening outside it: the roads, buses and trains, fuel and energy prices, floods, air and pollen, what is
-on nearby, the shopping, and the bikes and cars in the garage.
+**The thinking half of a smart home.** World Assistant started with what happens outside the house: the roads, buses
+and trains, fuel and energy prices, floods, air and pollen, what is on nearby, the shopping, and the bikes and cars
+in the garage. It now does the deciding inside the house too: when to charge the car, how the house's energy is
+used and what it would cost on another tariff, the solar forecast, the charger, the car and the air conditioning.
+
+**Home Assistant becomes the screen.** It shows what World Assistant works out, and keeps the switches people
+reach for, such as the charger's Off/On/Auto. The planning, history and decisions live in World Assistant, where
+they can be checked, tested and kept.
 
 It runs on your own server, keeps its own history, and answers in one place: a web app on your phone, Home
-Assistant sensors, Siri Shortcuts, an AI assistant, or a script.
+Assistant sensors, Siri Shortcuts, an AI assistant, or a script. **Other people can add to it**: modules from their
+own GitHub repositories run sealed off, with only what you agree to share.
 
 ## Why it exists
 
@@ -39,6 +45,12 @@ the assistant and the API.
 - **Fuel and charging:** every UK forecourt's prices, cheapest near you or along a route, and GRIDSERVE chargers that are free now ([EV](docs/ev.md)).
 - **Places, trips and the map:** your places and routes, everything with a position on one map, and **Here**: what is around you right now ([map](docs/map.md), [here](docs/here.md)).
 
+**In the home**
+- **Car charging:** World Assistant as the charger's own server (OCPP), with Off/On/Auto, every restart and fault recorded ([charger](docs/ocpp.md)); the car's own module (OVMS) for its battery and warnings ([car](docs/ovms.md)).
+- **The planner:** when to charge the car (cheap rate, free hours, solar to spare, never from the house battery), decided every five minutes beside Home Assistant's plan until you let it act, with a monthly check in pounds; and how predictable your evenings are from the weather ([planner](docs/planner.md)).
+- **Tariffs, solar and weather:** your real half-hourly use priced at every tariff today, with your battery moving use into each one's cheap hours ([tariffs](docs/tariffs.md)); the solar forecast and how far off it has been ([solar](docs/solar.md)); the weather and heating degree-hours ([weather](docs/weather.md)).
+- **Air conditioning:** Fujitsu Airstage units controlled directly on your network, on the **In the home** page ([air conditioning](docs/airstage.md)).
+
 **Home and surroundings**
 - **Energy:** your Octopus tariff's cheap and peak times, and Saving Sessions, for Home Assistant to run the battery from ([energy](docs/energy.md)).
 - **Environment:** air quality, pollen, flood warnings, river levels and flows compared with normal, tides and storm overflows ([environment](docs/environment.md), [floods](docs/floods.md)).
@@ -61,6 +73,24 @@ the assistant and the API.
 - **Assistant:** spoken-style answers for Siri Shortcuts (`/v1/ask`) and AI assistants over MCP (`/mcp`) ([assistant](docs/assistant.md)).
 - **Knowledge graph:** an optional graph of how it all joins up, to explore on the Graph page ([graph](docs/graph.md)).
 
+## Modules, including other people's
+
+Everything World Assistant does is a **module**: fuel prices, the bus tracker, the planner. Each says what it is,
+in plain words, on Settings → Setup: its role (a source, a processor or an output), what it reads, what it gives,
+and what it controls in the real world. Each can be turned off on its own.
+
+**Developers can write their own** in their own GitHub repository, and anyone can add one from Settings → Outside
+modules by its address. An outside module runs in its own sealed container:
+
+- it reaches only World Assistant's module gate, so it has what its owner ticked (their home's location at the
+  precision they choose, their places, chosen Home Assistant entities) and nothing more;
+- its image must be signed by its own repository, carry proof of where it was built and a bill of materials, and
+  pass a vulnerability scan;
+- its updates install by themselves unless one asks for more or fails a check;
+- removing it takes every trace and says so.
+
+Start with the [guide for developers](docs/outside-modules.md) and the [example module](examples/outside-module/).
+
 ## How it fits together
 
 ```mermaid
@@ -71,8 +101,11 @@ flowchart LR
   worker["Worker<br/>(scheduled jobs)"] --> db
   sources["Public data services<br/>roads, fuel, transport, environment,<br/>energy, events, shops, Garmin"] --> worker
   api -->|asked live, cached| sources
-  worker --> ha["Home Assistant<br/>(MQTT)"]
+  worker --> ha["Home Assistant<br/>(MQTT): the screen"]
   worker --> ntfy["Your phone<br/>(ntfy)"]
+  home["In the home: charger (OCPP),<br/>car (OVMS), air conditioning"] <--> worker
+  outside["Outside modules<br/>(their own sealed containers)"] --> gate["Module gate<br/>(only what you agreed)"]
+  gate --> db
 ```
 
 A **worker** collects the feeds worth storing, on a schedule, and writes them to Postgres. The **API** answers from
@@ -80,6 +113,8 @@ the database, so a question never waits on a slow or rate-limited service, and s
 Things that are only useful live (train boards, events) are asked for when needed and cached briefly. Every
 request comes through a small **front door**, so an update can start the new version beside the old one and switch
 over with no gap.
+
+An **outside module** reaches only the **module gate**, never the API, the database or your keys.
 
 More: [architecture](docs/architecture.md).
 

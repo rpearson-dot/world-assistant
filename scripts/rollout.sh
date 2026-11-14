@@ -100,7 +100,7 @@ log "Staged update 5/5: handing over the worker and replacing the api service."
 docker compose run -d --no-deps --name "$NEXT_WORKER" worker >/dev/null || back "the new worker would not start"
 wait_healthy "$NEXT_WORKER" 150 || back "the new worker did not become healthy"
 # From here the old version is going: the new one is answering and working, so problems are fixed forwards
-if ! docker compose up -d --no-deps --no-build api worker; then
+if ! docker compose up -d --no-deps --no-build api worker wa-modgate; then
   log "Could not replace the api and worker services; the new version keeps answering from $NEXT_API."; exit 4
 fi
 if ! wait_healthy "$(cid api)" 150; then

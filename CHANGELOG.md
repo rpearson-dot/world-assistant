@@ -2,6 +2,32 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.55.0] - 2026-11-14
+
+### Added
+
+- **Outside modules from GitHub repositories, Settings → Outside modules.** Paste a repository's address: World
+  Assistant reads its newest release and its manifest (`wa-module.toml`), and checks its image. The image must be
+  signed by the repository's own release workflow for that tag, carry a build attestation and an SBOM, and pass a
+  vulnerability scan. You then see what it reads, gives and controls, the hosts it reaches, its keys and limits, and
+  a tick box for each kind of personal data (your home's location at a precision you choose, places, vehicles,
+  accounts). Install sends only what you ticked.
+  - **Sealed:** each module runs in its own container (not root, read-only, memory and process limits, its own
+    storage volume) on a network with no way out except the new **module gate** (the `wa-modgate` service). The
+    gate gives it what you agreed, logs each piece of personal data, publishes only its own Home Assistant
+    entities, and is its only route to the hosts and home devices it declared.
+  - **Up to date:** new releases are read each day and install by themselves (started beside the old one, rolled
+    back if they fail). A release that asks for more, fails a check, or changes its licence waits, with a "needs
+    your attention" notification. Installed images are scanned again each week, and falling behind is a warning.
+  - **Removed completely:** Remove deletes its container, storage, images, keys, token, Home Assistant entities,
+    settings, notifications and history, then searches every place again and shows a report of each.
+  - Its keys appear in Settings → Keys, its settings (drawn by World Assistant from its manifest, up to its limit
+    of fields) on its row, and its pages in a sandboxed frame at `/x/<id>`.
+  - The runner (`scripts/module-runner.py`) runs in the updater container, which now includes Python. A guide for
+    developers is in `docs/outside-modules.md`, with an example module in `examples/outside-module`.
+- **The documentation describes World Assistant's wider role:** it now decides inside the home too, and Home
+  Assistant is the screen.
+
 ## [0.54.0] - 2026-11-14
 
 ### Added

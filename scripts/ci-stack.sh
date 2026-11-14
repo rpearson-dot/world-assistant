@@ -149,6 +149,41 @@ code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Content-Type: applica
   -d '{"cypher":"MATCH (n) DETACH DELETE n"}' "$API/v1/graph/query")"
 [ "$code" = "422" ] || { echo "a writing query was not refused ($code)"; dump_and_fail; }
 
+step "an outside module is sealed off, and removed without a trace"
+# The example module, built here and started by the real runner (signatures and GitHub are covered by
+# tests/test_outside_flow.py). From inside its container: the gate answers; the internet, the api, the database and
+# an undeclared host through the gate's proxy do not; it is not root and cannot write its image. Then Remove.
+docker build -q -t wa-hello-ci examples/outside-module >/dev/null || dump_and_fail
+docker compose cp examples/outside-module/wa-module.toml api:/tmp/wa-module.toml >/dev/null || dump_and_fail
+docker compose exec -T api python - < scripts/ci-outside-seed.py >/dev/null || dump_and_fail
+runner() { AUTO_DEPLOY_API="$API" WA_RUNNER_TEST_IMAGE=wa-hello-ci WA_UPDATER_IMAGE=wa-hello-ci python3 scripts/module-runner.py once; }
+runner
+for _ in $(seq 1 20); do [ "$(docker inspect -f '{{.State.Running}}' wa-x-hello 2>/dev/null)" = true ] && break; sleep 2; done
+[ "$(docker inspect -f '{{.State.Running}}' wa-x-hello 2>/dev/null)" = true ] || { docker logs wa-x-hello 2>&1 | tail -20; dump_and_fail; }
+inside() { docker exec wa-x-hello python -c "$1"; }
+inside "import os,urllib.request as u; r=u.Request(os.environ['WA_GATE']+'/api/me', headers={'X-WA-Module':'hello','Authorization':'Bearer '+os.environ['WA_MODULE_TOKEN']}); assert u.urlopen(r, timeout=10).status == 200" \
+  || { echo "the module could not reach the gate"; dump_and_fail; }
+for target in "1.1.1.1 443" "api 8000" "wa-proxy 8000" "wa-db 5432" "wa-redis 6379"; do
+  if inside "import socket,sys; h,p=sys.argv[1:]; socket.create_connection((h,int(p)),timeout=5)" $target 2>/dev/null; then
+    echo "the module reached $target, which it must not"; dump_and_fail
+  fi
+done
+code="$(docker exec wa-x-hello python -c "import urllib.request as u
+try:
+    print(u.urlopen('http://example.com/', timeout=10).status)
+except Exception as e:
+    print(getattr(e, 'code', 0))")"
+[ "$code" = "403" ] || { echo "an undeclared host through the proxy answered $code, not 403"; dump_and_fail; }
+[ "$(docker exec wa-x-hello id -u)" = "10001" ] || { echo "the module runs as root"; dump_and_fail; }
+if docker exec wa-x-hello sh -c 'touch /app/x' 2>/dev/null; then echo "the module could write its image"; dump_and_fail; fi
+curl -fsS -X POST -H "Authorization: Bearer $TOKEN" "$API/v1/outside/hello/remove" >/dev/null || dump_and_fail
+runner
+report="$(curl -fsS -H "Authorization: Bearer $TOKEN" "$API/v1/outside/removed/hello")"
+echo "$report" | python3 -c "import json,sys; r=json.load(sys.stdin); assert r['state']=='removed' and r['report']['clean'], r" \
+  || { echo "$report"; dump_and_fail; }
+[ -z "$(docker ps -aq --filter label=wa.module=hello)" ] || { echo "a container was left"; dump_and_fail; }
+! docker volume inspect wa-x-hello >/dev/null 2>&1 || { echo "its volume was left"; dump_and_fail; }
+
 step "everything still answers after the restore"
 if ! docker compose exec -T api python -m app.smoke > "$WORK/smoke2.txt" 2>&1; then
   grep -E "^FAIL|checks passed|Error|Traceback" "$WORK/smoke2.txt" | annotate "smoke after restore" 30
