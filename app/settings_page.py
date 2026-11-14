@@ -66,7 +66,7 @@ PAGE = """<!doctype html>
 
 <div class="seg" role="tablist">
   <button data-tab="setup" class="on" role="tab">Setup</button><button data-tab="keys" role="tab">Keys</button>
-  <button data-tab="mqtt" role="tab">MQTT</button><button data-tab="backup" role="tab">Backups and updates</button><button data-tab="system" role="tab">System</button><button data-tab="look" role="tab">Look</button><button data-tab="notify" role="tab">Notifications</button>
+  <button data-tab="mqtt" role="tab">MQTT</button><button data-tab="backup" role="tab">Backups and updates</button><button data-tab="system" role="tab">System</button><button data-tab="look" role="tab">Look</button><button data-tab="notify" role="tab">Notifications</button><button data-tab="outside" role="tab">Outside modules</button>
 </div>
 
 <section data-pane="setup">
@@ -90,7 +90,8 @@ PAGE = """<!doctype html>
       <div class="field"><input id="tvtoken" type="password" autocomplete="off" placeholder="Paste the token">
       <button id="tvgo" class="primary" type="button">Copy to the vault</button></div></label>
     <span class="dim" id="tvmsg"></span></div>
-  <div id="keylist"></div></div>
+  <div id="keylist"></div>
+  <div id="xkeys"></div></div>
 </section>
 
 <section data-pane="mqtt" hidden>
@@ -167,6 +168,18 @@ PAGE = """<!doctype html>
     <button id="nfnew" type="button">New topic</button></div>
     <p id="nfmsg" class="dim"></p><ol id="nfsteps" class="small"></ol></div>
   <div class="card"><h2>Sent lately</h2><div id="nflog" class="small dim">Nothing yet.</div></div>
+</section>
+
+<section data-pane="outside" hidden>
+  <div class="card"><h2>Outside modules</h2>
+    <p class="dim">Modules other people publish on GitHub. Each runs in its own sealed container and can reach only what it
+    declares and you agree to. Its image must be signed by its own repository, carry proof of where it was built and a
+    software bill of materials, and pass a vulnerability scan. Updates install by themselves unless one asks for more,
+    or fails a check: then it waits for you.</p>
+    <div class="field"><input id="xrepo" placeholder="github.com/owner/name" autocomplete="off">
+      <button id="xread" class="primary" type="button">Read it</button></div>
+    <p id="xmsg" class="dim"></p></div>
+  <div id="xlist"></div>
 </section>
 
 <section data-pane="system" hidden>
@@ -595,7 +608,7 @@ async function load() {
   if (!done && setup.you.find(x => x.id === 'home').state !== 'ready') wizard(0);
 }
 $('go').onclick = load;
-const TABS = ['setup', 'keys', 'mqtt', 'backup', 'system', 'look', 'notify'];
+const TABS = ['setup', 'keys', 'mqtt', 'backup', 'system', 'look', 'notify', 'outside'];
 // --- notifications: an ntfy topic on World Assistant's own server ----------------------------------------
 let nf = null;
 function nfShow(d) {
@@ -658,6 +671,142 @@ $('lookdefault').onclick = async () => { $('lookmsg').textContent = ''; try {
   window.waServer = got; window.waTheme(); $('lookmsg').textContent = 'Saved: devices that have not chosen their own now show this.'; } catch (e) { $('lookmsg').textContent = e.message; } };
 $('lookfollow').onclick = () => { window.waTheme(); look(); };
 addEventListener('wa-theme', () => { look(); lookWho(); }); look(); lookWho();
+// --- outside modules ---------------------------------------------------------------------------------------------
+const XSTATE = { checking: 'Checking its image…', previewed: 'Ready for you to decide', refused: 'Cannot be installed', installing: 'Installing…',
+  running: 'Running', updating: 'Updating…', starting: 'Starting…', failed: 'Did not start', stopped_limit: 'Stopped: over a limit', removing: 'Removing…' };
+let xpoll = null;
+function xline(label, list, cls) { if (!list || !list.length) return null; const p = el('p', cls || 'small'); p.append(el('b', null, label + ': '), document.createTextNode(list.join('; '))); return p; }
+function xasks(a, d, editable) {
+  const box = el('div');
+  box.append(...[xline('It reads', a.reads), xline('It gives', a.gives), xline('It controls', a.controls, 'small warn'),
+    xline('It reaches', a.hosts.map(h => h.host + (h.why ? ' (' + h.why + ')' : ''))), xline("Home Assistant it reads", a.home_assistant_read),
+    xline("Home Assistant entities it writes", a.home_assistant_write), a.notifications ? xline('Notifications', ['it may send you notifications']) : null,
+    xline('Keys', a.keys.map(k => k.label + (k.required ? ' (needed)' : ''))),
+    xline('Limits', ['storage ' + a.limits.storage_mb + ' MB', 'memory ' + a.limits.memory_mb + ' MB',
+      a.limits.settings_fields + ' settings', a.limits.pages + ' page(s)', a.limits.requests_per_minute + ' requests a minute']),
+    xline('Licence', [a.licence])].filter(Boolean));
+  const consent = { data: {}, home_devices: {} };
+  if (a.data.length || a.home_devices.length) {
+    const c = el('div', 'keycard'); c.append(el('div', 'name', 'What you share with it'));
+    for (const x of a.data) {
+      const r = el('label', 'row');
+      if (x.key === 'home_location') {
+        const s = el('select'); const opts = ['none', 'postcode district', 'exact'];
+        opts.slice(0, opts.indexOf(x.precision) + 1).forEach(o => { const op = el('option', null, o === 'none' ? 'Do not share' : 'Share: ' + o); op.value = o; s.append(op); });
+        s.value = 'none'; s.disabled = !editable; s.onchange = () => consent.data.home_location = s.value; r.append(document.createTextNode(x.what.charAt(0).toUpperCase() + x.what.slice(1) + ' '), s);
+      } else {
+        const i = el('input'); i.type = 'checkbox'; i.style.width = 'auto'; i.disabled = !editable; i.onchange = () => consent.data[x.key] = i.checked;
+        r.append(i, document.createTextNode(' Share ' + x.what));
+      }
+      c.append(r);
+    }
+    for (const dev of a.home_devices) {
+      const r = el('label'), i = el('input'); i.placeholder = 'its address, e.g. 10.0.2.50'; i.disabled = !editable;
+      i.oninput = () => consent.home_devices[dev] = i.value.trim(); r.append(document.createTextNode(dev + ' on your network '), i); c.append(r);
+    }
+    c.append(el('p', 'dim small', 'Nothing is shared unless you tick it here; it must cope without. Each piece it is given is written to its history.'));
+    box.append(c);
+  }
+  return [box, consent];
+}
+function xcard(x) {
+  const c = el('div', 'card'), top = el('div', 'item');
+  top.append(el('div', 'name', (x.name || x.id) + (x.version ? ' ' + x.version : '')), el('span', 'badge ' + (x.needs_attention ? 'warn' : x.state === 'running' ? 'good' : ''),
+    x.needs_attention ? 'Needs your attention' : (XSTATE[x.state] || x.state)));
+  top.append(el('div', 'what', x.repository + (x.message ? ' · ' + x.message : '')));
+  c.append(top);
+  (x.warnings || []).forEach(w => c.append(el('p', 'warn small', w)));
+  if (x.problems && x.problems.length && ['previewed', 'refused'].includes(x.state)) x.problems.forEach(p => c.append(el('p', 'err small', p)));
+  if (x.asks) {
+    const editable = x.state === 'previewed';
+    const [box, consent] = xasks(x.asks, x, editable); c.append(box);
+    if (editable) {
+      const vul = x.checks && (x.checks.high || x.checks.critical);
+      let allow = null;
+      if (vul) { const l = el('label', 'row'); allow = el('input'); allow.type = 'checkbox'; allow.style.width = 'auto'; l.append(allow, document.createTextNode(' Install this version despite its ' + x.checks.critical + ' critical and ' + x.checks.high + ' high findings')); c.append(l); }
+      const b = el('button', 'primary', 'Install with what I ticked'); b.type = 'button';
+      b.onclick = async () => { try { await api('/v1/outside/' + x.id + '/install', { method: 'POST', body: JSON.stringify({ ...consent, allow_vulnerable: !!(allow && allow.checked) }) }); xload(); } catch (e) { c.append(el('p', 'err', e.message)); } };
+      c.append(b);
+    }
+  }
+  if (x.held) {
+    const h = el('div', 'keycard'); h.append(el('div', 'name', 'Update ' + x.held.tag + ' is waiting for you'));
+    (x.held.reasons || []).forEach(r => h.append(el('p', 'small', r)));
+    const b = el('button', 'primary', 'Approve and install'); b.type = 'button';
+    b.onclick = async () => { try { await api('/v1/outside/' + x.id + '/approve', { method: 'POST', body: JSON.stringify({ data: (x.consent || {}).data || {}, home_devices: (x.consent || {}).home_devices || {} }) }); xload(); } catch (e) { h.append(el('p', 'err', e.message)); } };
+    h.append(b); c.append(h);
+  }
+  if (['running', 'stopped_limit', 'failed', 'updating', 'starting'].includes(x.state)) {
+    const row = el('div', 'row');
+    const au = el('input'); au.type = 'checkbox'; au.style.width = 'auto'; au.checked = x.auto_update;
+    au.onchange = async () => { try { await api('/v1/outside/' + x.id + '/auto-update', { method: 'PUT', body: JSON.stringify({ on: au.checked }) }); } catch (e) { au.checked = !au.checked; } };
+    const l = el('label', 'row'); l.append(au, document.createTextNode(' Install updates by themselves (held when one asks for more or fails a check)')); row.append(l);
+    c.append(row);
+    if (x.asks && x.asks.limits.pages > 0 && x.state === 'running') { const a = el('a', null, 'Open its page'); a.href = '/x/' + x.id; c.append(a); }
+    if (x.usage) c.append(el('p', 'dim small', 'Using ' + (x.usage.storage_mb ?? '?') + ' of ' + x.asks.limits.storage_mb + ' MB storage, '
+      + (x.usage.memory_mb ?? '?') + ' of ' + x.asks.limits.memory_mb + ' MB memory.'));
+    if (x.asks && x.asks.settings.length) {
+      const f = el('div', 'keycard'); f.append(el('div', 'name', 'Its settings'));
+      const vals = { ...(x.settings || {}) };
+      for (const s of x.asks.settings) {
+        const lab = el('label', null, s.label + ' '); let inp;
+        if (s.type === 'choice') { inp = el('select'); s.choices.forEach(o => { const op = el('option', null, o); op.value = o; inp.append(op); }); }
+        else { inp = el('input'); inp.type = s.type === 'number' ? 'number' : s.type === 'boolean' ? 'checkbox' : 'text'; if (s.type === 'boolean') inp.style.width = 'auto'; }
+        const v = vals[s.key] ?? s.default; if (s.type === 'boolean') inp.checked = !!v; else if (v != null) inp.value = v;
+        inp.onchange = () => vals[s.key] = s.type === 'boolean' ? inp.checked : s.type === 'number' ? Number(inp.value) : inp.value;
+        lab.append(inp); f.append(lab);
+      }
+      const sv = el('button', null, 'Save its settings'); sv.type = 'button';
+      sv.onclick = async () => { try { await api('/v1/outside/' + x.id + '/settings', { method: 'PUT', body: JSON.stringify(vals) }); sv.textContent = 'Saved'; } catch (e) { f.append(el('p', 'err', e.message)); } };
+      f.append(sv); c.append(f);
+    }
+  }
+  if (x.state !== 'removing') {
+    const rm = el('button', null, x.installed_at ? 'Remove' : 'Forget it'); rm.type = 'button'; let armed = false;
+    rm.onclick = async () => {
+      if (!armed) { armed = true; rm.textContent = 'Remove every trace of ' + (x.name || x.id) + ': press again'; rm.className = 'danger'; return; }
+      try { await api('/v1/outside/' + x.id + '/remove', { method: 'POST' }); xwatchRemoval(x.id); xload(); } catch (e) { c.append(el('p', 'err', e.message)); }
+    };
+    c.append(el('div', 'row'), rm);
+  }
+  return c;
+}
+async function xwatchRemoval(id) {
+  for (let i = 0; i < 60; i++) {
+    await new Promise(r => setTimeout(r, 3000));
+    const r = await api('/v1/outside/removed/' + id).catch(() => null);
+    if (r && r.state === 'removed') {
+      const c = el('div', 'card'); c.append(el('h2', null, id + ' removed: ' + (r.report.clean ? 'nothing left' : 'something was left')));
+      r.report.places.forEach(p => c.append(el('p', 'small', p.place + ': ' + (p.found.length ? p.found.join(', ') : 'none found'))));
+      c.append(el('p', 'dim small', 'Kept: ' + r.report.kept.join('; ') + '.'));
+      $('xlist').prepend(c); xload(); return;
+    }
+  }
+}
+async function xload() {
+  try {
+    const d = await api('/v1/outside'); $('xlist').replaceChildren(...d.modules.map(xcard));
+    if (!d.modules.length) $('xlist').append(el('div', 'card dim', 'No outside modules yet.'));
+    clearTimeout(xpoll); if (d.modules.some(m => ['checking', 'installing', 'updating', 'starting', 'removing'].includes(m.state))) xpoll = setTimeout(xload, 4000);
+    const k = await api('/v1/outside/keys/all'), kb = $('xkeys'); kb.replaceChildren();
+    if (k.keys.length) {
+      kb.append(el('h2', null, "Outside modules' keys"));
+      for (const x of k.keys) {
+        const card = el('div', 'keycard'), f = el('div', 'field'), i = el('input'); i.type = 'password'; i.autocomplete = 'off';
+        i.placeholder = x.set ? 'Paste a new key to replace it' : 'Paste the key';
+        const b = el('button', 'primary', 'Save'); b.type = 'button';
+        b.onclick = async () => { try { await api('/v1/outside/' + x.module + '/keys/' + x.name, { method: 'PUT', body: JSON.stringify({ value: i.value }) }); i.value = ''; xload(); } catch (e) { card.append(el('p', 'err', e.message)); } };
+        card.append(el('div', 'name', x.module + ': ' + (x.label || x.name) + (x.set ? ' (set)' : x.required ? ' (needed)' : ''))); f.append(i, b); card.append(f); kb.append(card);
+      }
+    }
+  } catch (e) { $('xmsg').textContent = e.message; }
+}
+$('xread').onclick = async () => {
+  $('xmsg').textContent = 'Reading its newest release…';
+  try { await api('/v1/outside/preview', { method: 'POST', body: JSON.stringify({ repository: $('xrepo').value.trim() }) }); $('xmsg').textContent = 'Read. Its image is being checked; that takes a few minutes.'; xload(); }
+  catch (e) { $('xmsg').textContent = e.message; }
+};
+xload();
 const want = location.hash.slice(1); if (TABS.includes(want)) tab(want);
 window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if (TABS.includes(h)) tab(h); });
 if (tok.value) load();

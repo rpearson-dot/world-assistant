@@ -4,17 +4,19 @@ A **module** is one area of World Assistant: fuel prices, the bus tracker, flood
 can be switched on or off in Settings → Modules without a restart ([modules](modules.md)). This page is for
 someone who wants to add one.
 
-There are two ways:
+There are three ways:
 
-| | **A built-in module** (a pull request here) | **An outside module** (your own package) |
-|---|---|---|
-| Ships in the signed release | Yes | No: you build your own image |
-| Pages, endpoints, scheduled jobs | Yes | Yes |
-| Keys, database tables, assistant tools, Home Assistant sensors, a tab in the menu | Yes | Not yet (see [what an outside module cannot do yet](#what-an-outside-module-cannot-do-yet)) |
-| Automatic updates | Yes | No: a home-built image is not signed, so the updater will not install it |
-| Who maintains it | Reviewed and kept working with the rest | You |
+| | **A built-in module** (a pull request here) | **An outside module** (your own GitHub repository, 0.55.0) | **An outside package** (your own image) |
+|---|---|---|---|
+| How people add it | It ships in the signed release | Settings → Outside modules, by its address | You build your own World Assistant image |
+| Where it runs | Inside World Assistant | Its own sealed container, reaching only the module gate | Inside World Assistant |
+| What it can have | Everything the [module SDK](module-sdk.md) offers | What its owner ticks: location, places, chosen Home Assistant entities, keys, notifications ([guide](outside-modules.md)) | Everything the SDK offers |
+| Updates | With World Assistant | By themselves, unless one asks for more or fails a check | Yours to build |
+| Who maintains it | Reviewed and kept working with the rest | You | You |
 
-**For now, a pull request is the way to contribute.** An outside package suits trying an idea out on your own server.
+**For most new ideas, an outside module is the way**: [outside modules: a guide for developers](outside-modules.md).
+A pull request suits something many people will want, built in. An outside package suits trying an idea on your own
+server.
 
 ## Before you start
 

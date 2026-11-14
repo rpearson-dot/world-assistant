@@ -9,7 +9,7 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [ovms](#ovms) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [solar](#solar) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [outside](#outside) · [ovms](#ovms) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [solar](#solar) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
 
 
 ## airstage
@@ -367,6 +367,24 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/outdoors/settings` | Which KitchenOwl list is the Outdoors list, and the household's lists to choose from. |
 | PUT | `/v1/outdoors/settings` | Choose the KitchenOwl list to use (none: the one called Outdoors). Not the shopping list. |
 | GET | `/v1/outdoors/{key}/history` | Every price each product this item follows has had, newest first. |
+
+## outside
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/outside` | List Outside |
+| GET | `/v1/outside/keys/all` | Every key the outside modules declare and whether each is set (for the Keys page). |
+| POST | `/v1/outside/preview` | Read a repository's newest release and its manifest, and start the image checks. Nothing runs yet. |
+| GET | `/v1/outside/removed/{mid}` | Removed |
+| GET | `/v1/outside/runner/next` | The oldest waiting job for the runner (it marks it taken). |
+| POST | `/v1/outside/runner/{jid}/done` | Runner Done |
+| GET | `/v1/outside/{mid}` | Get One |
+| POST | `/v1/outside/{mid}/approve` | Install a held update, agreeing to anything more it asks for (what you tick). |
+| PUT | `/v1/outside/{mid}/auto-update` | Auto Update |
+| POST | `/v1/outside/{mid}/install` | Install a previewed module with what you agreed to share. Refused while its checks have a problem (high or critical vulnerabilities can be accepted for this version with allow_vulnerable). |
+| PUT | `/v1/outside/{mid}/keys/{name}` | One of the keys its manifest declares; given to it when it next starts (it is restarted now). |
+| POST | `/v1/outside/{mid}/remove` | Remove every trace of it: its container, storage and images (the runner), then its keys, token, Home Assistant entities, settings, history and its row. GET /v1/outside/removed/{mid} has the report. |
+| PUT | `/v1/outside/{mid}/settings` | Its settings, checked against the fields its manifest declares (World Assistant draws them; the module never adds its own). |
 
 ## ovms
 

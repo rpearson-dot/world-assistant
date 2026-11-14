@@ -26,6 +26,8 @@ while true; do
     bash scripts/auto-deploy.sh >> "$LOG" 2>&1
   fi
   bash scripts/auto-deploy.sh --if-requested >> "$LOG" 2>&1
+  # Outside modules: checks, starts, usage and removals World Assistant has queued (scripts/module-runner.py)
+  python3 scripts/module-runner.py once >> "$DATA/module-runner.log" 2>&1
   sleep 60 &
   wait $!
 done

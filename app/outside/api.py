@@ -233,7 +233,7 @@ async def install(request: Request, mid: str, body: ConsentIn) -> dict[str, Any]
             raise HTTPException(409, "not installed: " + "; ".join(bad))
         consent = agreed(m, body)
         await save(conn, mid, consent=consent, state="installing", allow_vulnerable=body.allow_vulnerable,
-                   installed_checks=r["checks"], message="starting its container")  # fmt: skip
+                   installed_checks=r["checks"], candidate=None, message="starting its container")  # fmt: skip
         await start_job(conn, r, m, r["ref"], "install")
         shared = [M.DATA[k] for k in consent["data"]] + [f"{k} at {v}" for k, v in consent["home_devices"].items()]
         await event(conn, mid, "install", f"installing {r['tag']}; you agreed to share: " + (", ".join(shared) or "nothing personal"), consent)

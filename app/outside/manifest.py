@@ -25,15 +25,14 @@ LICENCES = frozenset({"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"
                       "GPL-3.0-only", "GPL-3.0-or-later", "LGPL-2.1-only", "LGPL-2.1-or-later", "LGPL-3.0-only",
                       "LGPL-3.0-or-later", "AGPL-3.0-only", "AGPL-3.0-or-later", "Unlicense", "0BSD", "EUPL-1.2"})  # fmt: skip
 # The most a module may ask for; World Assistant refuses a manifest over these
-CEILING = {"database_mb": 2000, "storage_mb": 2000, "memory_mb": 1024, "settings_fields": 20, "pages": 3, "requests_per_minute": 600}
-FLOOR = {"database_mb": 0, "storage_mb": 0, "memory_mb": 64, "settings_fields": 0, "pages": 0, "requests_per_minute": 1}
-DEFAULT_LIMITS = {"database_mb": 100, "storage_mb": 50, "memory_mb": 256, "settings_fields": 10, "pages": 1, "requests_per_minute": 60}
+CEILING = {"storage_mb": 2000, "memory_mb": 1024, "settings_fields": 20, "pages": 3, "requests_per_minute": 600}
+FLOOR = {"storage_mb": 0, "memory_mb": 64, "settings_fields": 0, "pages": 0, "requests_per_minute": 1}
+DEFAULT_LIMITS = {"storage_mb": 50, "memory_mb": 256, "settings_fields": 10, "pages": 1, "requests_per_minute": 60}
 FIELD_TYPES = ("text", "number", "boolean", "choice")
 # Personal data a module may ask for, each agreed (or not) on its own at install
 DATA = {
     "home_location": "your home's location",
     "places": "your saved places",
-    "live_location": "where you are now",
     "vehicles": "your vehicles (registrations)",
     "accounts": "usernames and account ids you give it",
 }

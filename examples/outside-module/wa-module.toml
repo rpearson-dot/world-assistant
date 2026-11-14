@@ -1,0 +1,42 @@
+# An outside module's manifest: everything World Assistant needs to know, and everything you are asked to agree to.
+# The full reference is docs/outside-modules.md in World Assistant's repository.
+id = "hello"
+name = "Hello, outside module"
+version = "1.0.0"
+sdk = 3
+min_wa = "0.55.0"
+licence = "MIT"
+repository = "https://github.com/your-name/wa-hello"
+role = "processor"
+reads = []
+gives = ["Home Assistant: the distance from home to a place you choose"]
+controls = []
+
+[image]
+name = "ghcr.io/your-name/wa-hello"
+
+[keys]
+# example_key = { label = "Example API key", required = false }
+
+[network]
+hosts = []          # outside hosts it may reach, such as "api.example.com" or "*.example.com"
+home_devices = []   # devices on your home network it asks you for, by what they are ("Tigo CCA")
+
+[data]
+home_location = "postcode district"   # none | postcode district | exact
+places = true
+home_assistant_write = ["sensor.wa_x_hello_*"]
+notifications = false
+
+[limits]
+storage_mb = 10        # its /data volume, where it keeps anything (a SQLite file, say)
+memory_mb = 64
+settings_fields = 1
+pages = 1
+requests_per_minute = 30
+
+[[settings]]
+key = "place"
+label = "Which place (its id)"
+type = "text"
+default = "work"

@@ -21,6 +21,6 @@ Ideas parked for later. None of these are built. What is built is in the [README
   API or open data. Eurotunnel's own website board (`.../api/v1/departures/GetCombinedBoardResults`) is
   undocumented and token-protected; terms unchecked. Revisit if an operator offers a feed, or by asking
   Port of Dover and Eurotunnel whether they share data with personal projects.
-* **Modules from outside the image:** keys, tables, menu tabs and Home Assistant sensors declared by a module rather
-  than listed in the core, and a trusted way to install signed outside modules. Each module already has its own
-  folder, a checked boundary and a written interface ([module SDK](module-sdk.md), 0.52.0).
+* **Outside modules, next steps** (outside modules themselves are built in 0.55.0: [guide](outside-modules.md)):
+  a directory of modules people have published; letting one module offer an API to another, with the owner's
+  agreement; an end-to-end check in CI that builds the example module, installs it in a real stack and removes it.

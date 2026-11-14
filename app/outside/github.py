@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 
 API = "https://api.github.com"
-REPO = re.compile(r"^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
+REPO = re.compile(r"^(?:https://)?(?:www\.)?github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
 DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 TAG = re.compile(r"^v?\d+\.\d+\.\d+$")
 
@@ -27,7 +27,7 @@ class GitHubError(Exception):
 def owner_repo(url: str) -> tuple[str, str]:
     m = REPO.match(url.strip())
     if not m:
-        raise GitHubError("give the repository's address, like https://github.com/owner/name")
+        raise GitHubError("give the repository's address, like github.com/owner/name")
     return m[1], m[2]
 
 

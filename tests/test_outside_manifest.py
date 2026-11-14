@@ -37,7 +37,7 @@ home_assistant_write = ["sensor.wa_x_tigo_*"]
 notifications = true
 
 [limits]
-database_mb = 200
+storage_mb = 200
 
 [[settings]]
 key = "every"
@@ -55,7 +55,7 @@ def test_a_good_manifest() -> None:
     m = parse()
     assert (m.id, m.role, m.image, m.data, m.notifications) == ("tigo", "source", "ghcr.io/someone/wa-tigo",
                                                                  {"home_location": "postcode district"}, True)  # fmt: skip
-    assert m.limits["database_mb"] == 200 and m.limits["memory_mb"] == 256 and m.keys["tigo_password"]["required"] is False
+    assert m.limits["storage_mb"] == 200 and m.limits["memory_mb"] == 256 and m.keys["tigo_password"]["required"] is False
     assert m.settings[0].type == "number" and M.from_json(m.to_json()) == m
 
 
@@ -67,7 +67,7 @@ def test_a_good_manifest() -> None:
     (("name = \"ghcr.io/someone/wa-tigo\"", "name = \"ghcr.io/other/wa-tigo\""), "own owner"),
     (("name = \"ghcr.io/someone/wa-tigo\"", "name = \"docker.io/someone/wa-tigo\""), "ghcr.io"),
     (("sensor.wa_x_tigo_*", "sensor.living_room_*"), "only its own entities"),
-    (("database_mb = 200", "database_mb = 99999"), "limits.database_mb"),
+    (("storage_mb = 200", "storage_mb = 99999"), "limits.storage_mb"),
     (("home_location = \"postcode district\"", "home_location = \"street\""), "home_location"),
     (("role = \"source\"", "role = \"thing\""), "role"),
     (("id = \"tigo\"", "colour = \"red\"\nid = \"tigo\""), "unknown fields"),
@@ -89,10 +89,10 @@ def test_what_an_update_asks_for_that_was_not_agreed() -> None:
     assert M.more_access(old, old) == []
     new = parse(GOOD.replace('home_location = "postcode district"', 'home_location = "exact"\nplaces = true')
                 .replace('home_devices = ["Tigo CCA"]', 'home_devices = ["Tigo CCA", "Inverter"]')
-                .replace("database_mb = 200", "database_mb = 300"))
+                .replace("storage_mb = 200", "storage_mb = 300"))
     more = M.more_access(old, new)
     assert "your home's location more precisely (exact, was postcode district)" in more and "your saved places" in more
-    assert "a device on your network: Inverter" in more and "a higher limit: database mb 200 → 300" in more
+    assert "a device on your network: Inverter" in more and "a higher limit: storage mb 200 → 300" in more
     assert M.more_access(new, old) == []  # asking for less is never held
 
 
