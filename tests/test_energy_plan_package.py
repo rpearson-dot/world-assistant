@@ -67,6 +67,13 @@ def _env(states: dict[str, Any], now: datetime = NOW) -> tuple[Any, dict[str, An
         def __init__(self, domain: str) -> None:
             self.domain = domain
 
+        def __iter__(self) -> Any:  # states.automation: every entity of the domain, with its attributes
+            from types import SimpleNamespace
+
+            for eid in [k for k in states if k.startswith(self.domain + ".") and "#" not in k and "@" not in k]:
+                attrs = {k.split("#", 1)[1]: v for k, v in states.items() if k.startswith(eid + "#")}
+                yield SimpleNamespace(entity_id=eid, state=str(states[eid]), attributes=attrs)
+
         def __getattr__(self, name: str) -> Any:
             if name.startswith("_") or name in ("unsafe_callable", "alters_data"):
                 raise AttributeError(name)
@@ -748,6 +755,12 @@ def test_it_says_when_it_should_be_charging_and_is_not() -> None:
     assert fire and '"WA car: control the charger" is off' in " ".join(v["text"].split())
     v, _ = go(night | {"input_boolean.wa_ev_apply": "on"})
     assert "Each start has been refused" in v["text"]
+    # the plan's own automation switched off (14 November): that is the reason given
+    off = night | {"automation.wa_car_charging_start_and_stop_the_charger": "off",
+                   "automation.wa_car_charging_start_and_stop_the_charger#id": "wa_ev_plan"}  # fmt: skip
+    v, fire = go(off)
+    assert fire and v["plan_off"] is True and "is switched off (Settings > Automations)" in " ".join(v["text"].split())
+    assert go(off | {"automation.wa_car_charging_start_and_stop_the_charger": "on"})[0]["plan_off"] is False
     assert go(night | {"sensor.wa_charger_status": "Charging"})[1] is False
     assert go(night | {"sensor.wa_car_charging_plan@changed": NOW - timedelta(minutes=10)})[1] is False  # give it time
     told = (NOW - timedelta(minutes=2)).timestamp()

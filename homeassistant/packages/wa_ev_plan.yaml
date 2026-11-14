@@ -581,11 +581,15 @@ automation:
         {% set e = states('input_text.wa_ev_entity_switch') %}{{ e if e.count('.') == 1 else ('switch.wa_ocpp_charging' if has_value('switch.wa_ocpp_charging') else 'switch.charger_charge_control') }}
       apply: "{{ is_state('input_boolean.wa_ev_apply', 'on') }}"
       service: "{{ states('input_text.wa_ev_notify') | trim }}"
+      # the plan's own automation switched off (in Settings > Automations): nothing acts on the plan at all
+      plan_off: >-
+        {{ states.automation | selectattr('attributes.id', 'eq', 'wa_ev_plan') | selectattr('state', 'eq', 'off') | list | count > 0 }}
       text: >-
         The plan has wanted to charge the car since {{ since | timestamp_custom('%H:%M') if since is number else '?' }}
         ({{ state_attr('sensor.wa_car_charging_plan', 'why') | trim }}), but it is not charging: the charger is
         {{ status }} and its switch is {{ states(switch) }}.
-        {% if not apply %}"WA car: control the charger" is off, so the plan has only been writing down what it would do.
+        {% if plan_off %}The automation "WA car charging: start and stop the charger" is switched off (Settings > Automations), so nothing acts on the plan: switch it on.
+        {% elif not apply %}"WA car: control the charger" is off, so the plan has only been writing down what it would do.
         {% elif is_state(switch, 'off') %}Each start has been refused: check the charger (its app, or a restart) and the car's own charge timer.
         {% else %}The start has been sent again; if it stays like this, check the charger and the car's own charge timer.{% endif %}
         Car {{ states('sensor.wa_car_charge_level') }}%.
