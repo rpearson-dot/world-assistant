@@ -54,7 +54,7 @@ step "a stack on PostgreSQL 16, with data"
 docker compose up -d --build || fail "the stack would not start"
 for _ in $(seq 1 60); do curl -fsS "$API/healthz" >/dev/null 2>&1 && break; sleep 3; done
 [ "$(major)" = 16 ] || fail "expected PostgreSQL 16 to start with"
-docker compose exec -T api python -m app.smoke --seed >/dev/null || fail "smoke on 16"
+out=$(docker compose exec -T api python -m app.smoke --seed) || { echo "$out" | grep -vE "^(ok|off) "; fail "smoke on 16"; }
 curl -fsS -X PUT "${auth[@]}" -d '{"name":"Before","kind":"other","lat":51.5,"lon":-0.1}' "$API/v1/places/before" >/dev/null
 
 step "a failed upgrade goes back to 16 by itself"
@@ -78,7 +78,7 @@ has_place before || fail "the place did not come across"
 docker compose exec -T wa-db psql -U worldassistant -d worldassistant -tAc "select postgis_lib_version()"
 curl -fsS -X PUT "${auth[@]}" -d '{"name":"After","kind":"other","lat":51.6,"lon":-0.2}' "$API/v1/places/after" >/dev/null \
   || fail "cannot write on 18"
-docker compose exec -T api python -m app.smoke >/dev/null || fail "smoke on 18"
+out=$(docker compose exec -T api python -m app.smoke) || { echo "$out" | grep -vE "^(ok|off) "; fail "smoke on 18"; }
 bash scripts/pg-upgrade.sh --yes | grep -q "Already on PostgreSQL 18" || fail "a second run should do nothing"
 
 step "--rollback"

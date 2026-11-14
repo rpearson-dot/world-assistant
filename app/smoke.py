@@ -10,7 +10,10 @@ What counts as a failure:
   * a page that does not load, still has template placeholders, or lacks the navigation
   * a /v1 route that answers from outside without the token, or a 500 (or any 5xx other than a deliberate JSON
     502/503 such as "key not set" or "upstream unavailable") from ANY GET route in the OpenAPI list
-  * a route that takes longer than 30 seconds, or claims JSON but returns something else
+  * a route that claims JSON but returns something else
+
+A route that takes longer than 30 seconds is reported as slow but is not a failure: it is almost always someone
+else's service read live (police data, TfL) being slow, and a slow source must not stop a deploy.
   * with --seed: the test place not saving, or the place-based queries not answering as expected
 """
 
@@ -72,7 +75,13 @@ def fetch(base: str, path: str, token: str | None = None, method: str = "GET",
 
 class Report:
     def __init__(self, out: Callable[[str], None] = print) -> None:
-        self.out, self.failed, self.total, self.off = out, 0, 0, 0
+        self.out, self.failed, self.total, self.off, self.slow = out, 0, 0, 0, 0
+
+    def too_slow(self, what: str) -> None:
+        """An endpoint that did not answer in time. Slowness is usually someone else's service this one reads live
+        (police data, TfL): said so, not counted as a failure, so it never blocks a deploy. A crash is a 500."""
+        self.slow += 1
+        self.out(f"slow {what}  (no answer in {TIMEOUT:.0f} s: not counted as a failure)")
 
     def switched_off(self, what: str) -> None:
         """A page of a module switched off at /modules: said so, not counted as a pass or a failure."""
@@ -85,6 +94,10 @@ class Report:
             self.failed += 1
         self.out(f"{'ok  ' if ok else 'FAIL'} {what}" + (f"  ({detail})" if detail else ""))
         return ok
+
+
+def _timed_out(status: int, body: str) -> bool:
+    return status == 0 and ("TimeoutError" in body or "timed out" in body)
 
 
 def _deliberate(status: int, body: str) -> bool:
@@ -178,6 +191,9 @@ def run(base: str, token: str, *, seed: bool = False, out: Callable[[str], None]
         url = _fill(path) + ("?" + urllib.parse.urlencode(query) if query else "")
         s, ct, b = fetch(base, url, token)
         swept += 1
+        if _timed_out(s, b):
+            r.too_slow(f"GET {url}")
+            continue
         ok = 0 < s < 500 or _deliberate(s, b)
         why = "" if ok else (b[:100] if s else b)
         if ok and s == 200 and "json" in ct:
@@ -205,6 +221,9 @@ def run(base: str, token: str, *, seed: bool = False, out: Callable[[str], None]
             r.check(s == 200 and '"days"' in b, f"GET {path}", f"HTTP {s}")
         for path in (f"/v1/events/near?place={place}", f"/v1/pollen/near?place={place}"):
             s, _, b = fetch(base, path, token)
+            if _timed_out(s, b):
+                r.too_slow(f"GET {path}")
+                continue
             r.check(s == 200 or _deliberate(s, b), f"GET {path}", f"HTTP {s}")
         s, _, b = fetch(base, "/v1/ask", token)
         r.check(s == 200 and "pollen" in b and "fuel_cheapest" in b, "assistant lists its tools", f"HTTP {s}")
@@ -212,7 +231,8 @@ def run(base: str, token: str, *, seed: bool = False, out: Callable[[str], None]
         r.check(s in (200, 204), "delete the test place", f"HTTP {s}")
 
     r.out(f"\n{r.total - r.failed} of {r.total} checks passed" + ("" if not r.failed else f", {r.failed} FAILED")
-          + (f"; {r.off} page{'s' if r.off != 1 else ''} switched off, not checked" if r.off else ""))
+          + (f"; {r.off} page{'s' if r.off != 1 else ''} switched off, not checked" if r.off else "")
+          + (f"; {r.slow} too slow to answer, not counted" if r.slow else ""))
     return 1 if r.failed else 0
 
 

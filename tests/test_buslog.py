@@ -362,3 +362,17 @@ def test_a_bus_is_matched_to_its_journey_and_told_early_or_late() -> None:
     # the stop's next hour from 07:15: timetable and TfL
     h = compare.stop_hour("B", t0 + timedelta(minutes=15), tt, [{**preds[0], "vehicle": "LJ16EZX"}], {"outbound": "Sutton"})
     assert [e["scheduled_at"].minute for e in h["scheduled"]] == [19, 29, 39] and h["expected"][0]["to"] == "Sutton"
+
+
+def test_what_is_over_leaves_the_school_calendar() -> None:
+    from datetime import date
+
+    from app.modules.buslog.schedule import drop_past
+
+    cal = {"school": "X", "terms": [{"name": "Autumn", "from": "2026-09-03", "to": "2026-12-18"},
+                                    {"name": "Summer", "from": "2026-04-20", "to": "2026-07-22"}],
+           "breaks": [{"name": "Half term", "from": "2026-10-26", "to": "2026-10-30"}],
+           "inset": ["2026-09-02", "2026-11-14", "2027-01-04"], "notes": [{"date": "2026-11-13", "note": "x"}]}  # fmt: skip
+    got = drop_past(cal, date(2026, 11, 14))
+    assert [t["name"] for t in got["terms"]] == ["Autumn"] and got["breaks"] == []
+    assert got["inset"] == ["2026-11-14", "2027-01-04"] and got["notes"] == [] and got["school"] == "X"

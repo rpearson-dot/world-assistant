@@ -89,6 +89,17 @@ def check_calendar(cal: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def drop_past(cal: dict[str, Any], today: date) -> dict[str, Any]:
+    """The calendar without what is over: terms and holidays that ended before today, INSET days and notes before
+    today. Only today and later are ever asked about, so nothing is lost."""
+    out = dict(cal)
+    for kind in ("terms", "breaks"):
+        out[kind] = [r for r in cal.get(kind) or [] if _d(str(r["to"])) >= today]
+    out["inset"] = [x for x in cal.get("inset") or [] if _d(str(x)) >= today]
+    out["notes"] = [n for n in cal.get("notes") or [] if _d(str(n["date"])) >= today]
+    return out
+
+
 def check_settings(st: dict[str, Any]) -> dict[str, Any]:
     out = {**DEFAULT_SETTINGS, **{k: v for k, v in st.items() if k in DEFAULT_SETTINGS}}
     line = str(out["line"]).strip().upper()

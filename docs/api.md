@@ -144,7 +144,7 @@ pages themselves hold no data: each one calls these endpoints.
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/v1/buslog/calendar` | Get Calendar |
+| GET | `/v1/buslog/calendar` | The school calendar from today on (what is over is taken out each night). |
 | PUT | `/v1/buslog/calendar` | The school's terms, holidays and INSET days: {school, terms: [{name, from, to}], breaks: [...], inset: [dates], notes}. |
 | GET | `/v1/buslog/polls` | Every minute of a day, per source: requests that answered with data, answered empty, or failed. A gap in the record shows here as a failed (or missing) request, never as a bus that did not come. |
 | GET | `/v1/buslog/positions` | Each bus's last BODS position at a moment (default now) within `within_s` before it, and how old it was then. |

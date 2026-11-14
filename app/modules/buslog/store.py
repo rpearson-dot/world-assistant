@@ -147,7 +147,8 @@ DO $$ DECLARE m date := date_trunc('month', now())::date; BEGIN
 
 
 async def housekeep(conn: Any) -> dict[str, Any]:
-    """Make the coming months' partitions; drop raw-response months older than KEEP_RAW_MONTHS. Returns what it did."""
+    """Make the coming months' partitions; drop raw-response months older than KEEP_RAW_MONTHS; take what is over out
+    of the school calendar. Returns what it did."""
     for t in TABLES:
         await conn.execute(text(PARTITIONS_SQL.replace("{t}", t)))
     old = (await conn.execute(text(
@@ -157,4 +158,17 @@ async def housekeep(conn: Any) -> dict[str, Any]:
         {"k": KEEP_RAW_MONTHS})).scalars().all()  # fmt: skip
     for name in old:
         await conn.execute(text(f'DROP TABLE IF EXISTS "{name}"'))
-    return {"dropped": list(old)}
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from app.config import get_settings
+    from app.modules.buslog.schedule import drop_past
+
+    cal = await read_setting(conn, CALENDAR_KEY)
+    gone = 0
+    if cal:
+        kept = drop_past(cal, datetime.now(ZoneInfo(get_settings().local_tz)).date())
+        gone = sum(len(cal.get(k) or []) - len(kept.get(k) or []) for k in ("terms", "breaks", "inset", "notes"))
+        if gone:
+            await write_setting(conn, CALENDAR_KEY, kept)
+    return {"dropped": list(old), "calendar_entries_over": gone}
