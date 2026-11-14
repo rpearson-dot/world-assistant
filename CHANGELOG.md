@@ -38,6 +38,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   times (`Module.occasional`), and a version number a module is checked against (`docs/module-sdk.md`).
 
 ### Fixed
+- **Car charging: the start is sent again in more cases** (Home Assistant's `wa_ev_plan.yaml`). After the charger
+  restarts it can come back suspended or finishing rather than ready, and the start was then never sent again (the
+  car sat uncharged 04:00 to 07:00 on 14 November). Now any not-charging state for 10 minutes, with the switch on and
+  the plan wanting to charge, gets the start again (at most every 30 minutes). A start the charger does not take
+  (its switch still off a minute later) is written in the plan's notes, instead of passing silently.
+- **Car charging: you are told when it should be charging and is not.** After 15 minutes of the plan wanting to
+  charge with nothing happening, a notification says so and the likely why ("control the charger" off, starts
+  refused, or the start sent again): in Home Assistant, and on your phone if "WA car: notify service" names one
+  (Home charging dashboard → Car settings). Copy `wa_ev_plan.yaml` and `home-charging.yaml` across again.
 - **Backups held every row of the bus log twice** (0.52.0): its monthly partitions were copied as well as the table,
   and a restore would have failed on the duplicates. A split table is now kept once, through its parent, and the bus
   log's raw answers (about 30 MB a recorded day) are left out of backups (they stay in the database a school year).

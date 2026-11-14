@@ -56,7 +56,8 @@ def _env(states: dict[str, Any], now: datetime = NOW) -> tuple[Any, dict[str, An
     as_dt = lambda v, default=None: datetime.fromisoformat(v) if isinstance(v, str) and v[:2] == "20" else default
     num = lambda v, d=0: float(v) if str(v).lstrip("-").replace(".", "", 1).isdigit() else d
     env.filters |= {"as_local": lambda d: d.astimezone(LONDON), "from_json": json.loads, "to_json": json.dumps,
-                    "int": lambda v, d=0: int(num(v, d)), "float": num, "as_datetime": as_dt}  # fmt: skip
+                    "int": lambda v, d=0: int(num(v, d)), "float": num, "as_datetime": as_dt,
+                    "timestamp_custom": lambda t, fmt="%Y-%m-%d %H:%M:%S": datetime.fromtimestamp(float(t), LONDON).strftime(fmt)}  # fmt: skip
     class _State:
         def __init__(self, eid: str) -> None:
             self.state = str(states.get(eid, "unknown"))
@@ -83,7 +84,7 @@ def _env(states: dict[str, Any], now: datetime = NOW) -> tuple[Any, dict[str, An
 
     funcs = {"states": _States(), "is_state": lambda e, v: states.get(e) == v,
              "state_attr": lambda e, a: states.get(f"{e}#{a}"), "as_datetime": as_dt, "now": lambda: now,
-             "timedelta": timedelta, "none": None, "range": range,
+             "timedelta": timedelta, "none": None, "range": range, "as_timestamp": lambda d: d.timestamp() if d else None,
              "is_number": lambda v: str(v).lstrip("-").replace(".", "", 1).isdigit(),
              "has_value": lambda e: states.get(e) not in (None, "unknown", "unavailable")}  # fmt: skip
     return env, funcs
@@ -446,7 +447,7 @@ def test_the_entities_are_settings_with_defaults() -> None:
     assert render(soc, {"input_text.wa_ev_entity_soc": "sensor.my_car_battery", "sensor.my_car_battery": "unavailable"}) in (None, "None")
     status = EV_SENSORS["wa_charger_status"]["state"]
     assert render(status, {"input_text.wa_ev_entity_status": "sensor.wallbox_status", "sensor.wallbox_status": "Charging"}) == "Charging"
-    assert all(k.startswith("wa_ev_entity_") for k in EV["input_text"])
+    assert all(k.startswith("wa_ev_entity_") for k in EV["input_text"] if k != "wa_ev_notify")
     switch = EV["script"]["wa_car_charge_start"]["sequence"][0]["target"]["entity_id"]
     assert render(switch, {}) == "switch.charger_charge_control"
     assert render(switch, {"input_text.wa_ev_entity_switch": "switch.wallbox_charging"}) == "switch.wallbox_charging"
@@ -722,6 +723,32 @@ def test_a_start_that_never_reached_the_charger_is_sent_again() -> None:
         "Sent the start again: the charger has been Preparing for over 10 minutes with its switch on")
     assert go(stale | {"sensor.wa_charger_status@changed": NOW - timedelta(minutes=3)})["stuck"] is False  # give it time
     assert go(stale | {"input_datetime.wa_ev_retry_at#timestamp": (NOW - timedelta(minutes=10)).timestamp()})["stuck"] is False
-    assert go(stale | {"sensor.wa_charger_status": "SuspendedEV"})["stuck"] is False  # the car said no: leave it
+    # after a restart the charger can come back suspended or finishing: the start is sent again then too
+    for status in ("SuspendedEV", "SuspendedEVSE", "Finishing"):
+        assert go(stale | {"sensor.wa_charger_status": status})["stuck"] is True, status
+    assert go(stale | {"sensor.wa_charger_status": "Charging"})["stuck"] is False
     assert go(stale | {"sensor.wa_car_charging_plan": "wait"})["stuck"] is False
 
+
+
+def test_it_says_when_it_should_be_charging_and_is_not() -> None:
+    a = next(x for x in EV["automation"] if x["id"] == "wa_ev_not_charging")
+    cond = a["conditions"][0]["value_template"]
+
+    def go(states: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        v: dict[str, Any] = {}
+        for k, tpl in a["variables"].items():
+            v[k] = render(tpl, states, NOW, **v)
+        return v, render(cond, states, NOW, **v) is True
+
+    night = CAR | {"sensor.wa_car_charging_plan": "charge", "sensor.wa_car_charging_plan@changed": NOW - timedelta(minutes=20),
+                   "sensor.wa_car_charging_plan#why": "the rate is cheap now (7.5 p/kWh)", "sensor.wa_charger_status": "Preparing",
+                   "switch.charger_charge_control": "off", "input_boolean.wa_ev_apply": "off"}  # fmt: skip
+    v, fire = go(night)
+    assert fire and '"WA car: control the charger" is off' in " ".join(v["text"].split())
+    v, _ = go(night | {"input_boolean.wa_ev_apply": "on"})
+    assert "Each start has been refused" in v["text"]
+    assert go(night | {"sensor.wa_charger_status": "Charging"})[1] is False
+    assert go(night | {"sensor.wa_car_charging_plan@changed": NOW - timedelta(minutes=10)})[1] is False  # give it time
+    told = (NOW - timedelta(minutes=2)).timestamp()
+    assert go(night | {"input_datetime.wa_ev_warned_at#timestamp": told})[1] is False  # once each time
