@@ -2,6 +2,16 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.61.0] - 2026-11-15
+
+### Fixed
+
+- **The OCPP charger no longer drops every few seconds (binary WebSocket frames).** OCPP-J frames are JSON text, but
+  some chargers — the Sync EV among them — send them in **binary** WebSocket frames. World Assistant read them with
+  `receive_text()`, which raised `KeyError: 'text'` on a binary frame and dropped the charger's connection, so
+  commands (ChangeAvailability, start/stop) went unanswered and nothing held the charger to the plan. The server now
+  accepts either frame type.
+
 ## [0.60.0] - 2026-11-15
 
 ### Added
