@@ -26,6 +26,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Fixed
 
+- **UniFi Network 11's log is read.** A UDM Pro sends `UDM-Pro CEF:0|Ubiquiti|...`, which was taken for a program
+  called "CEF" and kept as a plain system line, so no device appeared. Client joins and leaves now give the client's
+  own MAC, address and name (not the access point's, which UniFi 11 sends beside it), and "Blocked by Firewall"
+  lines become firewall events with the device, destination, port and the policy's name.
+- **Devices on other VLANs.** Pi-hole knows a device on another VLAN only by its address; it is now kept by that
+  (`ip:10.0.1.254`) with Pi-hole's name for it, and becomes one device with its MAC when the UniFi log names it.
+
 - **An overnight update no longer stops the car's charge.** Updates restart World Assistant at 04:00, inside most
   cheap charging windows; its energy sensors were briefly unavailable in Home Assistant, the charging plan read that
   as "not cheap" and the automation stopped the charge (and started it again a few minutes later). Now:

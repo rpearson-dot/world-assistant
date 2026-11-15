@@ -24,6 +24,13 @@ NOW = datetime(2026, 11, 14, 16, tzinfo=UTC)
 DHCP = "<30>Nov 14 16:00:01 UDR dnsmasq-dhcp[1234]: DHCPACK(br0) 10.0.2.50 aa:bb:cc:dd:ee:ff Living-Room-TV"
 FW = ("<4>Nov 14 16:00:02 UDR kernel: [WAN_OUT-D-2147483647] IN=br0 OUT=eth4 MAC=11:22:33:44:55:66:aa:bb:cc:dd:ee:ff:08:00 "
       "SRC=10.0.2.50 DST=8.8.8.8 LEN=60 PROTO=UDP SPT=5353 DPT=53")  # fmt: skip
+# UniFi Network 11 (as sent by a UDM Pro, 15 Nov 2026): "host CEF:0|...", the AP's own MAC beside the client's
+CEF11 = ("<14>Nov 15 08:37:08 UDM-Pro CEF:0|Ubiquiti|UniFi Network|11.0.99|400|WiFi Client Connected|1|UNIFIcategory=Client Devices "
+         "UNIFIhost=UDM-Pro UNIFIconnectedToDeviceName=Downstairs UNIFIconnectedToDeviceIp=10.0.2.17 UNIFIconnectedToDeviceMac=f4:e2:c6:e7:84:09 "
+         "UNIFIclientAlias=Robs-iPhone 5f:8f UNIFIclientHostname=Robs-iPhone UNIFIclientIp=10.0.1.2 UNIFIclientMac=aa:bb:cc:5f:8f:01")
+FW11 = ("<12>Nov 15 08:36:44 UDM-Pro CEF:0|Ubiquiti|UniFi Network|11.0.99|203|Blocked by Firewall|4|UNIFIcategory=Security UNIFIhost=UDM-Pro "
+        "proto=TCP spt=53010 dpt=443 act=blocked app=HTTPS UNIFIpolicyName=Block YouTube  UNIFIpolicyType=Firewall dst=216.239.38.119 "
+        "UNIFIsrcClientAlias=Sam's Phone UNIFIsrcClientIp=10.0.3.37 UNIFIsrcClientMac=11:22:33:44:55:66 src=10.0.3.37")
 CEF = ("<14>1 2026-11-14T16:00:03Z UDR UniFi - - - CEF:0|Ubiquiti|UniFi Network|11.0.99|400|WiFi Client Connected|1|"
        "UNIFIclientMac=AA:BB:CC:DD:EE:FF UNIFIclientIp=10.0.2.50 UNIFIclientHostname=Living Room TV UNIFIwifiName=Home")  # fmt: skip
 
@@ -39,6 +46,14 @@ def test_what_the_gateway_sends() -> None:
     assert parse.line(CEF.replace("Connected", "Disconnected"), NOW)["action"] == "leave"
     o = parse.line("<13>Nov 14 16:00:04 UDR ubios-udapi-server: something else", NOW)
     assert o["kind"] == "system" and o["detail"] == {"program": "ubios-udapi-server", "text": "something else"}
+
+
+def test_unifi_11_lines() -> None:
+    c = parse.line(CEF11, NOW)
+    assert (c["kind"], c["action"], c["mac"], c["ip"], c["name"], c["detail"]["ap"]) == ("client", "join", "aa:bb:cc:5f:8f:01", "10.0.1.2", "Robs-iPhone 5f:8f", "Downstairs")
+    f = parse.line(FW11, NOW)
+    assert (f["kind"], f["action"], f["mac"], f["ip"], f["dest"], f["port"], f["proto"], f["detail"]["rule"]) == (
+        "firewall", "block", "11:22:33:44:55:66", "10.0.3.37", "216.239.38.119", 443, "tcp", "Block YouTube")
 
 
 def test_pihole_queries_become_events() -> None:
@@ -149,6 +164,18 @@ def test_events_are_kept_against_the_right_device() -> None:
             async with engine.begin() as conn:  # Pi-hole names only the address: put against the device it was given to
                 again = await store.keep(conn, [parse.pihole({"id": 1, "time": NOW.timestamp(), "domain": "lgtvsdp.com",
                                                               "status": "FORWARDED", "client": {"ip": "10.0.2.50"}})])  # fmt: skip
+            async with engine.begin() as conn:  # a device on another VLAN: known by its address, then UniFi names its MAC
+                await store.keep(conn, pihole.device_events([{"hwaddr": "ip-10.0.3.37", "ips": [{"ip": "10.0.3.37", "name": "sams-phone"}]}], NOW))
+                await store.keep(conn, [parse.pihole({"id": 2, "time": NOW.timestamp(), "domain": "youtube.com", "status": "FORWARDED",
+                                                      "client": {"ip": "10.0.3.37"}})])  # fmt: skip
+                assert (await conn.execute(sa.text("SELECT mac FROM net_event WHERE dest = 'youtube.com'"))).scalar() == "ip:10.0.3.37"
+                await store.keep(conn, [parse.line(FW11, NOW)])
+                merged = (await conn.execute(sa.text("SELECT mac, name FROM net_device WHERE ip = '10.0.3.37'"))).all()
+                assert merged == [("11:22:33:44:55:66", "Sam's Phone")]  # UniFi's name for it
+                assert (await conn.execute(sa.text("SELECT mac FROM net_event WHERE dest = 'youtube.com'"))).scalar() == "11:22:33:44:55:66"
+                await conn.execute(sa.text("DELETE FROM net_device WHERE ip = '10.0.3.37'"))
+                await conn.execute(sa.text("DELETE FROM net_event WHERE ip = '10.0.3.37'"))
+                await conn.execute(sa.text("DELETE FROM net_day WHERE mac LIKE '%' AND kind <> 'x' AND mac NOT IN (SELECT mac FROM net_device)"))
             async with engine.connect() as conn:
                 dev = (await conn.execute(sa.text("SELECT * FROM net_device"))).mappings().all()
                 day = (await conn.execute(sa.text("SELECT kind, action, n FROM net_day ORDER BY kind"))).all()
@@ -198,4 +225,5 @@ def test_pihole_network_table_names_devices_without_unifi() -> None:
                                                                         {"ip": "10.0.2.99", "name": None, "lastSeen": 1}]},
             {"hwaddr": "ip-10.0.2.7", "ips": [{"ip": "10.0.2.7"}]}]  # fmt: skip
     ev = pihole.device_events(devs, NOW)
-    assert len(ev) == 1 and (ev[0]["mac"], ev[0]["ip"], ev[0]["name"], ev[0]["kind"]) == ("aa:bb:cc:dd:ee:ff", "10.0.2.50", "lg-tv", "client")
+    assert (ev[0]["mac"], ev[0]["ip"], ev[0]["name"], ev[0]["kind"]) == ("aa:bb:cc:dd:ee:ff", "10.0.2.50", "lg-tv", "client")
+    assert ev[1]["mac"] == "ip:10.0.2.7" and len(ev) == 2  # another VLAN: kept by its address until UniFi names its MAC

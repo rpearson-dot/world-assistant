@@ -37,11 +37,11 @@ async function load() {
   msg.textContent = '';
   try {
     const r = await fetch('/v1/discovery', { headers: { Authorization: 'Bearer ' + tok.value } });
-    if (r.status === 404) { $('say').textContent = 'Discovery needs the Network module: turn it on in Settings → Setup.'; return; }
+    if (r.status === 404) { $('say').textContent = 'Discovery needs the UniFi gateway log or Pi-hole: turn one on in Settings → Setup (Your network).'; return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json(), t = $('devs'); t.replaceChildren();
     $('say').textContent = d.devices.length ? d.identified + ' of ' + d.devices.length + ' devices recognised; ' + d.suggestions + ' suggestions.' +
-      (d.oui_loaded ? '' : ' The register of adapter makers is fetched within the week.') : 'No devices yet: set up the Network module first.';
+      (d.oui_loaded ? '' : ' The register of adapter makers is fetched within the week.') : 'No devices yet: they appear once the UniFi gateway log or Pi-hole has seen them (Settings → Setup, Your network).';
     const h = el('tr'); ['Device', 'Probably', 'What World Assistant could do'].forEach(x => h.append(el('th', x))); t.append(h);
     for (const x of d.devices) {
       const tr = el('tr'), a = el('td'); a.append(el('div', x.label), el('div', x.mac + (x.ip ? ' · ' + x.ip : '') + (x.vendor ? ' · ' + x.vendor : ''), 'why'));

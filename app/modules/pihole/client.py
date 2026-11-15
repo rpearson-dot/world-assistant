@@ -177,14 +177,19 @@ def events(qs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def device_events(devices: list[dict[str, Any]], now: Any) -> list[dict[str, Any]]:
     """Pi-hole's network table as "seen" events: a device's MAC, its newest address and name (so devices are known
-    without the UniFi gateway log). Pi-hole's own pseudo-entries (ip-..., no MAC) are left out."""
+    without the UniFi gateway log). A device on another VLAN has no MAC in Pi-hole (ip-10.0.1.254): it is kept by its
+    address (ip:10.0.1.254) until the UniFi gateway log names its MAC, when the two become one."""
     out = []
     for d in devices:
-        mac = str(d.get("hwaddr") or "").lower()
-        if not mac or mac.startswith("ip-") or mac.count(":") != 5 or mac == "00:00:00:00:00:00":
-            continue
+        hw = str(d.get("hwaddr") or "").lower()
         ips = sorted(d.get("ips") or [], key=lambda x: x.get("lastSeen") or 0, reverse=True)
         ip = ips[0].get("ip") if ips else None
+        if hw.startswith("ip-") and ip and ":" not in ip:
+            mac = f"ip:{ip}"
+        elif hw.count(":") == 5 and hw != "00:00:00:00:00:00":
+            mac = hw
+        else:
+            continue
         name = next((x.get("name") for x in ips if x.get("name")), None)
         out.append({"at": now, "source": "pihole", "kind": "client", "action": "seen", "mac": mac, "ip": ip, "name": name,
                     "detail": {"vendor": d.get("macVendor")} if d.get("macVendor") else {}})  # fmt: skip
