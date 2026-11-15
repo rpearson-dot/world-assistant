@@ -38,6 +38,26 @@ def test_frames_are_read_and_written() -> None:
     assert exc.value.unique_id == "keep"  # answered with an error, by its id
 
 
+def test_a_frame_is_read_whether_text_or_binary() -> None:
+    # some chargers (the Sync EV) send OCPP-J in binary WebSocket frames; receive_text() would raise KeyError('text')
+    from starlette.websockets import WebSocketDisconnect
+
+    from app.modules.ocpp.server import _receive
+
+    class FakeWS:
+        def __init__(self, msg: dict) -> None:
+            self.msg = msg
+
+        async def receive(self) -> dict:
+            return self.msg
+
+    frame = '[2,"1","Heartbeat",{}]'
+    assert asyncio.run(_receive(FakeWS({"type": "websocket.receive", "text": frame}))) == frame
+    assert asyncio.run(_receive(FakeWS({"type": "websocket.receive", "bytes": frame.encode()}))) == frame
+    with pytest.raises(WebSocketDisconnect):
+        asyncio.run(_receive(FakeWS({"type": "websocket.disconnect", "code": 1001})))
+
+
 def test_a_restart_is_told_from_a_first_boot() -> None:
     boot = {"chargePointVendor": "SyncEV", "chargePointModel": "EVCP-7KW", "firmwareVersion": "1.6.2"}
     first = protocol.respond("BootNotification", boot, connected_s=3, booted_before=False, transaction_id=0)

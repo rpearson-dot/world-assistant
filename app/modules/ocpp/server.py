@@ -139,7 +139,7 @@ class Hub:
         close_code, why = None, ""
         try:
             while True:
-                raw = await ws.receive_text()
+                raw = await _receive(ws)
                 link.last_in = time.monotonic()
                 await self._incoming(link, raw)
         except WebSocketDisconnect as exc:
@@ -335,6 +335,19 @@ class Hub:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+async def _receive(ws: WebSocket) -> str:
+    """One OCPP-J frame as text. The frames are JSON text, but some chargers — the Sync EV among them — send them in
+    binary WebSocket frames. Starlette's receive_text() does message["text"] and raises KeyError('text') on a binary
+    frame, which would drop the link, so accept either kind and decode bytes as UTF-8."""
+    msg = await ws.receive()
+    if msg["type"] == "websocket.disconnect":
+        raise WebSocketDisconnect(msg.get("code", 1000), msg.get("reason"))
+    if msg.get("text") is not None:
+        return str(msg["text"])
+    data = msg.get("bytes")
+    return data.decode("utf-8", "replace") if data is not None else ""
 
 
 HUB = Hub()
