@@ -2,6 +2,24 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.60.0] - 2026-11-15
+
+### Added
+
+- **Nest thermostat (In the home → Heating).** Reads a Nest through Google's Smart Device Management API every few
+  minutes and keeps it: room temperature, humidity, the target, the mode, and whether it's calling for heat — on a page
+  with a history chart (room vs target, heating shaded), published read-only to Home Assistant as sensors plus a heating
+  binary sensor, and available to the assistant ("what's the thermostat doing"). Tracking only, no control. Needs the
+  one-time Google Device Access setup, which mints the four keys (`nest_project_id`, `nest_client_id`,
+  `nest_client_secret`, `nest_refresh_token`) for the Keys page.
+
+### Fixed
+
+- **The Leaf's charge now matches its dashboard.** OVMS reports two states of charge — a GID-based `v.b.soc` adjusted
+  for battery degradation that reads low (~65%), and the value on the car's own dashboard (~80%). World Assistant now
+  shows the dashboard value when the car sends it (for the headline charge, the battery bar and the low-battery
+  warning), so WA, the car and Home Assistant agree; it falls back to `v.b.soc` when the dashboard value isn't present.
+
 ## [0.59.0] - 2026-11-15
 
 ### Added

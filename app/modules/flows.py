@@ -58,6 +58,8 @@ FLOWS: dict[str, dict[str, Any]] = {
     "airstage": {"role": "source", "reads": ("the air conditioners (Fujitsu Airstage, on the home network)",),
                  "gives": (f"{HA}: a climate entity for each unit", "notifications: error codes, filters, units not answering"),
                  "controls": ("the air conditioners: on and off, mode, target, fan, swing and extras (from the page, the assistant or Home Assistant)",)},
+    "nest": {"role": "source", "reads": ("the Nest thermostat (Google Smart Device Management API)",),
+             "gives": (f"{HA}: room temperature, humidity, target and a heating binary sensor",)},
     "weather": {"role": "source", "reads": ("Open-Meteo forecast and archive",), "gives": (f"{HA}: temperature and heating degree-hours",)},
     "solar": {"role": "source", "reads": ("forecast.solar", f"{HA}: the panels' output statistic (accuracy check)",
                                           f"{HA}: Forecast.Solar arrays (copying, through the share)"),

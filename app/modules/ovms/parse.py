@@ -89,6 +89,15 @@ def num(v: str | None) -> float | None:
         return None
 
 
+def display_soc(v: dict[str, str | None]) -> float | None:
+    """The charge % to show. The Nissan Leaf's OVMS reports two: v.b.soc, a GID-based figure that is adjusted for
+    battery degradation and reads low (e.g. 65%), and xnl.v.b.soc.instrument, the value on the car's own dashboard
+    (e.g. 80%). We show the dashboard value when the car sends it, so World Assistant, the car and Home Assistant agree;
+    otherwise v.b.soc."""
+    inst = num(v.get("xnl.v.b.soc.instrument"))
+    return inst if inst is not None else num(v.get("v.b.soc"))
+
+
 def warnings(m: dict[str, tuple[str | None, datetime]], now: datetime, *, quiet_h: float = 6) -> list[dict[str, Any]]:
     """What in the car's metrics needs attention. m: metric -> (value, when it last came)."""
     v = {k: x[0] for k, x in m.items()}
@@ -116,7 +125,7 @@ def warnings(m: dict[str, tuple[str | None, datetime]], now: datetime, *, quiet_
             add("unlocked", "Unlocked while parked")
         if truthy(v.get("v.e.handbrake")) is False and (num(v.get("v.p.speed")) or 0) < 1:
             add("handbrake", "Handbrake off while parked")
-    soc = num(v.get("v.b.soc"))
+    soc = display_soc(v)
     if soc is not None and soc < 15:
         add("soc", f"Battery at {soc:.0f}%")
     newest = max((x[1] for x in m.values()), default=None)
@@ -130,7 +139,7 @@ def summary(m: dict[str, tuple[str | None, datetime]]) -> dict[str, Any]:
     tyres = [num(v.get(k)) for k in ("v.tp.fl.p", "v.tp.fr.p", "v.tp.rl.p", "v.tp.rr.p")]
     tyres = [t for t in tyres if t is not None]
     return {
-        "soc": num(v.get("v.b.soc")), "soh": num(v.get("v.b.soh")), "range_km": num(v.get("v.b.range.est")),
+        "soc": display_soc(v), "soh": num(v.get("v.b.soh")), "range_km": num(v.get("v.b.range.est")),
         "range_ideal_km": num(v.get("v.b.range.ideal")), "volts_12v": num(v.get("v.b.12v.voltage")),
         "battery_temp": num(v.get("v.b.temp")), "charging": truthy(v.get("v.c.charging")),
         "charge_state": v.get("v.c.state"), "charge_mode": v.get("v.c.mode"), "charge_power_kw": num(v.get("v.c.power")),
