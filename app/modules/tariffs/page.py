@@ -22,8 +22,14 @@ table.t { width: 100%; border-collapse: collapse; font-size: .9em; } table.t td,
 table.t td.n, table.t th.n { text-align: right; white-space: nowrap; } tr.mine td { font-weight: 650; } tr.best td:first-child > div:first-child::before { content: "★ "; color: var(--series-2); }
 .day { display: flex; height: 10px; width: 144px; border-radius: 3px; overflow: hidden; margin-top: 3px; } .day i { flex: 1; background: var(--line); } .day i.c { background: var(--series-1); }
 .cond { font-size: .85em; color: var(--dim); } .say { font-size: 1.15em; }
-form.grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); } form.grid label { display: grid; gap: 3px; }
-textarea { width: 100%; min-height: 70px; font: inherit; }
+form.grid { display: grid; gap: 8px 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+form.grid label { display: grid; gap: 3px; min-width: 0; }
+form.grid input, form.grid select { width: 100%; box-sizing: border-box; min-width: 0; }
+.chk { display: flex; gap: 7px; align-items: flex-start; margin: 12px 0 8px; }
+.chk input { margin-top: 2px; flex: none; }
+.brow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.brow select { min-width: 0; } .brow input.p { width: 92px; } .brow .u { color: var(--dim); }
+.brow .x { padding: 2px 10px; } #bandrows { margin: 8px 0; }
 </style></head><body><main>
 <!--NAV-->
 <h1>Tariffs</h1>
@@ -44,7 +50,7 @@ textarea { width: 100%; min-height: 70px; font: inherit; }
   <label>Count readings from <input id="count_from" type="date"></label>
   <label>House battery usable (kWh) <input id="capacity_kwh" type="number" step="0.1" min="0"></label>
   <label>Battery charge rate (kW) <input id="charge_kw" type="number" step="0.1" min="0"></label>
-  <label>Region letter (if not from your tariff) <input id="region" maxlength="1"></label>
+  <label>Region <select id="region"></select></label>
 </form>
 <p class="dim small">Readings are never counted from more than a year back. Set the date the house last changed (solar
 fitted, gas removed) so older use does not skew the answer.</p>
@@ -54,15 +60,21 @@ fitted, gas removed) so older use does not skew the answer.</p>
 <h3>Add one from a quote</h3>
 <form class="grid" id="mf">
   <label>Name <input id="m_name" placeholder="EDF GoElectric 35"></label>
-  <label>Supplier <input id="m_supplier"></label>
-  <label>Standing charge (p a day) <input id="m_standing" type="number" step="0.01" min="0"></label>
-  <label>Export (p/kWh, if it comes with one) <input id="m_export" type="number" step="0.01" min="0"></label>
-  <label>Exit fee (£) <input id="m_exit" type="number" step="1" min="0"></label>
-  <label>Notes (what it needs) <input id="m_notes"></label>
+  <label>Supplier <input id="m_supplier" placeholder="EDF"></label>
+  <label>Standing charge (p/day) <input id="m_standing" type="number" step="0.01" min="0" placeholder="e.g. 54.8"></label>
+  <label>Export (p/kWh, if it has one) <input id="m_export" type="number" step="0.01" min="0" placeholder="blank if none"></label>
+  <label>Exit fee (£, if any) <input id="m_exit" type="number" step="1" min="0" placeholder="blank if none"></label>
+  <label>Notes (any conditions) <input id="m_notes" placeholder="e.g. must have an EV"></label>
 </form>
-<label>Unit rates, one band a line: from-to pence (the first line covers any hour no line does)
-<textarea id="m_bands" placeholder="00:00-00:00 26.1&#10;00:30-05:30 8.5"></textarea></label>
-<p><button id="add" type="button">Add</button> <span id="added" class="dim"></span></p></details>
+<label class="grid" style="margin-top:4px"><span>Unit rate (p/kWh) — the standard, anytime rate</span>
+  <input id="m_flat" type="number" step="0.01" min="0" placeholder="e.g. 26.1" style="max-width:220px"></label>
+<label class="chk"><input id="m_tou" type="checkbox"> <span>It also has cheaper rates at certain times of day (an overnight window, say)</span></label>
+<div id="bands_wrap" hidden>
+  <p class="dim small">Add each cheaper window. Everything outside them is charged at the unit rate above.</p>
+  <div id="bandrows"></div>
+  <button id="addband" type="button">Add a window</button>
+</div>
+<p><button id="add" type="button">Add tariff</button> <span id="added" class="dim"></span></p></details>
 <script>
 const $ = id => document.getElementById(id), tok = $('t'), msg = $('msg');
 try { tok.value = sessionStorage.getItem('wa_token') || ''; } catch (e) {}
@@ -74,6 +86,20 @@ async function api(path, opts) {
 const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
 const gbp = v => v == null ? '–' : (v < 0 ? '−£' : '£') + Math.abs(Math.round(v)).toLocaleString('en-GB');
 let settings = null;
+const REGIONS = [['', 'From your tariff code'], ['A', 'A — Eastern England'], ['B', 'B — East Midlands'], ['C', 'C — London'],
+  ['D', 'D — North Wales & Merseyside'], ['E', 'E — West Midlands'], ['F', 'F — North East England'], ['G', 'G — North West England'],
+  ['H', 'H — Southern England'], ['J', 'J — South East England'], ['K', 'K — South Wales'], ['L', 'L — South West England'],
+  ['M', 'M — Yorkshire'], ['N', 'N — South Scotland'], ['P', 'P — North Scotland']];
+function fillRegions() { $('region').replaceChildren(...REGIONS.map(([v, l]) => { const o = el('option', l); o.value = v; return o; })); }
+const times = isFrom => { const out = []; for (let i = isFrom ? 0 : 1; i <= (isFrom ? 47 : 48); i++) out.push(String(Math.floor(i / 2)).padStart(2, '0') + ':' + (i % 2 ? '30' : '00')); return out; };
+function timeSel(cls, isFrom, val) { const s = el('select', null, cls); times(isFrom).forEach(t => { const o = el('option', t); o.value = t; s.append(o); }); if (val) s.value = val; return s; }
+function addBandRow(from, to, pence) {
+  const r = el('div', null, 'brow');
+  const p = el('input', null, 'p'); p.type = 'number'; p.step = '0.01'; p.min = '0'; p.placeholder = 'e.g. 8.5'; if (pence != null) p.value = pence;
+  const x = el('button', 'Remove', 'x'); x.type = 'button'; x.onclick = () => r.remove();
+  r.append(timeSel('from', true, from || '00:30'), el('span', 'to', 'u'), timeSel('to', false, to || '05:30'), p, el('span', 'p/kWh', 'u'), x);
+  $('bandrows').append(r); return r;
+}
 function dayBar(pat) {
   const d = el('div', null, 'day'); if (!pat) return d;
   const lo = Math.min(...pat), hi = Math.max(...pat);
@@ -131,6 +157,7 @@ async function load() {
   msg.textContent = '';
   try {
     const d = await api('/v1/tariffs'); settings = d.settings;
+    fillRegions();
     ['count_from', 'capacity_kwh', 'charge_kw', 'region'].forEach(k => $(k).value = settings[k] ?? '');
     manualList();
     if (d.result) show(d.result); else $('say').textContent = 'Not worked out yet: press "Work it out again" (about half a minute).';
@@ -139,16 +166,33 @@ async function load() {
 $('again').onclick = async () => { $('say').textContent = 'Working it out (every Octopus tariff for your region)…';
   try { show(await api('/v1/tariffs/compare', { method: 'POST' })); } catch (e) { msg.textContent = e.message; } };
 $('save').onclick = async () => { try { await save(); $('saved').textContent = 'Saved. Work it out again to see the change.'; } catch (e) { $('saved').textContent = e.message; } };
+$('m_tou').onchange = () => {
+  const on = $('m_tou').checked; $('bands_wrap').hidden = !on;
+  if (on && !$('bandrows').children.length) addBandRow('00:30', '05:30', '');
+};
+$('addband').onclick = () => addBandRow('', '', '');
 $('add').onclick = async () => {
   try {
-    const bands = $('m_bands').value.split('\\n').map(l => l.trim()).filter(Boolean).map(l => {
-      const m = l.match(/^(\\d\\d:\\d\\d)\\s*-\\s*(\\d\\d:\\d\\d)\\s+([\\d.]+)/); if (!m) throw new Error('not a band: ' + l); return { from: m[1], to: m[2], pence: Number(m[3]) }; });
-    const name = $('m_name').value.trim(), id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'tariff';
+    const name = $('m_name').value.trim();
+    if (!name) throw new Error('give the tariff a name');
+    const flat = $('m_flat').value.trim();
+    if (flat === '' || isNaN(Number(flat))) throw new Error('give the standard unit rate in p/kWh');
+    // the standard rate covers the whole day; any cheaper windows go first so they win their slots
+    const bands = [];
+    if ($('m_tou').checked) $('bandrows').querySelectorAll('.brow').forEach(r => {
+      const p = r.querySelector('input.p').value.trim();
+      if (p === '' || isNaN(Number(p))) throw new Error('each window needs a rate in p/kWh');
+      bands.push({ from: r.querySelector('.from').value, to: r.querySelector('.to').value, pence: Number(p) });
+    });
+    bands.push({ from: '00:00', to: '24:00', pence: Number(flat) });
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'tariff';
     const num = k => $(k).value.trim() === '' ? null : Number($(k).value);
     settings.manual.push({ id, name, supplier: $('m_supplier').value.trim(), standing_p: num('m_standing') || 0, bands,
       export_p: num('m_export'), exit_fee_pounds: num('m_exit') || 0, notes: $('m_notes').value.trim() });
     try { await save(); } catch (e) { settings.manual.pop(); throw e; }
-    manualList(); $('added').textContent = 'Added. Work it out again to see it ranked.';
+    manualList(); ['m_name', 'm_supplier', 'm_standing', 'm_export', 'm_exit', 'm_notes', 'm_flat'].forEach(k => $(k).value = '');
+    $('m_tou').checked = false; $('bands_wrap').hidden = true; $('bandrows').replaceChildren();
+    $('added').textContent = 'Added. Work it out again to see it ranked.';
   } catch (e) { $('added').textContent = e.message; }
 };
 $('go').onclick = load;

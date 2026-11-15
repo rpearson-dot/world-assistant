@@ -4,6 +4,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Changed
+
+- **The tariffs page is easier to fill in.** Adding a tariff from another supplier's quote no longer needs the
+  typed `from-to pence` band syntax: give the standard unit rate, and tick a box to add cheaper time-of-day windows
+  with proper time dropdowns (the all-day rate is filled in behind the scenes, in the right order). Region is now a
+  named dropdown (e.g. "C — London") instead of a bare letter, and the quote fields have example placeholders.
+
 ### Fixed
 
 - **Charge planner settings: clearer, and no longer overlapping.** The long entity id in the House use statistic
