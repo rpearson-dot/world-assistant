@@ -2,6 +2,32 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Edit and rename air conditioners one at a time.** Each unit's card has an **Edit** button to change its name,
+  address or device id, with **Remove**; the box below adds new ones. A unit now keeps a stable id (minted once,
+  never taken from its name), so renaming it keeps its reading history and its Home Assistant `climate.wa_aircon_<id>`
+  entity — previously a rename made a fresh unit and dropped the old one's history. Removing a unit retracts its
+  Home Assistant entity instead of leaving it unavailable. New endpoints `POST`/`PATCH`/`DELETE /v1/airstage/units`.
+- **Set every air conditioner at once.** An "All units" bar turns them all off or on, sets them all to one
+  temperature, or all to a mode. Each unit is changed on its own, so one that does not answer is reported and the
+  rest still change (`POST /v1/airstage/set-all`).
+- **Type a target temperature.** The − / + on each unit now flank a box you can type into. A run of taps or a typed
+  value is sent to the unit once, when you pause or leave the box, rather than one write per tap (which answered
+  slowly). The page no longer refreshes over a field while you are typing in it.
+
+### Fixed
+
+- **A dropped write to an air conditioner no longer rolls an update back.** The update trial counted any 5xx as a
+  fault in the new version; a 502 (an air conditioner that did not answer one write during the trial) made 0.57.0
+  roll back and not deploy. The trial now counts only a 500 or an uncaught exception — a fault in the version itself
+  — not a deliberate 502/503/504, which means a device or outside service did not answer and happens whichever
+  version runs.
+- **Air conditioning: the mode and fan buttons stay inside their rounded box** when they wrap to a second row (a
+  pressed button, such as Auto or High, poked past the corner).
+
 ## [0.57.0] - 2026-11-15
 
 ### Added
