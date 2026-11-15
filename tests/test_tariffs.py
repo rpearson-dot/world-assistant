@@ -88,6 +88,17 @@ def test_conditions_and_pairs() -> None:
     assert catalogue.region_of("E-1R-COSY-22-12-08-H") == "H" and catalogue.region_of(None) is None
 
 
+def test_zero_tariff_is_treated_as_missing_data() -> None:
+    # Octopus sometimes returns 0p for every half-hour: missing data, not a free tariff.
+    assert price.looks_unpriced([0.0] * 48) is True
+    assert price.looks_unpriced([0.0, 0.0, 0.004, 0.0]) is True  # rounding noise still counts as zero
+    assert price.looks_unpriced([]) is True
+    assert price.looks_unpriced(None) is True
+    assert price.looks_unpriced([25.0] * 48) is False
+    assert price.looks_unpriced([0.0] * 47 + [12.0]) is False  # a real rate somewhere in the day
+    assert price.looks_unpriced([-3.0] * 48) is False  # Agile plunge pricing is a real (negative) rate
+
+
 def test_compare_ranks_and_pairs_exports() -> None:
     use, out = _use(10), [{"start": datetime(2026, 11, 1, 12, tzinfo=UTC) + timedelta(days=d), "kwh": 4.0} for d in range(10)]
     tariffs = [

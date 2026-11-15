@@ -2,6 +2,20 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Charge planner settings: clearer, and no longer overlapping.** The long entity id in the House use statistic
+  dropdown overflowed its grid cell and bled behind the Days of history field; form controls are now contained. The
+  settings are grouped into three labelled sections — evening demand (the house), charging the car from spare solar,
+  and controlling the car charger — and every mention of "the charger" now says **car charger**, so it is never
+  confused with the house battery (which is read only as a signal and said so).
+- **Tariff comparison ignores 0p/unit tariffs.** Octopus sometimes returns a tariff priced at 0p for every half-hour
+  of the day — missing rate data, not a free tariff — which would cost nothing and wrongly top the ranking. Such a
+  tariff is now dropped from the comparison and listed under "skipped" with the reason. Genuine negative Agile rates
+  are kept.
+
 ## [0.58.0] - 2026-11-15
 
 ### Added
