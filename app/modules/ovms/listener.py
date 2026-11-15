@@ -33,6 +33,8 @@ class Listener:
         self.task: asyncio.Task[Any] | None = None
         self.latest: dict[tuple[str, str], tuple[str, datetime]] = {}
         self.logged: dict[tuple[str, str], tuple[str, float]] = {}
+        self.prefixes: dict[str, str] = {}  # vehicle -> concrete topic prefix, for sending commands
+        self.saved_prefixes: dict[str, str] = {}
         self.listening = False
 
     async def start(self, app: Any) -> None:
@@ -100,6 +102,9 @@ class Listener:
         now = datetime.now(UTC)
         if kind == "metric":
             self.latest[(vehicle, name)] = (value[:2000], now)
+            cp = parse.base_prefix(topic, prefix)
+            if cp:
+                self.prefixes[vehicle] = cp
             return
         if kind == "notify":
             ntype, _, sub = name.partition("/")
@@ -134,10 +139,14 @@ class Listener:
             if last is None or (last[0] != value and mono - last[1] >= (0 if parse.truthy(value) is not None else 60)):
                 logs.append((veh, metric, value, at))
                 self.logged[(veh, metric)] = (value, mono)
+        new_prefixes = {v: p for v, p in self.prefixes.items() if self.saved_prefixes.get(v) != p}
         try:
             async with self.engine.begin() as conn:
                 await store.latest(conn, [(v, m, val, at) for (v, m), (val, at) in batch.items()])
                 await store.history(conn, logs)
+                for v, p in new_prefixes.items():
+                    await store.save_prefix(conn, v, p)
+            self.saved_prefixes.update(new_prefixes)
         except Exception:
             log.exception("ovms: could not record")
         for veh in {v for v, _ in batch}:

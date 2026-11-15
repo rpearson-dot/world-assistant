@@ -274,11 +274,11 @@ BUILTIN: tuple[Module, ...] = (
            tools=("charger",),
            provides={"assistant.tools": "app.modules.ocpp.tools:TOOLS", "startup": "app.modules.ocpp.server:startup",
                      "shutdown": "app.modules.ocpp.server:shutdown"}),
-    Module("ovms", "Car (OVMS)", "Your car's own module (OVMS): battery, range, 12 V, charging, locks and warnings, "
-           "read from the MQTT broker",
+    Module("ovms", "Car (OVMS)", "Your car's own module (OVMS): the Car page shows every metric it reports — battery, "
+           "charging, cabin, tyres, position and more — with charge, climate and lock controls over MQTT",
            category="energy", jobs=("ovms_watch",), sdk=2, tabs=(("vehicles", "car", "/car", "Car"),),
            note="Reads the broker set in Settings → Home Assistant, where the OVMS module publishes (Server V3). "
-                "Reading only: commands wait for the broker to have TLS",
+                "Controls (charge, climate, lock) need the broker on TLS and World Assistant's login allowed to write ovms/#",
            routers=("app.modules.ovms.api:router", "app.modules.ovms.page:page_router"), prefixes=("/v1/ovms", "/car"),
            worker=(Job("app.modules.ovms.api:ovms_watch", {"minute": _every(15), "timeout": 120, "max_tries": 1}),
                    Job("app.modules.ovms.api:ovms_housekeep", {"hour": {3}, "minute": {37}, "timeout": 300, "max_tries": 1})),

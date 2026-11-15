@@ -10,7 +10,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   charge power and time-to-full, locked, cabin/outside/battery temperature, tyres, odometer), a chart of any kept
   metric over a day/week/month/year, and all readings grouped and labelled — battery, charging, cabin & doors, tyres,
   position, motor, module & network, and the Leaf's own dashboard readings. Many more metrics are now kept so they can
-  be charted. Controls (charge, climate, lock) follow once the broker is on TLS.
+  be charted.
+- **Car controls: charge, climate and lock over MQTT.** The Car page can start/stop charging, turn the remote
+  climate on/off, and lock/unlock the doors (the lock asks for the OVMS module PIN, which is never stored or logged),
+  by sending the car's OVMS module a command and showing its reply. A generic command box backs it. These need the
+  broker on TLS with World Assistant's login allowed to write `ovms/#`.
 
 ### Changed
 

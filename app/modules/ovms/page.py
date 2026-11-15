@@ -35,6 +35,8 @@ PAGE = """<!doctype html>
 .chart { width: 100%; height: 200px; } .chart path.ln { fill: none; stroke: var(--series-1); stroke-width: 2; }
 .chart line.ax { stroke: var(--line); } .chart text { fill: var(--dim); font-size: 11px; }
 .warn { color: var(--bad); } .seg select { min-width: 0; }
+.ctl { display: grid; gap: 10px; } .cg { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cg .cl { min-width: 5.5em; font-weight: 650; } .cbtn { padding: 8px 18px; }
 </style></head><body><main>
 <!--NAV-->
 <h1>Car</h1>
@@ -58,6 +60,14 @@ PAGE = """<!doctype html>
   <div class="tiles" id="tiles"></div>
 </div>
 
+<div class="card"><h2>Controls</h2>
+  <div class="ctl">
+    <div class="cg"><span class="cl">Charging</span><button class="cbtn" data-a="charge-on" type="button">Start</button><button class="cbtn" data-a="charge-off" type="button">Stop</button></div>
+    <div class="cg"><span class="cl">Climate</span><button class="cbtn" data-a="climate-on" type="button">On</button><button class="cbtn" data-a="climate-off" type="button">Off</button></div>
+    <div class="cg"><span class="cl">Doors</span><button class="cbtn" data-a="unlock" type="button">Unlock</button><button class="cbtn" data-a="lock" type="button">Lock</button></div>
+  </div>
+  <p class="dim small" id="cmsg">Commands go to the car over MQTT, so they need the broker on TLS. The car must be awake — turning on the A/C wakes its CAN bus. Lock and unlock ask for your OVMS module PIN.</p></div>
+
 <div class="card"><h2>History</h2>
   <div class="row seg"><label>Metric <select id="metric"></select></label>
     <label>Over <select id="days"><option value="1">a day</option><option value="7" selected>a week</option>
@@ -76,6 +86,29 @@ async function api(path) {
   const r = await fetch(path, { headers: { Authorization: 'Bearer ' + tok.value } });
   if (!r.ok) { let d = r.status; try { d = (await r.json()).detail; } catch (e) {} throw new Error(typeof d === 'string' ? d : JSON.stringify(d)); }
   return r.json();
+}
+async function apiPost(path, body) {
+  const r = await fetch(path, { method: 'POST', headers: { Authorization: 'Bearer ' + tok.value, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) { let d = r.status; try { d = (await r.json()).detail; } catch (e) {} throw new Error(typeof d === 'string' ? d : JSON.stringify(d)); }
+  return r.json();
+}
+async function control(a) {
+  const c = cur(); if (!c) return;
+  let path, body;
+  if (a === 'lock' || a === 'unlock') {
+    const pin = prompt('Your OVMS module PIN, to ' + a + ' the car:'); if (!pin) return;
+    path = '/lock'; body = { lock: a === 'lock', pin };
+  } else {
+    const act = { 'charge-on': 'start charging', 'charge-off': 'stop charging', 'climate-on': 'turn climate on', 'climate-off': 'turn climate off' }[a];
+    if (!confirm('Send “' + act + '” to the car?')) return;
+    path = a.startsWith('charge') ? '/charge' : '/climate'; body = { on: a.endsWith('-on') };
+  }
+  $('cmsg').textContent = 'Sending…'; document.querySelectorAll('.cbtn').forEach(b => b.disabled = true);
+  try { const r = await apiPost('/v1/ovms/' + encodeURIComponent(c.id) + path, body);
+    $('cmsg').textContent = r.ok ? ('Done' + (r.response ? ': ' + r.response : '.')) : ('Didn’t go through: ' + r.error);
+  } catch (e) { $('cmsg').textContent = e.message; }
+  document.querySelectorAll('.cbtn').forEach(b => b.disabled = false);
+  setTimeout(() => { if (!document.hidden) load(); }, 2500);
 }
 const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
 const mi = km => km == null ? null : km * 0.621371;
@@ -259,6 +292,7 @@ async function load() {
   } catch (e) { msg.textContent = e.message; }
 }
 $('metric').onchange = $('days').onchange = () => drawChart();
+document.querySelectorAll('.cbtn').forEach(b => b.onclick = () => control(b.dataset.a));
 $('car').onchange = () => pick().catch(e => msg.textContent = e.message);
 $('go').onclick = load;
 load();

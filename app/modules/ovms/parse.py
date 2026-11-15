@@ -57,6 +57,20 @@ def topic(t: str, prefix: str) -> tuple[str, str, str] | None:
     return None
 
 
+def base_prefix(t: str, prefix: str) -> str | None:
+    """The concrete topic prefix a specific car publishes under ("ovms/rob/HV66BZD/"), worked out from one of its
+    topics and the configured prefix (which may use + wildcards). OVMS commands are published beneath this, at
+    <base>client/<app>/command/<id>, so it is remembered per car to send controls."""
+    parts = t.split("/")
+    pre = [p for p in prefix.strip("/").split("/") if p]
+    if len(parts) <= len(pre):
+        return None
+    for want, got in zip(pre, parts, strict=False):
+        if want not in ("+", got):
+            return None
+    return "/".join(parts[: len(pre)]) + "/"
+
+
 def truthy(v: str | None) -> bool | None:
     if v is None:
         return None

@@ -55,6 +55,69 @@ async def notices(request: Request, vehicle: str, days: int = Query(30, ge=1, le
         return {"vehicle": vehicle, "notices": await store.notices(conn, vehicle, days, 1000)}
 
 
+class CommandIn(BaseModel):
+    command: str = Field(min_length=1, max_length=200)
+
+
+class ChargeIn(BaseModel):
+    on: bool
+
+
+class ClimateIn(BaseModel):
+    on: bool
+
+
+class LockIn(BaseModel):
+    lock: bool
+    pin: str = Field(min_length=1, max_length=20)
+
+
+async def _send(request: Request, vehicle: str, command: str, note: str) -> dict[str, Any]:
+    """Send one OVMS command, record it in the car's messages, and return the module's reply."""
+    from app.modules.ovms import commands
+
+    r = await commands.run(request.app.state.engine, vehicle, command)
+    async with request.app.state.engine.begin() as conn:
+        await store.notice(conn, vehicle, "command", command.split()[0],
+                           f"{note}: {r.get('response') or r.get('error') or 'sent'}"[:500])  # fmt: skip
+    return {"command": command, **r}
+
+
+@router.post("/{vehicle}/command")
+async def send_command(request: Request, vehicle: str, body: CommandIn) -> dict[str, Any]:
+    """Run any OVMS console command on the car and return its output (e.g. "stat", "charge start", "climatecontrol ?").
+    Needs the broker on TLS with World Assistant's login allowed to write ovms/#."""
+    return await _send(request, vehicle, body.command.strip(), "command")
+
+
+@router.post("/{vehicle}/charge")
+async def set_charge(request: Request, vehicle: str, body: ChargeIn) -> dict[str, Any]:
+    """Start or stop charging the car."""
+    from app.modules.ovms import commands
+
+    return await _send(request, vehicle, commands.charge_cmd(body.on), "charge " + ("start" if body.on else "stop"))
+
+
+@router.post("/{vehicle}/climate")
+async def set_climate(request: Request, vehicle: str, body: ClimateIn) -> dict[str, Any]:
+    """Turn the car's remote climate (pre-heat/cool) on or off."""
+    from app.modules.ovms import commands
+
+    return await _send(request, vehicle, commands.climate_cmd(body.on), "climate " + ("on" if body.on else "off"))
+
+
+@router.post("/{vehicle}/lock")
+async def set_lock(request: Request, vehicle: str, body: LockIn) -> dict[str, Any]:
+    """Lock or unlock the car (needs the OVMS module PIN). The PIN is not stored or logged."""
+    from app.modules.ovms import commands
+
+    r = await commands.run(request.app.state.engine, vehicle, commands.lock_cmd(body.lock, body.pin))
+    async with request.app.state.engine.begin() as conn:  # never record the PIN
+        await store.notice(conn, vehicle, "command", "lock" if body.lock else "unlock",
+                           f"{'lock' if body.lock else 'unlock'}: {r.get('response') or r.get('error') or 'sent'}"[:500])  # fmt: skip
+    return {"command": "lock" if body.lock else "unlock", **r}
+
+
 class SettingsIn(BaseModel):
     enabled: bool = True
     prefix: str = Field("ovms/+/+/", max_length=120)
