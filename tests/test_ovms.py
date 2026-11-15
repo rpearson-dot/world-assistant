@@ -38,6 +38,15 @@ def test_base_prefix_for_commands() -> None:
     assert commands.lock_cmd(True, "1234") == "lock 1234" and commands.lock_cmd(False, "1234") == "unlock 1234"
 
 
+def test_display_soc_prefers_the_dashboard_value() -> None:
+    # the Leaf publishes a low GID-based v.b.soc and the dashboard's xnl.v.b.soc.instrument; we show the dashboard one
+    assert parse.display_soc({"v.b.soc": "65.3", "xnl.v.b.soc.instrument": "80"}) == 80.0
+    assert parse.display_soc({"v.b.soc": "65.3"}) == 65.3
+    assert parse.display_soc({}) is None
+    s = parse.summary({"v.b.soc": ("65", NOW), "xnl.v.b.soc.instrument": ("80", NOW)})
+    assert s["soc"] == 80.0
+
+
 def _m(**kw: Any) -> dict[str, tuple[str, datetime]]:
     return {k.replace("_", "."): (v, NOW) for k, v in kw.items()}
 
