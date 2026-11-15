@@ -4,6 +4,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+
+- **A Car page (a tab under Vehicles) showing everything the OVMS module reports.** A headline summary (charge, range,
+  charge power and time-to-full, locked, cabin/outside/battery temperature, tyres, odometer), a chart of any kept
+  metric over a day/week/month/year, and all readings grouped and labelled — battery, charging, cabin & doors, tyres,
+  position, motor, module & network, and the Leaf's own dashboard readings. Many more metrics are now kept so they can
+  be charted. Controls (charge, climate, lock) follow once the broker is on TLS.
+
 ### Changed
 
 - **The tariffs page is easier to fill in.** Adding a tariff from another supplier's quote no longer needs the

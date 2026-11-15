@@ -11,11 +11,27 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-# Metrics whose history is kept (only when they change, and no more than once a minute while they move)
-KEEP = ("v.b.soc", "v.b.soh", "v.b.range.est", "v.b.range.ideal", "v.b.12v.voltage", "v.b.temp", "v.b.power",
-        "v.c.state", "v.c.mode", "v.c.kwh", "v.c.charging", "v.c.pilot", "v.e.on", "v.e.locked", "v.e.handbrake",
-        "v.e.alarm", "v.e.parktime", "v.p.odometer", "v.p.latitude", "v.p.longitude", "v.p.speed", "v.m.temp",
-        "m.net.sq", "m.net.provider")  # fmt: skip
+# Metrics whose history is kept (only when they change, and no more than once a minute while they move). Kept wide so
+# the car page can chart most of what the module reports; booleans are logged on every change, numbers at most once a
+# minute while they move (see listener._flush).
+KEEP = (
+    # battery
+    "v.b.soc", "v.b.soh", "v.b.range.est", "v.b.range.ideal", "v.b.12v.voltage", "v.b.temp", "v.b.power",
+    "v.b.current", "v.b.voltage", "v.b.energy.used", "v.b.energy.recd", "v.b.consumption", "v.b.cac", "v.b.health",
+    # charging
+    "v.c.state", "v.c.mode", "v.c.kwh", "v.c.charging", "v.c.pilot", "v.c.power", "v.c.current", "v.c.voltage",
+    "v.c.efficiency", "v.c.temp", "v.c.climit", "v.c.duration.full", "v.c.limit.soc", "v.c.limit.range",
+    # environment, doors, motion
+    "v.e.on", "v.e.locked", "v.e.handbrake", "v.e.alarm", "v.e.parktime", "v.e.cabintemp", "v.e.temp", "v.e.throttle",
+    "v.m.temp", "v.m.rpm", "v.i.temp",
+    # position
+    "v.p.odometer", "v.p.latitude", "v.p.longitude", "v.p.speed", "v.p.altitude", "v.p.gpsspeed", "v.p.trip",
+    "v.p.satcount", "v.p.direction",
+    # tyres
+    "v.tp.fl.p", "v.tp.fr.p", "v.tp.rl.p", "v.tp.rr.p", "v.tp.fl.t", "v.tp.fr.t", "v.tp.rl.t", "v.tp.rr.t",
+    # module / network, and the Leaf's own dashboard readings
+    "m.net.sq", "m.net.provider", "xnl.v.b.soc.instrument", "xnl.v.b.range.instrument",
+)  # fmt: skip
 NOTIFY_KINDS = ("alert", "error", "info")
 
 
@@ -97,11 +113,19 @@ def warnings(m: dict[str, tuple[str | None, datetime]], now: datetime, *, quiet_
 
 def summary(m: dict[str, tuple[str | None, datetime]]) -> dict[str, Any]:
     v = {k: x[0] for k, x in m.items()}
+    tyres = [num(v.get(k)) for k in ("v.tp.fl.p", "v.tp.fr.p", "v.tp.rl.p", "v.tp.rr.p")]
+    tyres = [t for t in tyres if t is not None]
     return {
         "soc": num(v.get("v.b.soc")), "soh": num(v.get("v.b.soh")), "range_km": num(v.get("v.b.range.est")),
-        "volts_12v": num(v.get("v.b.12v.voltage")), "charging": truthy(v.get("v.c.charging")),
-        "charge_state": v.get("v.c.state"), "on": truthy(v.get("v.e.on")), "locked": truthy(v.get("v.e.locked")),
-        "odometer_km": num(v.get("v.p.odometer")), "lat": num(v.get("v.p.latitude")), "lon": num(v.get("v.p.longitude")),
+        "range_ideal_km": num(v.get("v.b.range.ideal")), "volts_12v": num(v.get("v.b.12v.voltage")),
+        "battery_temp": num(v.get("v.b.temp")), "charging": truthy(v.get("v.c.charging")),
+        "charge_state": v.get("v.c.state"), "charge_mode": v.get("v.c.mode"), "charge_power_kw": num(v.get("v.c.power")),
+        "charge_limit_soc": num(v.get("v.c.limit.soc")), "charge_eta_min": num(v.get("v.c.duration.full")),
+        "on": truthy(v.get("v.e.on")), "locked": truthy(v.get("v.e.locked")),
+        "cabin_temp": num(v.get("v.e.cabintemp")), "ambient_temp": num(v.get("v.e.temp")),
+        "tyres_bar": (round(min(tyres), 2) if tyres else None),
+        "odometer_km": num(v.get("v.p.odometer")), "speed_kmh": num(v.get("v.p.speed")),
+        "lat": num(v.get("v.p.latitude")), "lon": num(v.get("v.p.longitude")),
         "signal": num(v.get("m.net.sq")), "network": v.get("m.net.provider"),
         "last": max((x[1] for x in m.values()), default=None),
     }  # fmt: skip

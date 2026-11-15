@@ -276,10 +276,10 @@ BUILTIN: tuple[Module, ...] = (
                      "shutdown": "app.modules.ocpp.server:shutdown"}),
     Module("ovms", "Car (OVMS)", "Your car's own module (OVMS): battery, range, 12 V, charging, locks and warnings, "
            "read from the MQTT broker",
-           category="energy", jobs=("ovms_watch",), sdk=2, link="/vehicles",
+           category="energy", jobs=("ovms_watch",), sdk=2, tabs=(("vehicles", "car", "/car", "Car"),),
            note="Reads the broker set in Settings → Home Assistant, where the OVMS module publishes (Server V3). "
                 "Reading only: commands wait for the broker to have TLS",
-           routers=("app.modules.ovms.api:router",), prefixes=("/v1/ovms",),
+           routers=("app.modules.ovms.api:router", "app.modules.ovms.page:page_router"), prefixes=("/v1/ovms", "/car"),
            worker=(Job("app.modules.ovms.api:ovms_watch", {"minute": _every(15), "timeout": 120, "max_tries": 1}),
                    Job("app.modules.ovms.api:ovms_housekeep", {"hour": {3}, "minute": {37}, "timeout": 300, "max_tries": 1})),
            tools=("car_status",),
