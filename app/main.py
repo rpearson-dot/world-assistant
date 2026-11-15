@@ -70,8 +70,11 @@ app.add_middleware(ModuleGate)  # a switched-off module's routes answer 404 (see
 
 
 class ErrorCount:
-    """Counts the server errors (5xx) this process has answered, for an update's trial of a new version
-    (scripts/rollout.sh reads /healthz/errors before and after)."""
+    """Counts the server faults this process has answered, for an update's trial of a new version (scripts/rollout.sh
+    reads /healthz/errors before and after). Counts a 500 and any uncaught exception — a fault in this version — but
+    not a deliberate 502/503/504, which means a device or outside service did not answer (a dropped write to an air
+    conditioner, say, or a slow upstream). Those happen whichever version runs and must not fail a deploy, as
+    app/smoke.py already treats them."""
 
     n = 0
 
@@ -83,7 +86,7 @@ class ErrorCount:
             return await self.inner(scope, receive, send)
 
         async def counted(message: Any) -> None:
-            if message["type"] == "http.response.start" and message["status"] >= 500:
+            if message["type"] == "http.response.start" and (message["status"] == 500 or message["status"] >= 505):
                 ErrorCount.n += 1
             await send(message)
 

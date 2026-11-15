@@ -17,7 +17,11 @@ pages themselves hold no data: each one calls these endpoints.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/v1/airstage` | Every unit: on or off, mode, temperatures, fan, extras, error code, filter, and when it last answered. |
-| PUT | `/v1/airstage/units` | The units: a name, the address on your home network, and the device id (the Airstage app's unit details, or the label on the unit's Wi-Fi adapter). Only private addresses: a unit is never asked about over the internet. |
+| POST | `/v1/airstage/set-all` | Apply the same change to every unit at once (all to one temperature, all off, all to a mode). Each unit is changed on its own: one that refuses or does not answer is reported, the rest still change. |
+| POST | `/v1/airstage/units` | Add one air conditioner. It is read within two minutes. |
+| PUT | `/v1/airstage/units` | The whole set of units: each with a name, the address on your home network, and the device id (the Airstage app's unit details, or the label on the unit's Wi-Fi adapter). A unit keeps its id when renamed (send it back), so its history and its Home Assistant entity stay. Only private addresses: a unit is never asked over the internet. |
+| DELETE | `/v1/airstage/units/{uid}` | Remove one air conditioner. Its past readings are left and age out on their own. |
+| PATCH | `/v1/airstage/units/{uid}` | Rename one air conditioner or change its address or device id. Its id does not change, so its history and its Home Assistant entity stay. |
 | GET | `/v1/airstage/{uid}/history` | History |
 | POST | `/v1/airstage/{uid}/set` | Change a unit: any of power, mode (auto, cool, dry, fan_only, heat), target_c (half degrees), fan (auto, quiet, low, medium_low, medium, medium_high, high), swing and the extras. Read back afterwards. |
 

@@ -117,3 +117,75 @@ def test_the_page_lists_units_that_have_answered() -> None:
         sync.dispose()
     assert got["lounge"]["ok"] is False and got["lounge"]["state"]["target_c"] == 21.5 and got["lounge"]["good_at"] is not None
     assert got["hall"]["state"] is None and got["hall"]["error"] == "no answer"
+
+
+def test_renaming_keeps_a_unit_id_so_history_and_the_ha_entity_stay() -> None:
+    """A unit's id is minted once and kept when it is renamed (sent back), not re-derived from the name."""
+    from fastapi import HTTPException
+
+    from app.modules.airstage.api import UnitIn, _clean
+
+    taken: set[str] = set()
+    a = _clean(UnitIn(name="Bedroom", ip="10.0.2.150", device_id="A0:B1:C2:D3:E4:F5"), taken)
+    assert a["id"].startswith("u") and a["name"] == "Bedroom" and a["device_id"] == "A0B1C2D3E4F5"
+    b = _clean(UnitIn(id=a["id"], name="Master Bedroom", ip="10.0.2.151", device_id="A0B1C2D3E4F5"), set())
+    assert b["id"] == a["id"] and b["name"] == "Master Bedroom" and b["ip"] == "10.0.2.151"  # renamed, id kept
+    c = _clean(UnitIn(name="Hall", ip="10.0.2.152", device_id="FFEEDDCCBBAA"), {a["id"]})
+    assert c["id"] != a["id"]  # a new unit gets its own id
+    with pytest.raises(HTTPException):
+        _clean(UnitIn(name="X", ip="8.8.8.8", device_id="A0B1C2D3E4F5"), set())  # not a home-network address
+
+
+@pytest.mark.skipif(not URL, reason="needs WA_TEST_DATABASE_URL")
+def test_units_are_added_edited_renamed_and_removed() -> None:
+    import sqlalchemy as sa
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.modules.airstage import api
+
+    sync = sa.create_engine(URL)  # type: ignore[arg-type]
+    with sync.begin() as conn:
+        conn.execute(sa.text("DROP TABLE IF EXISTS app_setting"))
+        conn.execute(sa.text("CREATE TABLE app_setting (key text primary key, value jsonb not null, updated_at timestamptz not null default now())"))
+
+    class Req:
+        def __init__(self, engine: Any) -> None:
+            self.app = type("A", (), {"state": type("S", (), {"engine": engine})()})()
+
+    async def go() -> None:
+        engine = create_async_engine(URL)  # type: ignore[arg-type]
+        r = Req(engine)
+        try:
+            a = (await api.add_unit(r, api.UnitIn(name="Bedroom", ip="10.0.2.150", device_id="A0B1C2D3E4F5")))["unit"]
+            assert a["id"].startswith("u")
+            edited = (await api.edit_unit(r, a["id"], api.UnitIn(name="Master Bedroom", ip="10.0.2.151", device_id="A0B1C2D3E4F5")))["unit"]
+            assert edited["id"] == a["id"] and edited["name"] == "Master Bedroom" and edited["ip"] == "10.0.2.151"
+            await api.add_unit(r, api.UnitIn(name="Hall", ip="10.0.2.152", device_id="FFEEDDCCBBAA"))
+            from fastapi import HTTPException
+
+            try:  # the other unit's name is refused
+                await api.edit_unit(r, a["id"], api.UnitIn(name="Hall", ip="10.0.2.151", device_id="A0B1C2D3E4F5"))
+                raise AssertionError("duplicate name was allowed")
+            except HTTPException as exc:
+                assert exc.status_code == 422
+            async with engine.connect() as conn:
+                us = await api.units(conn)
+            assert [u["name"] for u in us] == ["Master Bedroom", "Hall"] and us[0]["id"] == a["id"]
+            await api.remove_unit(r, a["id"])
+            async with engine.connect() as conn:
+                us = await api.units(conn)
+            assert [u["name"] for u in us] == ["Hall"]
+            try:
+                await api.edit_unit(r, a["id"], api.UnitIn(name="X", ip="10.0.2.150", device_id="A0B1C2D3E4F5"))
+                raise AssertionError("editing a removed unit was allowed")
+            except HTTPException as exc:
+                assert exc.status_code == 404
+        finally:
+            await engine.dispose()
+
+    try:
+        asyncio.run(go())
+    finally:
+        with sync.begin() as conn:
+            conn.execute(sa.text("DROP TABLE IF EXISTS app_setting"))
+        sync.dispose()

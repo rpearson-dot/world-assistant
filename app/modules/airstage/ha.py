@@ -49,6 +49,20 @@ def payload(s: dict[str, Any]) -> dict[str, Any]:
             "fan": {"medium_low": "low", "medium_high": "high"}.get(fan, fan)}  # fmt: skip
 
 
+async def retract(engine: Any, uid: str) -> None:
+    """Remove a unit's Home Assistant entity: empty retained messages clear its discovery config and topics, so it
+    disappears instead of lingering as unavailable."""
+    try:
+        conf, _ = await load(engine)
+        if not conf.active:
+            return
+        s = get_settings()
+        await mqtt_publish([(f"{s.mqtt_discovery_prefix}/climate/wa_aircon_{uid}/config", "", True),
+                            (_t(uid, "online"), "", True), (_t(uid, "state"), "", True)], conf)  # fmt: skip
+    except Exception:
+        log.info("airstage: could not retract %s", uid, exc_info=True)
+
+
 async def publish(engine: Any, units: list[dict[str, str]], states: dict[str, dict[str, Any]]) -> None:
     try:
         conf, _ = await load(engine)

@@ -3,6 +3,8 @@ from the page, the assistant or Home Assistant. The units are set up here by nam
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import ipaddress
 import json
 import logging
@@ -62,34 +64,98 @@ async def overview(request: Request) -> dict[str, Any]:
 
 
 class UnitIn(BaseModel):
+    id: str | None = Field(default=None, max_length=32)  # kept when editing a unit, so its history and HA entity stay
     name: str = Field(min_length=1, max_length=40)
     ip: str = Field(max_length=45)
     device_id: str = Field(min_length=4, max_length=32)
 
 
+def _clean(u: UnitIn, taken: set[str]) -> dict[str, str]:
+    """One unit checked: a private address, a plain device id, and a stable id (kept if given, else minted) that does
+    not change when the unit is renamed."""
+    import secrets
+
+    try:
+        ip = ipaddress.ip_address(u.ip.strip())
+    except ValueError as exc:
+        raise HTTPException(422, f"{u.name}: the address is an IP address such as 10.0.2.150") from exc
+    if not ip.is_private or ip.is_loopback:
+        raise HTTPException(422, f"{u.name}: only an address on your home network")
+    if not re.fullmatch(r"[A-Za-z0-9:_-]+", u.device_id):
+        raise HTTPException(422, f"{u.name}: the device id is letters and digits")
+    uid = u.id if u.id and re.fullmatch(r"[a-z0-9_]{1,32}", u.id) else ""
+    while not uid or uid in taken:
+        uid = "u" + secrets.token_hex(3)
+    taken.add(uid)
+    return {"id": uid, "name": u.name.strip(), "ip": str(ip), "device_id": u.device_id.replace(":", "").strip()}
+
+
+async def _save(conn: Any, out: list[dict[str, str]]) -> None:
+    await conn.execute(text(
+        "INSERT INTO app_setting (key, value, updated_at) VALUES (:k, CAST(:v AS jsonb), now()) "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()"), {"k": KEY, "v": json.dumps(out)})  # fmt: skip
+
+
 @router.put("/units")
 async def put_units(request: Request, body: list[UnitIn]) -> dict[str, Any]:
-    """The units: a name, the address on your home network, and the device id (the Airstage app's unit details, or
-    the label on the unit's Wi-Fi adapter). Only private addresses: a unit is never asked about over the internet."""
+    """The whole set of units: each with a name, the address on your home network, and the device id (the Airstage
+    app's unit details, or the label on the unit's Wi-Fi adapter). A unit keeps its id when renamed (send it back),
+    so its history and its Home Assistant entity stay. Only private addresses: a unit is never asked over the
+    internet."""
+    taken: set[str] = set()
+    names: set[str] = set()
     out = []
     for u in body[:12]:
-        try:
-            ip = ipaddress.ip_address(u.ip.strip())
-        except ValueError as exc:
-            raise HTTPException(422, f"{u.name}: the address is an IP address such as 10.0.2.150") from exc
-        if not ip.is_private or ip.is_loopback:
-            raise HTTPException(422, f"{u.name}: only an address on your home network")
-        if not re.fullmatch(r"[A-Za-z0-9:_-]+", u.device_id):
-            raise HTTPException(422, f"{u.name}: the device id is letters and digits")
-        uid = re.sub(r"[^a-z0-9]+", "_", u.name.lower()).strip("_")[:30] or "unit"
-        if any(x["id"] == uid for x in out):
+        if u.name.strip().lower() in names:
             raise HTTPException(422, f"two units called {u.name}")
-        out.append({"id": uid, "name": u.name.strip(), "ip": str(ip), "device_id": u.device_id.replace(":", "").strip()})
+        names.add(u.name.strip().lower())
+        out.append(_clean(u, taken))
     async with request.app.state.engine.begin() as conn:
-        await conn.execute(text(
-            "INSERT INTO app_setting (key, value, updated_at) VALUES (:k, CAST(:v AS jsonb), now()) "
-            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()"), {"k": KEY, "v": json.dumps(out)})  # fmt: skip
+        await _save(conn, out)
     return {"units": out}
+
+
+@router.post("/units")
+async def add_unit(request: Request, body: UnitIn) -> dict[str, Any]:
+    """Add one air conditioner. It is read within two minutes."""
+    async with request.app.state.engine.begin() as conn:
+        us = await units(conn)
+        if len(us) >= 12:
+            raise HTTPException(422, "up to 12 units")
+        if any(x["name"].strip().lower() == body.name.strip().lower() for x in us):
+            raise HTTPException(422, f"a unit is already called {body.name}")
+        u = _clean(UnitIn(name=body.name, ip=body.ip, device_id=body.device_id), {x["id"] for x in us})
+        await _save(conn, [*us, u])
+    return {"unit": u}
+
+
+@router.patch("/units/{uid}")
+async def edit_unit(request: Request, uid: str, body: UnitIn) -> dict[str, Any]:
+    """Rename one air conditioner or change its address or device id. Its id does not change, so its history and its
+    Home Assistant entity stay."""
+    async with request.app.state.engine.begin() as conn:
+        us = await units(conn)
+        if not any(x["id"] == uid for x in us):
+            raise HTTPException(404, "no such unit")
+        if any(x["id"] != uid and x["name"].strip().lower() == body.name.strip().lower() for x in us):
+            raise HTTPException(422, f"another unit is called {body.name}")
+        u = _clean(UnitIn(id=uid, name=body.name, ip=body.ip, device_id=body.device_id), {x["id"] for x in us if x["id"] != uid})
+        await _save(conn, [u if x["id"] == uid else x for x in us])
+    return {"unit": u}
+
+
+@router.delete("/units/{uid}")
+async def remove_unit(request: Request, uid: str) -> dict[str, Any]:
+    """Remove one air conditioner. Its past readings are left and age out on their own."""
+    async with request.app.state.engine.begin() as conn:
+        us = await units(conn)
+        kept = [x for x in us if x["id"] != uid]
+        if len(kept) == len(us):
+            raise HTTPException(404, "no such unit")
+        await _save(conn, kept)
+    with contextlib.suppress(Exception):
+        await ha.retract(request.app.state.engine, uid)
+    return {"units": kept}
 
 
 class SetIn(BaseModel):
@@ -135,6 +201,28 @@ async def set_unit(request: Request, uid: str, body: SetIn) -> dict[str, Any]:
         raise HTTPException(422, str(exc)) from exc
     except unit.UnitError as exc:
         raise HTTPException(502, str(exc)) from exc
+
+
+@router.post("/set-all")
+async def set_all(request: Request, body: SetIn) -> dict[str, Any]:
+    """Apply the same change to every unit at once (all to one temperature, all off, all to a mode). Each unit is
+    changed on its own: one that refuses or does not answer is reported, the rest still change."""
+    want = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not want:
+        raise HTTPException(422, "nothing to change")
+    engine = request.app.state.engine
+    async with engine.connect() as conn:
+        us = await units(conn)
+
+    async def one(u: dict[str, str]) -> dict[str, Any]:
+        try:
+            await change(engine, u["id"], dict(want))
+            return {"id": u["id"], "name": u["name"], "ok": True}
+        except (LookupError, ValueError, unit.UnitError) as exc:
+            return {"id": u["id"], "name": u["name"], "ok": False, "error": str(exc)}
+
+    results = list(await asyncio.gather(*(one(u) for u in us)))
+    return {"set": want, "results": results, "changed": sum(1 for r in results if r["ok"])}
 
 
 @router.get("/{uid}/history")
