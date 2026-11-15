@@ -111,6 +111,9 @@ async def work_out(engine: Any, client: httpx.AsyncClient | None = None) -> dict
         if pat is None:
             skipped.append({"name": t["name"], "why": "no rates for today"})
             continue
+        if price.looks_unpriced(pat):  # Octopus sometimes returns 0p for every slot: missing data, not a free tariff
+            skipped.append({"name": t["name"], "why": "0p/unit across the whole day — looks like missing rate data"})
+            continue
         t = {k: v for k, v in t.items() if k != "rates"}
         tariffs.append({**t, "code": t["tariff"], "pattern": pat, "averaged": averaged})  # yours matches by its code
     tariffs += manual_tariffs(st.get("manual") or [])

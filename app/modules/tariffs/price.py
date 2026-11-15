@@ -89,6 +89,14 @@ def bands(rows: list[dict[str, Any]]) -> list[float]:
     return [first if v is None else v for v in out]
 
 
+def looks_unpriced(pat: list[float] | None) -> bool:
+    """A day pattern that is zero in every half-hour (or empty). Octopus sometimes returns 0p for every slot of a
+    tariff — missing rate data rather than a real price. Such a tariff would cost nothing and wrongly top the ranking,
+    so it is dropped from the comparison. A real tariff always has a non-zero rate somewhere in the day; a genuinely
+    negative rate (Agile plunge pricing) is not all-zero and is kept."""
+    return not pat or all(abs(v) < 0.01 for v in pat)
+
+
 def cost(readings: list[dict[str, Any]], pat: list[float], tz: Any) -> dict[str, Any]:
     """kWh and pence for half-hour readings (start, kwh) at a day pattern."""
     kwh = pence = 0.0

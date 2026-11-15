@@ -419,7 +419,11 @@ pages themselves hold no data: each one calls these endpoints.
 |---|---|---|
 | GET | `/v1/ovms` | Every car heard from: battery, range, 12 V, charging, locked, where, how recently it reported, its warnings now and its last notifications. `vehicle` links an OVMS vehicle id to a vehicle on the Vehicles page. |
 | PUT | `/v1/ovms/settings` | Whether to listen, the topic prefix the car publishes under (OVMS: Config → Server V3 → topic prefix; "+" for any part), and which Vehicles-page vehicle each OVMS vehicle id is. |
+| POST | `/v1/ovms/{vehicle}/charge` | Start or stop charging the car. |
+| POST | `/v1/ovms/{vehicle}/climate` | Turn the car's remote climate (pre-heat/cool) on or off. |
+| POST | `/v1/ovms/{vehicle}/command` | Run any OVMS console command on the car and return its output (e.g. "stat", "charge start", "climatecontrol ?"). Needs the broker on TLS with World Assistant's login allowed to write ovms/#. |
 | GET | `/v1/ovms/{vehicle}/history` | Metric History |
+| POST | `/v1/ovms/{vehicle}/lock` | Lock or unlock the car (needs the OVMS module PIN). The PIN is not stored or logged. |
 | GET | `/v1/ovms/{vehicle}/metrics` | Every metric the car has sent, as it stands, with when. |
 | GET | `/v1/ovms/{vehicle}/notices` | Notices |
 

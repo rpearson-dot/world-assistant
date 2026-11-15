@@ -27,6 +27,17 @@ def test_topics_under_the_prefix() -> None:
     assert parse.topic("ovms/rob/HV66BZD/client/x/command/1", "ovms/+/+/") is None
 
 
+def test_base_prefix_for_commands() -> None:
+    # the concrete prefix a car publishes under, worked out through + wildcards, is where commands are sent
+    assert parse.base_prefix("ovms/rob/HV66BZD/metric/v/b/soc", "ovms/+/+/") == "ovms/rob/HV66BZD/"
+    assert parse.base_prefix("ovms/rob/HV66BZD/notify/alert/x", "ovms/rob/HV66BZD/") == "ovms/rob/HV66BZD/"
+    assert parse.base_prefix("other/a/b/metric/x", "ovms/+/+/") is None
+    from app.modules.ovms import commands
+    assert commands.charge_cmd(True) == "charge start" and commands.charge_cmd(False) == "charge stop"
+    assert commands.climate_cmd(True) == "climatecontrol on"
+    assert commands.lock_cmd(True, "1234") == "lock 1234" and commands.lock_cmd(False, "1234") == "unlock 1234"
+
+
 def _m(**kw: Any) -> dict[str, tuple[str, datetime]]:
     return {k.replace("_", "."): (v, NOW) for k, v in kw.items()}
 

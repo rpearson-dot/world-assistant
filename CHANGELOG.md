@@ -2,6 +2,39 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.59.0] - 2026-11-15
+
+### Added
+
+- **A Car page (a tab under Vehicles) showing everything the OVMS module reports.** A headline summary (charge, range,
+  charge power and time-to-full, locked, cabin/outside/battery temperature, tyres, odometer), a chart of any kept
+  metric over a day/week/month/year, and all readings grouped and labelled — battery, charging, cabin & doors, tyres,
+  position, motor, module & network, and the Leaf's own dashboard readings. Many more metrics are now kept so they can
+  be charted.
+- **Car controls: charge, climate and lock over MQTT.** The Car page can start/stop charging, turn the remote
+  climate on/off, and lock/unlock the doors (the lock asks for the OVMS module PIN, which is never stored or logged),
+  by sending the car's OVMS module a command and showing its reply. A generic command box backs it. These need the
+  broker on TLS with World Assistant's login allowed to write `ovms/#`.
+
+### Changed
+
+- **The tariffs page is easier to fill in.** Adding a tariff from another supplier's quote no longer needs the
+  typed `from-to pence` band syntax: give the standard unit rate, and tick a box to add cheaper time-of-day windows
+  with proper time dropdowns (the all-day rate is filled in behind the scenes, in the right order). Region is now a
+  named dropdown (e.g. "C — London") instead of a bare letter, and the quote fields have example placeholders.
+
+### Fixed
+
+- **Charge planner settings: clearer, and no longer overlapping.** The long entity id in the House use statistic
+  dropdown overflowed its grid cell and bled behind the Days of history field; form controls are now contained. The
+  settings are grouped into three labelled sections — evening demand (the house), charging the car from spare solar,
+  and controlling the car charger — and every mention of "the charger" now says **car charger**, so it is never
+  confused with the house battery (which is read only as a signal and said so).
+- **Tariff comparison ignores 0p/unit tariffs.** Octopus sometimes returns a tariff priced at 0p for every half-hour
+  of the day — missing rate data, not a free tariff — which would cost nothing and wrongly top the ranking. Such a
+  tariff is now dropped from the comparison and listed under "skipped" with the reason. Genuine negative Agile rates
+  are kept.
+
 ## [0.58.0] - 2026-11-15
 
 ### Added

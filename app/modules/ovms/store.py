@@ -33,6 +33,15 @@ async def save_settings(conn: Any, st: dict[str, Any]) -> None:
     await _put(conn, SETTINGS_KEY, st)
 
 
+async def prefix(conn: Any, vehicle: str) -> str | None:
+    """The concrete topic prefix this car publishes under ("ovms/rob/HV66BZD/"), for sending it commands."""
+    return await _get(conn, f"ovms.prefix.{vehicle}")
+
+
+async def save_prefix(conn: Any, vehicle: str, value: str) -> None:
+    await _put(conn, f"ovms.prefix.{vehicle}", value)
+
+
 async def notice(conn: Any, vehicle: str, kind: str, subtype: str | None, words: str) -> int:
     return int((await conn.execute(text(
         "INSERT INTO ovms_notice (vehicle, kind, subtype, text) VALUES (:v, :k, :s, :t) RETURNING id"),

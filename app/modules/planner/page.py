@@ -22,7 +22,15 @@ PAGE = """<!doctype html>
 table.t { width: 100%; border-collapse: collapse; font-size: .9em; } table.t td, table.t th { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; }
 .scatter { width: 100%; height: 220px; } .scatter circle { fill: var(--series-1); opacity: .75; } .scatter line.fit { stroke: var(--series-2); stroke-width: 2; }
 .scatter line.ax { stroke: var(--line); } .scatter text { fill: var(--dim); font-size: 11px; }
-form.grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); } form.grid label { display: grid; gap: 3px; }
+.grid { display: grid; gap: 8px 12px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.grid label { display: grid; gap: 3px; min-width: 0; }
+.grid input, .grid select { width: 100%; box-sizing: border-box; min-width: 0; }
+.fset { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px 12px; margin: 0 0 12px; min-width: 0; }
+.fset > legend { font-weight: 650; padding: 0 4px; }
+.fset > .chk, .fset > .grid { margin-top: 4px; }
+.chk { display: flex; gap: 7px; align-items: flex-start; }
+.chk input { margin-top: 2px; flex: none; }
+p.hint { margin: 7px 0 0; }
 </style></head><body><main>
 <!--NAV-->
 <h1>Planner</h1>
@@ -46,17 +54,30 @@ form.grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, mi
   The line is the best straight fit. R² is how much of the difference between evenings the cold explains.</p>
   <p id="tomorrow"></p></div>
 <details class="card"><summary>Settings</summary>
-<form class="grid" id="f">
-  <label>House use statistic (kWh) <select id="demand_statistic"></select></label>
-  <label>Days of history <input id="demand_days" type="number" min="14" max="365"></label>
-  <label>Evening from (hour) <input id="evening_from" type="number" min="0" max="23"></label>
-  <label>Evening to (hour) <input id="evening_to" type="number" min="1" max="24"></label>
-  <label>House battery charge entity <input id="battery_entity" placeholder="sensor.office_inverter_battery_soc"></label>
-  <label>Grid power entity (W) <input id="grid_entity" placeholder="sensor.inverter_grid_power"></label>
-  <label><span><input id="export_is_negative" type="checkbox"> Export is a negative figure</span></label>
-  <label>Solar: start at export of (W) <input id="solar_start_w" type="number" min="500" max="20000"></label>
-  <label>Solar: keep going while spare is (W) <input id="solar_stop_w" type="number" min="0" max="20000"></label>
-  <label><span><input id="act" type="checkbox"> Let World Assistant start and stop the charger (Auto only; Home Assistant's start and stop then stand aside)</span></label>
+<form id="f">
+  <fieldset class="fset"><legend>Evening demand (the house, not the car)</legend>
+    <div class="grid">
+      <label>House use statistic (kWh) <select id="demand_statistic"></select></label>
+      <label>Days of history <input id="demand_days" type="number" min="14" max="365"></label>
+      <label>Evening from (hour) <input id="evening_from" type="number" min="0" max="23"></label>
+      <label>Evening to (hour) <input id="evening_to" type="number" min="1" max="24"></label>
+    </div>
+    <p class="dim small hint">How closely the house's evening use follows the cold. This section is about household electricity; it has nothing to do with charging the car.</p>
+  </fieldset>
+  <fieldset class="fset"><legend>Charging the car from spare solar</legend>
+    <p class="dim small">Once the house battery is full and the panels are making more than the house is using, World Assistant can send the surplus to the <strong>car charger</strong>. The house battery below is read only as a signal — it is never charged or controlled here.</p>
+    <div class="grid">
+      <label>House battery level (entity) <input id="battery_entity" placeholder="sensor.office_inverter_battery_soc"></label>
+      <label>Grid / export power (entity, W) <input id="grid_entity" placeholder="sensor.inverter_grid_power"></label>
+      <label>Start the car charging at export of (W) <input id="solar_start_w" type="number" min="500" max="20000"></label>
+      <label>Keep the car charging while spare is at least (W) <input id="solar_stop_w" type="number" min="0" max="20000"></label>
+    </div>
+    <label class="chk"><input id="export_is_negative" type="checkbox"> <span>Export shows as a negative figure on the grid-power entity</span></label>
+  </fieldset>
+  <fieldset class="fset"><legend>Control the car charger</legend>
+    <label class="chk"><input id="act" type="checkbox"> <span>Let World Assistant start and stop the <strong>car charger</strong> itself</span></label>
+    <p class="dim small hint">In Auto only, and only for a charger on World Assistant's OCPP. Home Assistant's own start and stop then stand aside. This controls the car's charger — never the house battery.</p>
+  </fieldset>
 </form>
 <p><button id="save" type="button">Save</button> <span id="saved" class="dim"></span></p></details>
 <script>
