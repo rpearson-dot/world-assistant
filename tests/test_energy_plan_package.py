@@ -471,9 +471,18 @@ def test_the_car_charges_when_the_rate_is_cheap_or_free_and_stops_at_its_target(
     nxt = CAR | {"sensor.wa_energy_next_cheap_start": "2026-10-25T13:00:00+00:00",
                  "sensor.wa_energy_free_electricity_next_start": "2026-10-25T12:00:00+00:00",
                  "sensor.wa_energy_free_electricity_next_start#joined": True}  # fmt: skip
+    nxt.pop("sensor.wa_energy_charge_schedule#windows", None)  # the rate's own windows only, for these two
     assert render(why["next_start"], nxt) == "2026-10-25T12:00:00+00:00"  # the joined free hour comes first
     nxt["sensor.wa_energy_free_electricity_next_start#joined"] = False
     assert render(why["next_start"], nxt) == "2026-10-25T13:00:00+00:00"
+    # just after midnight the cheap window "current or next" can still be the one that ended at midnight: never a time
+    # gone by; the charge schedule's next window is (Cosy: 04:00) — the log said "next cheap or free time Sat 22:00"
+    sun = datetime(2026, 10, 25, 0, 1, tzinfo=LONDON)
+    ended = CAR | {"sensor.wa_energy_next_cheap_start": "2026-10-24T22:00:00+01:00"}
+    assert datetime.fromisoformat(str(render(why["next_start"], ended, sun))) == datetime(2026, 10, 25, 4, 0, tzinfo=LONDON)
+    # started by the schedule's window, not the live rate: it says so (it said "the rate is not cheap now")
+    env_why = render(why["why"], CAR, datetime(2026, 10, 24, 22, 5, tzinfo=LONDON))
+    assert "the charge schedule's cheap window (22:00–00:00)" in str(env_why)
 
 
 def test_the_charger_is_started_and_stopped_and_logged() -> None:
@@ -560,7 +569,11 @@ def test_after_a_full_charge_it_rests_instead_of_bouncing() -> None:
     rests = render(EV_SENSORS["wa_ev_plan"]["attributes"]["rests_until"], stopped, at)
     assert datetime.fromisoformat(str(rests)) == at + timedelta(minutes=50)  # 60 minutes after it stopped full
     assert _plan(stopped | {"input_number.wa_ev_rest_min": "120"}, at + timedelta(minutes=70)) == "full"  # a longer rest
-    assert _plan(stopped, at + timedelta(minutes=55)) == "charge"  # the hour is up
+    # the hour is up, but a car that reached its target is not started again for a percent or two: the log showed
+    # a start at 79% and a stop 13 seconds later at 80%
+    assert _plan(stopped, at + timedelta(minutes=55)) == "full"
+    assert _plan(stopped | {"sensor.wa_car_charge_level": "77.0"}, at + timedelta(minutes=55)) == "charge"  # 3% below
+    assert _plan(stopped, at + timedelta(hours=13)) == "charge"  # half a day on: a new night's charge
     dropped = stopped | {"sensor.wa_car_charge_level": "70.0"}
     assert _plan(dropped, at) == "charge"  # more than 5% below the target: not held back
 

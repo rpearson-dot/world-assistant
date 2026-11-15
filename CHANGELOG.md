@@ -21,6 +21,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   - the nightly update waits while the charger says it is charging, trying again every 10 minutes for three hours
     (Settings → Automatic updates, "Wait while the car is charging", on by default);
   - the nightly update's time is set in Settings ("Every night at"), so it can be moved out of the cheap hours.
+- **The car is not started again for a percent.** After reaching its target and resting, a car that read 79% was
+  started again and stopped 13 seconds later at 80%. It is now started again only once it is 3% or more below the
+  target (within 12 hours of reaching it).
+- **The charging log says why.** A charge started by the charge schedule's cheap window (Cosy's 22:00–00:00) said
+  "the rate is not cheap now"; it now says "the charge schedule's cheap window (22:00–00:00)". A stop just after
+  midnight gave the next cheap time as the window that had just ended ("Sat 22:00"); it now gives the next one to
+  come (04:00).
 
 ## [0.56.0] - 2026-11-14
 

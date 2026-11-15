@@ -39,7 +39,7 @@
     },
     "packages/wa_ev_plan.yaml": {
       "changed_in": "0.57.0",
-      "sha256": "4cf745e70ef453c3fe42f9a167f66502866abe27acf4ed5911c5f9c1d6029325"
+      "sha256": "6321daf708f02a1c65b5c0fb577f4faede199e3572db2c7ef23a0493e93d1b40"
     },
     "packages/world_assistant_bus.yaml": {
       "changed_in": "0.7.5",
