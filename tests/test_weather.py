@@ -103,3 +103,29 @@ def test_the_job_keeps_the_forecast_and_fills_in_the_past(db: str, monkeypatch: 
     assert out["forecast"] > 24 * 6 and out["observed"] >= 46 and out["archive"] == 72
     assert asked == ["api.open-meteo.com", "archive-api.open-meteo.com"]
     assert n["forecast"] == out["forecast"] and n["observed"] == out["observed"] + 72
+
+
+def test_open_meteo_busy_for_a_moment_is_asked_again(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import asyncio
+
+    import httpx
+
+    from app.modules.weather import meteo
+
+    monkeypatch.setattr(meteo, "RETRY_AFTER_S", (0, 0))
+    answers = [httpx.Response(503), httpx.Response(200, json={"hourly": {"time": ["2026-11-15T08:00"], "temperature_2m": [7.5]}})]
+    seen = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(req.url.path)
+        return answers.pop(0)
+
+    async def go() -> list:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+            return await meteo.forecast(c, 51.37, -0.25)
+
+    rows = asyncio.run(go())
+    assert len(seen) == 2 and rows[0]["temp_c"] == 7.5
+    answers[:] = [httpx.Response(503)] * 3
+    with __import__("pytest").raises(httpx.HTTPStatusError):
+        asyncio.run(go())

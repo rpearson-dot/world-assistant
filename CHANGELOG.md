@@ -24,6 +24,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - **The car is not started again for a percent.** After reaching its target and resting, a car that read 79% was
   started again and stopped 13 seconds later at 80%. It is now started again only once it is 3% or more below the
   target (within 12 hours of reaching it).
+- **Weather: Open-Meteo busy for a moment is asked again** (after 5 and 30 seconds) instead of failing the hour.
+  It refused the server with 503 from 14 Nov 18:00 to 15 Nov 07:00 while answering elsewhere; it answers again.
 - **The charging log says why.** A charge started by the charge schedule's cheap window (Cosy's 22:00–00:00) said
   "the rate is not cheap now"; it now says "the charge schedule's cheap window (22:00–00:00)". A stop just after
   midnight gave the next cheap time as the window that had just ended ("Sat 22:00"); it now gives the next one to
