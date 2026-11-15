@@ -6,6 +6,9 @@ A one-time Google Device Access setup ($5) mints the four keys for the Keys page
 
 | | |
 |---|---|
+| Role | Source: fetches from outside |
+| Reads | the Nest thermostat (Google Smart Device Management API) |
+| Gives | Home Assistant: room temperature, humidity, target and a heating binary sensor |
 | Keys | `nest_project_id`, `nest_client_id`, `nest_client_secret`, `nest_refresh_token` |
 | Endpoints | `/v1/nest`, `/nest` |
 | Scheduled jobs | `nest_sync` |
