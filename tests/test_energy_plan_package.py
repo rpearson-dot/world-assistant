@@ -471,9 +471,18 @@ def test_the_car_charges_when_the_rate_is_cheap_or_free_and_stops_at_its_target(
     nxt = CAR | {"sensor.wa_energy_next_cheap_start": "2026-10-25T13:00:00+00:00",
                  "sensor.wa_energy_free_electricity_next_start": "2026-10-25T12:00:00+00:00",
                  "sensor.wa_energy_free_electricity_next_start#joined": True}  # fmt: skip
+    nxt.pop("sensor.wa_energy_charge_schedule#windows", None)  # the rate's own windows only, for these two
     assert render(why["next_start"], nxt) == "2026-10-25T12:00:00+00:00"  # the joined free hour comes first
     nxt["sensor.wa_energy_free_electricity_next_start#joined"] = False
     assert render(why["next_start"], nxt) == "2026-10-25T13:00:00+00:00"
+    # just after midnight the cheap window "current or next" can still be the one that ended at midnight: never a time
+    # gone by; the charge schedule's next window is (Cosy: 04:00) — the log said "next cheap or free time Sat 22:00"
+    sun = datetime(2026, 10, 25, 0, 1, tzinfo=LONDON)
+    ended = CAR | {"sensor.wa_energy_next_cheap_start": "2026-10-24T22:00:00+01:00"}
+    assert datetime.fromisoformat(str(render(why["next_start"], ended, sun))) == datetime(2026, 10, 25, 4, 0, tzinfo=LONDON)
+    # started by the schedule's window, not the live rate: it says so (it said "the rate is not cheap now")
+    env_why = render(why["why"], CAR, datetime(2026, 10, 24, 22, 5, tzinfo=LONDON))
+    assert "the charge schedule's cheap window (22:00–00:00)" in str(env_why)
 
 
 def test_the_charger_is_started_and_stopped_and_logged() -> None:
@@ -560,7 +569,11 @@ def test_after_a_full_charge_it_rests_instead_of_bouncing() -> None:
     rests = render(EV_SENSORS["wa_ev_plan"]["attributes"]["rests_until"], stopped, at)
     assert datetime.fromisoformat(str(rests)) == at + timedelta(minutes=50)  # 60 minutes after it stopped full
     assert _plan(stopped | {"input_number.wa_ev_rest_min": "120"}, at + timedelta(minutes=70)) == "full"  # a longer rest
-    assert _plan(stopped, at + timedelta(minutes=55)) == "charge"  # the hour is up
+    # the hour is up, but a car that reached its target is not started again for a percent or two: the log showed
+    # a start at 79% and a stop 13 seconds later at 80%
+    assert _plan(stopped, at + timedelta(minutes=55)) == "full"
+    assert _plan(stopped | {"sensor.wa_car_charge_level": "77.0"}, at + timedelta(minutes=55)) == "charge"  # 3% below
+    assert _plan(stopped, at + timedelta(hours=13)) == "charge"  # half a day on: a new night's charge
     dropped = stopped | {"sensor.wa_car_charge_level": "70.0"}
     assert _plan(dropped, at) == "charge"  # more than 5% below the target: not held back
 
@@ -756,3 +769,20 @@ def test_it_says_when_it_should_be_charging_and_is_not() -> None:
     assert go(night | {"sensor.wa_car_charging_plan@changed": NOW - timedelta(minutes=10)})[1] is False  # give it time
     told = (NOW - timedelta(minutes=2)).timestamp()
     assert go(night | {"input_datetime.wa_ev_warned_at#timestamp": told})[1] is False  # once each time
+
+
+def test_a_restart_of_world_assistant_does_not_stop_the_charge() -> None:
+    """An update restarts World Assistant: its energy sensors are unavailable for a few minutes. The plan keeps its
+    last decision (for up to 45 minutes) instead of reading "not cheap" and stopping the charge."""
+
+    class This:
+        state = "charge"
+
+    at = datetime(2026, 10, 25, 10, 10, tzinfo=LONDON)  # outside the charging windows: only the live rate says cheap
+    restarting = CAR | {"sensor.wa_energy_cheap_now": "unavailable", "sensor.wa_energy_cheap_now@changed": at - timedelta(minutes=8)}
+    tpl = EV_SENSORS["wa_ev_plan"]["state"]
+    assert render(tpl, restarting, at, this=This()) == "charge"
+    assert "World Assistant is restarting" in words(EV_SENSORS["wa_ev_plan"]["attributes"]["why"], restarting)
+    long_gone = restarting | {"sensor.wa_energy_cheap_now@changed": at - timedelta(hours=2)}
+    assert render(tpl, long_gone, at, this=This()) == "wait"  # down for longer: the plan decides again (not cheap)
+    assert render(tpl, CAR | {"sensor.wa_energy_cheap_now": "off"}, at, this=This()) == "wait"  # back: decides as normal

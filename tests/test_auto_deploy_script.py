@@ -40,7 +40,7 @@ done
 [ -z "${FAKE_API_DOWN:-}" ] || exit 7
 case "$url" in *"/request/claim") echo claimed >> "$T/claims"; [ -z "${FAKE_CLAIM_FAIL:-}" ]; exit ;; esac
 if [ "$method" = POST ]; then echo "$body" >> "$T/reports"; exit 0; fi
-printf '{"enabled":%s,"running":{"version":"%s","commit":"x"},"last_run":null,"request":null,"pending":%s}' "$SWITCH" "$RUNNING" "${PENDING:-false}"
+printf '{"enabled":%s,"hold":{"held":%s,"why":"the car is charging"},"running":{"version":"%s","commit":"x"},"last_run":null,"request":null,"pending":%s}' "$SWITCH" "${HELD:-false}" "$RUNNING" "${PENDING:-false}"
 """
 
 FAKE_DEPLOY = r"""#!/usr/bin/env bash
@@ -329,3 +329,11 @@ def test_a_staged_update_that_did_not_finish_is_reported_not_undone(box: Box) ->
     r = box.run(WA_IMAGE=OLD, DEPLOY_RESULTS="4")
     assert r.returncode == 1 and box.reports[-1]["result"] == "failed" and "is running and answering" in box.reports[-1]["message"]
     assert len([c for c in box.calls if c.startswith("deploy")]) == 1
+
+
+def test_the_nightly_update_waits_while_the_car_charges(box: Box) -> None:
+    r = box.run(HELD="true")
+    assert r.returncode == 75 and "Holding the nightly update: the car is charging" in r.stdout
+    assert box.reports[-1]["result"] == "held" and not any(c.startswith(("docker pull", "deploy")) for c in box.calls)
+    box.run("--now", HELD="true")  # Update now is not held: you asked for it
+    assert box.reports[-1]["result"] != "held"

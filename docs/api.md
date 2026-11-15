@@ -9,7 +9,7 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [discovery](#discovery) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [network](#network) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [outside](#outside) · [ovms](#ovms) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [solar](#solar) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [discovery](#discovery) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [network](#network) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [outside](#outside) · [ovms](#ovms) · [pihole](#pihole) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [solar](#solar) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
 
 
 ## airstage
@@ -163,7 +163,7 @@ pages themselves hold no data: each one calls these endpoints.
 | PUT | `/v1/buslog/settings` | The route, the window, and the test switch that records every day (weekends and holidays too). |
 | GET | `/v1/buslog/status` | Whether it is recording now and why, the next recording days, and how today's requests went per source. |
 | GET | `/v1/buslog/stop/{stop}` | A stop's next hour: the buses the timetable has there, and the ones TfL expects (as it stood at `at`). |
-| GET | `/v1/buslog/tracks` | Every bus's GPS positions over a day's window (and half an hour either side), for playback: {vehicle: [[epoch seconds, lat, lon, destination], ...]}. |
+| GET | `/v1/buslog/tracks` | Every bus's GPS positions over a day's window (and half an hour either side), for playback: {vehicle: [[epoch seconds, lat, lon, destination, how full (when BODS says)], ...]}. |
 | GET | `/v1/buslog/vehicle/{vehicle}` | A bus's remaining stops to the end of its route, as TfL expected at `at`, against the timetable: on time, early or late at each, and by how much. |
 
 ## clients
@@ -348,17 +348,12 @@ pages themselves hold no data: each one calls these endpoints.
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/v1/network/devices` | Every device, newest first: its name, address, when first and last seen, and today's lookups, blocks and firewall decisions; with your Pi-hole groups when Pi-hole is set up. |
+| GET | `/v1/network/devices` | Every device, newest first: its name, address, when first and last seen, and today's lookups, blocks and firewall decisions (its Pi-hole groups: /v1/pihole/device-groups). |
 | GET | `/v1/network/devices/{mac}` | One device's timeline (newest first) and its most looked-up and most blocked domains. |
 | PUT | `/v1/network/devices/{mac}/alias` | Alias |
-| POST | `/v1/network/devices/{mac}/block` | Add the domains you ticked to Pi-hole: for this device only (its own extra group, beside the groups it is in) or for one of your groups. Your groups and lists are never changed otherwise. |
-| GET | `/v1/network/devices/{mac}/suggestions` | Suggested blocks for this device: what got past your Pi-hole lists over the last days that does not serve you, each with why, and what blocking it may break. Things it needs are shown as "keep". |
-| POST | `/v1/network/devices/{mac}/unblock` | Undo: the domains World Assistant added for this device taken out of Pi-hole (all of them by default, and then its own group too). |
 | GET | `/v1/network/events` | The newest events: kind dns, firewall, client, dhcp or system; action allow, block, join, leave, lease. |
-| GET | `/v1/network/groups` | Your Pi-hole groups (Kids, Adults, IoT...), each with its devices, and what gets past your lists for them this week. |
-| POST | `/v1/network/pihole/test` | Sign in to Pi-hole and read its groups: says whether the address and app password work. |
 | GET | `/v1/network/settings` | Get Settings  |
-| PUT | `/v1/network/settings` | How long events are kept, Pi-hole's address on your network (such as http://10.0.2.49:8080), and the new-device notification. |
+| PUT | `/v1/network/settings` | How long events are kept, and the new-device notification. |
 
 ## notify
 
@@ -423,6 +418,19 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/ovms/{vehicle}/history` | Metric History |
 | GET | `/v1/ovms/{vehicle}/metrics` | Every metric the car has sent, as it stands, with when. |
 | GET | `/v1/ovms/{vehicle}/notices` | Notices |
+
+## pihole
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/pihole/device-groups` | Each device's Pi-hole groups (Kids, Adults, IoT...), by MAC, for the Network page. |
+| POST | `/v1/pihole/devices/{mac}/block` | Add the domains you ticked to Pi-hole: for this device only (its own extra group, beside the groups it is in) or for one of your groups. Your groups and lists are never changed otherwise. |
+| GET | `/v1/pihole/devices/{mac}/suggestions` | Suggested blocks for this device: what got past your Pi-hole lists over the last days that does not serve you, each with why, and what blocking it may break. Things it needs are shown as "keep". |
+| POST | `/v1/pihole/devices/{mac}/unblock` | Undo: the domains World Assistant added for this device taken out of Pi-hole (all of them by default, and then its own group too). |
+| GET | `/v1/pihole/groups` | Your Pi-hole groups (Kids, Adults, IoT...), each with its devices, and what gets past your lists for them this week. |
+| GET | `/v1/pihole/settings` | Pi-hole's address and whether its app password is on the Keys page. |
+| PUT | `/v1/pihole/settings` | Pi-hole's address on your network (such as http://10.0.2.49:8080). |
+| POST | `/v1/pihole/test` | Sign in to Pi-hole and read its groups: says whether the address and app password work. |
 
 ## places
 

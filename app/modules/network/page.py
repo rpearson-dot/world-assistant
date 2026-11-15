@@ -49,8 +49,9 @@ table.t td.n, table.t th.n { text-align: right; } table.t tr.dev { cursor: point
   Activity Logging (Syslog) → SIEM Server, with this server's address and port <b id="port"></b>. Turn on Syslog Logging for the
   firewall rules you want to see (in the Policy Engine).</p>
   <label>Pi-hole's address on your network <input id="phurl" placeholder="http://10.0.2.49:8080"></label>
-  <p class="dim small">Its app password goes on the Keys page (in Pi-hole: Settings → Web interface / API → Configure app password).
-  <span id="phpw"></span></p>
+  <label>Pi-hole's app password <input id="phkey" type="password" autocomplete="off" placeholder="Paste it to save or replace it"></label>
+  <p class="dim small">In Pi-hole: Settings → Web interface / API → Configure app password. Kept with your other keys
+  (Settings → Keys) and never shown again. <span id="phpw"></span></p>
   <label>Keep events for (days) <input id="keep_days" type="number" min="1" max="365"></label>
   <label class="row"><input id="notify_new" type="checkbox" style="width:auto"> Tell me when a new device joins</label>
   <p><button id="save" class="primary" type="button">Save</button> <button id="test" type="button">Test Pi-hole</button> <span id="setmsg" class="dim"></span></p>
@@ -78,14 +79,18 @@ async function load() {
   msg.textContent = '';
   try {
     const st = await api('/v1/network/settings');
-    $('port').textContent = 'UDP ' + st.syslog_port; $('phurl').value = st.pihole_url || ''; $('keep_days').value = st.keep_days; $('notify_new').checked = st.notify_new;
-    $('phpw').textContent = st.pihole_password_set ? 'It is set.' : 'It is not set yet.';
+    $('port').textContent = 'UDP ' + st.syslog_port; $('keep_days').value = st.keep_days; $('notify_new').checked = st.notify_new;
+    try { const ph = await api('/v1/pihole/settings'); piholeOn = true; $('phurl').value = ph.pihole_url || '';
+      $('phpw').textContent = ph.pihole_password_set ? 'It is set.' : 'It is not set yet.'; }
+    catch (e) { piholeOn = false; $('phpw').textContent = 'Pi-hole is switched off: turn it on in Settings → Setup (Your network).'; }
+    $('phurl').disabled = $('phkey').disabled = $('test').disabled = !piholeOn;
     const d = await api('/v1/network/devices'), t = $('devs'); t.replaceChildren();
+    if (d.pihole) { try { const g = (await api('/v1/pihole/device-groups')).groups; d.devices.forEach(x => x.groups = g[x.mac]); } catch (e) {} }
     const h = el('tr'); [['Device'], ['First seen'], ['Last seen'], ['Lookups today', 'n'], ['Blocked today', 'n'], ['Firewall blocks', 'n']].forEach(([x, c]) => h.append(el('th', x, c))); t.append(h);
     d.devices.forEach(x => t.append(deviceRow(x)));
     $('say').textContent = d.devices.length ? d.devices.length + ' devices. Choose one to see what it did and what to block.' :
-      'No devices yet: point the UniFi gateway\\'s syslog at this server (Settings, below).';
-    if (d.pihole) { try { const g = await api('/v1/network/groups'); groupsList = g.groups; $('groupcard').hidden = !g.groups.length; const box = $('groups'); box.replaceChildren();
+      'No devices yet: point the UniFi gateway\\'s log at this server, or set up Pi-hole (Settings, below).';
+    if (d.pihole) { try { const g = await api('/v1/pihole/groups'); groupsList = g.groups; $('groupcard').hidden = !g.groups.length; const box = $('groups'); box.replaceChildren();
       g.groups.forEach(x => { const p = el('p'); p.append(el('b', x.name + ': '), document.createTextNode(x.devices.length + ' devices, ' + x.lookups_week + ' lookups got past your lists this week' + (x.devices.length ? ' (' + x.devices.join(', ') + ')' : ''))); box.append(p); }); } catch (e) {} }
   } catch (e) { msg.textContent = e.message; }
 }
@@ -100,9 +105,9 @@ async function open(mac) {
     document.createTextNode((x.dest || '') + (x.port ? ':' + x.port : '') + (x.detail && x.detail.rule ? ' [' + x.detail.rule + ']' : ''))); ev.append(r); });
   const ad = $('added'); ad.replaceChildren();
   if (d.added_blocks.length) { const p = el('p', 'Added to Pi-hole by World Assistant: ' + d.added_blocks.map(b => b.domain).join(', ') + ' ', 'small');
-    const u = el('button', 'Undo all'); u.type = 'button'; u.onclick = async () => { try { await api('/v1/network/devices/' + encodeURIComponent(mac) + '/unblock', { method: 'POST', body: '{}' }); open(mac); } catch (e) { $('smsg').textContent = e.message; } };
+    const u = el('button', 'Undo all'); u.type = 'button'; u.onclick = async () => { try { await api('/v1/pihole/devices/' + encodeURIComponent(mac) + '/unblock', { method: 'POST', body: '{}' }); open(mac); } catch (e) { $('smsg').textContent = e.message; } };
     p.append(u); ad.append(p); }
-  const s = await api('/v1/network/devices/' + encodeURIComponent(mac) + '/suggestions'), box = $('sugg'); box.replaceChildren();
+  const s = await api('/v1/pihole/devices/' + encodeURIComponent(mac) + '/suggestions'), box = $('sugg'); box.replaceChildren();
   $('ssay').textContent = (s.learning ? 'Still learning (watched ' + s.watched_days + ' of 7 days): these may change. ' : '') +
     (s.suggested.length ? s.suggested.length + ' domains got past your Pi-hole lists that look like they do not serve you (' + s.suggested_lookups + ' lookups).' : 'Nothing to suggest: what gets past your lists looks like what it needs.');
   s.suggested.forEach(x => { const l = el('label', null, 'row'); const c = el('input'); c.type = 'checkbox'; c.style.width = 'auto'; c.value = x.domain; c.checked = !x.may_break;
@@ -120,14 +125,21 @@ $('add').onclick = async () => {
   const tgt = $('target').value, words = tgt ? 'every device in ' + $('target').selectedOptions[0].textContent.replace('everything in ', '') : 'this device only';
   if (!armed) { armed = true; $('add').textContent = 'Press again to block ' + doms.length + ' domains for ' + words; return; }
   armed = false; $('add').textContent = 'Add to Pi-hole';
-  try { const r = await api('/v1/network/devices/' + encodeURIComponent(current) + '/block', { method: 'POST', body: JSON.stringify({ domains: doms, group_id: tgt ? Number(tgt) : null }) });
+  try { const r = await api('/v1/pihole/devices/' + encodeURIComponent(current) + '/block', { method: 'POST', body: JSON.stringify({ domains: doms, group_id: tgt ? Number(tgt) : null }) });
     $('smsg').textContent = 'Added ' + r.domains.length + ' to Pi-hole' + (r.group ? ' (group ' + r.group + ')' : '') + '. Undo takes them back.'; open(current); }
   catch (e) { $('smsg').textContent = e.message; }
 };
 $('copy').onclick = async () => { const doms = ticked().join('\\n'); try { await navigator.clipboard.writeText(doms); $('smsg').textContent = 'Copied ' + ticked().length + ' domains.'; } catch (e) { $('smsg').textContent = doms; } };
 $('aliassave').onclick = async () => { try { await api('/v1/network/devices/' + encodeURIComponent(current) + '/alias', { method: 'PUT', body: JSON.stringify({ alias: $('alias').value }) }); load(); open(current); } catch (e) { $('smsg').textContent = e.message; } };
-$('save').onclick = async () => { try { await api('/v1/network/settings', { method: 'PUT', body: JSON.stringify({ pihole_url: $('phurl').value.trim(), keep_days: Number($('keep_days').value) || 30, notify_new: $('notify_new').checked }) }); $('setmsg').textContent = 'Saved.'; load(); } catch (e) { $('setmsg').textContent = e.message; } };
-$('test').onclick = async () => { try { const r = await api('/v1/network/pihole/test', { method: 'POST' }); $('setmsg').textContent = r.ok ? 'Pi-hole answers. Your groups: ' + r.groups.join(', ') : r.error; } catch (e) { $('setmsg').textContent = e.message; } };
+let piholeOn = false;
+$('save').onclick = async () => { try {
+  await api('/v1/network/settings', { method: 'PUT', body: JSON.stringify({ keep_days: Number($('keep_days').value) || 30, notify_new: $('notify_new').checked }) });
+  if (piholeOn) {
+    await api('/v1/pihole/settings', { method: 'PUT', body: JSON.stringify({ pihole_url: $('phurl').value.trim() }) });
+    if ($('phkey').value.trim()) { await api('/v1/settings/keys/pihole_app_password', { method: 'PUT', body: JSON.stringify({ value: $('phkey').value.trim() }) }); $('phkey').value = ''; }
+  }
+  $('setmsg').textContent = 'Saved.'; load(); } catch (e) { $('setmsg').textContent = e.message; } };
+$('test').onclick = async () => { try { const r = await api('/v1/pihole/test', { method: 'POST' }); $('setmsg').textContent = r.ok ? 'Pi-hole answers. Your groups: ' + r.groups.join(', ') : r.error; } catch (e) { $('setmsg').textContent = e.message; } };
 $('go').onclick = load;
 load();
 </script></main></body></html>"""

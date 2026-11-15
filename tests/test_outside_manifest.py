@@ -19,6 +19,7 @@ min_wa = "0.55.0"
 licence = "MIT"
 repository = "https://github.com/someone/wa-tigo"
 role = "source"
+category = "energy"
 reads = ["the Tigo CCA on the home network"]
 gives = ["Home Assistant: power for each panel"]
 
@@ -70,6 +71,8 @@ def test_a_good_manifest() -> None:
     (("storage_mb = 200", "storage_mb = 99999"), "limits.storage_mb"),
     (("home_location = \"postcode district\"", "home_location = \"street\""), "home_location"),
     (("role = \"source\"", "role = \"thing\""), "role"),
+    (("category = \"energy\"", "category = \"gadgets\""), "category: where it is listed"),
+    (("category = \"energy\"\n", ""), "category: where it is listed"),
     (("id = \"tigo\"", "colour = \"red\"\nid = \"tigo\""), "unknown fields"),
 ])
 def test_a_bad_manifest_says_why(change: tuple[str, str], words: str) -> None:

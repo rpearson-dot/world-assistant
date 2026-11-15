@@ -2,6 +2,58 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.57.0] - 2026-11-15
+
+### Added
+
+- **How full each bus is, from the day BODS sends it.** A weekly check (Mondays) looks for occupancy in what BODS
+  sends for the route and notifies you the first time it appears (new notification kind "Bus log news"). From then
+  the school run shows how full each bus was at Worcester Park and at the school, each stop's row shows it, and the
+  playback labels each bus with it. Every BODS field is already recorded, so the days since it appeared show it too.
+
+### Changed
+
+- **Network is two modules: the UniFi gateway log and Pi-hole**, each with its own Set up and Turn off, listed
+  together under a new heading, **Your network** (with Discovery). Either works alone: Pi-hole now reads its own
+  network table every ten minutes, so it names devices without the UniFi log. Pi-hole's endpoints moved to
+  `/v1/pihole` (settings, test, groups, device-groups, suggestions, block, unblock). A choice that had Network on keeps
+  both on. Pi-hole's app password can be entered on the Network page as well as Settings → Keys, and Pi-hole now has
+  its own card on the Keys page.
+- **Module headings are a curated list** (`CATEGORIES` in `app/modules/model.py`): Getting around, Places, Energy and
+  vehicles, In the home, Your network, Services, Other data. Settings → Setup is grouped by them (it was by whether a
+  key is needed). An outside module must say which (`category` in `wa-module.toml`, now required); a module with an
+  unknown one is listed under Other data.
+
+### Fixed
+
+- **A charger given the address with a trailing slash connects.** Like Home Assistant's OCPP integration, World
+  Assistant's address is given without the charge point ID and the charger adds "/<its ID>"; given as
+  `ws://<server>:8010/ocpp/` that made `/ocpp//U1HKP`, which was turned away. Both now reach it.
+- **UniFi Network 11's log is read.** A UDM Pro sends `UDM-Pro CEF:0|Ubiquiti|...`, which was taken for a program
+  called "CEF" and kept as a plain system line, so no device appeared. Client joins and leaves now give the client's
+  own MAC, address and name (not the access point's, which UniFi 11 sends beside it), and "Blocked by Firewall"
+  lines become firewall events with the device, destination, port and the policy's name.
+- **Devices on other VLANs.** Pi-hole knows a device on another VLAN only by its address; it is now kept by that
+  (`ip:10.0.1.254`) with Pi-hole's name for it, and becomes one device with its MAC when the UniFi log names it.
+
+- **An overnight update no longer stops the car's charge.** Updates restart World Assistant at 04:00, inside most
+  cheap charging windows; its energy sensors were briefly unavailable in Home Assistant, the charging plan read that
+  as "not cheap" and the automation stopped the charge (and started it again a few minutes later). Now:
+  - the charging plan (`wa_ev_plan.yaml`) keeps its last decision while World Assistant's sensors are unavailable or
+    unknown, for up to 45 minutes, and says why;
+  - the nightly update waits while the charger says it is charging, trying again every 10 minutes for three hours
+    (Settings → Automatic updates, "Wait while the car is charging", on by default);
+  - the nightly update's time is set in Settings ("Every night at"), so it can be moved out of the cheap hours.
+- **The car is not started again for a percent.** After reaching its target and resting, a car that read 79% was
+  started again and stopped 13 seconds later at 80%. It is now started again only once it is 3% or more below the
+  target (within 12 hours of reaching it).
+- **Weather: Open-Meteo busy for a moment is asked again** (after 5 and 30 seconds) instead of failing the hour.
+  It refused the server with 503 from 14 Nov 18:00 to 15 Nov 07:00 while answering elsewhere; it answers again.
+- **The charging log says why.** A charge started by the charge schedule's cheap window (Cosy's 22:00–00:00) said
+  "the rate is not cheap now"; it now says "the charge schedule's cheap window (22:00–00:00)". A stop just after
+  midnight gave the next cheap time as the window that had just ended ("Sat 22:00"); it now gives the next one to
+  come (04:00).
+
 ## [0.56.0] - 2026-11-14
 
 ### Added

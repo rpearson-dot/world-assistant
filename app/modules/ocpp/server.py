@@ -381,6 +381,7 @@ async def apply_mode(hub: Hub, cid: str, mode: str, reason: str = "") -> dict[st
 
 
 @ws_router.websocket("/ocpp/{cid}")
+@ws_router.websocket("/ocpp//{cid}")  # a charger that adds "/<id>" to an address already ending in "/"
 async def charger_socket(ws: WebSocket, cid: str) -> None:
     from app.modules.gate import is_enabled
 

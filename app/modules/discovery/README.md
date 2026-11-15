@@ -2,7 +2,7 @@
 
 What each device on your network probably is (its adapter's maker, its name, what it looks up) and the module that would suit it.
 
-Reads what the Network module has seen and the IEEE register of adapter makers. Changes nothing
+Reads what the UniFi gateway log and Pi-hole have seen and the IEEE register of adapter makers. Changes nothing
 
 | | |
 |---|---|

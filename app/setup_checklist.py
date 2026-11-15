@@ -142,7 +142,7 @@ async def checklist(request: Request) -> dict[str, Any]:
 
     def row(x: Source) -> dict[str, Any]:
         r = judge(x, s, runs)
-        r["module"], r["enabled"] = True, x.id in on
+        r["module"], r["enabled"], r["category"] = True, x.id in on, x.category
         r["page"] = x.link if x.link.startswith("/") else next((p for p in x.prefixes if not p.startswith("/v1")), None)
         r["needed_by"] = [m.name for m in mods if m.id in on and x.id in m.needs]
         r["flow"] = flow(x)
@@ -160,7 +160,9 @@ async def checklist(request: Request) -> dict[str, Any]:
         await routing(s),
         *[await check(s) for _, check in registry.provided("setup.check")],
     ]  # fmt: skip
-    return {"local": is_local(request, request.method), "you": you, "keys": keyed, "free": free}
+    from app.modules.model import CATEGORIES
+
+    return {"local": is_local(request, request.method), "you": you, "keys": keyed, "free": free, "categories": CATEGORIES}
 
 
 @router.get("")

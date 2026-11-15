@@ -8,6 +8,7 @@ min_wa = "0.55.0"
 licence = "MIT"
 repository = "https://github.com/your-name/wa-hello"
 role = "processor"
+category = "place"  # where it is listed: transport, place, energy, home, network, service or data
 reads = []
 gives = ["Home Assistant: the distance from home to a place you choose"]
 controls = []

@@ -1,6 +1,7 @@
 """The syslog listener (the wa-syslog service): receives what the UniFi gateway sends on UDP (port 5514 in the
 container; the host's port is WA_SYSLOG_PORT, 5514 by default), reads each line and writes them in batches every two
-seconds. A new device sends a notification ("a new device joined the network") when that is switched on.
+seconds. A new device sends a notification ("a new device joined the network") when that is switched on. Nothing is kept
+while the UniFi gateway log module is switched off.
 
 It accepts lines only from private addresses (the home network), and at most 5,000 a second: a flood is dropped and
 counted, never queued without end. Run as `python -m app.modules.network.listener`.
@@ -55,6 +56,13 @@ async def flush(engine: Any, proto: Syslog) -> None:
         batch, proto.queue = proto.queue, []
         if not batch:
             continue
+        try:
+            from app.modules import gate
+
+            if not await gate.is_enabled("unifi", engine):  # the UniFi gateway log switched off: nothing kept
+                continue
+        except Exception:  # noqa: BLE001 - the choice cannot be read: keep, as everything is on then
+            log.debug("could not read whether the UniFi gateway log is on; keeping")
         try:
             async with engine.begin() as conn:
                 new = await store.keep(conn, batch)

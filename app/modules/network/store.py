@@ -27,6 +27,12 @@ async def settings(conn: Any) -> dict[str, Any]:
     return {**DEFAULTS, **(v or {})}
 
 
+async def save_settings(conn: Any, st: dict[str, Any]) -> None:
+    await conn.execute(text(
+        "INSERT INTO app_setting (key, value, updated_at) VALUES (:k, CAST(:v AS jsonb), now()) "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()"), {"k": KEY, "v": json.dumps(st)})  # fmt: skip
+
+
 async def macs_for(conn: Any, ips: set[str]) -> dict[str, str]:
     if not ips:
         return {}
@@ -58,6 +64,9 @@ async def keep(conn: Any, events: list[dict[str, Any]]) -> list[str]:
         if e["at"] >= p["at"]:
             p["at"], p["what"] = e["at"], f"{e['kind']} {e.get('action') or ''}".strip()
         p["what"] = p["what"] or f"{e['kind']} {e.get('action') or ''}".strip()
+        if e["kind"] == "firewall" and e.get("ip"):  # a firewall line names the sender's own address
+            p["ip"] = p["ip"] or e["ip"]
+            p["name"] = p["name"] or e.get("name")
         if e["kind"] in ("dhcp", "client"):
             p["ip"], p["name"] = e.get("ip") or p["ip"], e.get("name") or p["name"]
             p["conn"] = (e.get("detail") or {}).get("ssid") or (e.get("detail") or {}).get("ap") or p["conn"]
@@ -68,8 +77,10 @@ async def keep(conn: Any, events: list[dict[str, Any]]) -> list[str]:
             "last_seen = greatest(net_device.last_seen, EXCLUDED.last_seen), last_what = EXCLUDED.last_what, "
             "connection = coalesce(EXCLUDED.connection, net_device.connection) RETURNING (xmax = 0)"),
             {"m": m, "ip": p["ip"], "n": p["name"], "at": p["at"], "w": p["what"], "c": p["conn"]})).scalar()  # fmt: skip
-        if fresh:
+        if fresh and not m.startswith("ip:"):
             new.append(m)
+        if p["ip"] and not m.startswith("ip:"):
+            await _merge(conn, f"ip:{p['ip']}", m)
     counts = Counter((e["at"].astimezone(UTC).date(), e.get("mac") or f"ip:{e.get('ip')}", e["kind"], e.get("action") or "-")
                      for e in events if e["kind"] in ("dns", "firewall", "client", "dhcp"))  # fmt: skip
     if counts:
@@ -78,6 +89,22 @@ async def keep(conn: Any, events: list[dict[str, Any]]) -> list[str]:
             "ON CONFLICT (day, mac, kind, action) DO UPDATE SET n = net_day.n + EXCLUDED.n"),
             [{"d": d, "m": m, "k": k, "a": a, "n": n} for (d, m, k, a), n in counts.items()])  # fmt: skip
     return new
+
+
+async def _merge(conn: Any, pseudo: str, mac: str) -> None:
+    """A device known only by its address (ip:10.0.1.254: Pi-hole sees devices on other VLANs that way) now has its
+    MAC: its name, the last week's events and its daily counts move to the real device, and the stand-in goes."""
+    old = (await conn.execute(text("SELECT alias, name FROM net_device WHERE mac = :p"), {"p": pseudo})).first()
+    if old is None:
+        return
+    await conn.execute(text("UPDATE net_device SET alias = coalesce(alias, :a), name = coalesce(name, :n) WHERE mac = :m"),
+                       {"a": old[0], "n": old[1], "m": mac})  # fmt: skip
+    await conn.execute(text("UPDATE net_event SET mac = :m WHERE mac = :p AND at > now() - interval '7 days'"), {"m": mac, "p": pseudo})
+    await conn.execute(text(
+        "INSERT INTO net_day (day, mac, kind, action, n) SELECT day, :m, kind, action, n FROM net_day WHERE mac = :p "
+        "ON CONFLICT (day, mac, kind, action) DO UPDATE SET n = net_day.n + EXCLUDED.n"), {"m": mac, "p": pseudo})  # fmt: skip
+    await conn.execute(text("DELETE FROM net_day WHERE mac = :p"), {"p": pseudo})
+    await conn.execute(text("DELETE FROM net_device WHERE mac = :p"), {"p": pseudo})
 
 
 async def housekeep(conn: Any) -> dict[str, Any]:

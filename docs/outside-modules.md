@@ -53,6 +53,7 @@ min_wa = "0.55.0"                  # the oldest World Assistant it works with
 licence = "MIT"                    # an SPDX id; must match the repository's licence
 repository = "https://github.com/someone/wa-tigo"
 role = "source"                    # source | processor | output: what it mainly does with data
+category = "energy"                # where it is listed: transport | place | energy | home | network | service | data
 reads = ["the Tigo CCA on the home network"]           # in words: what it reads
 gives = ["Home Assistant: power for each panel"]       # in words: what comes out of it
 controls = []                      # in words: anything it changes in the real world (empty for most)

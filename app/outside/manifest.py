@@ -62,6 +62,7 @@ class Manifest:
     role: str
     image: str
     min_wa: str = "0.0.0"
+    category: str = "data"  # one of World Assistant's curated headings (app/modules/model.py CATEGORIES)
     reads: tuple[str, ...] = ()
     gives: tuple[str, ...] = ()
     controls: tuple[str, ...] = ()
@@ -106,7 +107,7 @@ def parse(text: str, wa_version: str, sdk_version: int) -> Manifest:
         raw = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:
         raise ManifestError(f"wa-module.toml is not valid TOML: {exc}") from exc
-    known = {"id", "name", "version", "sdk", "min_wa", "licence", "repository", "role", "reads", "gives", "controls",
+    known = {"id", "name", "version", "sdk", "min_wa", "licence", "repository", "role", "category", "reads", "gives", "controls",
              "image", "keys", "network", "data", "limits", "settings", "purposes"}  # fmt: skip
     extra = set(raw) - known
     if extra:
@@ -137,6 +138,11 @@ def parse(text: str, wa_version: str, sdk_version: int) -> Manifest:
     repo = str(get("repository") or "")
     if not re.fullmatch(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise ManifestError("repository: https://github.com/owner/name")
+    from app.modules.model import CATEGORIES
+
+    category = str(get("category") or "")
+    if category not in CATEGORIES:
+        raise ManifestError("category: where it is listed, one of " + ", ".join(f"{k} ({v})" for k, v in CATEGORIES.items()))
     role = str(get("role") or "")
     if role not in ROLES:
         raise ManifestError("role: source, processor or output")
@@ -206,7 +212,7 @@ def parse(text: str, wa_version: str, sdk_version: int) -> Manifest:
             raise ManifestError(f"purposes: it asks for personal data and reaches {', '.join(missing)}: say why for each host")
     controls = _list(get("controls"), "controls")
     return Manifest(id=mid, name=name, version=version, sdk=sdk, licence=licence, repository=repo, role=role, image=image,
-                    min_wa=min_wa, reads=_list(get("reads"), "reads"), gives=_list(get("gives"), "gives"), controls=controls,
+                    min_wa=min_wa, category=category, reads=_list(get("reads"), "reads"), gives=_list(get("gives"), "gives"), controls=controls,
                     keys=keys, hosts=hosts, home_devices=devices, data=data, home_assistant_read=ha_read,
                     home_assistant_write=ha_write, notifications=bool(data_raw.get("notifications", False)), limits=limits,
                     settings=tuple(fields), purposes=purposes)  # fmt: skip

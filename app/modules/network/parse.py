@@ -45,6 +45,8 @@ def strip_header(line: str) -> tuple[str, str | None]:
     if m:
         rest = m[3]
         tag = re.match(r"([\w./-]+)(?:\[\d+\])?:\s?(.*)$", rest)
+        if tag and tag[1] == "CEF":  # UniFi Network 9+ sends "host CEF:0|Ubiquiti|...": the CEF line, not a program
+            return "CEF:" + tag[2], None
         return (tag[2], tag[1]) if tag else (rest, None)
     return s, None
 
@@ -75,11 +77,19 @@ def cef(msg: str) -> dict[str, Any] | None:
     return {"vendor": parts[1], "product": parts[2], "signature": parts[4], "name": parts[5], "severity": parts[6], "ext": ext}
 
 
+# Fields about the access point or switch a client is on (UNIFIconnectedToDeviceMac, ...), never the client itself
+NOT_CLIENT = ("device", "connectedto", "lastconnected", "uplink", "gateway", "host")
+
+
 def _field(ext: dict[str, str], *words: str) -> str | None:
-    for k, v in ext.items():
-        lk = k.lower()
-        if any(w in lk for w in words) and v:
-            return v
+    """The first field whose name contains one of the words, in the order the words are given, leaving out the fields
+    about the access point or switch (UniFi 11 names the client's UNIFIclientMac and the AP's
+    UNIFIconnectedToDeviceMac)."""
+    for w in words:
+        for k, v in ext.items():
+            lk = k.lower()
+            if w in lk and v and not any(x in lk for x in NOT_CLIENT if x not in w):
+                return v
     return None
 
 
@@ -90,15 +100,28 @@ def line(raw: str, now: datetime | None = None) -> dict[str, Any]:
     ev: dict[str, Any] = {"at": at, "source": "unifi", "kind": "system", "mac": None, "ip": None, "name": None,
                           "action": None, "dest": None, "port": None, "proto": None, "detail": {}}  # fmt: skip
     c = cef(msg)
+    if c and ("firewall" in c["name"].lower() or _field(c["ext"], "policytype") == "Firewall"):
+        ext = c["ext"]
+        act = (_field(ext, "act") or c["name"]).lower()
+        ip = _field(ext, "srcclientip", "src")
+        ev.update(kind="firewall", ip=ip if ip and re.fullmatch(r"\d+\.\d+\.\d+\.\d+", ip) else None,
+                  mac=mac(_field(ext, "srcclientmac", "smac")), name=_field(ext, "srcclientalias", "srcclienthostname"),
+                  dest=_field(ext, "dst"), port=int(p) if (p := _field(ext, "dpt") or "").isdigit() else None,
+                  proto=(_field(ext, "proto") or "").lower() or None,
+                  action="block" if re.search(r"block|drop|reject|deny", act) else "allow" if re.search(r"allow|accept|pass", act) else "logged",
+                  detail={"rule": _field(ext, "policyname"), "app": _field(ext, "app"), "direction": _field(ext, "direction"),
+                          "sport": _field(ext, "spt"), "event": c["name"]})  # fmt: skip
+        return ev
     if c:
         ext = c["ext"]
         words = c["name"].lower()
         ev.update(kind="client" if any(w in words for w in ("client", "connect", "join", "roam", "disconnect", "left", "station"))
-                  else "system", mac=mac(_field(ext, "mac")), ip=_field(ext, "clientip", "ip", "src"),
-                  name=_field(ext, "hostname", "alias", "clientname", "name"),
+                  else "system", mac=mac(_field(ext, "clientmac", "mac")), ip=_field(ext, "clientip", "ip", "src"),
+                  name=_field(ext, "clientalias", "clienthostname", "hostname", "alias", "clientname"),
                   action="leave" if any(w in words for w in ("disconnect", "left", "offline")) else
                   "join" if any(w in words for w in ("connect", "join", "online")) else "roam" if "roam" in words else None,
-                  detail={"event": c["name"], "ap": _field(ext, "apname", "ap", "device", "port"), "ssid": _field(ext, "ssid", "wlan", "wifi"),
+                  detail={"event": c["name"], "ap": ext.get("UNIFIconnectedToDeviceName") or ext.get("UNIFIlastConnectedToDeviceName")
+                          or _field(ext, "apname"), "ssid": _field(ext, "ssid", "wlan", "wifi"),
                           "severity": c["severity"]})  # fmt: skip
         if ev["ip"] and not re.fullmatch(r"\d+\.\d+\.\d+\.\d+", ev["ip"]):
             ev["ip"] = None

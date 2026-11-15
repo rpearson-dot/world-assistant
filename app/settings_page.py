@@ -135,10 +135,16 @@ PAGE = """<!doctype html>
     <button id="upcancel" type="button" hidden>Cancel</button></div>
     <p id="upmsg" class="dim" aria-live="polite"></p></div>
   <div class="card"><h2>Automatic updates</h2>
-    <p class="dim">When on, the updater checks every night at 04:00 for a newer signed release and puts it in place the
-    same way as Update now, then brings the database, cache and other containers to their newest images (only those
-    with a newer one restart, briefly). It can only apply what has been released.</p>
+    <p class="dim">When on, the updater checks every night at the time below for a newer signed release and puts it in
+    place the same way as Update now, then brings the database, cache and other containers to their newest images
+    (only those with a newer one restart, briefly). It can only apply what has been released.</p>
     <label class="row" style="font-weight:600"><input id="au" type="checkbox" style="width:auto"> Update this server automatically</label>
+    <div class="row"><label>Every night at <input id="auat" type="time" style="width:auto"></label>
+      <label class="row"><input id="auwait" type="checkbox" style="width:auto"> Wait while the car is charging</label>
+      <button id="ausave" type="button">Save</button></div>
+    <p class="dim">A restart while the car charges can make Home Assistant's charging plan stop and start the charge, so
+    the nightly update waits while the charger says it is charging, trying again every 10 minutes for three hours.
+    Pick a time outside your cheap charging hours if you can.</p>
     <p id="aumsg" class="dim"></p></div>
 </section>
 
@@ -277,8 +283,12 @@ function renderSetup() {
   $('sumbar').style.width = Math.round(100 * n / all.length) + '%';
   $('sumtext').textContent = setup.local ? 'You are on the home network, so no token is needed here.' : 'Signed in with the token.';
   const c = $('checklist'); c.replaceChildren();
-  for (const [title, list] of [['You', setup.you], ['Sources that need a free key', setup.keys], ['Sources that need no key', setup.free]]) {
-    c.append(el('div', 'group', title), ...list.map(item));
+  // You first, then each category in its curated order: what a module is for, not whether it needs a key
+  c.append(el('div', 'group', 'You'), ...setup.you.map(item));
+  const mods = [...setup.keys, ...setup.free];
+  for (const [cat, title] of Object.entries(setup.categories || AREAS)) {
+    const list = mods.filter(x => (x.category || 'data') === cat).sort((a, b) => a.name.localeCompare(b.name));
+    if (list.length) c.append(el('div', 'group', title), ...list.map(item));
   }
 }
 function keyField(name, onsaved) {
@@ -335,7 +345,7 @@ function renderAll() { renderSetup(); if (!$('wizard').hidden) wizard(wizStep); 
 // --- the wizard -------------------------------------------------------------------------------------
 let wizStep = 0;
 const STEPS = 6;
-const AREAS = { transport: 'Getting around', place: 'Places and what is near them', energy: 'Energy and vehicles', home: 'At home', data: 'Other data', service: 'Services' };
+const AREAS = { transport: 'Getting around', place: 'Places and what is near them', energy: 'Energy and vehicles', home: 'In the home', network: 'Your network', service: 'Services', data: 'Other data' };
 function wizard(step) {
   wizStep = step;
   const w = $('wizard'); w.hidden = false; w.replaceChildren();
@@ -368,8 +378,8 @@ function wizard(step) {
     const box = el('div'), st = el('span', 'dim');
     w.append(box);
     api('/v1/modules').then(d => {
-      for (const [cat, title] of Object.entries(AREAS)) {
-        const mods = d.modules.filter(m => m.category === cat && !m.core); if (!mods.length) continue;
+      for (const [cat, title] of Object.entries(d.categories || AREAS)) {
+        const mods = d.modules.filter(m => m.category === cat && !m.core && m.listed !== false); if (!mods.length) continue;
         box.append(el('h3', null, title));
         for (const m of mods) {
           const lab = el('label', 'row'), cb = el('input'); cb.type = 'checkbox'; cb.value = m.id; cb.checked = m.enabled;
@@ -418,16 +428,23 @@ function tab(name) {
 }
 document.querySelectorAll('.seg button[data-tab]').forEach(b => b.onclick = () => tab(b.dataset.tab));
 const AU_WORDS = { updated: 'Updated', unchanged: 'Already up to date', refused: 'Not applied',
-  rolled_back: 'Update failed its checks; the previous version is running again', failed: 'Needs attention' };
+  rolled_back: 'Update failed its checks; the previous version is running again', failed: 'Needs attention',
+  held: 'Waiting' };
 async function auLoad() {
   try {
     const d = await api('/v1/auto-deploy'), l = d.last_run; $('au').checked = d.enabled;
+    if (document.activeElement !== $('auat')) $('auat').value = d.nightly_at || '04:00';
+    $('auwait').checked = d.wait_while_charging !== false;
     $('aumsg').textContent = 'Running ' + d.running.version + '. ' + (l ? 'Last run ' + new Date(l.reported).toLocaleString() + ': '
       + (AU_WORDS[l.result] || l.result) + (l.message ? ' (' + l.message + ')' : '') + '.' : 'The nightly job has not reported yet.');
   } catch (e) { $('aumsg').textContent = e.message; }
 }
+const auBody = () => JSON.stringify({ enabled: $('au').checked, at: $('auat').value || null, wait_while_charging: $('auwait').checked });
+$('ausave').onclick = async () => {
+  try { await api('/v1/auto-deploy', { method: 'PUT', body: auBody() }); await auLoad(); } catch (e) { $('aumsg').textContent = 'Could not save: ' + e.message; }
+};
 $('au').onchange = async ev => {
-  try { await api('/v1/auto-deploy', { method: 'PUT', body: JSON.stringify({ enabled: ev.target.checked }) }); await auLoad(); }
+  try { await api('/v1/auto-deploy', { method: 'PUT', body: auBody() }); await auLoad(); }
   catch (e) { ev.target.checked = !ev.target.checked; $('aumsg').textContent = 'Could not save: ' + e.message; }
 };
 // Update now: ask, then follow it (asked, picked up, the restart, the outcome) until the server reports

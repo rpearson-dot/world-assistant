@@ -262,13 +262,19 @@ template:
           {% endfor %}
           {% set grid = is_state('sensor.wa_energy_free_electricity_now', 'on') or is_state('sensor.wa_energy_cheap_now', 'on') or ns.window
              or (is_state('input_boolean.wa_ev_low_enabled', 'on') and 0 <= soc < states('input_number.wa_ev_min_soc') | float(20)) %}
-          {% if not is_state('sensor.wa_car_charging_plan', 'charge') %}none{% elif grid %}grid{% else %}battery{% endif %}
+          {% set wa = namespace(gone=false, held=false) %}{% for x in [states.sensor.wa_energy_cheap_now, states.sensor.wa_energy_charge_schedule] %}{% if x is not none and x.state in ['unavailable', 'unknown'] %}{% set wa.gone = true %}{% if (now() - x.last_changed).total_seconds() < 2700 %}{% set wa.held = true %}{% endif %}{% endif %}{% endfor %}
+          {% if not is_state('sensor.wa_car_charging_plan', 'charge') %}none
+          {% elif wa.held and this.state in ['grid', 'battery'] %}{{ this.state }}
+          {% elif grid %}grid{% else %}battery{% endif %}
 
       - name: "WA car charging plan"
         unique_id: wa_ev_plan
         icon: mdi:car-electric
         # charge | wait | full | unplugged
+        # While World Assistant restarts (an update), its energy sensors are briefly unavailable or unknown: the plan
+        # keeps its last decision for up to 45 minutes then, instead of reading "not cheap" and stopping the charge.
         state: >-
+          {% set wa = namespace(gone=false, held=false) %}{% for x in [states.sensor.wa_energy_cheap_now, states.sensor.wa_energy_charge_schedule] %}{% if x is not none and x.state in ['unavailable', 'unknown'] %}{% set wa.gone = true %}{% if (now() - x.last_changed).total_seconds() < 2700 %}{% set wa.held = true %}{% endif %}{% endif %}{% endfor %}
           {% set status = states('sensor.wa_charger_status') %}
           {% set soc = states('sensor.wa_car_charge_level') | float(-1) %}
           {% set target = states('input_number.wa_ev_target_soc') | float(80) %}
@@ -290,13 +296,17 @@ template:
           {% set full_ts = state_attr('input_datetime.wa_ev_full_at', 'timestamp') %}
           {% set rest = states('input_number.wa_ev_rest_min') | float(60) %}
           {% set held = full_ts is number and now().timestamp() < full_ts + rest * 60 and (soc < 0 or soc >= target - 5) %}
+          {# after the rest, a car that reached the target in the last 12 hours is not started again for a percent or two
+             (it reads 79% a while after stopping at 80%): only once it is 3% or more below #}
+          {% set topped = full_ts is number and now().timestamp() < full_ts + 12 * 3600 and soc >= 0 and soc > target - 3 %}
           {% set cur = states('input_text.wa_ev_entity_current') %}{% set cur = cur if cur.count('.') == 1 else 'number.charger_maximum_current' %}
           {% set house = states('sensor.office_inverter_battery_soc') | float(-1) %}
           {% set above = states('input_number.wa_ev_battery_above') | float(60) - (5 if status == 'Charging' else 0) %}
           {% set battery = is_state('input_boolean.wa_ev_battery_enabled', 'on') and is_number(states(cur)) and house >= above > 0 %}
           {% if status in ['Available', 'Unavailable', 'unknown', 'unavailable'] %}unplugged
+          {% elif wa.held and this.state in ['charge', 'wait', 'full'] %}{{ this.state }}
           {% elif soc >= 0 and soc >= target %}full
-          {% elif held %}full
+          {% elif held or topped %}full
           {% elif free or low %}charge
           {% elif cheap and (soc < 0 or soc < target - room) %}charge
           {% elif battery and not cheap %}charge
@@ -313,10 +323,17 @@ template:
             {% set room = [states('input_number.wa_ev_free_room_pct') | float(0) * ns2.n, target] | min %}
             {% set note = (' (the car is quiet: its charge is estimated at ' ~ soc | round(0) | int ~ '%)') if state_attr('sensor.wa_car_charge_level', 'estimated') == true
                           else (' (no charge level from the car: it charges until it stops by itself)') if soc < 0 else '' %}
-            {% if is_state('sensor.wa_energy_free_electricity_now', 'on') %}a Free Electricity hour you joined
+            {% set wa = namespace(gone=false, held=false) %}{% for x in [states.sensor.wa_energy_cheap_now, states.sensor.wa_energy_charge_schedule] %}{% if x is not none and x.state in ['unavailable', 'unknown'] %}{% set wa.gone = true %}{% if (now() - x.last_changed).total_seconds() < 2700 %}{% set wa.held = true %}{% endif %}{% endif %}{% endfor %}
+            {% set hm = now().strftime('%H:%M') %}{% set win = namespace(on=false, span='') %}
+            {% for w in state_attr('sensor.wa_energy_charge_schedule', 'windows') or [] %}
+              {% if (w.start < w.end and w.start <= hm < w.end) or (w.end <= w.start and (hm >= w.start or hm < w.end)) %}{% set win.on = true %}{% set win.span = w.start ~ '–' ~ w.end %}{% endif %}
+            {% endfor %}
+            {% if wa.held %}World Assistant is restarting (an update): keeping the last decision for up to 45 minutes
+            {% elif is_state('sensor.wa_energy_free_electricity_now', 'on') %}a Free Electricity hour you joined
             {% elif is_state('input_boolean.wa_ev_low_enabled', 'on') and 0 <= soc < states('input_number.wa_ev_min_soc') | float(20) %}the car is below {{ states('input_number.wa_ev_min_soc') | int }}%
             {% elif room > 0 and soc >= 0 and target - room <= soc < target %}leaving {{ room | int }}% for the free electricity at {{ (ns2.first | as_local).strftime('%a %H:%M') }}: charged to {{ (target - room) | int }}% until then
             {% elif is_state('sensor.wa_energy_cheap_now', 'on') %}the rate is cheap now ({{ states('sensor.wa_energy_rate') }} p/kWh)
+            {% elif win.on %}the charge schedule's cheap window ({{ win.span }})
             {% elif is_state('sensor.wa_car_charge_source', 'battery') %}the house battery is at {{ states('sensor.office_inverter_battery_soc') }}%: charging from it at {{ states('input_number.wa_ev_battery_amps') | int }} A
             {% else %}the rate is not cheap now{% endif %}{{ note }}
           # the current to set (A); 0 leaves the charger's own
@@ -331,6 +348,18 @@ template:
           # the next cheap or joined free time, whichever is sooner
           next_start: >-
             {% set c = as_datetime(states('sensor.wa_energy_next_cheap_start'), none) %}
+            {# the cheap window "current or next" can still be the one that just ended: only one still to come #}
+            {% set c = c if c is not none and c > now() else none %}
+            {% set nw = namespace(t=none) %}
+            {% for w in state_attr('sensor.wa_energy_charge_schedule', 'windows') or [] %}
+              {% set p = (w.start ~ '').split(':') %}
+              {% if p | length == 2 %}
+                {% set d = now().replace(hour=p[0] | int, minute=p[1] | int, second=0, microsecond=0) %}
+                {% set d = d + timedelta(days=1) if d <= now() else d %}
+                {% if nw.t is none or d < nw.t %}{% set nw.t = d %}{% endif %}
+              {% endif %}
+            {% endfor %}
+            {% set c = [c, nw.t] | reject('none') | min if c is not none or nw.t is not none else none %}
             {% set f = as_datetime(states('sensor.wa_energy_free_electricity_next_start'), none) %}
             {% set f = f if f is not none and state_attr('sensor.wa_energy_free_electricity_next_start', 'joined') == true else none %}
             {% set t = [c, f] | reject('none') | min if c is not none or f is not none else none %}

@@ -28,12 +28,25 @@ class Job:
     cron: CronSpec | None = None
 
 
+# Where a module is listed (Setup, Modules, the first-start wizard): a curated list, in this order. A new heading is
+# added here on purpose; a module (built in or from outside) must use one of these.
+CATEGORIES: dict[str, str] = {
+    "transport": "Getting around",
+    "place": "Places and what is near them",
+    "energy": "Energy and vehicles",
+    "home": "In the home",
+    "network": "Your network",
+    "service": "Services",
+    "data": "Other data",
+}
+
+
 @dataclass(frozen=True)
 class Module:
     id: str
     name: str
     unlocks: str  # one line: what it gives you
-    category: str = "data"  # data | transport | energy | home | place | service
+    category: str = "data"  # one of CATEGORIES
     core: bool = False  # always on, cannot be switched off
     # keys
     keys: tuple[str, ...] = ()  # secret names; empty = needs no key

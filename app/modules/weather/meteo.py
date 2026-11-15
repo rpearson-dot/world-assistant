@@ -8,6 +8,7 @@ needs heating), added up. Twice the degree-hours is about twice the heat a heat 
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -70,17 +71,34 @@ def summary(rows: list[dict[str, Any]], day: date, tz: Any) -> dict[str, Any]:
     }  # fmt: skip
 
 
+RETRY_AFTER_S = (5, 30)  # Open-Meteo refusing for a moment (502/503/504): asked again after these waits
+
+
+async def _get(client: httpx.AsyncClient, url: str, params: dict[str, Any], timeout: float) -> httpx.Response:
+    """A request, asked again twice if Open-Meteo is busy or briefly down (a 5xx gateway answer or no answer)."""
+    for wait in (*RETRY_AFTER_S, None):
+        try:
+            r = await client.get(url, params=params, timeout=timeout)
+            if r.status_code not in (502, 503, 504) or wait is None:
+                return r
+        except httpx.TransportError:
+            if wait is None:
+                raise
+        await asyncio.sleep(wait)
+    raise AssertionError("unreachable")
+
+
 async def forecast(client: httpx.AsyncClient, lat: float, lon: float, days: int = 7, past_days: int = 2) -> list[dict[str, Any]]:
-    r = await client.get(FORECAST, params={"latitude": f"{lat:.4f}", "longitude": f"{lon:.4f}", "hourly": ",".join(HOURLY),
-                                           "timezone": "GMT", "forecast_days": days, "past_days": past_days, "wind_speed_unit": "kmh"},
-                         timeout=20)  # fmt: skip
+    r = await _get(client, FORECAST, {"latitude": f"{lat:.4f}", "longitude": f"{lon:.4f}", "hourly": ",".join(HOURLY),
+                                       "timezone": "GMT", "forecast_days": days, "past_days": past_days, "wind_speed_unit": "kmh"},
+                   20)  # fmt: skip
     r.raise_for_status()
     return hours(r.json())
 
 
 async def archive(client: httpx.AsyncClient, lat: float, lon: float, start: date, end: date) -> list[dict[str, Any]]:
-    r = await client.get(ARCHIVE, params={"latitude": f"{lat:.4f}", "longitude": f"{lon:.4f}", "hourly": ",".join(HOURLY),
+    r = await _get(client, ARCHIVE, {"latitude": f"{lat:.4f}", "longitude": f"{lon:.4f}", "hourly": ",".join(HOURLY),
                                           "timezone": "GMT", "start_date": start.isoformat(), "end_date": end.isoformat(),
-                                          "wind_speed_unit": "kmh"}, timeout=40)  # fmt: skip
+                                          "wind_speed_unit": "kmh"}, 40)  # fmt: skip
     r.raise_for_status()
     return hours(r.json())

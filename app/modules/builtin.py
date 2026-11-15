@@ -250,7 +250,7 @@ BUILTIN: tuple[Module, ...] = (
            uses=("bods", "tfl")),
     Module("buslog", "Bus route log", "Every bus on one route (the 213) in the school-run window, recorded from TfL and "
            "BODS several times a minute, with every failed or empty request kept too",
-           category="transport", keys=("bods_api_key", "tfl_app_key"), any_key=True, jobs=("buslog",), occasional=("buslog",),
+           category="transport", keys=("bods_api_key", "tfl_app_key"), any_key=True, jobs=("buslog", "buslog_capacity_check"), occasional=("buslog", "buslog_capacity_check"),
            tabs=(("bus", "buslog", "/buslog", "Route log"),), sdk=2,
            link="https://data.bus-data.dft.gov.uk",
            note="Positions need a BODS key; TfL's predictions work without a key, faster with one. Records 07:00 to "
@@ -258,7 +258,8 @@ BUILTIN: tuple[Module, ...] = (
            routers=("app.modules.buslog.api:router", "app.modules.buslog.schoolrun:router", "app.modules.buslog.page:page_router"), prefixes=("/v1/buslog", "/buslog"),
            worker=(Job("app.modules.buslog.collect:buslog_minute",
                        {"minute": set(range(60)), "second": {0}, "timeout": 75, "max_tries": 1, "unique": True}),
-                   Job("app.modules.buslog.collect:buslog_housekeep", {"hour": {2}, "minute": {41}, "timeout": 300, "max_tries": 1})),
+                   Job("app.modules.buslog.collect:buslog_housekeep", {"hour": {2}, "minute": {41}, "timeout": 300, "max_tries": 1}),
+                   Job("app.modules.buslog.schoolrun:buslog_capacity_check", {"weekday": {0}, "hour": {10}, "minute": {13}, "timeout": 300, "max_tries": 1})),
            tools=("bus_log",),
            provides={"assistant.tools": "app.modules.buslog.tools:TOOLS"}),
     Module("ocpp", "Car charger (OCPP)", "World Assistant as your charger's OCPP server: start and stop, every restart, "
@@ -313,24 +314,34 @@ BUILTIN: tuple[Module, ...] = (
            worker=(Job("app.modules.solar.api:solar_sync", {"hour": set(range(4, 22)), "minute": {11}, "timeout": 180, "max_tries": 1}),),
            tools=("solar_forecast",),
            provides={"assistant.tools": "app.modules.solar.tools:TOOLS"}),
-    Module("network", "Network (UniFi and Pi-hole)", "Every device on your network and what it does: joining and leaving, "
-           "its DNS lookups through Pi-hole, firewall decisions, and suggested blocks for what gets past your Pi-hole lists "
-           "that does not serve you",
-           category="home", jobs=("network_pihole", "network_housekeep"), occasional=("network_lists",), sdk=3,
-           keys=("pihole_app_password",), key_optional=True, link="https://docs.pi-hole.net/api/",
+    Module("network", "Network devices", "Every device on your network and what it does, from the UniFi gateway log and "
+           "Pi-hole (whichever you use): the page and the record they share",
+           category="network", listed=False, jobs=("network_housekeep",), occasional=("network_housekeep",), sdk=3,
            tools=("network_devices",), provides={"assistant.tools": "app.modules.network.tools:TOOLS"},
-           note="The UniFi gateway sends its syslog to this server (UDP 5514 unless WA_SYSLOG_PORT says otherwise); Pi-hole is read "
-                "through its own API. Nothing goes to Home Assistant",
+           note="Turned on with the UniFi gateway log, Pi-hole or Discovery. Nothing goes to Home Assistant",
            tabs=(("home", "network", "/network", "Network"),),
            routers=("app.modules.network.api:router", "app.modules.network.page:page_router"), prefixes=("/v1/network", "/network"),
-           worker=(Job("app.modules.network.api:network_pihole", {"minute": set(range(60)), "timeout": 55, "max_tries": 1}),
-                   Job("app.modules.network.api:network_lists", {"weekday": {0}, "hour": {3}, "minute": {51}, "timeout": 600, "max_tries": 1}),
-                   Job("app.modules.network.api:network_housekeep", {"hour": {2}, "minute": {41}, "timeout": 900, "max_tries": 1}))),
+           worker=(Job("app.modules.network.api:network_housekeep", {"hour": {2}, "minute": {41}, "timeout": 900, "max_tries": 1}),)),
+    Module("unifi", "UniFi gateway log", "Devices joining and leaving the network and the gateway's firewall decisions, from "
+           "the UniFi gateway's own log (syslog)",
+           category="network", needs=("network",), sdk=3, link="/network",
+           note="The UniFi gateway sends its log to this server (UDP 5514 unless WA_SYSLOG_PORT says otherwise): "
+                "Settings → CyberSecure → Traffic Logging → Activity Logging, SIEM server. Nothing goes to Home Assistant"),
+    Module("pihole", "Pi-hole", "Every DNS lookup each device makes, your Pi-hole groups, and suggested blocks for what gets past "
+           "your Pi-hole lists that does not serve you (added only when you press Add to Pi-hole, with Undo)",
+           category="network", needs=("network",), keys=("pihole_app_password",), sdk=3, link="https://docs.pi-hole.net/api/",
+           jobs=("network_pihole",), occasional=("network_lists",),
+           note="Pi-hole v6: its address on the Network page, its app password (Settings → Web interface / API → Configure "
+                "app password) here. Your groups are never changed. Nothing goes to Home Assistant",
+           routers=("app.modules.pihole.api:router",), prefixes=("/v1/pihole",),
+           tools=("pihole_groups",), provides={"assistant.tools": "app.modules.pihole.tools:TOOLS"},
+           worker=(Job("app.modules.pihole.api:network_pihole", {"minute": set(range(60)), "timeout": 55, "max_tries": 1}),
+                   Job("app.modules.pihole.api:network_lists", {"weekday": {0}, "hour": {3}, "minute": {51}, "timeout": 600, "max_tries": 1}))),
     Module("discovery", "Discovery", "What each device on your network probably is (its adapter's maker, its name, what it "
            "looks up) and the module that would suit it",
-           category="home", needs=("network",), occasional=("discovery_oui",), jobs=("discovery_oui",), sdk=3,
+           category="network", needs=("network",), occasional=("discovery_oui",), jobs=("discovery_oui",), sdk=3,
            link="https://standards.ieee.org/products-programs/regauth/",
-           note="Reads what the Network module has seen and the IEEE register of adapter makers. Changes nothing",
+           note="Reads what the UniFi gateway log and Pi-hole have seen and the IEEE register of adapter makers. Changes nothing",
            tabs=(("home", "discovery", "/discovery", "Discovery"),),
            routers=("app.modules.discovery.api:router", "app.modules.discovery.page:page_router"), prefixes=("/v1/discovery", "/discovery"),
            worker=(Job("app.modules.discovery.api:discovery_oui", {"weekday": {1}, "hour": {3}, "minute": {57}, "timeout": 600, "max_tries": 1}),),

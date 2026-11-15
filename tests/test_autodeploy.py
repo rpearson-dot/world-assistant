@@ -62,6 +62,11 @@ def test_switch_and_report_round_trip(monkeypatch: pytest.MonkeyPatch, table: No
     d = c.post("/v1/auto-deploy/report", json=body, headers=H).json()
     assert d["last_run"]["result"] == "rolled_back" and d["last_run"]["to_version"] == "0.6.0"
     assert c.put("/v1/auto-deploy", json={"enabled": False}, headers=H).json()["enabled"] is False
+    # the nightly time and waiting while the car charges (no Home Assistant set up: nothing to wait for)
+    d = c.put("/v1/auto-deploy", json={"enabled": True, "at": "13:20", "wait_while_charging": True}, headers=H).json()
+    assert d["nightly_at"] == "13:20" and d["wait_while_charging"] is True and d["hold"]["held"] is False
+    assert c.put("/v1/auto-deploy", json={"enabled": True, "at": "25:00"}, headers=H).status_code == 422
+    assert c.post("/v1/auto-deploy/report", json={"result": "held", "message": "waiting"}, headers=H).json()["last_run"]["result"] == "held"
 
 
 @pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")

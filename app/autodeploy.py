@@ -33,13 +33,43 @@ STALE_S = 45 * 60  # an update that has not reported in this long has died
 
 class SwitchIn(BaseModel):
     enabled: bool
+    # when the nightly update runs (HH:MM, local time); empty: WA_UPDATE_AT on the server, else 04:00
+    at: str | None = Field(default=None, pattern=r"^([01]?\d|2[0-3]):[0-5]\d$|^$")
+    # hold the nightly update while the car is charging (tried again every 10 minutes for three hours)
+    wait_while_charging: bool = True
+
+
+CHARGER = "sensor.wa_charger_status"  # the charger's state in Home Assistant (World Assistant's car package)
+
+
+async def hold(request: Request, wait: bool) -> dict[str, Any]:
+    """Should the nightly update wait? While the car is charging, a restart can make Home Assistant's charging plan
+    stop and restart the charge, so it waits. Not knowing (no Home Assistant, or it does not answer) does not hold."""
+    if not wait:
+        return {"held": False, "why": None}
+    import httpx
+
+    from app.ha_discover import ha_api
+
+    api = await ha_api(request.app.state.engine)
+    if not api:
+        return {"held": False, "why": None}
+    try:
+        async with httpx.AsyncClient(base_url=api[0].rstrip("/"), timeout=5, headers={"Authorization": f"Bearer {api[1]}"}) as c:
+            r = await c.get(f"/api/states/{CHARGER}")
+        status = r.json().get("state") if r.status_code == 200 else None
+    except (httpx.HTTPError, ValueError):
+        status = None
+    if status == "Charging":
+        return {"held": True, "why": "the car is charging"}
+    return {"held": False, "why": None, "charger": status}
 
 
 class ReportIn(BaseModel):
     # updated: now running the new version. unchanged: nothing newer. refused: not applied, and why.
     # rolled_back: the update failed its checks and the previous version is running again.
     # failed: could not update and could not confirm the old version either: needs a look.
-    result: Literal["updated", "unchanged", "refused", "rolled_back", "failed"]
+    result: Literal["updated", "unchanged", "refused", "rolled_back", "failed", "held"]
     message: str = Field(default="", max_length=1000)
     from_version: str | None = Field(default=None, max_length=80)
     to_version: str | None = Field(default=None, max_length=80)
@@ -81,8 +111,12 @@ async def state(request: Request) -> dict[str, Any]:
     switch = await _get(request, SWITCH)
     last = await _get(request, LAST)
     ask = _ask_view(await _get(request, ASK), datetime.now(UTC))
+    wait = bool(switch.get("wait_while_charging", True)) if switch else True
     return {
         "enabled": bool(switch and switch.get("enabled")),
+        "nightly_at": (switch or {}).get("nightly_at") or None,
+        "wait_while_charging": wait,
+        "hold": await hold(request, wait),
         "changed_at": switch["at"] if switch else None,
         "running": {"version": VERSION, "commit": COMMIT},
         "last_run": last,
@@ -98,7 +132,7 @@ async def get_state(request: Request) -> dict[str, Any]:
 
 @router.put("")
 async def set_switch(body: SwitchIn, request: Request) -> dict[str, Any]:
-    await _put(request, SWITCH, {"enabled": body.enabled})
+    await _put(request, SWITCH, {"enabled": body.enabled, "nightly_at": body.at or None, "wait_while_charging": body.wait_while_charging})
     return await state(request)
 
 
@@ -133,5 +167,6 @@ async def claim(request: Request) -> dict[str, Any]:
 @router.post("/report", status_code=201)
 async def report(body: ReportIn, request: Request) -> dict[str, Any]:
     await _put(request, LAST, {**body.model_dump(), "reported": datetime.now(UTC).isoformat()})
-    await _put(request, ASK, {})  # whatever happened, the asked-for update is over
+    if body.result != "held":  # a held nightly update is not an asked-for one
+        await _put(request, ASK, {})  # whatever happened, the asked-for update is over
     return await state(request)
