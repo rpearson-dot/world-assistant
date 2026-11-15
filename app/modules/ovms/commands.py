@@ -49,14 +49,14 @@ async def run(engine: Any, vehicle: str, command: str, *, timeout: float = 20.0)
                     payload = msg.payload
                     parts.append(payload.decode(errors="replace") if isinstance(payload, (bytes, bytearray)) else str(payload))
                     # the short confirmations we send fit one message; wait briefly for any continuation, then stop
-                    with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
+                    with contextlib.suppress(TimeoutError):
                         async with asyncio.timeout(1.5):
                             async for more in c.messages:
                                 mp = more.payload
                                 parts.append(mp.decode(errors="replace") if isinstance(mp, (bytes, bytearray)) else str(mp))
                     break
         return {"ok": True, "response": "".join(parts).strip()}
-    except (TimeoutError, asyncio.TimeoutError):
+    except TimeoutError:
         return {"ok": False, "error": "the car did not answer — it may be asleep (turning on the A/C wakes the CAN bus)"}
     except (aiomqtt.MqttError, OSError) as exc:
         return {"ok": False, "error": explain(exc, conf)}
