@@ -256,6 +256,10 @@ def _evening(c: Any, app: Any) -> None:
     with pytest.raises(WebSocketDisconnect), c.websocket_connect("/ocpp/OTHER") as ws2:
         ws2.receive_text()
     assert c.post("/v1/ocpp/U1HKP/start", headers=h).status_code == 409  # not connected now
+    # the address given as ws://<server>:8010/ocpp/ and the charger adding "/U1HKP" to it: //U1HKP still reaches it
+    with c.websocket_connect("/ocpp//U1HKP", subprotocols=["ocpp1.6"]) as ws3:
+        ws3.send_text(json.dumps([2, "b", "BootNotification", {"chargePointVendor": "SyncEV", "chargePointModel": "EVCP"}]))
+        assert json.loads(ws3.receive_text())[2]["status"] == "Accepted"
 
 
 def test_the_master_switch_is_offered_to_home_assistant() -> None:

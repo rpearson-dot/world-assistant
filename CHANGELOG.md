@@ -26,6 +26,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Fixed
 
+- **A charger given the address with a trailing slash connects.** Like Home Assistant's OCPP integration, World
+  Assistant's address is given without the charge point ID and the charger adds "/<its ID>"; given as
+  `ws://<server>:8010/ocpp/` that made `/ocpp//U1HKP`, which was turned away. Both now reach it.
 - **UniFi Network 11's log is read.** A UDM Pro sends `UDM-Pro CEF:0|Ubiquiti|...`, which was taken for a program
   called "CEF" and kept as a plain system line, so no device appeared. Client joins and leaves now give the client's
   own MAC, address and name (not the access point's, which UniFi 11 sends beside it), and "Blocked by Firewall"
