@@ -44,3 +44,14 @@ def test_a_module_says_what_it_does_with_data(m: object) -> None:
 def test_every_flow_is_for_a_module_that_exists() -> None:
     ids = {m.id for m in registry.modules()}
     assert set(FLOWS) <= ids, set(FLOWS) - ids
+
+
+def test_every_module_is_listed_under_one_of_the_curated_headings() -> None:
+    from app.modules import registry
+    from app.modules.model import CATEGORIES
+
+    assert list(CATEGORIES)[:5] == ["transport", "place", "energy", "home", "network"]
+    for m in registry.modules():
+        assert m.category in CATEGORIES, (m.id, m.category)
+    net = {m.id for m in registry.modules() if m.category == "network"}
+    assert {"network", "unifi", "pihole", "discovery"} <= net

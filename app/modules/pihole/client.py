@@ -80,6 +80,11 @@ class Pihole:
             start += len(got)
         return sorted(out, key=lambda q: (q.get("time") or 0, q.get("id") or 0))
 
+    async def network_devices(self) -> list[dict[str, Any]]:
+        """Pi-hole's network table: each device's hardware address, its addresses and the names it has had."""
+        body = await self._call("GET", "/api/network/devices", params={"max_devices": 500, "max_addresses": 4})
+        return list((body or {}).get("devices") or [])
+
     # --- your groups, and blocking for one device or one group -------------------------------------------------
 
     async def groups(self) -> list[dict[str, Any]]:
@@ -168,3 +173,19 @@ def groups_of(entries: list[dict[str, Any]], groups: list[dict[str, Any]], devic
 
 def events(qs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [parse.pihole(q) for q in qs if q.get("domain")]
+
+
+def device_events(devices: list[dict[str, Any]], now: Any) -> list[dict[str, Any]]:
+    """Pi-hole's network table as "seen" events: a device's MAC, its newest address and name (so devices are known
+    without the UniFi gateway log). Pi-hole's own pseudo-entries (ip-..., no MAC) are left out."""
+    out = []
+    for d in devices:
+        mac = str(d.get("hwaddr") or "").lower()
+        if not mac or mac.startswith("ip-") or mac.count(":") != 5 or mac == "00:00:00:00:00:00":
+            continue
+        ips = sorted(d.get("ips") or [], key=lambda x: x.get("lastSeen") or 0, reverse=True)
+        ip = ips[0].get("ip") if ips else None
+        name = next((x.get("name") for x in ips if x.get("name")), None)
+        out.append({"at": now, "source": "pihole", "kind": "client", "action": "seen", "mac": mac, "ip": ip, "name": name,
+                    "detail": {"vendor": d.get("macVendor")} if d.get("macVendor") else {}})  # fmt: skip
+    return out

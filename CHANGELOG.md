@@ -11,6 +11,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   the school run shows how full each bus was at Worcester Park and at the school, each stop's row shows it, and the
   playback labels each bus with it. Every BODS field is already recorded, so the days since it appeared show it too.
 
+### Changed
+
+- **Network is two modules: the UniFi gateway log and Pi-hole**, each with its own Set up and Turn off, listed
+  together under a new heading, **Your network** (with Discovery). Either works alone: Pi-hole now reads its own
+  network table every ten minutes, so it names devices without the UniFi log. Pi-hole's endpoints moved to
+  `/v1/pihole` (settings, test, groups, device-groups, suggestions, block, unblock). A choice that had Network on keeps
+  both on. Pi-hole's app password can be entered on the Network page as well as Settings → Keys, and Pi-hole now has
+  its own card on the Keys page.
+- **Module headings are a curated list** (`CATEGORIES` in `app/modules/model.py`): Getting around, Places, Energy and
+  vehicles, In the home, Your network, Services, Other data. Settings → Setup is grouped by them (it was by whether a
+  key is needed). An outside module must say which (`category` in `wa-module.toml`, now required); a module with an
+  unknown one is listed under Other data.
+
 ### Fixed
 
 - **An overnight update no longer stops the car's charge.** Updates restart World Assistant at 04:00, inside most

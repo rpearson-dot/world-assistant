@@ -27,6 +27,12 @@ async def settings(conn: Any) -> dict[str, Any]:
     return {**DEFAULTS, **(v or {})}
 
 
+async def save_settings(conn: Any, st: dict[str, Any]) -> None:
+    await conn.execute(text(
+        "INSERT INTO app_setting (key, value, updated_at) VALUES (:k, CAST(:v AS jsonb), now()) "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()"), {"k": KEY, "v": json.dumps(st)})  # fmt: skip
+
+
 async def macs_for(conn: Any, ips: set[str]) -> dict[str, str]:
     if not ips:
         return {}

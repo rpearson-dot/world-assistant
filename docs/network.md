@@ -1,6 +1,15 @@
-# Network (UniFi and Pi-hole)
+# Network: the UniFi gateway log and Pi-hole
 
-**In the home → Network** (`/network`). Turn it on in Settings → Setup. Nothing from it goes to Home Assistant.
+**In the home → Network** (`/network`). Two modules, each with its own Set up and Turn off in Settings → Setup, under
+**Your network**:
+
+- **UniFi gateway log** (`unifi`): devices joining and leaving, and the firewall decisions you log, from the
+  gateway's own log (syslog). While it is off, the listener keeps nothing.
+- **Pi-hole** (`pihole`, `/v1/pihole`): each device's DNS lookups, your groups, suggested blocks and Add to Pi-hole.
+  It also reads Pi-hole's own network table every ten minutes, so it names devices without the UniFi log.
+
+Use either or both. They share the devices and this page (the `network` part, which comes on with either, and with
+Discovery). Nothing from them goes to Home Assistant.
 
 ## What it shows
 
@@ -47,12 +56,14 @@ fetched each week. They're used only to recognise a domain, never added to Pi-ho
 
 1. **The UniFi gateway** (UniFi Network 9 or later; menu names move between versions):
    - Settings → CyberSecure → Traffic Logging → Activity Logging (Syslog) → **SIEM Server**: this server's address
-     (such as 10.0.2.49) and port **5514**;
+     (such as 10.0.2.49) and port **5514**; contents Clients, Devices, Security Detections, Critical, Triggers;
+     Flow Logging **Blocked Traffic Only** (All Traffic logs every connection in the house);
    - Settings → Control Plane → Integrations → the same, for system events;
    - in the Policy Engine, turn on **Syslog Logging** for the firewall rules you want to see. Start with block rules
      and the default deny, not "allow all", which is very chatty.
 2. **Pi-hole v6:** Settings → Web interface / API → **Configure app password**. Put it on World Assistant's Keys page
-   (Pi-hole app password), and Pi-hole's address (such as `http://10.0.2.49:8080`) in Settings on the Network page.
+   (Pi-hole app password, or straight into Settings on the Network page), and Pi-hole's address (such as
+   `http://10.0.2.49:8080`) in Settings on the Network page.
    **Test Pi-hole** checks both.
 3. Keep a device's address the same: a DHCP reservation in UniFi helps Pi-hole's per-address view line up.
 

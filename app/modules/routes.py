@@ -16,7 +16,7 @@ from app import secretstore
 from app.auth import require_token
 from app.config import SECRETS_DIR, get_settings
 from app.modules import keytest, registry, selection
-from app.modules.model import Module
+from app.modules.model import CATEGORIES, Module
 from app.pagestyle import themed
 from app.setup_checklist import judge
 
@@ -59,7 +59,7 @@ def suggest(modules: list[Module], point: tuple[float, float, list[str]] | None)
 def describe(m: Module, s: Any, runs: dict[str, dict[str, Any]], on: set[str], why: dict[str, str]) -> dict[str, Any]:
     row = judge(m, s, runs)
     return {
-        "id": m.id, "name": m.name, "unlocks": m.unlocks, "category": m.category, "core": m.core,
+        "id": m.id, "name": m.name, "unlocks": m.unlocks, "category": m.category, "core": m.core, "listed": m.listed,
         "enabled": m.id in on, "state": row["state"], "keys": list(m.keys), "missing_keys": row["missing_keys"],
         "any_key": m.any_key, "key_optional": m.key_optional, "link": m.link, "note": m.note,
         "services": list(m.services), "needs": list(m.needs), "coverage": list(m.coverage),
@@ -107,7 +107,8 @@ async def list_modules(request: Request) -> dict[str, Any]:
     why = suggest(mods, await home_point(engine))
     runs = await _runs(engine)
     return {"chosen": sel.chosen, "mode": sel.mode, "new_install": sel.new_install,
-            "modules": [describe(m, s, runs, on, why) for m in mods], "secrets": secrets_view()}  # fmt: skip
+            "modules": [describe(m, s, runs, on, why) for m in mods], "secrets": secrets_view(),
+            "categories": CATEGORIES}  # fmt: skip
 
 
 class ChoiceIn(BaseModel):

@@ -15,7 +15,9 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from app.modules.network import parse, pihole, suggest
+from app.modules.network import parse
+from app.modules.pihole import client as pihole
+from app.modules.pihole import suggest
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 NOW = datetime(2026, 11, 14, 16, tzinfo=UTC)
@@ -165,3 +167,35 @@ def test_events_are_kept_against_the_right_device() -> None:
     assert len(dev) == 1 and dev[0]["ip"] == "10.0.2.50" and dev[0]["name"] == "Living-Room-TV"
     assert dns == "aa:bb:cc:dd:ee:ff"
     assert [tuple(r) for r in day] == [("dhcp", "lease", 1), ("dns", "allow", 1), ("firewall", "block", 1)]
+
+
+@pytest.mark.skipif(not URL, reason="needs WA_TEST_DATABASE_URL")
+def test_a_choice_with_network_on_keeps_both_halves_on() -> None:
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    sync = sa.create_engine(URL)  # type: ignore[arg-type]
+    try:
+        with sync.begin() as conn:
+            conn.execute(sa.text("DROP TABLE IF EXISTS app_setting"))
+            conn.execute(sa.text("CREATE TABLE app_setting (key text primary key, value jsonb, updated_at timestamptz)"))
+            conn.execute(sa.text("INSERT INTO app_setting VALUES ('modules', CAST(:v AS jsonb), now())"),
+                         {"v": json.dumps({"mode": "only", "on": ["fuel", "network"]})})  # fmt: skip
+            mig = importlib.import_module("migrations.versions.0061_network_split")
+            mig.op = Operations(MigrationContext.configure(conn))  # type: ignore[attr-defined]
+            mig.upgrade()
+            v = conn.execute(sa.text("SELECT value FROM app_setting WHERE key = 'modules'")).scalar()
+            assert v["on"] == ["fuel", "network", "unifi", "pihole"]
+            mig.downgrade()
+            assert conn.execute(sa.text("SELECT value FROM app_setting WHERE key = 'modules'")).scalar()["on"] == ["fuel", "network"]
+            conn.execute(sa.text("DROP TABLE app_setting"))
+    finally:
+        sync.dispose()
+
+
+def test_pihole_network_table_names_devices_without_unifi() -> None:
+    devs = [{"hwaddr": "AA:BB:CC:DD:EE:FF", "macVendor": "LG", "ips": [{"ip": "10.0.2.50", "name": "lg-tv", "lastSeen": 5},
+                                                                        {"ip": "10.0.2.99", "name": None, "lastSeen": 1}]},
+            {"hwaddr": "ip-10.0.2.7", "ips": [{"ip": "10.0.2.7"}]}]  # fmt: skip
+    ev = pihole.device_events(devs, NOW)
+    assert len(ev) == 1 and (ev[0]["mac"], ev[0]["ip"], ev[0]["name"], ev[0]["kind"]) == ("aa:bb:cc:dd:ee:ff", "10.0.2.50", "lg-tv", "client")

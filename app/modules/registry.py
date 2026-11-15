@@ -24,7 +24,7 @@ from importlib import metadata
 from typing import Any
 
 from app.modules.builtin import BUILTIN
-from app.modules.model import Module
+from app.modules.model import CATEGORIES, Module
 
 log = logging.getLogger("wa.modules")
 GROUP = "worldassistant.modules"
@@ -84,6 +84,11 @@ def modules() -> tuple[Module, ...]:
         if m.id in out:
             log.warning("module id %r declared twice; keeping the first", m.id)
             continue
+        if m.category not in CATEGORIES:  # the headings are a curated list: an unknown one is listed under Other data
+            from dataclasses import replace
+
+            log.warning("module %r has category %r, not one of %s: listed under Other data", m.id, m.category, ", ".join(CATEGORIES))
+            m = replace(m, category="data")
         out[m.id] = m
     return tuple(out.values())
 

@@ -283,8 +283,12 @@ function renderSetup() {
   $('sumbar').style.width = Math.round(100 * n / all.length) + '%';
   $('sumtext').textContent = setup.local ? 'You are on the home network, so no token is needed here.' : 'Signed in with the token.';
   const c = $('checklist'); c.replaceChildren();
-  for (const [title, list] of [['You', setup.you], ['Sources that need a free key', setup.keys], ['Sources that need no key', setup.free]]) {
-    c.append(el('div', 'group', title), ...list.map(item));
+  // You first, then each category in its curated order: what a module is for, not whether it needs a key
+  c.append(el('div', 'group', 'You'), ...setup.you.map(item));
+  const mods = [...setup.keys, ...setup.free];
+  for (const [cat, title] of Object.entries(setup.categories || AREAS)) {
+    const list = mods.filter(x => (x.category || 'data') === cat).sort((a, b) => a.name.localeCompare(b.name));
+    if (list.length) c.append(el('div', 'group', title), ...list.map(item));
   }
 }
 function keyField(name, onsaved) {
@@ -341,7 +345,7 @@ function renderAll() { renderSetup(); if (!$('wizard').hidden) wizard(wizStep); 
 // --- the wizard -------------------------------------------------------------------------------------
 let wizStep = 0;
 const STEPS = 6;
-const AREAS = { transport: 'Getting around', place: 'Places and what is near them', energy: 'Energy and vehicles', home: 'At home', data: 'Other data', service: 'Services' };
+const AREAS = { transport: 'Getting around', place: 'Places and what is near them', energy: 'Energy and vehicles', home: 'In the home', network: 'Your network', service: 'Services', data: 'Other data' };
 function wizard(step) {
   wizStep = step;
   const w = $('wizard'); w.hidden = false; w.replaceChildren();
@@ -374,8 +378,8 @@ function wizard(step) {
     const box = el('div'), st = el('span', 'dim');
     w.append(box);
     api('/v1/modules').then(d => {
-      for (const [cat, title] of Object.entries(AREAS)) {
-        const mods = d.modules.filter(m => m.category === cat && !m.core); if (!mods.length) continue;
+      for (const [cat, title] of Object.entries(d.categories || AREAS)) {
+        const mods = d.modules.filter(m => m.category === cat && !m.core && m.listed !== false); if (!mods.length) continue;
         box.append(el('h3', null, title));
         for (const m of mods) {
           const lab = el('label', 'row'), cb = el('input'); cb.type = 'checkbox'; cb.value = m.id; cb.checked = m.enabled;

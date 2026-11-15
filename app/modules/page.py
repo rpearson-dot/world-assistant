@@ -45,16 +45,17 @@ async function api(path, opts) {
   if (!r.ok) throw new Error((d && d.detail) || r.status);
   return d;
 }
-const CATS = { transport: 'Getting around', place: 'Places and what is near them', energy: 'Energy and vehicles', data: 'Other data', home: 'At home', service: 'Services' };
+const CATS = { transport: 'Getting around', place: 'Places and what is near them', energy: 'Energy and vehicles', home: 'In the home', network: 'Your network', service: 'Services', data: 'Other data' };
 const STATE = { ready: ['ready', 'ok'], limited: ['works, better with a key', 'warn'], waiting: ['set up, no run yet', ''], off: ['poll switched off', 'warn'], missing: ['needs a key', 'bad'], failing: ['last run failed', 'bad'] };
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function render(d) {
   $('intro').textContent = d.chosen ? 'You have chosen which modules are on. Changes apply within seconds.'
     : 'Nothing has been chosen yet, so every module is on. Choose, or start with the essentials and add what you want.';
   const groups = $('groups'); groups.replaceChildren();
-  for (const cat of Object.keys(CATS)) {
-    const mods = d.modules.filter(m => m.category === cat && !m.core); if (!mods.length) continue;
-    const card = el('div', 'card'); card.append(el('h2', null, CATS[cat]));
+  const cats = d.categories || CATS;
+  for (const cat of Object.keys(cats)) {
+    const mods = d.modules.filter(m => m.category === cat && !m.core && m.listed !== false); if (!mods.length) continue;
+    const card = el('div', 'card'); card.append(el('h2', null, cats[cat]));
     for (const m of mods) {
       const row = el('div', 'mod'), sw = el('label', 'switch'), cb = document.createElement('input');
       cb.type = 'checkbox'; cb.checked = m.enabled; cb.onchange = () => flip(m.id, cb.checked, cb);

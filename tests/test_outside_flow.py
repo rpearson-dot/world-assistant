@@ -30,6 +30,7 @@ sdk = 3
 licence = "MIT"
 repository = "https://github.com/someone/wa-tigo"
 role = "source"
+category = "energy"
 reads = ["the Tigo CCA"]
 gives = ["Home Assistant: power for each panel"]
 [image]
