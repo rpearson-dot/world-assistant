@@ -295,6 +295,16 @@ BUILTIN: tuple[Module, ...] = (
            tools=("aircon", "aircon_set"),
            provides={"assistant.tools": "app.modules.airstage.tools:TOOLS", "startup": "app.modules.airstage.ha:startup",
                      "shutdown": "app.modules.airstage.ha:shutdown"}),
+    Module("nest", "Nest thermostat", "Your Nest's room temperature, humidity, target and whether it is calling for "
+           "heat, read through Google's Smart Device Management API and kept — read-only, for the heating picture",
+           category="home", keys=("nest_project_id", "nest_client_id", "nest_client_secret", "nest_refresh_token"),
+           jobs=("nest_sync",), sdk=3, tabs=(("home", "nest", "/nest", "Heating"),),
+           link="https://developers.google.com/nest/device-access",
+           note="A one-time Google Device Access setup ($5) mints the four keys for the Keys page. Tracking only, no control",
+           routers=("app.modules.nest.api:router", "app.modules.nest.page:page_router"), prefixes=("/v1/nest", "/nest"),
+           worker=(Job("app.modules.nest.api:nest_sync", {"minute": _every(5), "timeout": 120, "max_tries": 1}),),
+           tools=("nest_status",),
+           provides={"assistant.tools": "app.modules.nest.tools:TOOLS"}),
     Module("weather", "Weather (Open-Meteo)", "The weather at home: now, hour by hour for a week, each day's heating "
            "degree-hours, and the past as it turned out, for heating and solar planning",
            category="place", jobs=("weather_sync",), link="https://open-meteo.com/", sdk=2,
