@@ -13,7 +13,9 @@
 
 services:
   kitchenowl:
-    image: tombursch/kitchenowl:${WA_KITCHENOWL_TAG:-v0.7.10}
+    # 0.8+ runs as a non-root (rootless) image; its entrypoint fixes the data dir's ownership on first start. Back up
+    # WA_DATA_DIR/kitchenowl before updating, and if it can't start, chown that folder to the uid the logs name.
+    image: tombursch/kitchenowl:${WA_KITCHENOWL_TAG:-v0.8.1}
     restart: unless-stopped
     labels:
       net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/shopping.png"

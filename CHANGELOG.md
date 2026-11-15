@@ -11,6 +11,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   `receive_text()`, which raised `KeyError: 'text'` on a binary frame and dropped the charger's connection, so
   commands (ChangeAvailability, start/stop) went unanswered and nothing held the charger to the plan. The server now
   accepts either frame type.
+## [Unreleased]
+
+### Changed
+
+- **KitchenOwl updated to v0.8.1** (was v0.7.10). The bundled shopping-list container now tracks the current release.
+  0.8 is a rootless image; its entrypoint fixes the data directory's ownership on first start — back up
+  `WA_DATA_DIR/kitchenowl` before updating, and if it can't start, chown that folder to the uid the logs name.
 
 ## [0.60.0] - 2026-11-15
 
