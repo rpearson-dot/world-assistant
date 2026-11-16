@@ -305,6 +305,17 @@ BUILTIN: tuple[Module, ...] = (
            worker=(Job("app.modules.nest.api:nest_sync", {"minute": _every(5), "timeout": 120, "max_tries": 1}),),
            tools=("nest_status",),
            provides={"assistant.tools": "app.modules.nest.tools:TOOLS"}),
+    Module("ecodan", "Heat pump (Ecodan)", "Your Mitsubishi Ecodan read through MELCloud: hot-water tank temperature "
+           "and target, the boost, flow/return and outdoor temperatures, the heating zone, power and daily energy — "
+           "read-only for now (PV-to-hot-water and tariff-aligned hot water come next, shadow-first)",
+           category="energy", keys=("melcloud_email", "melcloud_password"), jobs=("ecodan_sync",), sdk=3,
+           tabs=(("energy", "ecodan", "/ecodan", "Heat pump"),), link="https://app.melcloud.com",
+           note="MELCloud throttles hard, so it is read every 10 minutes. Tracking only; see claude/ecodan-design.md",
+           routers=("app.modules.ecodan.api:router", "app.modules.ecodan.page:page_router"),
+           prefixes=("/v1/ecodan", "/ecodan"),
+           worker=(Job("app.modules.ecodan.api:ecodan_sync", {"minute": _every(10), "timeout": 120, "max_tries": 1}),),
+           tools=("ecodan_status",),
+           provides={"assistant.tools": "app.modules.ecodan.tools:TOOLS"}),
     Module("weather", "Weather (Open-Meteo)", "The weather at home: now, hour by hour for a week, each day's heating "
            "degree-hours, and the past as it turned out, for heating and solar planning",
            category="place", jobs=("weather_sync",), link="https://open-meteo.com/", sdk=2,

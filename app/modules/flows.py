@@ -60,6 +60,8 @@ FLOWS: dict[str, dict[str, Any]] = {
                  "controls": ("the air conditioners: on and off, mode, target, fan, swing and extras (from the page, the assistant or Home Assistant)",)},
     "nest": {"role": "source", "reads": ("the Nest thermostat (Google Smart Device Management API)",),
              "gives": (f"{HA}: room temperature, humidity, target and a heating binary sensor",)},
+    "ecodan": {"role": "source", "reads": ("the Mitsubishi Ecodan heat pump (MELCloud)",),
+               "gives": (f"{HA}: tank temperature and target, flow/return and outdoor temperatures, and a hot-water-boost sensor",)},
     "weather": {"role": "source", "reads": ("Open-Meteo forecast and archive",), "gives": (f"{HA}: temperature and heating degree-hours",)},
     "solar": {"role": "source", "reads": ("forecast.solar", f"{HA}: the panels' output statistic (accuracy check)",
                                           f"{HA}: Forecast.Solar arrays (copying, through the share)"),

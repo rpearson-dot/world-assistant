@@ -9,7 +9,7 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [discovery](#discovery) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [nest](#nest) · [network](#network) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [outside](#outside) · [ovms](#ovms) · [pihole](#pihole) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [solar](#solar) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [discovery](#discovery) · [ecodan](#ecodan) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [nest](#nest) · [network](#network) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [outside](#outside) · [ovms](#ovms) · [pihole](#pihole) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [solar](#solar) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
 
 
 ## airstage
@@ -195,6 +195,14 @@ pages themselves hold no data: each one calls these endpoints.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/v1/discovery` | Every device with what it probably is (likely or possibly, and why), its adapter's maker, and what World Assistant could do with it. |
+
+## ecodan
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/ecodan` | Each heat pump as it stands, and whether the MELCloud login is set. |
+| GET | `/v1/ecodan/history` | A heat pump's readings over a day/week/month, for charting (tank, flow/return, outdoor, hot-water boost). |
+| POST | `/v1/ecodan/refresh` | Read the heat pump now (uses one of MELCloud's sparse allowed calls). |
 
 ## energy
 

@@ -2,6 +2,24 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Heat pump (Energy → Heat pump).** Reads your Mitsubishi Ecodan through MELCloud every ten minutes (MELCloud limits
+  how often it can be asked) and keeps it: hot-water tank temperature and target, the hot-water boost, flow/return and
+  outdoor temperatures, the heating zone, power and daily energy — on a page with a history chart (tank, flow, return,
+  boost shaded), published read-only to Home Assistant as sensors plus a hot-water-boost sensor, and available to the
+  assistant. Tracking only for now; using spare solar to store hot water and keeping hot water on the cheapest windows
+  come next, shadow-first (see `claude/ecodan-design.md`). The MELCloud login goes on the Keys page (`melcloud_email`,
+  `melcloud_password`).
+
+### Changed
+
+- **KitchenOwl updated to v0.8.1** (was v0.7.10). The bundled shopping-list container now tracks the current release.
+  0.8 is a rootless image; its entrypoint fixes the data directory's ownership on first start — back up
+  `WA_DATA_DIR/kitchenowl` before updating, and if it can't start, chown that folder to the uid the logs name.
+
 ## [0.61.0] - 2026-11-15
 
 ### Fixed
@@ -11,13 +29,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   `receive_text()`, which raised `KeyError: 'text'` on a binary frame and dropped the charger's connection, so
   commands (ChangeAvailability, start/stop) went unanswered and nothing held the charger to the plan. The server now
   accepts either frame type.
-## [Unreleased]
-
-### Changed
-
-- **KitchenOwl updated to v0.8.1** (was v0.7.10). The bundled shopping-list container now tracks the current release.
-  0.8 is a rootless image; its entrypoint fixes the data directory's ownership on first start — back up
-  `WA_DATA_DIR/kitchenowl` before updating, and if it can't start, chown that folder to the uid the logs name.
 
 ## [0.60.0] - 2026-11-15
 
