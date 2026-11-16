@@ -8,7 +8,7 @@ Turned on with the UniFi gateway log, Pi-hole or Discovery. Nothing goes to Home
 |---|---|
 | Role | Processor: works from other data |
 | Reads | what the UniFi gateway log and Pi-hole see |
-| Gives | page: Network (devices and what each does); notifications: a new device on the network |
+| Gives | notifications: a new device on the network |
 | Endpoints | `/v1/network`, `/network` |
 | Scheduled jobs | `network_housekeep` |
 | Assistant tools | `network_devices` |
@@ -17,6 +17,7 @@ Turned on with the UniFi gateway log, Pi-hole or Discovery. Nothing goes to Home
 ## Files
 
 - `api.py`: Your network's devices (/v1/network, Your network → Network): every device seen by the UniFi gateway log or Pi-hole, and what each did (joining and leaving,...
+- `firewall.py`: Advisory firewall-block suggestions for one device, from what the UniFi gateway logged it reaching. Pure.
 - `listener.py`: The syslog listener (the wa-syslog service): receives what the UniFi gateway sends on UDP (port 5514 in the container; the host's port is WA_SYSLOG_PORT,...
 - `page.py`: The network page (/network, In the home → Network): your devices, what each did, and suggested blocks for what gets past your Pi-hole lists. The page holds...
 - `parse.py`: Reading what the UniFi gateway sends by syslog, and what Pi-hole's API answers. Pure.

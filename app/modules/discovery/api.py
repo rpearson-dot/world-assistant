@@ -48,7 +48,7 @@ async def discovery(request: Request) -> dict[str, Any]:
     pages = {m.id: (m.link if m.link.startswith("/") else next((p for p in m.prefixes if not p.startswith("/v1")), None)) for m in mods}
     async with request.app.state.engine.connect() as conn:
         devs = [dict(r) for r in (await conn.execute(text(
-            "SELECT mac, ip, name, alias, first_seen, last_seen FROM net_device ORDER BY last_seen DESC"))).mappings().all()]  # fmt: skip
+            "SELECT mac, ip, name, alias, kind, kind_at, first_seen, last_seen FROM net_device ORDER BY last_seen DESC"))).mappings().all()]  # fmt: skip
         doms: dict[str, list[str]] = {}
         for mac, dest in (await conn.execute(text(
             "SELECT mac, dest FROM (SELECT mac, dest, count(*) AS n, row_number() OVER (PARTITION BY mac ORDER BY count(*) DESC) AS r "
@@ -64,10 +64,12 @@ async def discovery(request: Request) -> dict[str, Any]:
         cared = await _looked_after(conn)
     out = []
     for d in devs:
+        confirmed, confirmed_at = d.pop("kind", None), d.pop("kind_at", None)
         found = ID.identify(d, doms.get(d["mac"], []), ports.get(d["mac"], []), oui)
         cared_here = {k: (v if "*" not in v else {d.get("ip"), d["mac"]}) for k, v in cared.items()}
         sug = ID.suggestion(found, d, enabled, cared_here, names, pages) if found["kind"] else None
-        out.append({**d, "label": d.get("alias") or d.get("name") or d.get("ip") or d["mac"], **found, "suggestion": sug})
+        out.append({**d, "label": d.get("alias") or d.get("name") or d.get("ip") or d["mac"], **found,
+                    "suggestion": sug, "confirmed": confirmed, "confirmed_at": confirmed_at})
     known = sum(1 for x in out if x["kind"])
     return {"devices": out, "identified": known, "oui_loaded": bool(oui) or not devs,
             "suggestions": sum(1 for x in out if x["suggestion"] and x["suggestion"].get("state") in ("off", "set up"))}  # fmt: skip

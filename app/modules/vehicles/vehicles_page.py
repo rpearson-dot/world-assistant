@@ -172,6 +172,21 @@ function draw() {
         const d = el('details'); d.append(el('summary', 'The car’s recent messages (' + car.notices.length + ')'));
         const ul = el('ul'); for (const n of car.notices) ul.append(el('li', new Date(n.at).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) + ' · ' + n.kind + ': ' + n.text)); d.append(ul); body.append(d);
       }
+      const cid = car.id;
+      const ctl = el('div', null, 'acts');
+      ctl.append(button(car.charging ? 'Stop charge' : 'Start charge', () => run(() => api('POST', '/v1/ovms/' + encodeURIComponent(cid) + '/charge', { on: !car.charging }), $('cmsg'))));
+      ctl.append(button('Climate on', () => run(() => api('POST', '/v1/ovms/' + encodeURIComponent(cid) + '/climate', { on: true }), $('cmsg'))));
+      ctl.append(button('Climate off', () => run(() => api('POST', '/v1/ovms/' + encodeURIComponent(cid) + '/climate', { on: false }), $('cmsg'))));
+      ctl.append(button(car.locked === false ? 'Lock' : 'Unlock', () => { const pin = prompt((car.locked === false ? 'Lock' : 'Unlock') + ' the car — enter its PIN'); if (pin) run(() => api('POST', '/v1/ovms/' + encodeURIComponent(cid) + '/lock', { lock: car.locked === false, pin }), $('cmsg')); }));
+      body.append(el('div', 'Controls (OVMS, over MQTT)', 'dim'), ctl);
+      const md = el('details'); md.append(el('summary', 'All metrics from the car'));
+      const mbox = el('div', null, 'small'); md.append(mbox);
+      md.ontoggle = async () => { if (!md.open || mbox.dataset.done) return;
+        try { const r = await api('GET', '/v1/ovms/' + encodeURIComponent(cid) + '/metrics'); mbox.replaceChildren();
+          const ks = Object.keys(r.metrics); if (!ks.length) { mbox.textContent = 'No metrics yet.'; return; }
+          for (const k of ks) mbox.append(el('div', k + ': ' + r.metrics[k].value)); mbox.dataset.done = '1'; }
+        catch (e) { mbox.textContent = e.message; } };
+      body.append(md);
     }
     if (checkData) {
       const row = el('div', null, 'row');

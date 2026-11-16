@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Added
 
+- **Networking split into Pi-hole and Ubiquiti, with block suggestions.** In the home → Networking now has its own
+  pages. **Pi-hole** ranks devices by lookups (flagging the ones that talk a lot), shows what gets past your lists that
+  doesn't serve each device, and keeps the one-tap *Add to Pi-hole* (with Undo). **Ubiquiti** reads the UniFi gateway's
+  firewall log: which devices reach the most outside hosts, the tracker-like domains they resolve, and **advisory
+  firewall-block suggestions** with the exact rule to add — advisory only, World Assistant never changes your firewall.
+  A new `chatty_devices` assistant tool surfaces the chattiest devices.
+- **Confirm what a device is (Networking → Discovery).** Each device now has a *What it is* you can set — accept
+  Discovery's guess or type your own — so the guess becomes a fact kept on the device record.
+
 - **Heat pump (Energy → Heat pump).** Reads your Mitsubishi Ecodan through MELCloud every ten minutes (MELCloud limits
   how often it can be asked) and keeps it: hot-water tank temperature and target, the hot-water boost, flow/return and
   outdoor temperatures, the heating zone, power and daily energy — on a page with a history chart (tank, flow, return,
@@ -16,6 +25,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Changed
 
+- **In the home is now two areas: Climate control and Networking.** *In the home* is a hub that opens into **Climate
+  control** (Heating/Nest, Heat pump/Ecodan and Air conditioning together) and **Networking** (Devices, Pi-hole,
+  Ubiquiti and Discovery). The Setup list groups these modules under *In the home* to match (the separate "Your network"
+  heading is retired).
+- **The car charger moves to Energy; the car folds into Vehicles.** The OCPP **Charger** tab now lives under **Energy**
+  (its schedule is part of energy). The standalone Car page is gone: each car's live OVMS data — battery, charging,
+  12 V, all metrics, and the charge/climate/lock controls — now shows under that car on the **Vehicles** page, beside
+  its DVLA/MOT block.
 - **KitchenOwl updated to v0.8.1** (was v0.7.10). The bundled shopping-list container now tracks the current release.
   0.8 is a rootless image; its entrypoint fixes the data directory's ownership on first start — back up
   `WA_DATA_DIR/kitchenowl` before updating, and if it can't start, chown that folder to the uid the logs name.

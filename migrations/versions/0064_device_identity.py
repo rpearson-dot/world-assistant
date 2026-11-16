@@ -1,0 +1,24 @@
+"""A confirmed identity for a network device: what it actually is, set by you (accepting Discovery's guess or typing
+your own), so the guess becomes a fact. Kept on the device record beside its name and alias.
+
+Revision ID: 0064
+Revises: 0063
+Create Date: 2026-11-16
+"""
+
+from alembic import op
+
+revision = "0064"
+down_revision = "0063"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    op.execute("ALTER TABLE net_device ADD COLUMN IF NOT EXISTS kind text")
+    op.execute("ALTER TABLE net_device ADD COLUMN IF NOT EXISTS kind_at timestamptz")
+
+
+def downgrade() -> None:
+    op.execute("ALTER TABLE net_device DROP COLUMN IF EXISTS kind_at")
+    op.execute("ALTER TABLE net_device DROP COLUMN IF EXISTS kind")

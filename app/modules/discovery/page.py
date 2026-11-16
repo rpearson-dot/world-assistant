@@ -32,6 +32,11 @@ table.t { width: 100%; border-collapse: collapse; font-size: .9em; } table.t td,
 const $ = id => document.getElementById(id), tok = $('t'), msg = $('msg');
 try { tok.value = sessionStorage.getItem('wa_token') || ''; } catch (e) {}
 const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+async function api(method, path, body) {
+  const r = await fetch(path, { method, headers: { Authorization: 'Bearer ' + tok.value, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) { let d = r.status; try { d = (await r.json()).detail; } catch (e) {} throw new Error(typeof d === 'string' ? d : JSON.stringify(d)); }
+  return r.status === 204 ? null : r.json();
+}
 async function load() {
   try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
   msg.textContent = '';
@@ -42,13 +47,24 @@ async function load() {
     const d = await r.json(), t = $('devs'); t.replaceChildren();
     $('say').textContent = d.devices.length ? d.identified + ' of ' + d.devices.length + ' devices recognised; ' + d.suggestions + ' suggestions.' +
       (d.oui_loaded ? '' : ' The register of adapter makers is fetched within the week.') : 'No devices yet: they appear once the UniFi gateway log or Pi-hole has seen them (Settings → Setup, Your network).';
-    const h = el('tr'); ['Device', 'Probably', 'What World Assistant could do'].forEach(x => h.append(el('th', x))); t.append(h);
+    const h = el('tr'); ['Device', 'Probably', 'What it is', 'What World Assistant could do'].forEach(x => h.append(el('th', x))); t.append(h);
     for (const x of d.devices) {
       const tr = el('tr'), a = el('td'); a.append(el('div', x.label), el('div', x.mac + (x.ip ? ' · ' + x.ip : '') + (x.vendor ? ' · ' + x.vendor : ''), 'why'));
       const b = el('td'); if (x.kind) { b.append(el('div', x.sure + ' ' + x.what), el('div', x.why.join('; '), 'why')); } else b.append(el('span', 'not recognised', 'why'));
+      const w = el('td');
+      const editor = prefill => { w.replaceChildren();
+        const inp = el('input'); inp.value = prefill || ''; inp.maxLength = 80; inp.size = 14; inp.placeholder = 'what it is'; inp.setAttribute('aria-label', 'What ' + x.label + ' is');
+        const save = el('button', 'Confirm'); save.type = 'button'; save.className = 'primary';
+        save.onclick = async () => { try { await api('PUT', '/v1/network/devices/' + encodeURIComponent(x.mac) + '/identity', { kind: inp.value.trim() }); x.confirmed = inp.value.trim() || null; cell(); } catch (e) { msg.textContent = e.message; } };
+        w.append(inp, save); };
+      const cell = () => { w.replaceChildren();
+        if (x.confirmed) { w.append(el('b', x.confirmed));
+          const ch = el('button', 'Change'); ch.type = 'button'; ch.onclick = () => editor(x.confirmed); w.append(ch);
+        } else editor(x.kind ? x.what : ''); };
+      cell();
       const c = el('td'); if (x.suggestion) { const s = x.suggestion;
         if (s.link) { const l = el('a', s.say, 'sug' + (s.state === 'done' ? ' done' : '')); l.href = s.link; c.append(l); } else c.append(el('span', s.say, 'why')); }
-      tr.append(a, b, c); t.append(tr);
+      tr.append(a, b, w, c); t.append(tr);
     }
   } catch (e) { msg.textContent = e.message; }
 }

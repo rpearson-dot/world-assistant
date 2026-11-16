@@ -35,7 +35,6 @@ CATEGORIES: dict[str, str] = {
     "place": "Places and what is near them",
     "energy": "Energy and vehicles",
     "home": "In the home",
-    "network": "Your network",
     "service": "Services",
     "data": "Other data",
 }

@@ -59,7 +59,8 @@ CORE = Module(
         "app.places:router", "app.map_layers:router", "app.map_page:page_router", "app.assistant:router",
         "app.places:page_router", "app.settings_page:page_router", "app.webapp:router",
         "app.modules.routes:router", "app.modules.routes:page_router", "app.notify:router", "app.watchdog:router", "app.clients:router",
-        "app.home_page:page_router", "app.outside.api:router", "app.outside.pages:page_router",
+        "app.home_page:page_router", "app.climate_page:page_router", "app.networking_page:page_router",
+        "app.outside.api:router", "app.outside.pages:page_router",
     ),
     worker=(Job("app.ha_publish:ha_sync", _ha),
             # the newest backup restored into a scratch schema and checked, early on Sunday
@@ -264,7 +265,7 @@ BUILTIN: tuple[Module, ...] = (
            provides={"assistant.tools": "app.modules.buslog.tools:TOOLS"}),
     Module("ocpp", "Car charger (OCPP)", "World Assistant as your charger's OCPP server: start and stop, every restart, "
            "drop and fault recorded, and the charger in Home Assistant",
-           category="energy", jobs=("ocpp_watch",), tabs=(("vehicles", "charger", "/charger", "Charger"),), sdk=2,
+           category="energy", jobs=("ocpp_watch",), tabs=(("energy", "charger", "/charger", "Charger"),), sdk=2,
            note="Point the charger's OCPP 1.6J central system at ws://<this server>:8010/ocpp/<charge point ID> on your home "
                 "network. It replaces Home Assistant's OCPP integration (a charger talks to one central system)",
            routers=("app.modules.ocpp.api:router", "app.modules.ocpp.page:page_router", "app.modules.ocpp.server:ws_router"),
@@ -274,12 +275,12 @@ BUILTIN: tuple[Module, ...] = (
            tools=("charger",),
            provides={"assistant.tools": "app.modules.ocpp.tools:TOOLS", "startup": "app.modules.ocpp.server:startup",
                      "shutdown": "app.modules.ocpp.server:shutdown"}),
-    Module("ovms", "Car (OVMS)", "Your car's own module (OVMS): the Car page shows every metric it reports — battery, "
-           "charging, cabin, tyres, position and more — with charge, climate and lock controls over MQTT",
-           category="energy", jobs=("ovms_watch",), sdk=2, tabs=(("vehicles", "car", "/car", "Car"),),
+    Module("ovms", "Car (OVMS)", "Your car's own module (OVMS): on the Vehicles page each car shows every metric it "
+           "reports — battery, charging, cabin, tyres, position and more — with charge, climate and lock controls over MQTT",
+           category="energy", jobs=("ovms_watch",), sdk=2,
            note="Reads the broker set in Settings → Home Assistant, where the OVMS module publishes (Server V3). "
                 "Controls (charge, climate, lock) need the broker on TLS and World Assistant's login allowed to write ovms/#",
-           routers=("app.modules.ovms.api:router", "app.modules.ovms.page:page_router"), prefixes=("/v1/ovms", "/car"),
+           routers=("app.modules.ovms.api:router",), prefixes=("/v1/ovms",),
            worker=(Job("app.modules.ovms.api:ovms_watch", {"minute": _every(15), "timeout": 120, "max_tries": 1}),
                    Job("app.modules.ovms.api:ovms_housekeep", {"hour": {3}, "minute": {37}, "timeout": 300, "max_tries": 1})),
            tools=("car_status",),
@@ -287,7 +288,7 @@ BUILTIN: tuple[Module, ...] = (
                      "shutdown": "app.modules.ovms.listener:shutdown"}),
     Module("airstage", "Air conditioning (Fujitsu Airstage)", "Fujitsu Airstage air conditioners on your home network: "
            "temperatures, on and off, mode, target and fan, from the page, the assistant and Home Assistant",
-           category="home", jobs=("airstage_poll",), tabs=(("home", "aircon", "/aircon", "Air conditioning"),), sdk=2,
+           category="home", jobs=("airstage_poll",), tabs=(("climate", "aircon", "/aircon", "Air conditioning"),), sdk=2,
            note="Talks to each unit directly on your network (its address and device id), never through Fujitsu's cloud",
            routers=("app.modules.airstage.api:router", "app.modules.airstage.page:page_router"), prefixes=("/v1/airstage", "/aircon"),
            worker=(Job("app.modules.airstage.api:airstage_poll", {"minute": _every(2), "timeout": 110, "max_tries": 1}),
@@ -298,7 +299,7 @@ BUILTIN: tuple[Module, ...] = (
     Module("nest", "Nest thermostat", "Your Nest's room temperature, humidity, target and whether it is calling for "
            "heat, read through Google's Smart Device Management API and kept — read-only, for the heating picture",
            category="home", keys=("nest_project_id", "nest_client_id", "nest_client_secret", "nest_refresh_token"),
-           jobs=("nest_sync",), sdk=3, tabs=(("home", "nest", "/nest", "Heating"),),
+           jobs=("nest_sync",), sdk=3, tabs=(("climate", "nest", "/nest", "Heating"),),
            link="https://developers.google.com/nest/device-access",
            note="A one-time Google Device Access setup ($5) mints the four keys for the Keys page. Tracking only, no control",
            routers=("app.modules.nest.api:router", "app.modules.nest.page:page_router"), prefixes=("/v1/nest", "/nest"),
@@ -308,8 +309,8 @@ BUILTIN: tuple[Module, ...] = (
     Module("ecodan", "Heat pump (Ecodan)", "Your Mitsubishi Ecodan read through MELCloud: hot-water tank temperature "
            "and target, the boost, flow/return and outdoor temperatures, the heating zone, power and daily energy — "
            "read-only for now (PV-to-hot-water and tariff-aligned hot water come next, shadow-first)",
-           category="energy", keys=("melcloud_email", "melcloud_password"), jobs=("ecodan_sync",), sdk=3,
-           tabs=(("energy", "ecodan", "/ecodan", "Heat pump"),), link="https://app.melcloud.com",
+           category="home", keys=("melcloud_email", "melcloud_password"), jobs=("ecodan_sync",), sdk=3,
+           tabs=(("climate", "ecodan", "/ecodan", "Heat pump"),), link="https://app.melcloud.com",
            note="MELCloud throttles hard, so it is read every 10 minutes. Tracking only; see claude/ecodan-design.md",
            routers=("app.modules.ecodan.api:router", "app.modules.ecodan.page:page_router"),
            prefixes=("/v1/ecodan", "/ecodan"),
@@ -337,33 +338,36 @@ BUILTIN: tuple[Module, ...] = (
            provides={"assistant.tools": "app.modules.solar.tools:TOOLS"}),
     Module("network", "Network devices", "Every device on your network and what it does, from the UniFi gateway log and "
            "Pi-hole (whichever you use): the page and the record they share",
-           category="network", listed=False, jobs=("network_housekeep",), occasional=("network_housekeep",), sdk=3,
+           category="home", listed=False, jobs=("network_housekeep",), occasional=("network_housekeep",), sdk=3,
            tools=("network_devices",), provides={"assistant.tools": "app.modules.network.tools:TOOLS"},
            note="Turned on with the UniFi gateway log, Pi-hole or Discovery. Nothing goes to Home Assistant",
-           tabs=(("home", "network", "/network", "Network"),),
+           tabs=(("networking", "network", "/network", "Devices"),),
            routers=("app.modules.network.api:router", "app.modules.network.page:page_router"), prefixes=("/v1/network", "/network"),
            worker=(Job("app.modules.network.api:network_housekeep", {"hour": {2}, "minute": {41}, "timeout": 900, "max_tries": 1}),)),
     Module("unifi", "UniFi gateway log", "Devices joining and leaving the network and the gateway's firewall decisions, from "
-           "the UniFi gateway's own log (syslog)",
-           category="network", needs=("network",), sdk=3, link="/network",
+           "the UniFi gateway's own log (syslog): the Ubiquiti page ranks what each device reaches and suggests firewall blocks "
+           "for chatty devices (advisory — World Assistant never changes your firewall)",
+           category="home", needs=("network",), sdk=3, tabs=(("networking", "unifi", "/unifi", "Ubiquiti"),), link="/unifi",
+           routers=("app.modules.unifi.page:page_router",), prefixes=("/unifi",), tools=("chatty_devices",),
+           provides={"assistant.tools": "app.modules.unifi.tools:TOOLS"},
            note="The UniFi gateway sends its log to this server (UDP 5514 unless WA_SYSLOG_PORT says otherwise): "
                 "Settings → CyberSecure → Traffic Logging → Activity Logging, SIEM server. Nothing goes to Home Assistant"),
     Module("pihole", "Pi-hole", "Every DNS lookup each device makes, your Pi-hole groups, and suggested blocks for what gets past "
            "your Pi-hole lists that does not serve you (added only when you press Add to Pi-hole, with Undo)",
-           category="network", needs=("network",), keys=("pihole_app_password",), sdk=3, link="https://docs.pi-hole.net/api/",
-           jobs=("network_pihole",), occasional=("network_lists",),
-           note="Pi-hole v6: its address on the Network page, its app password (Settings → Web interface / API → Configure "
+           category="home", needs=("network",), keys=("pihole_app_password",), sdk=3, link="https://docs.pi-hole.net/api/",
+           jobs=("network_pihole",), occasional=("network_lists",), tabs=(("networking", "pihole", "/pihole", "Pi-hole"),),
+           note="Pi-hole v6: its address on the Devices page, its app password (Settings → Web interface / API → Configure "
                 "app password) here. Your groups are never changed. Nothing goes to Home Assistant",
-           routers=("app.modules.pihole.api:router",), prefixes=("/v1/pihole",),
+           routers=("app.modules.pihole.api:router", "app.modules.pihole.page:page_router"), prefixes=("/v1/pihole", "/pihole"),
            tools=("pihole_groups",), provides={"assistant.tools": "app.modules.pihole.tools:TOOLS"},
            worker=(Job("app.modules.pihole.api:network_pihole", {"minute": set(range(60)), "timeout": 55, "max_tries": 1}),
                    Job("app.modules.pihole.api:network_lists", {"weekday": {0}, "hour": {3}, "minute": {51}, "timeout": 600, "max_tries": 1}))),
     Module("discovery", "Discovery", "What each device on your network probably is (its adapter's maker, its name, what it "
            "looks up) and the module that would suit it",
-           category="network", needs=("network",), occasional=("discovery_oui",), jobs=("discovery_oui",), sdk=3,
+           category="home", needs=("network",), occasional=("discovery_oui",), jobs=("discovery_oui",), sdk=3,
            link="https://standards.ieee.org/products-programs/regauth/",
            note="Reads what the UniFi gateway log and Pi-hole have seen and the IEEE register of adapter makers. Changes nothing",
-           tabs=(("home", "discovery", "/discovery", "Discovery"),),
+           tabs=(("networking", "discovery", "/discovery", "Discovery"),),
            routers=("app.modules.discovery.api:router", "app.modules.discovery.page:page_router"), prefixes=("/v1/discovery", "/discovery"),
            worker=(Job("app.modules.discovery.api:discovery_oui", {"weekday": {1}, "hour": {3}, "minute": {57}, "timeout": 600, "max_tries": 1}),),
            tools=("what_is_on_the_network",), provides={"assistant.tools": "app.modules.discovery.tools:TOOLS"}),

@@ -371,6 +371,8 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/network/devices` | Every device, newest first: its name, address, when first and last seen, and today's lookups, blocks and firewall decisions (its Pi-hole groups: /v1/pihole/device-groups). |
 | GET | `/v1/network/devices/{mac}` | One device's timeline (newest first) and its most looked-up and most blocked domains. |
 | PUT | `/v1/network/devices/{mac}/alias` | Alias |
+| GET | `/v1/network/devices/{mac}/firewall` | Advisory firewall-block suggestions for one device: what it reached, how chatty it is, and the rule to add (World Assistant never changes your firewall). Reads the gateway's firewall log and the device's DNS lookups. |
+| PUT | `/v1/network/devices/{mac}/identity` | Confirm what a device is (accepting Discovery's guess or your own words), or clear it with an empty value. |
 | GET | `/v1/network/events` | The newest events: kind dns, firewall, client, dhcp or system; action allow, block, join, leave, lease. |
 | GET | `/v1/network/settings` | Get Settings  |
 | PUT | `/v1/network/settings` | How long events are kept, and the new-device notification. |

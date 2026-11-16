@@ -1,5 +1,6 @@
-"""In the home (/home): what is running in the house at a glance, each part a tab of its own (Air conditioning now;
-more as modules for the home are added). The overview reads each part's API and holds no data itself."""
+"""In the home (/home): the hub for the house, in two areas — Climate control (the thermostat, the heat pump and the
+air conditioning) and Networking (the devices, Pi-hole and the UniFi gateway). Each card links to its area and shows a
+one-line state. Holds no data; it reads each area's API and builds nothing from it but counts."""
 
 from __future__ import annotations
 
@@ -16,45 +17,58 @@ PAGE = """<!doctype html>
 <title>World Assistant in the home</title>
 <style>
 /*BASE_CSS*/
-.rooms { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
-.room { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; text-decoration: none; color: var(--ink); display: block; }
-.room b { display: block; font-size: 1.1em; } .room .now { font-size: 1.4em; font-weight: 650; margin-top: 4px; }
-.room.on { border-color: var(--accent); } .room.bad { border-color: var(--bad); }
+.rooms { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.room { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; text-decoration: none; color: var(--ink); display: block; }
+.room b { display: block; font-size: 1.15em; } .room .now { font-size: 1.3em; font-weight: 650; margin-top: 4px; }
+.room.on { border-color: var(--accent); } .room .sub { color: var(--dim); font-size: .9em; margin-top: 4px; }
 </style></head><body><main>
 <!--NAV-->
 <h1>In the home</h1>
 <div class="bar"><input id="t" type="password" placeholder="API token" autocomplete="current-password">
 <button id="go" class="primary" type="button">Load</button></div>
 <p id="msg" class="err"></p>
-<div class="card"><h2>Air conditioning</h2><p id="acsay" class="dim">Loading…</p><div class="rooms" id="ac"></div></div>
+<div class="rooms" id="cards"></div>
 <script>
 const $ = id => document.getElementById(id), tok = $('t'), msg = $('msg');
 try { tok.value = sessionStorage.getItem('wa_token') || ''; } catch (e) {}
 const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
-const VERB = { heat: 'Heating', cool: 'Cooling', dry: 'Drying', fan_only: 'Fan only', auto: 'Auto' };
+async function get(path) {
+  const r = await fetch(path, { headers: { Authorization: 'Bearer ' + tok.value } });
+  if (r.status === 404) return { off: true };
+  if (!r.ok) throw new Error(path + ': HTTP ' + r.status);
+  return r.json();
+}
+function card(href, title, now, sub, on) {
+  const a = el('a', null, 'room' + (on ? ' on' : '')); a.href = href;
+  a.append(el('b', title), el('div', now, 'now'));
+  if (sub) a.append(el('div', sub, 'sub'));
+  return a;
+}
 async function load() {
   try { sessionStorage.setItem('wa_token', tok.value); } catch (e) {}
   msg.textContent = '';
-  const r = await fetch('/v1/airstage', { headers: { Authorization: 'Bearer ' + tok.value } });
-  const box = $('ac'); box.replaceChildren();
-  if (r.status === 404) { $('acsay').textContent = 'Switched off. Turn on Air conditioning in Settings → Setup to see your units here.'; return; }
-  if (!r.ok) { msg.textContent = 'Air conditioning: HTTP ' + r.status; return; }
-  const d = await r.json();
-  if (!d.units.length) { $('acsay').textContent = 'No units added yet: add them on the Air conditioning tab.'; return; }
-  const running = d.units.filter(u => u.state && u.state.power);
-  $('acsay').textContent = running.length ? running.length + ' of ' + d.units.length + ' on.' : 'All off.';
-  for (const u of d.units) {
-    const s = u.state || {}, a = el('a', null, 'room' + (s.power ? ' on' : '') + (u.ok === false || s.error_code ? ' bad' : ''));
-    a.href = '/aircon';
-    a.append(el('b', u.name));
-    const now = u.ok === false ? 'Not answering' : !u.state ? 'Not read yet' : s.power
-      ? (VERB[s.mode] || 'On') + (s.target_c != null && s.mode !== 'fan_only' ? ' to ' + s.target_c + '°' : '') : 'Off';
-    a.append(el('div', now, 'now'));
-    if (s.indoor_c != null) a.append(el('div', s.indoor_c.toFixed(1) + '° inside' + (s.outdoor_c != null ? ', ' + s.outdoor_c.toFixed(0) + '° outside' : ''), 'dim'));
-    if (s.error_code) a.append(el('div', 'Error code ' + s.error_code, 'err'));
-    if (s.filter_due) a.append(el('div', 'Filter needs cleaning', 'dim'));
-    box.append(a);
-  }
+  const box = $('cards'); box.replaceChildren();
+  // Climate control: the one-line state from whichever parts are on.
+  try {
+    const [nest, eco, ac] = await Promise.all([get('/v1/nest'), get('/v1/ecodan'), get('/v1/airstage')]);
+    const bits = [];
+    const t = !nest.off && !nest.not_set_up && (nest.thermostats || [])[0];
+    if (t) bits.push(t.hvac === 'HEATING' ? 'heating now' : (t.ambient_c != null ? 'home ' + t.ambient_c.toFixed(1) + '°' : 'thermostat on'));
+    const u = !eco.off && !eco.not_set_up && (eco.units || [])[0];
+    if (u && u.tank_c != null) bits.push('tank ' + u.tank_c.toFixed(0) + '°' + (u.forced_hot_water ? ' (boost)' : ''));
+    const units = !ac.off ? (ac.units || []) : [], running = units.filter(x => x.state && x.state.power);
+    if (units.length) bits.push(running.length ? running.length + ' of ' + units.length + ' AC on' : 'AC all off');
+    const anyOn = (t && t.hvac === 'HEATING') || (u && u.forced_hot_water) || running.length > 0;
+    box.append(card('/climate', 'Climate control', bits.length ? (t && t.hvac === 'HEATING' ? 'Heating' : (running.length ? 'Cooling / on' : 'Idle')) : 'Set up',
+      bits.length ? bits.join(' · ') : 'Thermostat, heat pump and air conditioning', anyOn));
+  } catch (e) { box.append(card('/climate', 'Climate control', '–', 'Thermostat, heat pump and air conditioning')); }
+  // Networking
+  try {
+    const net = await get('/v1/network/devices'), devs = net.devices || [];
+    const fw = devs.reduce((s, d) => s + (Number(d.firewall_blocks) || 0), 0);
+    box.append(card('/networking', 'Networking', devs.length ? devs.length + ' devices' : 'Set up',
+      devs.length ? (devs.reduce((s, d) => s + (Number(d.lookups) || 0), 0)) + ' lookups today' + (fw ? ' · ' + fw + ' firewall blocks' : '') : 'Devices, Pi-hole and the UniFi gateway', devs.length > 0));
+  } catch (e) { box.append(card('/networking', 'Networking', '–', 'Devices, Pi-hole and the UniFi gateway')); }
 }
 $('go').onclick = () => load().catch(e => msg.textContent = e.message);
 load().catch(e => msg.textContent = e.message);
