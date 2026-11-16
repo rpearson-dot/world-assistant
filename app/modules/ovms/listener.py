@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 import time
 import uuid
 from datetime import UTC, datetime
@@ -112,8 +113,16 @@ class Listener:
                 return
             async with self.engine.begin() as conn:
                 nid = await store.notice(conn, vehicle, ntype, sub, value[:2000])
+                metrics = await store.metrics(conn, vehicle) if ntype in ("alert", "error") else {}
             if ntype in ("alert", "error"):
-                await _phone(self.engine, f"ovms:notice:{nid}", f"Car {ntype}", f"{vehicle}: {value[:300]}")
+                body = f"{vehicle}: {value[:300]}"
+                # The Leaf's own alerts quote its GID-based SoC, which reads low (e.g. 67.7%); add the dashboard figure
+                # World Assistant shows, so the two agree and the charge decisions (which use the dashboard one) make sense.
+                if re.search(r"soc|charge|charging|battery|%", value, re.IGNORECASE):
+                    soc = parse.display_soc({k: v for k, (v, _at) in metrics.items()})
+                    if soc is not None:
+                        body += f" — World Assistant reads {soc:.0f}% (dashboard)"
+                await _phone(self.engine, f"ovms:notice:{nid}", f"Car {ntype}", body)
             return
         if kind == "event":
             async with self.engine.begin() as conn:
