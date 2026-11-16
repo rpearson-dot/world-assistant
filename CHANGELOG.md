@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Added
 
+- **Boost to 100% (Charger page).** A one-press boost for a planned long drive: the planner tops the car up to 100%
+  (at the cheap rate, a free hour or on spare solar) instead of stopping at your usual target, then clears itself once
+  it gets there — or cancel it any time. Its own setting, so saving planner settings never disturbs it.
 - **Networking split into Pi-hole and Ubiquiti, with block suggestions.** In the home → Networking now has its own
   pages. **Pi-hole** ranks devices by lookups (flagging the ones that talk a lot), shows what gets past your lists that
   doesn't serve each device, and keeps the one-tap *Add to Pi-hole* (with Undo). **Ubiquiti** reads the UniFi gateway's
@@ -22,6 +25,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   assistant. Tracking only for now; using spare solar to store hot water and keeping hot water on the cheapest windows
   come next, shadow-first (see `claude/ecodan-design.md`). The MELCloud login goes on the Keys page (`melcloud_email`,
   `melcloud_password`).
+
+### Fixed
+
+- **The charger's battery gauge now reads true.** It rounded each 20% segment up, so ~81% painted a full bar; it now
+  fills in proportion (80% reads 80%, with the headroom to 100% shown) using the dashboard figure.
+- **The planner's fallback SoC used the low GID figure.** When Home Assistant had no charge level, the planner read the
+  car's GID-based `v.b.soc` (which reads low) and could have charged past the real target; it now uses the dashboard
+  figure, matching the rest of World Assistant.
 
 ### Changed
 

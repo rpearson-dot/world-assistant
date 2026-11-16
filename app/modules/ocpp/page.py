@@ -56,6 +56,7 @@ pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-hei
   <div class="batt"><svg id="batt" viewBox="0 0 132 52" width="132" height="52" role="img" aria-label="Car battery"></svg><b id="pct">–</b></div>
   <div class="now"><b id="status">–</b><span id="sub" class="dim"></span></div>
   </div>
+  <div id="boostwrap" hidden style="margin-top:8px"><button type="button" id="boostbtn">Boost to 100%</button> <span id="boosthint" class="dim small"></span></div>
   <p class="dim" id="modewhy"></p><p id="cmsg" class="dim"></p>
 </div>
 <div class="card"><h2>What happened</h2>
@@ -117,18 +118,34 @@ async function load() {
     if (data.chargers.length) await draw();
   } catch (e) { msg.textContent = e.message; }
 }
-let soc = null;  // the car's charge, from its OVMS module when that module is on
+let soc = null;  // the car's charge (dashboard figure), from its OVMS module when that module is on
+let boostState = false;
+function renderBoost() {
+  $('boostbtn').textContent = boostState ? 'Cancel boost' : 'Boost to 100%';
+  $('boostbtn').className = boostState ? 'primary' : '';
+  $('boosthint').textContent = boostState ? 'Topping up to 100% at the next cheap window, free hour or spare solar.'
+    : 'For a long drive: charge to 100% instead of your usual target.';
+}
+async function loadBoost() {
+  try { const p = await api('GET', '/v1/planner/charging?days=1'); boostState = !!p.boost; $('boostwrap').hidden = false; renderBoost(); }
+  catch (e) { $('boostwrap').hidden = true; }  // the planner is off: no boost control
+}
+$('boostbtn').onclick = async () => {
+  try { const r = await api('POST', '/v1/planner/boost', { on: !boostState }); boostState = r.boost; renderBoost(); }
+  catch (e) { $('cmsg').textContent = e.message; }
+};
 function battery(charging) {
   const svg = $('batt'), NS = 'http://www.w3.org/2000/svg', mk = (t, a) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
   svg.replaceChildren();
-  svg.append(mk('rect', { x: 2, y: 2, width: 118, height: 48, rx: 8, fill: 'none', stroke: 'var(--ink)', 'stroke-width': 3 }),
-             mk('rect', { x: 122, y: 16, width: 8, height: 20, rx: 2, fill: 'var(--ink)' }));
-  const full = soc == null ? 0 : Math.ceil(soc / 20), low = soc != null && soc <= 20;
-  for (let i = 0; i < 5; i++) {
-    const r = mk('rect', { x: 8 + i * 22.4, y: 8, width: 19, height: 36, rx: 3,
-      fill: i < full ? (low ? 'var(--bad)' : 'var(--good)') : 'var(--chip)' });
-    if (charging && (i === full || (full === 5 && i === 4))) { r.setAttribute('fill', 'var(--good)'); r.classList.add('filling'); }
-    svg.append(r);
+  const X = 3, Y = 3, W = 116, H = 46, PAD = 4, iW = W - 2 * PAD, iX = X + PAD, iY = Y + PAD, iH = H - 2 * PAD;
+  svg.append(mk('rect', { x: X, y: Y, width: W, height: H, rx: 8, fill: 'none', stroke: 'var(--ink)', 'stroke-width': 3 }),
+             mk('rect', { x: X + W, y: Y + 15, width: 8, height: H - 30, rx: 2, fill: 'var(--ink)' }),
+             mk('rect', { x: iX, y: iY, width: iW, height: iH, rx: 4, fill: 'var(--chip)' }));  // the headroom up to 100%
+  if (soc != null) {
+    const frac = Math.max(0, Math.min(1, soc / 100)), low = soc <= 20;  // a true proportion: 80% reads 80%, not full
+    const f = mk('rect', { x: iX, y: iY, width: Math.max(3, iW * frac), height: iH, rx: 4, fill: low ? 'var(--bad)' : 'var(--good)' });
+    if (charging) f.classList.add('filling');
+    svg.append(f);
   }
   $('pct').textContent = soc == null ? '–' : Math.round(soc) + '%';
   svg.setAttribute('aria-label', soc == null ? 'Car charge not known' : 'Car charged to ' + Math.round(soc) + '%');
@@ -157,6 +174,7 @@ async function draw() {
   $('sub').textContent = word === 'Charging' && m.power_w != null ? (m.power_w / 1000).toFixed(1) + ' kW' + (kwh != null ? ' · ' + kwh + ' kWh added' : '')
     : word === 'Fault' ? c.error_code : word === 'Connected' && c.status === 'SuspendedEV' ? 'the car is not taking charge' : '';
   battery(c.status === 'Charging');
+  loadBoost();
   const mode = data.settings.mode || 'auto';
   document.querySelectorAll('.seg button').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.m === mode)); b.disabled = false; });
   $('modewhy').textContent = { off: 'Off: the charger will not charge, even if the car is plugged in.',

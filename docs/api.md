@@ -470,6 +470,7 @@ pages themselves hold no data: each one calls these endpoints.
 
 | Method | Path | What it does |
 |---|---|---|
+| POST | `/v1/planner/boost` | Boost to 100% for a planned long drive: the planner tops the car up to 100% (at the cheap rate, a free hour or on spare solar) instead of stopping at your usual target, until it gets there or you turn it off. |
 | GET | `/v1/planner/charging` | The latest decision and why; how often it matched Home Assistant's plan; and each time they differed. |
 | GET | `/v1/planner/demand` | How predictable evening demand is from the cold (a straight-line fit of each evening's kWh on its heating degree-hours), and tomorrow evening's likely need. Worked out at most every six hours unless fresh. |
 | GET | `/v1/planner/reviews` | Each month (the last 12): what charging the car really cost and what it would have with the planner in charge, worked out on the 1st. Also the month so far. |
