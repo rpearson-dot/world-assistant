@@ -43,5 +43,7 @@ TOOLS: list[Tool] = [
     Tool("trains", "Next trains on a saved departure board.",
          {"type": "object", "properties": _props(board=("string", "board id"),
                                                  count=("integer", "how many, default 3")),
-          "required": ["board"]}, trains),
+          "required": ["board"]}, trains,
+         title="Next trains", summary="Next trains on a saved departure board.",
+         phrases=("next trains from {board}", "when's my train"), kind="query"),
 ]

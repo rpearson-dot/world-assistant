@@ -33,5 +33,7 @@ async def floods_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 TOOLS: list[Tool] = [
     Tool("floods_near", "Environment Agency flood warnings and alerts covering a saved place (or within some km of it).",
          {"type": "object", "properties": _props(place=PLACE, km=("number", "0 (default): the place must be inside the warned area"))},
-         floods_tool),
+         floods_tool,
+         title="Flood warnings", summary="Environment Agency flood warnings and alerts covering a saved place.",
+         phrases=("any flood warnings near {place}", "flood alerts near me"), kind="query"),
 ]

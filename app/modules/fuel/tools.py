@@ -56,5 +56,7 @@ TOOLS: list[Tool] = [
              place=("string", "id of a saved place; default: home"), fuel=("string", "E10 (default), E5, B7_STANDARD, B7_PREMIUM"),
              radius_km=("number", "search radius in km, default 5"),
              brands=("string", "comma-separated brands to limit to, e.g. Tesco,Asda"),
-             supermarkets=("boolean", "limit to supermarkets"))}, fuel_cheapest),
+             supermarkets=("boolean", "limit to supermarkets"))}, fuel_cheapest,
+         title="Cheapest fuel", summary="The cheapest fuel near a saved place.",
+         phrases=("cheapest fuel near {place}", "where's the cheapest petrol"), kind="query"),
 ]

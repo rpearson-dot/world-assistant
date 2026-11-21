@@ -78,17 +78,23 @@ async def bank_holidays_tool(request: Request, args: dict[str, Any]) -> dict[str
 
 MORE: list[Tool] = [
     Tool("bank_holidays", "The next UK bank holidays (from GOV.UK), and whether today is one.",
-         {"type": "object", "properties": _props(count=("integer", "how many, default 3"))}, bank_holidays_tool),
+         {"type": "object", "properties": _props(count=("integer", "how many, default 3"))}, bank_holidays_tool,
+         title="Next bank holidays", summary="The next UK bank holidays, and whether today is one.",
+         phrases=("when's the next bank holiday", "is today a bank holiday"), kind="query"),
     Tool("add_place", "Save a new place (by postcode, or lat and lon), so the other tools can use it.",
          {"type": "object", "properties": _props(name=("string", "what to call it, e.g. Mum's"), postcode=("string", "UK postcode"),
                                                  lat=("number", "latitude, instead of a postcode"), lon=("number", "longitude"),
                                                  kind=("string", "home, work, school, family or other"),
                                                  id=("string", "optional id; default made from the name"),
                                                  replace=("boolean", "change a place already saved under that id")),
-          "required": ["name"]}, add_place_tool),
+          "required": ["name"]}, add_place_tool,
+         title="Save a place", summary="Saves a new place by postcode or coordinates, so other features can use it.",
+         phrases=("save {name} as a place", "add a place called {name}"), kind="action"),
     Tool("add_trip", "Save a trip between two saved places and route it, for road conditions, chargers along it and cost.",
          {"type": "object", "properties": _props(from_place=("string", "id of the start place"), to_place=("string", "id of the end place"),
                                                  name=("string", "optional name"), id=("string", "optional id")),
-          "required": ["from_place", "to_place"]}, add_trip_tool),
+          "required": ["from_place", "to_place"]}, add_trip_tool,
+         title="Save a trip", summary="Saves and routes a trip between two saved places, for road conditions, chargers and cost.",
+         phrases=("save a trip from {from_place} to {to_place}", "add a trip to {to_place}"), kind="action"),
 ]
 

@@ -29,5 +29,7 @@ async def bus_log(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 TOOLS: list[Tool] = [
     Tool("bus_log", "Whether the bus route recorder (the 213 in the morning school window) is recording, and how "
          "today's requests to TfL and BODS went (with data, empty or failed).",
-         {"type": "object", "properties": _props()}, bus_log),
+         {"type": "object", "properties": _props()}, bus_log,
+         title="Route recorder", summary="Whether the 213 school-run recorder is running, and how today's data collection went.",
+         phrases=("is the bus recorder running", "bus log status"), kind="query"),
 ]

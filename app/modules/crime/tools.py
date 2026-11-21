@@ -33,5 +33,7 @@ TOOLS: list[Tool] = [
          {"type": "object", "properties": _props(lat=("number", "latitude"), lon=("number", "longitude"),
                                                  postcode=("string", "a UK postcode instead"),
                                                  place=("string", "a saved place's name instead, e.g. home"),
-                                                 months=("integer", "how many months, 1 to 12 (default 12)"))}, crime_tool),
+                                                 months=("integer", "how many months, 1 to 12 (default 12)"))}, crime_tool,
+         title="Crime near a place", summary="Street-level crime reported within a mile of a place over the last year, and the local police team.",
+         phrases=("how much crime near {place}", "is {place} a safe area"), kind="query"),
 ]

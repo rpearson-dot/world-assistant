@@ -31,5 +31,7 @@ TOOLS: list[Tool] = [
     Tool("vehicle_checks", "Each saved vehicle's tax and MOT: when they are due, the last MOT's result, mileage and "
          "advisories, and any outstanding safety recall (from DVLA and DVSA, checked weekly).",
          {"type": "object", "properties": _props(vehicle=("string", "just this vehicle (name or registration)"),
-                                                 check=("boolean", "ask DVLA and DVSA again now"))}, vehicle_checks_tool),
+                                                 check=("boolean", "ask DVLA and DVSA again now"))}, vehicle_checks_tool,
+         title="Tax and MOT", summary="Each vehicle's tax and MOT due dates, last MOT result and any safety recall.",
+         phrases=("when's the car's MOT due", "is the car taxed"), kind="query"),
 ]

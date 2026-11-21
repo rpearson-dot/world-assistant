@@ -49,5 +49,7 @@ async def trip_cost_tool(request: Request, args: dict[str, Any]) -> dict[str, An
 TOOLS: list[Tool] = [
     Tool("trip_cost", "Fuel or energy needed, and cost, for a saved routed trip in a saved vehicle.",
          {"type": "object", "properties": _props(trip=("string", "trip id"), vehicle=("string", "vehicle id")),
-          "required": ["trip", "vehicle"]}, trip_cost_tool),
+          "required": ["trip", "vehicle"]}, trip_cost_tool,
+         title="Trip cost", summary="Fuel or energy needed, and the cost, for a saved trip in a saved vehicle.",
+         phrases=("what will {trip} cost in {vehicle}", "cost of my trip"), kind="query"),
 ]

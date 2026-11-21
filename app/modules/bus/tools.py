@@ -147,7 +147,9 @@ async def bus_setup_tool(request: Request, args: dict[str, Any]) -> dict[str, An
 TOOLS: list[Tool] = [
     Tool("bus", "Bus tracker: has a bus made it to the target stop before the deadline, and next buses at your stops.",
          {"type": "object", "properties": _props(tracker=("string", "tracker id; optional if only one"),
-                                                 stop=("string", "only this stop key; optional"))}, bus),
+                                                 stop=("string", "only this stop key; optional"))}, bus,
+         title="Bus tracker", summary="Whether a bus has reached your target stop before the deadline, and the next buses at your stops.",
+         phrases=("did my bus make it", "next buses at my stop"), kind="query"),
     Tool("bus_setup", "Set up a bus tracker for a journey (acts: saves it). With just a line, lists its stops each way. "
          "With where you get on, where you are going and when you must arrive, it works out the direction and starts "
          "tracking: whether a bus gets you there in time, and the next buses. Stops can be named loosely, e.g. "
@@ -161,5 +163,7 @@ TOOLS: list[Tool] = [
              name=("string", "tracker id, lower-case letters, digits, hyphens; default bus-<line>"),
              replace=("boolean", "replace a tracker of that name"),
              place=("string", "outside London: a saved place near the line, to find it; default home")),
-          "required": ["line"]}, bus_setup_tool),
+          "required": ["line"]}, bus_setup_tool,
+         title="Set up a bus tracker", summary="Sets up tracking for a journey on a bus line — whether a bus gets you there in time.",
+         phrases=("track the {line} bus", "set up a tracker for the {line}"), kind="action"),
 ]

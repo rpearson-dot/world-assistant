@@ -43,5 +43,7 @@ TOOLS: list[Tool] = [
     Tool("events_near", "What's on near a saved place: gigs, club nights, comedy, theatre, sport and more.",
          {"type": "object", "properties": _props(
              place=("string", "id of a saved place; default: home"), days=("number", "how many days ahead, default 7"),
-             type=("string", "optional: LIVE, CLUB, FEST, COMEDY, THEATRE, SPORT, KIDS, ARTS"))}, events_tool),
+             type=("string", "optional: LIVE, CLUB, FEST, COMEDY, THEATRE, SPORT, KIDS, ARTS"))}, events_tool,
+         title="What's on nearby", summary="Gigs, club nights, comedy, theatre, sport and more near a saved place.",
+         phrases=("what's on near {place}", "any gigs this week"), kind="query"),
 ]

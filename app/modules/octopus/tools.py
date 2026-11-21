@@ -35,5 +35,7 @@ async def energy_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 
 TOOLS: list[Tool] = [
     Tool("electricity", "Electricity price now and next, the next cheap and peak times, the cheapest block of hours, and Saving Sessions.",
-         {"type": "object", "properties": _props(hours=("number", "length of the cheapest block, default 3"))}, energy_tool),
+         {"type": "object", "properties": _props(hours=("number", "length of the cheapest block, default 3"))}, energy_tool,
+         title="Electricity prices", summary="Electricity price now and next, the next cheap and peak times, and Saving Sessions.",
+         phrases=("what's electricity costing now", "when's the next cheap window"), kind="query"),
 ]

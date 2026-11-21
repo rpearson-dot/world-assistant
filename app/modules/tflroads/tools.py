@@ -34,5 +34,7 @@ async def road_disruptions_tool(request: Request, args: dict[str, Any]) -> dict[
 
 TOOLS: list[Tool] = [
     Tool("road_disruptions_near", "TfL road works, closures and incidents near a saved place in London.",
-         {"type": "object", "properties": _props(place=PLACE, km=("number", "how far, default 0.5"))}, road_disruptions_tool),
+         {"type": "object", "properties": _props(place=PLACE, km=("number", "how far, default 0.5"))}, road_disruptions_tool,
+         title="London road disruptions", summary="TfL road works, closures and incidents near a saved place in London.",
+         phrases=("road disruptions near {place}", "any road closures nearby"), kind="query"),
 ]

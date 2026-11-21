@@ -39,7 +39,11 @@ async def evening_demand(request: Request, args: dict[str, Any]) -> dict[str, An
 
 TOOLS: list[Tool] = [
     Tool("charging_plan", "What World Assistant would do with the car's charging now and why, beside Home Assistant's plan.",
-         {"type": "object", "properties": _props()}, charging_plan),
+         {"type": "object", "properties": _props()}, charging_plan,
+         title="Charging plan", summary="What World Assistant would do with the car's charging now, and why.",
+         phrases=("what's the charging plan", "will the car charge tonight"), kind="query"),
     Tool("evening_demand", "How predictable the house's evening electricity use is from the weather, and tomorrow evening's likely use.",
-         {"type": "object", "properties": _props()}, evening_demand),
+         {"type": "object", "properties": _props()}, evening_demand,
+         title="Evening demand", summary="How predictable the house's evening electricity use is from the weather, and tomorrow's likely use.",
+         phrases=("how much will we use this evening", "is tonight's demand predictable"), kind="query"),
 ]

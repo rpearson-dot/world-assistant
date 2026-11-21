@@ -67,5 +67,7 @@ TOOLS: list[Tool] = [
          "supplies the place (substations), or past cuts there.",
          {"type": "object", "properties": _props(
              about=("string", "cuts (default), history, works or supply"), days=("integer", "history: how far back, default 365"),
-             place=("string", "id of a saved place; default: home"), km=("number", "how far to look"))}, power_tool),
+             place=("string", "id of a saved place; default: home"), km=("number", "how far to look"))}, power_tool,
+         title="Power cuts", summary="Power cuts near a saved place, their street works, what supplies the place, or past cuts.",
+         phrases=("any power cuts near {place}", "is there a power cut"), kind="query"),
 ]

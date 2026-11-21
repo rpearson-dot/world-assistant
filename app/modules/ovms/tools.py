@@ -31,5 +31,7 @@ async def car_status(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 
 TOOLS: list[Tool] = [
     Tool("car_status", "The car's battery, range, charging, lock state and any warnings, from its OVMS module.",
-         {"type": "object", "properties": _props()}, car_status),
+         {"type": "object", "properties": _props()}, car_status,
+         title="Car status", summary="The car's battery, range, charging, lock state and any warnings, from its OVMS module.",
+         phrases=("what's the car's battery", "is the car locked"), kind="query"),
 ]

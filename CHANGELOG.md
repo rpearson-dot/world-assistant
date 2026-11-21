@@ -4,7 +4,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
-## [0.64.0] - 2026-11-21
+### Added
+
+- **Capability manifest (`GET /v1/capabilities`).** World Assistant now describes everything it can do as a list of
+  typed capabilities — `query` (answers a question), `action` (changes something), `page` (a UI page) and `feed`
+  (what it publishes to Home Assistant) — built from the module declarations, so adding a module adds its capabilities
+  automatically. Each query/action carries an **App-Intent** block (title, one-line summary, sample phrases, parameters
+  and whether it's safe for Siri without confirmation), ready for an iPhone app to turn into Siri shortcuts. The
+  response has a version hash and supports `ETag` / `If-None-Match`, so a client's sync is a cheap `304` when nothing
+  has changed. This is Phase A of the iPhone work; the companion app is a separate project.
+- **Every assistant tool documents itself.** All ~68 tools now carry a title, summary, sample phrases and a kind
+  (read or action); a new test fails if a tool is added without them, so the manifest can never fall behind.
 
 ### Added
 

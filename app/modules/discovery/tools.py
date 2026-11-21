@@ -22,5 +22,7 @@ async def what_is_on_the_network(request: Request, args: dict[str, Any]) -> dict
 
 TOOLS: list[Tool] = [
     Tool("what_is_on_the_network", "What the devices on the home network probably are, and modules that would suit them.",
-         {"type": "object", "properties": _props()}, what_is_on_the_network),
+         {"type": "object", "properties": _props()}, what_is_on_the_network,
+         title="What's on the network", summary="What the devices on the home network probably are, and modules that would suit them.",
+         phrases=("what's on my network", "identify my network devices"), kind="query"),
 ]

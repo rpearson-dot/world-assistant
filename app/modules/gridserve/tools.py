@@ -54,5 +54,7 @@ TOOLS: list[Tool] = [
              connector=("string", "ccs, chademo, type2, or any; default: the car's own (set on the Vehicles page)"),
              vehicle=("string", "id of a saved vehicle whose connector to use"),
              free_only=("boolean", "only sites with a free charger now"),
-             km=("number", "near a place: how far, default 25; along a trip: how far off the route, default 2"))}, ev_tool),
+             km=("number", "near a place: how far, default 25; along a trip: how far off the route, default 2"))}, ev_tool,
+         title="EV chargers", summary="GRIDSERVE EV chargers near a place, along a trip or by name: how many work and are free, how fast, and the price.",
+         phrases=("EV chargers near {place}", "chargers along {trip}"), kind="query"),
 ]

@@ -59,5 +59,7 @@ TOOLS: list[Tool] = [
                                                  words=("string", "what3words three words (///filled.count.soap) instead"),
                                                  about=("string", ("only these parts, comma-separated: stops, buses, "
                                                         "stations, floods, air, rivers, rain, tides, overflows, pollen, "
-                                                        "fuel, chargers, events, roads, power, crime")))}, here_tool),
+                                                        "fuel, chargers, events, roads, power, crime")))}, here_tool,
+         title="What's here", summary="Everything about a point that isn't a saved place — stops, chargers, air, floods, events and more.",
+         phrases=("what's around here", "what's near {postcode}"), kind="query"),
 ]
