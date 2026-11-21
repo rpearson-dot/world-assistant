@@ -4,6 +4,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Changed
+
+- **Clearer tyre setup in the garage.** Editing a tyre now has a **Tube** dropdown (Tubed / Tubeless) instead of a
+  type-it-yourself yes/no box, and width and the other numeric specs are proper number inputs — so a wheel's tube type
+  and tyre width are easy to set per tyre. (The bike's "Its answers" form still carries the front/rear defaults.)
+
 ### Fixed
 
 - **The car's "All metrics" no longer runs off the page.** Long OVMS values (the per-cell voltage and temperature
