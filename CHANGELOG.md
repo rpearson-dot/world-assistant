@@ -4,6 +4,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Changed
+
+- **Planner page reframed around World Assistant's own control.** Now that World Assistant controls the car charger
+  directly (Home Assistant's charger automation having been removed), the planner page drops the "in shadow" framing and
+  the Home-Assistant comparison (the "When they differed" table, the Home Assistant plan column and the agreed-% figures).
+  It now shows World Assistant's plan, why, whether it is acting, and the month-by-month cost.
+
 ### Added
 
 - **Select all / Deselect all for network block suggestions.** The suggested-blocks list (Networking → Pi-hole, and

@@ -1,6 +1,6 @@
-"""The planner page (/planner, a tab of Energy): what World Assistant would do with the car now and why, how often
-that matched Home Assistant's plan, each time they differed; and how predictable evening demand is from the cold.
-The page holds no data and never builds HTML from it."""
+"""The planner page (/planner, a tab of Energy): what World Assistant does with the car now and why, what charging cost
+month by month, and how predictable evening demand is from the cold. The page holds no data and never builds HTML
+from it."""
 
 from __future__ import annotations
 
@@ -37,13 +37,9 @@ p.hint { margin: 7px 0 0; }
 <div class="bar"><input id="t" type="password" placeholder="API token" autocomplete="current-password">
 <button id="go" class="primary" type="button">Load</button></div>
 <p id="msg" class="err"></p>
-<div class="card"><h2>Charging, in shadow</h2>
-  <div class="pair"><div><div class="dim">World Assistant would</div><div class="big" id="wa">–</div><div id="why"></div></div>
-  <div><div class="dim">Home Assistant's plan</div><div class="big" id="ha">–</div><div class="dim" id="agree"></div></div></div>
+<div class="card"><h2>Car charging</h2>
+  <div><div class="dim">World Assistant's plan</div><div class="big" id="wa">–</div><div id="why"></div></div>
   <p class="dim small" id="mode"></p></div>
-<div class="card"><h2>When they differed</h2><table class="t" id="diff"></table>
-  <p class="dim small">Each disagreement once, from when it began. Differences are expected where Home Assistant's own rules
-  differ on purpose (charging from the house battery, the rest after full); the rest show where one is wrong.</p></div>
 <div class="card"><h2>Month by month</h2><p id="sofar"></p><table class="t" id="months"></table>
   <p class="dim small">What charging the car really cost, and what it would have with the planner in charge: the same kWh
   bought at the times it said "charge", at the rates in force. Worked out on the 1st and sent to your phone. An estimate
@@ -76,7 +72,7 @@ p.hint { margin: 7px 0 0; }
   </fieldset>
   <fieldset class="fset"><legend>Control the car charger</legend>
     <label class="chk"><input id="act" type="checkbox"> <span>Let World Assistant start and stop the <strong>car charger</strong> itself</span></label>
-    <p class="dim small hint">In Auto only, and only for a charger on World Assistant's OCPP. Home Assistant's own start and stop then stand aside. This controls the car's charger — never the house battery.</p>
+    <p class="dim small hint">In Auto only, and only for a charger on World Assistant's OCPP. This controls the car's charger — never the house battery.</p>
   </fieldset>
 </form>
 <p><button id="save" type="button">Save</button> <span id="saved" class="dim"></span></p></details>
@@ -110,19 +106,13 @@ async function load() {
     const [c, st] = await Promise.all([api('/v1/planner/charging?days=7'), api('/v1/planner/settings')]);
     const l = c.latest;
     $('wa').textContent = l ? l.plan : 'no decision yet'; $('why').textContent = l ? l.why + ' (' + when(l.at) + ')' : 'The first comes within five minutes of the worker starting.';
-    $('ha').textContent = l && l.ha_plan ? l.ha_plan : '–';
-    $('agree').textContent = c.agreed_pct == null ? '' : 'Agreed ' + c.agreed_pct + '% of ' + c.checks + ' checks in the last 7 days';
-    $('mode').textContent = (c.act ? 'World Assistant is acting on this (in Auto).' : 'Shadow only: World Assistant decides but does not act.') + (l && l.acted ? ' Last: ' + l.acted + '.' : '');
-    const t = $('diff'); t.replaceChildren();
-    if (!c.differences.length) { const r = el('tr'); r.append(el('td', 'No differences in the last 7 days.')); t.append(r); }
-    else { const h = el('tr'); ['From', 'World Assistant', 'Home Assistant', 'Why World Assistant'].forEach(x => h.append(el('th', x))); t.append(h);
-      c.differences.slice().reverse().forEach(d => { const r = el('tr'); [when(d.at), d.planner, d.home_assistant, d.why].forEach(x => r.append(el('td', x))); t.append(r); }); }
+    $('mode').textContent = (c.act ? 'World Assistant is acting on this (in Auto).' : 'Decide-only: World Assistant works out the plan but does not act — turn on "Control the car charger" in Settings to let it.') + (l && l.acted ? ' Last: ' + l.acted + '.' : '');
     FIELDS.forEach(k => { const e = $(k); if (!e || k === 'demand_statistic') return; if (e.type === 'checkbox') e.checked = !!st[k]; else e.value = st[k] ?? ''; });
     const rv = await api('/v1/planner/reviews'), mt = $('months');
     $('sofar').textContent = rv.so_far.summary; mt.replaceChildren();
-    if (rv.months.length) { const h = el('tr'); ['Month', 'Car kWh', 'Real', 'With the planner', 'Difference', 'Agreed'].forEach(x => h.append(el('th', x))); mt.append(h);
+    if (rv.months.length) { const h = el('tr'); ['Month', 'Car kWh', 'Real', 'With the planner', 'Difference'].forEach(x => h.append(el('th', x))); mt.append(h);
       rv.months.forEach(m => { const r = el('tr'); [m.month, m.car_kwh, '£' + m.real_pounds.toFixed(2), '£' + m.planner_pounds.toFixed(2),
-        (m.saving_pounds >= 0 ? '£' + m.saving_pounds.toFixed(2) + ' less' : '£' + (-m.saving_pounds).toFixed(2) + ' more'), m.agreed_pct == null ? '–' : m.agreed_pct + '%'].forEach(x => r.append(el('td', String(x)))); mt.append(r); }); }
+        (m.saving_pounds >= 0 ? '£' + m.saving_pounds.toFixed(2) + ' less' : '£' + (-m.saving_pounds).toFixed(2) + ' more')].forEach(x => r.append(el('td', String(x)))); mt.append(r); }); }
     const d = await api('/v1/planner/demand'), sel = $('demand_statistic');
     sel.replaceChildren(el('option', '(choose)')); sel.firstChild.value = '';
     (d.choices || []).forEach(o => { const e = el('option', o.name + ' (' + o.id + ')'); e.value = o.id; sel.append(e); });
