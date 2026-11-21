@@ -26,7 +26,6 @@ from app.modules.planner import charge, demand, hass
 
 router = APIRouter(prefix="/v1/planner", tags=["planner"], dependencies=[Depends(require_token)])
 KEY = "planner.settings"
-BOOST_KEY = "planner.boost"  # a one-off "charge to 100%" for a long drive; cleared when it gets there or you cancel
 ACTING = "wa:planner:acting"  # set while World Assistant acts; the charger's Home Assistant switch then stands aside
 DEFAULTS: dict[str, Any] = {
     "demand_statistic": "", "demand_days": 90, "evening_from": 16, "evening_to": 19,
@@ -47,17 +46,25 @@ async def settings(conn: Any) -> dict[str, Any]:
     return {**DEFAULTS, **(v or {})}
 
 
-async def boost_on(conn: Any) -> bool:
-    """The one-off "charge to 100%" flag. Its own setting, so saving the planner settings never clears it."""
-    v = (await conn.execute(text("SELECT value FROM app_setting WHERE key = :k"), {"k": BOOST_KEY})).scalar()
-    return bool(json.loads(v) if isinstance(v, str) else v)
+async def _ev_charge(conn: Any) -> dict[str, Any] | None:
+    """The electric vehicle's charge target and boost. The target and the "charge to 100%" boost live on the car now;
+    a missing vehicles module just means the planner falls back to the Home Assistant helper."""
+    try:
+        from app.modules.vehicles import vehicles as vehstore
+
+        return await vehstore.ev_charge(conn)
+    except Exception:  # noqa: BLE001 - no vehicles module or table: fall back below
+        return None
 
 
-async def set_boost(engine: Any, on: bool) -> None:
-    async with engine.begin() as conn:
-        await conn.execute(text(
-            "INSERT INTO app_setting (key, value, updated_at) VALUES (:k, CAST(:v AS jsonb), now()) "
-            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()"), {"k": BOOST_KEY, "v": json.dumps(bool(on))})  # fmt: skip
+async def _clear_boost(engine: Any, vehicle_id: str) -> None:
+    try:
+        from app.modules.vehicles import vehicles as vehstore
+
+        async with engine.begin() as conn:
+            await vehstore.clear_boost(conn, vehicle_id)
+    except Exception:  # noqa: BLE001, S110 - nothing to clear if the vehicles module is gone
+        pass
 
 
 def _num(v: Any) -> float | None:
@@ -138,9 +145,12 @@ async def gather(engine: Any, redis: Any) -> tuple[charge.Now, dict[str, Any]]:
     """What is true now, from World Assistant's own modules where they are on, else from Home Assistant."""
     async with engine.connect() as conn:
         st = await settings(conn)
-        boost = await boost_on(conn)
+        ev = await _ev_charge(conn)  # the electric vehicle's charge target and boost
+    boost = bool(ev and ev.get("charge_boost"))
     n = charge.Now(settings=st)
     info: dict[str, Any] = {"boost": boost}
+    if ev:
+        info["vehicle"] = ev["id"]
     ids = list(HA_IDS) + [e for e in (st["battery_entity"], st["grid_entity"]) if e]
     try:
         ha = await hass.states(engine, ids)
@@ -153,7 +163,8 @@ async def gather(engine: Any, redis: Any) -> tuple[charge.Now, dict[str, Any]]:
     info["ha_plan"] = hv("sensor.wa_car_charging_plan")
     n.status, n.soc = hv("sensor.wa_charger_status"), _num(hv("sensor.wa_car_charge_level"))
     n.car_w = (_num(hv("sensor.wa_charger_power")) or 0.0) * 1000
-    n.target = _num(hv("input_number.wa_ev_target_soc")) or 80.0
+    # the target lives on the car; the Home Assistant helper is a fallback for a home with no electric vehicle saved
+    n.target = (ev.get("target_soc") if ev else None) or _num(hv("input_number.wa_ev_target_soc")) or 80.0
     if boost:  # boost to 100% for a long drive, overriding the usual target until it gets there
         n.target = 100.0
     n.low, n.low_on = _num(hv("input_number.wa_ev_min_soc")) or 20.0, hv("input_boolean.wa_ev_low_enabled") == "on"
@@ -237,8 +248,8 @@ async def planner_tick(ctx: dict[str, Any]) -> Any:
 
 async def tick(engine: Any, redis: Any) -> dict[str, Any]:
     n, info = await gather(engine, redis)
-    if info.get("boost") and n.soc is not None and n.soc >= 99.5:  # reached full: the one-off boost clears itself
-        await set_boost(engine, False)
+    if info.get("boost") and info.get("vehicle") and n.soc is not None and n.soc >= 99.5:  # full: the boost clears itself
+        await _clear_boost(engine, info["vehicle"])
         info["boost"] = False
     plan, why = charge.decide(n)
     await redis.set("wa:planner:solar", "1" if charge.solar_spare(n) else "0", ex=900)
@@ -263,7 +274,7 @@ async def charging(request: Request, days: int = Query(3, ge=1, le=60)) -> dict[
     """The latest decision and why; how often it matched Home Assistant's plan; and each time they differed."""
     async with request.app.state.engine.connect() as conn:
         st = await settings(conn)
-        boost = await boost_on(conn)
+        ev = await _ev_charge(conn)
         rows = (await conn.execute(text(
             "SELECT at, plan, why, ha_plan, mode, acted, inputs FROM planner_decision WHERE at > now() - make_interval(days => :d) "
             "ORDER BY at"), {"d": days})).mappings().all()  # fmt: skip
@@ -275,7 +286,8 @@ async def charging(request: Request, days: int = Query(3, ge=1, le=60)) -> dict[
         if x is False and (prev is None or prev[0]["plan"] != r["plan"] or prev[0]["ha_plan"] != r["ha_plan"] or prev[1] is not False):
             differ.append({"at": r["at"], "planner": r["plan"], "home_assistant": r["ha_plan"], "why": r["why"]})
         prev = (r, x)
-    return {"act": st["act"], "boost": boost, "latest": rows[-1] if rows else None, "checks": len(rows),
+    return {"act": st["act"], "boost": bool(ev and ev.get("charge_boost")), "vehicle": ev["id"] if ev else None,
+            "target_soc": (ev.get("target_soc") if ev else None), "latest": rows[-1] if rows else None, "checks": len(rows),
             "agreed_pct": round(100 * sum(agree) / len(agree)) if agree else None, "differences": differ[-50:]}  # fmt: skip
 
 
@@ -331,18 +343,6 @@ async def put_settings(request: Request, body: SettingsIn) -> dict[str, Any]:
     if not st["act"]:
         await request.app.state.redis.delete(ACTING)
     return st
-
-
-class BoostIn(BaseModel):
-    on: bool
-
-
-@router.post("/boost")
-async def boost(request: Request, body: BoostIn) -> dict[str, Any]:
-    """Boost to 100% for a planned long drive: the planner tops the car up to 100% (at the cheap rate, a free hour or
-    on spare solar) instead of stopping at your usual target, until it gets there or you turn it off."""
-    await set_boost(request.app.state.engine, body.on)
-    return {"boost": body.on}
 
 
 async def demand_job(ctx: dict[str, Any]) -> Any:

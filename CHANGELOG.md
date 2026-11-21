@@ -4,6 +4,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.66.0] - 2026-11-21
+
+### Added
+
+- **The car charger's log now arrives over TCP as well as UDP.** A plain "log server: IP + port" field on a charger
+  usually means TCP syslog, which the listener did not accept; it now listens on both on the same port (host maps the
+  TCP port too). Whatever a charger sends from its address is captured — raw, even before its format is understood — so
+  Logs → Charger finally shows it.
+- **The charge target and "boost to 100%" live on the car.** On the Vehicles page each electric car now has a
+  **Charge to %** (the state of charge to stop at) and a **Boost to 100%** button for a long drive; the planner reads
+  both from the car instead of a Home Assistant helper. The boost has moved off the Charger page onto the car.
+- **Maximum charging current on the Charger page.** Set (or clear) a current limit in amps; World Assistant sends it to
+  the charger as an OCPP charging profile and keeps it. Not every charger honours it, so the page shows the charger's
+  own answer, and the charger's log shows what it then did.
+
 ## [0.65.0] - 2026-11-21
 
 ### Added

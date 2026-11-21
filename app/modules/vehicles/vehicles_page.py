@@ -69,6 +69,7 @@ outstanding recall. Checked every Monday, and with Check now. Needs the keys on 
     <label>Miles per kWh <input id="vmpk" type="number" step="0.1" min="0.5" max="10" placeholder="e.g. 3.6"></label>
     <label>Home electricity, p/kWh <input id="vhome" type="number" step="0.1" min="0" max="200" placeholder="blank: Energy tab"></label>
     <label>Rapid charging <select id="vconn"><option value="">not set</option><option>CCS</option><option>CHAdeMO</option><option>Type 2</option></select></label>
+    <label>Charge to, % <input id="vtarget" type="number" step="1" min="50" max="100" placeholder="blank: 80"></label>
   </span>
   </div>
   <div class="row"><button id="save" class="primary">Add vehicle</button>
@@ -165,6 +166,14 @@ function draw() {
     if (status) sum.append(el('span', status, 'vs' + (c.warnings.length ? ' err' : '')));
     det.append(sum);
     const body = el('div', null, 'body'); body.append(el('div', describe(v)));
+    if (v.type === 'electric') {  // the charge target and the one-off boost to 100% live on the car
+      const cw = el('div', null, 'row');
+      cw.append(el('span', 'Charge to ' + (v.target_soc ?? 80) + '%' + (v.charge_boost ? ' · boosting to 100% for a long drive' : ''), 'dim'));
+      cw.append(button(v.charge_boost ? 'Cancel boost' : 'Boost to 100%',
+        () => run(() => api('POST', '/v1/vehicles/' + v.id + '/boost', { on: !v.charge_boost }), $('cmsg')),
+        v.charge_boost ? 'primary' : null));
+      body.append(cw);
+    }
     if (car) {
       const bits = [car.soc != null && 'battery ' + Math.round(car.soc) + '%', car.range_km != null && 'about ' + Math.round(car.range_km * 0.621) + ' miles',
         car.volts_12v != null && '12 V ' + car.volts_12v.toFixed(2) + ' V', car.charging ? 'charging' : car.charge_state, car.locked === false ? 'unlocked' : car.locked ? 'locked' : null,
@@ -220,7 +229,7 @@ function edit(v, where) {
   $('vname').value = v.name; $('vtype').value = v.type; showType(false);
   if (v.type === 'electric') {
     $('vbat').value = v.battery_kwh ?? ''; $('vsoh').value = v.soh_percent ?? 100; $('vmpk').value = v.miles_per_kwh ?? '';
-    $('vhome').value = v.home_pence_per_kwh ?? ''; $('vconn').value = v.connector || '';
+    $('vhome').value = v.home_pence_per_kwh ?? ''; $('vconn').value = v.connector || ''; $('vtarget').value = v.target_soc ?? '';
   } else { $('vfuel').value = v.fuel; $('vmpg').value = v.mpg ?? ''; $('vown').value = v.fuel_pence_per_litre ?? ''; }
   $('addbtn').hidden = false; where.append($('addveh')); $('vname').focus();
 }
@@ -246,7 +255,7 @@ $('addveh').onsubmit = e => {
   const name = $('vname').value.trim(), type = $('vtype').value;
   const body = type === 'electric'
     ? { name, kind: 'electric', battery_kwh: num('vbat'), soh_percent: num('vsoh') || 100, miles_per_kwh: num('vmpk'),
-        home_pence_per_kwh: num('vhome'), connector: $('vconn').value || null }
+        home_pence_per_kwh: num('vhome'), connector: $('vconn').value || null, target_soc: num('vtarget') || null }
     : { name, kind: type, fuel: $('vfuel').value, mpg: num('vmpg'), fuel_pence_per_litre: type === 'lpg' ? num('vown') : null };
   const id = editing || slug(name);
   if (!id) { vmsg.textContent = 'Give the vehicle a name with at least one letter or digit.'; return; }

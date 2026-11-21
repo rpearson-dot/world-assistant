@@ -278,14 +278,16 @@ services:
       retries: 3
       start_period: 15s
 
-  # The network module's syslog listener (app/modules/network/listener.py): the UniFi gateway sends its logs here.
-  # Only lines from private addresses are kept. WA_SYSLOG_PORT moves the host's port.
+  # The network module's syslog listener (app/modules/network/listener.py): the UniFi gateway and the car charger send
+  # their logs here, over UDP or TCP (the charger's "log server: IP + port" is often TCP). Only lines from private
+  # addresses are kept. WA_SYSLOG_PORT moves the host's port.
   wa-syslog:
     <<: *app
     command: ["python", "-m", "app.modules.network.listener"]
     secrets: [postgres_password, redis_password]
     ports:
       - "${WA_SYSLOG_PORT:-5514}:5514/udp"
+      - "${WA_SYSLOG_PORT:-5514}:5514/tcp"
     depends_on:
       migrate:
         condition: service_completed_successfully

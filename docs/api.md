@@ -410,6 +410,7 @@ pages themselves hold no data: each one calls these endpoints.
 | PUT | `/v1/ocpp/mode` | The master switch: off (the charger refuses to charge), on (charges whenever the car is plugged in) or auto (Home Assistant's charging plan decides). Kept, and applied to every connected charger now. |
 | PUT | `/v1/ocpp/settings` | Which chargers may connect (by id; none listed: any on the home network), how often to ask for meter readings while charging, and whether to publish the charger to Home Assistant. |
 | POST | `/v1/ocpp/{cid}/command` | Any of the commands in protocol.COMMANDS: Reset {type: Soft\|Hard}, GetConfiguration {keys}, ChangeConfiguration {key, value}, TriggerMessage {message}, UnlockConnector, ChangeAvailability {type}, ClearCache. |
+| PUT | `/v1/ocpp/{cid}/current` | Set (or clear, with null) a maximum charging current, sent to the charger as an OCPP charging profile and kept. Not every charger honours it, so the result carries the charger's own answer (Accepted / Rejected / NotSupported), and the charger's log (Logs → Charger) shows what it then did. |
 | GET | `/v1/ocpp/{cid}/events` | Events |
 | GET | `/v1/ocpp/{cid}/messages` | The newest messages either way, exactly as they went. |
 | GET | `/v1/ocpp/{cid}/sessions` | Sessions |
@@ -485,7 +486,6 @@ pages themselves hold no data: each one calls these endpoints.
 
 | Method | Path | What it does |
 |---|---|---|
-| POST | `/v1/planner/boost` | Boost to 100% for a planned long drive: the planner tops the car up to 100% (at the cheap rate, a free hour or on spare solar) instead of stopping at your usual target, until it gets there or you turn it off. |
 | GET | `/v1/planner/charging` | The latest decision and why; how often it matched Home Assistant's plan; and each time they differed. |
 | GET | `/v1/planner/demand` | How predictable evening demand is from the cold (a straight-line fit of each evening's kWh on its heating degree-hours), and tomorrow evening's likely need. Worked out at most every six hours unless fresh. |
 | GET | `/v1/planner/reviews` | Each month (the last 12): what charging the car really cost and what it would have with the planner in charge, worked out on the 1st. Also the month so far. |
@@ -653,6 +653,7 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/vehicles/home-rate` | The rate an electric vehicle's trip cost uses when no home rate is given: the Energy tab's cheapest. |
 | DELETE | `/v1/vehicles/{vehicle_id}` | Delete Vehicle |
 | PUT | `/v1/vehicles/{vehicle_id}` | Put Vehicle |
+| POST | `/v1/vehicles/{vehicle_id}/boost` | The one-off "charge to 100% for a long drive". The planner charges to 100% while it is on, and clears it once the car gets there. |
 
 ## weather
 

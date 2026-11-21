@@ -85,6 +85,7 @@ class VehicleIn(BaseModel):
     miles_per_kwh: float | None = Field(default=None, gt=0.5, lt=10, description="real-world")
     home_pence_per_kwh: float | None = Field(default=None, gt=0, lt=200)
     connector: str | None = Field(default=None, description="rapid charging: CCS, CHAdeMO or Type 2")
+    target_soc: float | None = Field(default=None, ge=50, le=100, description="charge to this %% (electric); blank means the usual 80")
 
     @field_validator("connector")
     @classmethod
@@ -116,6 +117,7 @@ class VehicleIn(BaseModel):
                 raise ValueError("an electric vehicle needs battery_kwh and miles_per_kwh")
             return self
         self.connector = None
+        self.target_soc = None  # a charge target is only meaningful for an electric vehicle
         wanted = self.kind if self.kind in TYPES else None  # "fuel": the type follows the fuel code
         self.kind = "fuel"
         if wanted:
@@ -130,7 +132,7 @@ class VehicleIn(BaseModel):
 
 
 _COLS = ("id, name, kind, fuel, mpg, tank_litres, fuel_pence_per_litre, battery_kwh, soh_percent, miles_per_kwh, "
-         "home_pence_per_kwh, connector")  # fmt: skip
+         "home_pence_per_kwh, connector, target_soc, charge_boost")  # fmt: skip
 
 
 def _shown(row: dict[str, Any]) -> dict[str, Any]:
@@ -181,15 +183,16 @@ async def put_vehicle(vehicle_id: str, body: VehicleIn, request: Request) -> dic
             text(
                 """
                 INSERT INTO vehicle (id, name, kind, fuel, mpg, tank_litres, fuel_pence_per_litre, battery_kwh,
-                                     soh_percent, miles_per_kwh, home_pence_per_kwh, connector)
+                                     soh_percent, miles_per_kwh, home_pence_per_kwh, connector, target_soc)
                 VALUES (:id, :name, :kind, :fuel, :mpg, :tank_litres, :fuel_pence_per_litre, :battery_kwh,
-                        :soh_percent, :miles_per_kwh, :home_pence_per_kwh, :connector)
+                        :soh_percent, :miles_per_kwh, :home_pence_per_kwh, :connector, :target_soc)
                 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, kind = EXCLUDED.kind,
                   fuel = EXCLUDED.fuel, mpg = EXCLUDED.mpg, tank_litres = EXCLUDED.tank_litres,
                   fuel_pence_per_litre = EXCLUDED.fuel_pence_per_litre,
                   battery_kwh = EXCLUDED.battery_kwh, soh_percent = EXCLUDED.soh_percent,
                   miles_per_kwh = EXCLUDED.miles_per_kwh,
-                  home_pence_per_kwh = EXCLUDED.home_pence_per_kwh, connector = EXCLUDED.connector
+                  home_pence_per_kwh = EXCLUDED.home_pence_per_kwh, connector = EXCLUDED.connector,
+                  target_soc = EXCLUDED.target_soc
                 """
             ),
             {"id": vehicle_id, **body.model_dump()},
@@ -203,6 +206,34 @@ async def delete_vehicle(vehicle_id: str, request: Request) -> None:
         result = await conn.execute(text("DELETE FROM vehicle WHERE id = :id"), {"id": vehicle_id})
     if not result.rowcount:
         raise HTTPException(404, "no such vehicle")
+
+
+class BoostIn(BaseModel):
+    on: bool
+
+
+@router.post("/vehicles/{vehicle_id}/boost")
+async def set_boost(vehicle_id: str, body: BoostIn, request: Request) -> dict[str, Any]:
+    """The one-off "charge to 100% for a long drive". The planner charges to 100% while it is on, and clears it once
+    the car gets there."""
+    async with request.app.state.engine.begin() as conn:
+        result = await conn.execute(text("UPDATE vehicle SET charge_boost = :b WHERE id = :id"),
+                                    {"b": body.on, "id": vehicle_id})
+    if not result.rowcount:
+        raise HTTPException(404, "no such vehicle")
+    return {"id": vehicle_id, "charge_boost": body.on}
+
+
+async def ev_charge(conn: Any) -> dict[str, Any] | None:
+    """The electric vehicle's charge settings for the planner: its id, target_soc (None means the usual 80) and
+    charge_boost. The first electric vehicle by name; a single-EV home (the common case) is unambiguous."""
+    row = (await conn.execute(text(
+        "SELECT id, target_soc, charge_boost FROM vehicle WHERE kind = 'ev' ORDER BY name LIMIT 1"))).mappings().first()
+    return dict(row) if row else None
+
+
+async def clear_boost(conn: Any, vehicle_id: str) -> None:
+    await conn.execute(text("UPDATE vehicle SET charge_boost = false WHERE id = :id"), {"id": vehicle_id})
 
 
 async def get_vehicle(request: Request, vehicle_id: str) -> dict[str, Any]:

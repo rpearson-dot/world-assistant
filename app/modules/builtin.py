@@ -385,7 +385,7 @@ BUILTIN: tuple[Module, ...] = (
                    Job("app.modules.planner.review:planner_review", {"day": {1}, "hour": {8}, "minute": {17}, "timeout": 300, "max_tries": 1})),
            tools=("charging_plan", "evening_demand"),
            provides={"assistant.tools": "app.modules.planner.tools:TOOLS"},
-           uses=("octopus", "weather", "ocpp", "ovms", "solar")),
+           uses=("octopus", "weather", "ocpp", "ovms", "solar", "vehicles")),
     Module("tariffs", "Tariff comparison", "Your real half-hourly use priced at every Octopus tariff's rates today (and "
            "any other supplier's you add from a quote), as used and with your house battery moving use into each "
            "tariff's cheap windows, ranked, with the best import and export to move to",

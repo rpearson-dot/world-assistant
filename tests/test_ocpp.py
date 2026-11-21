@@ -38,6 +38,19 @@ def test_frames_are_read_and_written() -> None:
     assert exc.value.unique_id == "keep"  # answered with an error, by its id
 
 
+def test_a_max_current_becomes_a_charging_profile() -> None:
+    sp = protocol.command_payload("SetChargingProfile", {"amps": 16}, transaction_id=None)
+    p = sp["csChargingProfiles"]
+    assert sp["connectorId"] == 0 and p["chargingProfilePurpose"] == "TxDefaultProfile"
+    assert p["chargingProfileId"] == protocol.CURRENT_PROFILE_ID
+    sched = p["chargingSchedule"]
+    assert sched["chargingRateUnit"] == "A" and sched["chargingSchedulePeriod"] == [{"startPeriod": 0, "limit": 16.0}]
+    assert protocol.command_payload("ClearChargingProfile", {}, transaction_id=None) == {"id": protocol.CURRENT_PROFILE_ID}
+    for bad in (0, 200):
+        with pytest.raises(ValueError, match="between 1 and 100"):
+            protocol.command_payload("SetChargingProfile", {"amps": bad}, transaction_id=None)
+
+
 def test_a_frame_is_read_whether_text_or_binary() -> None:
     # some chargers (the Sync EV) send OCPP-J in binary WebSocket frames; receive_text() would raise KeyError('text')
     from starlette.websockets import WebSocketDisconnect

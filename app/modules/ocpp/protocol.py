@@ -17,9 +17,11 @@ from typing import Any
 CALL, RESULT, ERROR = 2, 3, 4
 HEARTBEAT_S = 300
 ID_TAG = "WorldAssistant"  # what World Assistant starts a charge with (the charger has no cards in use)
-# What the central system can ask the charger to do (1.6 core and the trigger, availability and unlock extras)
+CURRENT_PROFILE_ID = 1  # the one charging profile World Assistant sets: a default current limit (amps)
+# What the central system can ask the charger to do (1.6 core and the trigger, availability, unlock and smart-charging extras)
 COMMANDS = ("RemoteStartTransaction", "RemoteStopTransaction", "Reset", "GetConfiguration", "ChangeConfiguration",
-            "TriggerMessage", "UnlockConnector", "ChangeAvailability", "ClearCache")  # fmt: skip
+            "TriggerMessage", "UnlockConnector", "ChangeAvailability", "ClearCache",
+            "SetChargingProfile", "ClearChargingProfile")  # fmt: skip
 
 
 class FrameError(ValueError):
@@ -227,4 +229,16 @@ def command_payload(action: str, args: dict[str, Any], *, transaction_id: int | 
         if kind not in ("Operative", "Inoperative"):
             raise ValueError("availability is Operative or Inoperative")
         return {"connectorId": int(args.get("connector") or 0), "type": kind}
+    if action == "SetChargingProfile":
+        # a default current limit (amps) for every session: a TxDefaultProfile on connector 0, one period from the start
+        amps = float(args["amps"])
+        if not (1.0 <= amps <= 100.0):
+            raise ValueError("a charging current limit is between 1 and 100 amps")
+        return {"connectorId": int(args.get("connector") or 0),
+                "csChargingProfiles": {"chargingProfileId": CURRENT_PROFILE_ID, "stackLevel": 0,
+                                       "chargingProfilePurpose": "TxDefaultProfile", "chargingProfileKind": "Absolute",
+                                       "chargingSchedule": {"chargingRateUnit": "A",
+                                                            "chargingSchedulePeriod": [{"startPeriod": 0, "limit": round(amps, 1)}]}}}  # fmt: skip
+    if action == "ClearChargingProfile":
+        return {"id": CURRENT_PROFILE_ID}
     return {}
