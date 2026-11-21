@@ -92,9 +92,11 @@ def words(part: str, d: dict[str, Any]) -> str:
         w = d.get("warnings") or []
         return "\n".join(f"{x['severity']}: {x['area']}" for x in w[:3]) if w else "No flood warnings here."
     if part == "air":
+        nk = d.get("nearest_km")
         if d.get("index") is None:
-            return "No air quality station near enough."
-        return f"Index {d['index']} ({d.get('band', '').lower()})" + (f", worst {d['worst']}" if d.get("worst") else "") + "."
+            return d.get("note") or "No recent air quality reading near here."
+        return (f"Index {d['index']} ({d.get('band', '').lower()})" + (f", worst {d['worst']}" if d.get("worst") else "")
+                + (f" (nearest sensor {_mi(nk)})" if nk is not None else "") + ".")
     if part == "rivers":
         r = d.get("rivers") or []
         return "\n".join(f"{x.get('river') or x.get('station')}: {x.get('state') or 'level ' + str(x.get('level_m'))}"

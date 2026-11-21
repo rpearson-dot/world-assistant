@@ -156,7 +156,8 @@ def upcoming(out: dict[str, Any], now: datetime) -> dict[str, Any]:
 
     events = out.get("events") or []
     kept = [e for e in events if not started(e)]
-    return {**out, "events": kept, "started": len(events) - len(kept)} if len(kept) != len(events) else out
+    # Keep count in step with the list: it is shown as "N of total", so it must match what is rendered.
+    return {**out, "events": kept, "count": len(kept), "started": len(events) - len(kept)} if len(kept) != len(events) else out
 
 
 async def apply_mutes(engine: Any, out: dict[str, Any], show: bool = False) -> dict[str, Any]:
@@ -358,6 +359,7 @@ PAGE = """<!doctype html>
 <script>
 const $ = id => document.getElementById(id), tok = $('t'), msg = $('msg');
 try { tok.value = sessionStorage.getItem('wa_token') || ''; } catch (e) {}
+let shown = 50;  // how many to display; "Show more" raises it (the API caps at 100)
 const TYPES = {LIVE:'Live music', CLUB:'Club nights', FEST:'Festivals', COMEDY:'Comedy', THEATRE:'Theatre', SPORT:'Sport',
   KIDS:'Kids', ARTS:'Arts', EXPER:'Days out', EXHIB:'Exhibitions', BARPUB:'Bar and pub', DATE:'Dating', LGB:'LGBT'};
 for (const [k, v] of Object.entries(TYPES)) $('type').append(new Option(v, k));
@@ -406,6 +408,7 @@ async function search() {
   if ($('type').value) p.set('type', $('type').value);
   if ($('kw').value.trim()) p.set('keyword', $('kw').value.trim());
   if ($('showmuted').checked) p.set('show_muted', 'true');
+  p.set('limit', shown);
   $('note').textContent = 'Searching...';
   try {
     const d = await get('/v1/events/near?' + p);
@@ -427,12 +430,18 @@ async function search() {
       c.append(row);
       $('list').append(c);
     }
+    // More to see: the API gives at most 100, so offer to raise the shown count when the list is full and capped below that.
+    if (d.events.length >= shown && shown < 100 && d.total > d.events.length) {
+      const more = el('button', null, 'Show more (' + d.events.length + ' of ' + d.total + ')'); more.type = 'button';
+      more.onclick = () => { shown = 100; search(); };
+      const wrap = el('div', 'row'); wrap.append(more); $('list').append(wrap);
+    }
     if (location.hash.startsWith('#ev-')) { const t = document.getElementById(location.hash.slice(1));
       if (t) { t.classList.add('target'); t.scrollIntoView({ block: 'center' }); } else msg.textContent = 'That event is no longer listed here (past, muted, or outside these settings).'; }
     if (!d.count) msg.textContent = 'Nothing found. Try more days or a wider radius.';
   } catch (e) { $('note').textContent = ''; msg.textContent = e.message; }
 }
-$('go').onclick = load; $('search').onclick = search;
+$('go').onclick = load; $('search').onclick = () => { shown = 50; search(); };
 if (tok.value) load();
 </script></main></body></html>"""
 

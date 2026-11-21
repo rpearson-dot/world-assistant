@@ -120,6 +120,31 @@ async def test_no_recent_reading_says_so() -> None:
     assert r["index"] is None and "six hours" in r["note"]
 
 
+def far_only() -> httpx.MockTransport:
+    def answer(req: httpx.Request) -> httpx.Response:
+        if req.url.path.endswith("/stations"):
+            return httpx.Response(200, json=[
+                {"properties": {"id": 5, "label": "Distant Town"}, "geometry": {"coordinates": [-0.25, 51.65]}}])  # ~30 km north
+        if req.url.path.endswith("/timeseries"):
+            return httpx.Response(200, json=[
+                {"id": "ts_no2", "uom": "ug.m-3", "lastValue": {"timestamp": MS(NOW - timedelta(minutes=30)), "value": 40.0},
+                 "parameters": {"phenomenon": {"label": "Nitrogen dioxide (air)"}}}])  # fmt: skip
+        return httpx.Response(404)
+    return httpx.MockTransport(answer)
+
+
+async def test_the_nearest_station_is_used_however_far_it_is() -> None:
+    # The fix: no arbitrary radius — the nearest station is used even when it is well beyond the old 20 km cap, and its
+    # distance is reported so it is clear how far away it is.
+    C.forget()
+    async with httpx.AsyncClient(transport=far_only()) as c:
+        r = await C.air_near(c, *HOME, now=NOW)
+    assert r["index"] is not None  # not a "none within 20 km" note
+    no2 = r["readings"]["no2"]
+    assert no2["station"] == "Distant Town" and no2["station_km"] > 20
+    assert r["nearest_km"] == no2["station_km"] and r["nearest_km"] > 20
+
+
 def ea() -> httpx.MockTransport:
     base = "http://environment.data.gov.uk/flood-monitoring/id/measures/"
 

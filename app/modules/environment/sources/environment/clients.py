@@ -193,11 +193,12 @@ async def air_near(client: httpx.AsyncClient, lat: float, lon: float, km: float 
     for f in stations:
         pt = station_point(f)
         sid = (f.get("properties") or {}).get("id")
-        if pt and sid is not None and (d := km_between(lat, lon, *pt)) <= km:
-            placed.append((d, str(sid), (f.get("properties") or {}).get("label") or str(sid), pt))
-    placed.sort()
+        if pt and sid is not None:
+            placed.append((km_between(lat, lon, *pt), str(sid), (f.get("properties") or {}).get("label") or str(sid), pt))
+    placed.sort()  # nearest first; no arbitrary radius — the closest stations are used however far they are, and each
+    nearest_km = round(placed[0][0], 1) if placed else None  # reading carries its own station_km so the distance shows
     readings: dict[str, dict[str, Any]] = {}
-    for dist, sid, label, pt in placed[:8]:
+    for dist, sid, label, pt in placed[:10]:
         if len(readings) == len(POLLUTANTS):
             break
         series = await _json(client, f"{UKAIR}/timeseries", {"station": sid, "expanded": "true"})
@@ -220,11 +221,13 @@ async def air_near(client: httpx.AsyncClient, lat: float, lon: float, km: float 
                 "station": label, "station_km": round(dist, 1), "station_lat": pt[0], "station_lon": pt[1],
             }  # fmt: skip
     if not readings:
-        return {"index": None, "band": None, "readings": {}, "source": UKAIR_ATTRIBUTION,
-                "note": f"no station within {km:g} km has a reading from the last six hours"}  # fmt: skip
+        note = (f"the nearest station is {nearest_km:g} km away and has no reading from the last six hours"
+                if nearest_km is not None else "no station has reported a reading in the last six hours")
+        return {"index": None, "band": None, "readings": {}, "nearest_km": nearest_km, "source": UKAIR_ATTRIBUTION,
+                "note": note}  # fmt: skip
     top = max(readings.values(), key=lambda r: r["index"])
     return {"index": top["index"], "band": daqi_band(top["index"]), "worst": top["pollutant"], "readings": readings,
-            "source": UKAIR_ATTRIBUTION}  # fmt: skip
+            "nearest_km": nearest_km, "source": UKAIR_ATTRIBUTION}  # fmt: skip
 
 
 # --- rivers, rain and tides ---------------------------------------------------------------------------------------

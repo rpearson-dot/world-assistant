@@ -2,6 +2,22 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **The car's "All metrics" no longer runs off the page.** Long OVMS values (the per-cell voltage and temperature
+  arrays) now wrap in a tidy key/value grid instead of stretching the Vehicles page sideways.
+- **The Events page shows as many events as it says.** The count is now in step with the list (it was counting events
+  that a later "today, already started" filter removed), and a **Show more** button raises the number shown (up to the
+  API's 100) so you can get past the first screenful of a long list.
+
+### Changed
+
+- **Air quality finds the nearest station, however far it is.** Instead of reporting "none within 20 km", the air
+  reading now uses the closest station(s) whatever the distance and shows how far away each is — on the Environment
+  page and in Here.
+
 ## [0.62.0] - 2026-11-16
 
 ### Added
