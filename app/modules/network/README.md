@@ -9,6 +9,7 @@ Turned on with the UniFi gateway log, Pi-hole or Discovery. Nothing goes to Home
 | Role | Processor: works from other data |
 | Reads | what the UniFi gateway log and Pi-hole see |
 | Gives | notifications: a new device on the network |
+| Uses when there | [ocpp](../ocpp/) |
 | Endpoints | `/v1/network`, `/network` |
 | Scheduled jobs | `network_housekeep` |
 | Assistant tools | `network_devices` |

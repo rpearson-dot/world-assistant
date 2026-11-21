@@ -25,6 +25,7 @@ How to use it: [docs/ocpp.md](../../../docs/ocpp.md).
 - `protocol.py`: OCPP 1.6J, the part a home charger needs, as pure functions: reading and writing frames, the central system's answer to each thing a charger says, and...
 - `server.py`: World Assistant as the charger's central system: the charger connects to ws://<server>:8010/ocpp/<its id> and stays connected. Everything it says and...
 - `store.py`: The charger's record (migration 0049). Messages, events and sessions are only added to; ocpp_charger holds how each charger stands now.
+- `syslog.py`: Reading one syslog line from the charger. Pure, and self-contained (no other module): ordinary syslog, so it belongs to no feature.
 - `tools.py`: The assistant's tools for this module, served with the rest over MCP (/mcp) and to Siri (/v1/ask).
 
 _Written by `scripts/module-readmes.py` from the module's declaration (app/modules/builtin.py) and its files; run it after changing either._
