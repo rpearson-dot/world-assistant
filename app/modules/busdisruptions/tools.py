@@ -28,5 +28,7 @@ TOOLS: list[Tool] = [
     Tool("bus_disruptions", "Published bus disruptions near your saved places: diversions, closed stops, changes.",
          {"type": "object", "properties": _props(place=("string", "only those nearest this saved place"),
                                                  line=("string", "only those affecting this line"),
-                                                 km=("number", "only within this distance of the place"))}, bus_disruptions_tool),
+                                                 km=("number", "only within this distance of the place"))}, bus_disruptions_tool,
+         title="Bus disruptions", summary="Published bus disruptions near your places — diversions, closed stops, changes.",
+         phrases=("any bus disruptions near {place}", "is the {line} disrupted"), kind="query"),
 ]

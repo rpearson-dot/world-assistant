@@ -43,7 +43,9 @@ async def list_options(request: Request, args: dict[str, Any]) -> dict[str, Any]
 
 TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool("list_options", "List the saved places, vehicles, trips, train boards and bus trackers (their ids).",
-         {"type": "object", "properties": {}}, list_options),
+         {"type": "object", "properties": {}}, list_options,
+         title="What's saved", summary="Lists the saved places, vehicles, trips, train boards and bus trackers you can refer to.",
+         phrases=("what have I got saved", "list my places and vehicles"), kind="query"),
 ]}  # fmt: skip
 
 # The tools in app/assistant_more.py (shopping, floods, roads, buses, stops, the graph, adding places and trips).

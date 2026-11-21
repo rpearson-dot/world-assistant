@@ -35,5 +35,7 @@ async def pollen_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 
 TOOLS: list[Tool] = [
     Tool("pollen", "Pollen levels and allergy risk near a saved place, today and the next three days.",
-         {"type": "object", "properties": _props(place=("string", "id of a saved place; default: home"))}, pollen_tool),
+         {"type": "object", "properties": _props(place=("string", "id of a saved place; default: home"))}, pollen_tool,
+         title="Pollen", summary="Pollen levels and allergy risk near a saved place, today and the next three days.",
+         phrases=("what's the pollen like", "pollen near {place}"), kind="query"),
 ]

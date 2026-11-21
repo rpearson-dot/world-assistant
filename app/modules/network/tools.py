@@ -24,5 +24,7 @@ async def network_devices(request: Request, args: dict[str, Any]) -> dict[str, A
 
 TOOLS: list[Tool] = [
     Tool("network_devices", "Which devices are on the home network now, and any that joined for the first time today.",
-         {"type": "object", "properties": _props()}, network_devices),
+         {"type": "object", "properties": _props()}, network_devices,
+         title="Devices on the network", summary="Which devices are on the home network now, and any that joined for the first time today.",
+         phrases=("what's on my network now", "any new devices today"), kind="query"),
 ]

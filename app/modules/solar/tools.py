@@ -23,5 +23,7 @@ async def solar_forecast(request: Request, args: dict[str, Any]) -> dict[str, An
 
 TOOLS: list[Tool] = [
     Tool("solar_forecast", "How much the solar panels should make today (and what is still to come) and tomorrow.",
-         {"type": "object", "properties": _props()}, solar_forecast),
+         {"type": "object", "properties": _props()}, solar_forecast,
+         title="Solar forecast", summary="How much the solar panels should make today (and what's still to come) and tomorrow.",
+         phrases=("how much solar today", "solar forecast for tomorrow"), kind="query"),
 ]

@@ -19,5 +19,7 @@ async def pihole_groups(request: Request, args: dict[str, Any]) -> dict[str, Any
 
 TOOLS: list[Tool] = [
     Tool("pihole_groups", "Your Pi-hole groups (Kids, Adults, IoT...), their devices, and how much got past your lists this week.",
-         {"type": "object", "properties": _props()}, pihole_groups),
+         {"type": "object", "properties": _props()}, pihole_groups,
+         title="Pi-hole groups", summary="Your Pi-hole groups, their devices, and how much got past your blocklists this week.",
+         phrases=("show my Pi-hole groups", "how much was blocked this week"), kind="query"),
 ]

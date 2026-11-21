@@ -34,5 +34,7 @@ async def postcode_tool(request: Request, args: dict[str, Any]) -> dict[str, Any
 TOOLS: list[Tool] = [
     Tool("postcode", "Where a UK postcode is, or the nearest postcode to a saved place (from the local Code-Point Open table).",
          {"type": "object", "properties": _props(postcode=("string", "a UK postcode, e.g. SW1A 2AA"), place=PLACE)},
-         postcode_tool),
+         postcode_tool,
+         title="Postcode location", summary="Where a UK postcode is, or the nearest postcode to a saved place.",
+         phrases=("where is {postcode}", "what's the postcode for {place}"), kind="query"),
 ]

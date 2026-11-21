@@ -31,5 +31,7 @@ async def ecodan_status(request: Request, args: dict[str, Any]) -> dict[str, Any
 
 TOOLS: list[Tool] = [
     Tool("ecodan_status", "What the Ecodan heat pump shows: hot-water tank temperature and target, and whether it is heating water now.",
-         {"type": "object", "properties": _props()}, ecodan_status),
+         {"type": "object", "properties": _props()}, ecodan_status,
+         title="Heat pump", summary="The Ecodan heat pump's hot-water tank temperature and target, and whether it's heating water.",
+         phrases=("what's the heat pump doing", "hot water tank temperature"), kind="query"),
 ]

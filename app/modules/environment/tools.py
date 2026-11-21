@@ -113,23 +113,33 @@ TOOLS: list[Tool] = [
     Tool("air_quality", "Air quality near a saved place: Defra's Daily Air Quality Index (1-10) and the NO2, ozone, PM2.5 "
          "and PM10 readings it comes from, from the nearest monitoring stations.",
          {"type": "object", "properties": _props(place=PLACE, km=("number", "how far to look for stations, default 20"))},
-         air_quality_tool),
+         air_quality_tool,
+         title="Air quality", summary="Air quality near a saved place — the index and the pollutant readings behind it.",
+         phrases=("what's the air quality near {place}", "is the air clean today"), kind="query"),
     Tool("river_levels", "River levels near a saved place (the level, whether it is low, normal or high for there, and rising "
          "or falling), river flow where measured (m³/s, compared with its usual flows), and the rain at the nearest gauge. "
          "England only.",
          {"type": "object", "properties": _props(place=PLACE, km=("number", "how far to look for river gauges, default 5"))},
-         river_levels_tool),
+         river_levels_tool,
+         title="River levels", summary="River levels and flow near a saved place, and the rain at the nearest gauge.",
+         phrases=("river levels near {place}", "is the river high"), kind="query"),
     Tool("tides", "The nearest tide gauge to a saved place: the measured level and whether it is rising or falling (not a "
          "forecast of high water). England only.",
-         {"type": "object", "properties": _props(place=PLACE, km=("number", "how far to look, default 20"))}, tides_tool),
+         {"type": "object", "properties": _props(place=PLACE, km=("number", "how far to look, default 20"))}, tides_tool,
+         title="Tides", summary="The nearest tide gauge to a saved place — the measured level and whether it's rising or falling.",
+         phrases=("what's the tide doing near {place}", "is the tide coming in"), kind="query"),
     Tool("storm_overflows", "Storm overflows (sewage spills) near a saved place and on the watched rivers: which are "
          "discharging now, which did in the last 48 hours, which monitors are offline. Thames Water's, from the National "
          "Storm Overflow Hub.",
          {"type": "object", "properties": {**_props(place=PLACE, km=("number", "how far to look, default 3")),
                                            "rivers": RIVER_LIST}},
-         storm_overflows_tool),
+         storm_overflows_tool,
+         title="Storm overflows", summary="Sewage spills near a saved place and on the watched rivers — which are discharging now or did recently.",
+         phrases=("any sewage spills near {place}", "storm overflows near me"), kind="query"),
     Tool("watch_rivers", "Set the rivers whose storm overflows to watch (within 15 km of home), e.g. Hogsmill and Thames. "
          "An empty list stops watching rivers.",
          {"type": "object", "properties": {"rivers": RIVER_LIST}, "required": ["rivers"]},
-         watch_rivers_tool),
+         watch_rivers_tool,
+         title="Watch rivers for spills", summary="Sets which rivers' storm overflows to watch near home.",
+         phrases=("watch these rivers for spills", "stop watching rivers"), kind="action"),
 ]

@@ -34,5 +34,7 @@ async def conditions_tool(request: Request, args: dict[str, Any]) -> dict[str, A
 TOOLS: list[Tool] = [
     Tool("road_conditions", "Road works, closures, incidents and flood warnings on a saved trip's route, now and planned. No trip means all of them.",
          {"type": "object", "properties": _props(trip=("string", "id of a saved routed trip; default: all"),
-                                                  days=("number", "how far ahead to look for planned works, default 7"))}, conditions_tool),
+                                                  days=("number", "how far ahead to look for planned works, default 7"))}, conditions_tool,
+         title="Road conditions on a trip", summary="Road works, closures, incidents and flood warnings on a saved trip's route.",
+         phrases=("road conditions on {trip}", "any holdups on my trip"), kind="query"),
 ]

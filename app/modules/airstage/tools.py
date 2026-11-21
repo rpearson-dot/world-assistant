@@ -39,12 +39,16 @@ async def aircon_set(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 
 TOOLS: list[Tool] = [
     Tool("aircon", "The air conditioners: on or off, mode, target and the temperature inside and outside.",
-         {"type": "object", "properties": _props()}, aircon),
+         {"type": "object", "properties": _props()}, aircon,
+         title="Air conditioning", summary="Whether each air conditioner is on, its mode and target, and the temperature inside and out.",
+         phrases=("what's the aircon doing", "is the air conditioning on"), kind="query"),
     Tool("aircon_set", "Change an air conditioner: power on or off, mode (auto, heat, cool, dry, fan_only), target "
          "temperature in °C (half degrees), fan (auto, quiet, low, medium, high). 'unit' is its id from aircon.",
          {"type": "object", "properties": _props(unit=("string", "the unit's id"), power=("boolean", "on or off"),
                                                   mode=("string", "auto, heat, cool, dry or fan_only"),
                                                   target_c=("number", "target temperature, °C"),
                                                   fan=("string", "auto, quiet, low, medium or high")), "required": ["unit"]},
-         aircon_set),
+         aircon_set,
+         title="Set the air conditioning", summary="Turn an air conditioner on or off and set its mode, target temperature and fan.",
+         phrases=("set the aircon to {target_c}", "turn the air conditioning off"), kind="action"),
 ]

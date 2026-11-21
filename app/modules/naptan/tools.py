@@ -35,5 +35,7 @@ TOOLS: list[Tool] = [
     Tool("stops_near", "The nearest bus stops, stations and other stops to a saved place (NaPTAN).",
          {"type": "object", "properties": _props(place=PLACE, km=("number", "how far, default 0.5"),
                                                  kind=("string", "optional: bus_stop, bus_station, rail, metro, ferry or air"))},
-         stops_tool),
+         stops_tool,
+         title="Stops nearby", summary="The nearest bus stops, stations and other stops to a saved place.",
+         phrases=("stops near {place}", "nearest bus stop"), kind="query"),
 ]

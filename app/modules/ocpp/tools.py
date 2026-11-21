@@ -36,5 +36,7 @@ async def charger(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 TOOLS: list[Tool] = [
     Tool("charger", "The car charger: whether it is connected and charging, its power, and how often it has restarted, "
          "dropped off or reported a fault this week (World Assistant's own OCPP server).",
-         {"type": "object", "properties": _props()}, charger),
+         {"type": "object", "properties": _props()}, charger,
+         title="Car charger", summary="Whether the car charger is connected and charging, its power, and recent restarts, drops and faults.",
+         phrases=("is the car charging", "what's the charger doing"), kind="query"),
 ]

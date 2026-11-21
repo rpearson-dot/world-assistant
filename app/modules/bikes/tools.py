@@ -141,11 +141,15 @@ async def pressure_tool(request: Request, args: dict[str, Any]) -> dict[str, Any
 ACTIONS = "replaced, serviced, checked, charged, topped_up, bled, measured_ok, measured (with reading), cost, note or crash"
 TOOLS: list[Tool] = [
     Tool("bikes", "The bike garage: each bike, what is due or coming up, and rides to confirm as wet or dry.",
-         {"type": "object", "properties": _props(rider=("string", "the rider (needed when there is more than one)"))}, bikes_tool),
+         {"type": "object", "properties": _props(rider=("string", "the rider (needed when there is more than one)"))}, bikes_tool,
+         title="Bike garage", summary="Each bike, what's due or coming up, and rides to confirm as wet or dry.",
+         phrases=("what's due on my bikes", "show the bike garage"), kind="query"),
     Tool("bike_due", "What is due on the bikes (parts and services at 90% of their life or close to its end), with a spare "
          "from the shelf when there is one.",
          {"type": "object", "properties": _props(rider=("string", "the rider"), coming=("boolean", "include what is coming up"))},
-         due_tool),
+         due_tool,
+         title="What's due on the bikes", summary="Parts and services near the end of their life, with a spare from the shelf when there is one.",
+         phrases=("what's due on the bikes", "anything coming up on my bikes"), kind="query"),
     Tool("bike_service", "Log what was done to a bike part (acts: records it, restarts the part's count; a replacement uses a "
          f"spare from the shelf when there is one). Actions: {ACTIONS}. Parts are named by their label (\"Chain B\", "
          "\"Battery A\") or kind (\"front pads\").",
@@ -156,14 +160,20 @@ TOOLS: list[Tool] = [
                                reading=("number", "with measured: a chain checker's stretch (%), e.g. 0.25"),
                                cost=("number", "what it cost, £"), note=("string", "a note"),
                                brand=("string", "a new part's brand"), model=("string", "a new part's model"),
-                               price=("number", "a new part's price, £"))}, service_tool),
+                               price=("number", "a new part's price, £"))}, service_tool,
+         title="Log bike maintenance", summary="Records what was done to a bike part and restarts its wear count; a replacement takes a spare from the shelf.",
+         phrases=("log new {part}", "I replaced the {part}"), kind="action"),
     Tool("bike_ride", "Log a ride on a bike (acts: adds it; outdoors, a wet suggestion comes from the rain then).",
          {"type": "object", "required": ["km"],
           "properties": _props(km=("number", "distance in km"), bike=("string", "which bike"), hours=("number", "moving time, hours"),
                                when=("string", "start, ISO time (default now)"), indoor=("boolean", "on a trainer"),
-                               wet=("boolean", "was it wet"), rider=("string", "the rider"))}, ride_tool),
+                               wet=("boolean", "was it wet"), rider=("string", "the rider"))}, ride_tool,
+         title="Log a ride", summary="Adds a ride on a bike; outdoors, a wet suggestion comes from the rain.",
+         phrases=("log a {km} km ride", "I rode {km} km"), kind="action"),
     Tool("tyre_pressure", "Tyre pressures for each bike's fitted wheels: the starting ones from width, tubeless, the kind of "
          "riding and weight, or the ones set on the page.",
          {"type": "object", "properties": _props(bike=("string", "one bike"), rider=("string", "the rider"),
-                                                 today=("string", "today's riding: road, gravel or wet"))}, pressure_tool),
+                                                 today=("string", "today's riding: road, gravel or wet"))}, pressure_tool,
+         title="Tyre pressures", summary="Suggested tyre pressures for each bike's wheels, from width, tubeless, riding and weight.",
+         phrases=("tyre pressures for {bike}", "what pressure for gravel today"), kind="query"),
 ]

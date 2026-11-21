@@ -22,5 +22,7 @@ async def weather(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 
 TOOLS: list[Tool] = [
     Tool("weather", "The weather at home now, today and the next days (temperature, rain, sun, how cold the evenings will be).",
-         {"type": "object", "properties": _props()}, weather),
+         {"type": "object", "properties": _props()}, weather,
+         title="Weather", summary="The weather at home now, today and the next days — temperature, rain, sun and how cold the evenings will be.",
+         phrases=("what's the weather", "will it rain today"), kind="query"),
 ]

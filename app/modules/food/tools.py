@@ -45,8 +45,12 @@ TOOLS: list[Tool] = [
                                                  postcode=("string", "a UK postcode instead"),
                                                  place=("string", "a saved place's name instead"),
                                                  name=("string", "the business's name, or part of it"),
-                                                 miles=("number", "how far, default 0.5"))}, food_hygiene_tool),
+                                                 miles=("number", "how far, default 0.5"))}, food_hygiene_tool,
+         title="Food hygiene ratings", summary="Food hygiene ratings of restaurants, takeaways and shops near a place; name one to look it up.",
+         phrases=("food hygiene near {place}", "hygiene rating for {name}"), kind="query"),
     Tool("food_alerts", "The Food Standards Agency's latest allergy alerts and product recalls, and any that look like "
          "something on the shopping list or among the usual products (checked each morning).",
-         {"type": "object", "properties": _props(check=("boolean", "check the FSA now first"))}, food_alerts_tool),
+         {"type": "object", "properties": _props(check=("boolean", "check the FSA now first"))}, food_alerts_tool,
+         title="Food alerts", summary="The FSA's latest allergy alerts and product recalls, and any matching your shopping.",
+         phrases=("any food recalls", "food safety alerts"), kind="query"),
 ]

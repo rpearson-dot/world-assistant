@@ -35,5 +35,7 @@ async def live_buses_tool(request: Request, args: dict[str, Any]) -> dict[str, A
 TOOLS: list[Tool] = [
     Tool("live_buses_near", "Buses reporting their position near a saved place right now, anywhere in Great Britain.",
          {"type": "object", "properties": _props(place=PLACE, km=("number", "how far, default 1"),
-                                                 line=("string", "only this line, e.g. 213"))}, live_buses_tool),
+                                                 line=("string", "only this line, e.g. 213"))}, live_buses_tool,
+         title="Buses near a place", summary="Buses reporting their position near a saved place right now, anywhere in Britain.",
+         phrases=("any buses near {place}", "live buses near me"), kind="query"),
 ]

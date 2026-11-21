@@ -41,5 +41,7 @@ async def chatty_devices(request: Request, args: dict[str, Any]) -> dict[str, An
 TOOLS: list[Tool] = [
     Tool("chatty_devices", "Which devices on the home network talk to the most outside hosts, from the UniFi gateway's "
                            "firewall log — to spot a chatty IoT device worth a firewall block.",
-         {"type": "object", "properties": _props()}, chatty_devices),
+         {"type": "object", "properties": _props()}, chatty_devices,
+         title="Chatty devices", summary="Which devices talk to the most outside hosts — to spot a chatty IoT device worth blocking.",
+         phrases=("which devices are chatty", "noisiest devices on my network"), kind="query"),
 ]

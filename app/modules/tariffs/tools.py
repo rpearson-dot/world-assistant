@@ -32,5 +32,7 @@ async def best_tariff(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 
 TOOLS: list[Tool] = [
     Tool("best_tariff", "Which electricity tariff (import and export) would cost least for this house's real use, at today's "
-         "rates, and the saving against the current one.", {"type": "object", "properties": _props()}, best_tariff),
+         "rates, and the saving against the current one.", {"type": "object", "properties": _props()}, best_tariff,
+         title="Best tariff", summary="Which electricity tariff would cost least for this house's real use, and the saving.",
+         phrases=("what's the best tariff for us", "could I save on another tariff"), kind="query"),
 ]

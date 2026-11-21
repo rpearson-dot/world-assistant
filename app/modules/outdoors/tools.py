@@ -87,13 +87,19 @@ TOOLS: list[Tool] = [
     Tool("outdoors", "The family's Outdoors list in KitchenOwl, priced every day at GO Outdoors, Decathlon, Bikesy (with "
          "the shop each deal is at), Sigma Sports and Tradeinn: each thing's price now, the lowest seen, sale prices, "
          "stock, price drops this week, and the preferred local shop's price (Sigma Sports) even when dearer.",
-         {"type": "object", "properties": _props(name=("string", "just this item (any part of its name)"))}, outdoors_tool),
+         {"type": "object", "properties": _props(name=("string", "just this item (any part of its name)"))}, outdoors_tool,
+         title="Outdoors list prices", summary="The family's Outdoors list, priced across several shops — price now, lowest seen, sales and drops.",
+         phrases=("what's on the outdoors list", "price of {name} outdoors"), kind="query"),
     Tool("outdoors_add", "Add something to the Outdoors list in KitchenOwl (acts: adds it there) and price it now. Give "
          "a GO Outdoors or Decathlon product link to follow that product exactly; otherwise GO Outdoors is searched.",
          {"type": "object", "properties": _props(name=("string", "what you want, e.g. Two-man tent"),
                                                  link=("string", "a GO Outdoors or Decathlon product link"),
                                                  max_price=("number", "the most you would pay, £")),
-          "required": ["name"]}, outdoors_add_tool),
+          "required": ["name"]}, outdoors_add_tool,
+         title="Add to the Outdoors list", summary="Adds something to the Outdoors list and prices it now.",
+         phrases=("add {name} to the outdoors list", "put {name} on outdoors"), kind="action"),
     Tool("outdoors_check", "Price everything on the Outdoors list now and say what has got cheaper (it is also "
-         "checked every morning).", {"type": "object", "properties": {}}, outdoors_check_tool),
+         "checked every morning).", {"type": "object", "properties": {}}, outdoors_check_tool,
+         title="Check outdoors prices", summary="Prices everything on the Outdoors list now and says what's got cheaper.",
+         phrases=("check the outdoors prices", "anything cheaper on outdoors"), kind="query"),
 ]

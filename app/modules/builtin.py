@@ -59,6 +59,7 @@ CORE = Module(
         "app.places:router", "app.map_layers:router", "app.map_page:page_router", "app.assistant:router",
         "app.places:page_router", "app.settings_page:page_router", "app.webapp:router",
         "app.modules.routes:router", "app.modules.routes:page_router", "app.notify:router", "app.watchdog:router", "app.clients:router",
+        "app.capabilities:router",
         "app.home_page:page_router", "app.climate_page:page_router", "app.networking_page:page_router",
         "app.outside.api:router", "app.outside.pages:page_router",
     ),

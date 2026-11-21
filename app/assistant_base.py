@@ -26,6 +26,13 @@ class Tool:
     description: str
     schema: dict[str, Any]
     run: Callable[[Request, dict[str, Any]], Awaitable[dict[str, Any]]]
+    # App-Intent metadata (for /v1/capabilities and an iOS Siri bridge). Optional on the type so existing positional
+    # constructions stay valid; the enforcement test (tests/test_capabilities.py) requires them on every tool.
+    title: str = ""  # a short label, e.g. "Air quality near a place"
+    summary: str = ""  # one line of what it can do, shown to the user in the app
+    phrases: tuple[str, ...] = ()  # sample things to say, {slots} matching the schema, e.g. "air quality at {place}"
+    kind: str = "query"  # "query" reads/answers; "action" changes something in the real world
+    siri_safe: bool = True  # a read, or a safe action; False = a change that should confirm first
 
 
 def _props(**fields: tuple[str, str]) -> dict[str, Any]:

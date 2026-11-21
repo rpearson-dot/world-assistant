@@ -33,5 +33,7 @@ async def nest_status(request: Request, args: dict[str, Any]) -> dict[str, Any]:
 
 TOOLS: list[Tool] = [
     Tool("nest_status", "What the Nest thermostat shows: room temperature, the target, and whether it is heating now.",
-         {"type": "object", "properties": _props()}, nest_status),
+         {"type": "object", "properties": _props()}, nest_status,
+         title="Thermostat", summary="The Nest thermostat's room temperature, target, and whether it's heating.",
+         phrases=("what's the thermostat at", "is the heating on"), kind="query"),
 ]

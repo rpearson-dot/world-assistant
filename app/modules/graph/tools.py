@@ -28,5 +28,7 @@ async def connections_tool(request: Request, args: dict[str, Any]) -> dict[str, 
 TOOLS: list[Tool] = [
     Tool("connections", "How a saved place joins up in the knowledge graph (trips, roads, stations near it) and what is "
          "disrupting the trips from it: closures and flood warnings several steps away.",
-         {"type": "object", "properties": _props(place=PLACE)}, connections_tool),
+         {"type": "object", "properties": _props(place=PLACE)}, connections_tool,
+         title="Place connections", summary="How a saved place joins up — trips, roads, stations — and what's disrupting trips from it.",
+         phrases=("how is {place} connected", "what's disrupting trips from {place}"), kind="query"),
 ]

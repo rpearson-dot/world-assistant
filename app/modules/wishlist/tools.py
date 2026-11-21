@@ -86,7 +86,9 @@ TOOLS: list[Tool] = [
     Tool("wishlist", "The family's Wishlist list in KitchenOwl: things to look out for in Aldi's Specialbuys and the "
          "Middle of Lidl. Says which "
          "are coming or on sale now (price, shop, date) and, for the rest, when each was last seen and last on sale.",
-         {"type": "object", "properties": _props(name=("string", "just this wish (any part of its name)"))}, wishlist_tool),
+         {"type": "object", "properties": _props(name=("string", "just this wish (any part of its name)"))}, wishlist_tool,
+         title="Wishlist", summary="Things to look out for in Aldi's Specialbuys and the Middle of Lidl — which are coming or on sale now.",
+         phrases=("what's on the wishlist", "is {name} on sale yet"), kind="query"),
     Tool("wish_add", "Add something to the family's Wishlist list in KitchenOwl (acts: adds it there) and check Aldi and "
          "Lidl for it straight away, e.g. Kamado BBQ. A product counts when its name has every word (bbq also finds "
          "barbecue and grill).",
@@ -94,10 +96,16 @@ TOOLS: list[Tool] = [
                                                     max_price=("number", "only count it at or under this price, £")),
                                            "must": {"type": "array", "items": {"type": "string"},
                                                     "description": "words the product's name must have"}},
-          "required": ["name"]}, wish_add_tool),
+          "required": ["name"]}, wish_add_tool,
+         title="Add to the wishlist", summary="Adds something to the Wishlist and checks Aldi and Lidl for it straight away.",
+         phrases=("add {name} to the wishlist", "watch for {name} in Aldi and Lidl"), kind="action"),
     Tool("wish_remove", "Tick something off the Wishlist list in KitchenOwl (acts: ticks it; its history is kept).",
          {"type": "object", "properties": _props(name=("string", "the wish, or part of its name")), "required": ["name"]},
-         wish_remove_tool),
+         wish_remove_tool,
+         title="Remove from the wishlist", summary="Ticks something off the Wishlist; its history is kept.",
+         phrases=("tick {name} off the wishlist", "remove {name} from the wishlist"), kind="action"),
     Tool("wishlist_check", "Search Aldi and Lidl now for everything on the wishlist (it is also checked on Wednesday "
-         "and Saturday evenings).", {"type": "object", "properties": {}}, wishlist_check_tool),
+         "and Saturday evenings).", {"type": "object", "properties": {}}, wishlist_check_tool,
+         title="Check the wishlist", summary="Searches Aldi and Lidl now for everything on the wishlist.",
+         phrases=("check the wishlist now", "anything from the wishlist in Aldi or Lidl"), kind="query"),
 ]

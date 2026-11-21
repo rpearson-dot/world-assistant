@@ -63,5 +63,7 @@ TOOLS: list[Tool] = [
          {"type": "object", "properties": _props(
              name=("string", "station name, e.g. Waterloo; omit to list stations near a place"),
              place=("string", "id of a saved place; default: home"), km=("number", "how far from the place, default 2"),
-             lifts_only=("boolean", "only lift and step-free closures"))}, station_tool),
+             lifts_only=("boolean", "only lift and step-free closures"))}, station_tool,
+         title="Station info", summary="A TfL station's lines, facilities (lifts, step-free) and what's closed there now; or stations near a place.",
+         phrases=("is the lift working at {name}", "step-free stations near {place}"), kind="query"),
 ]
