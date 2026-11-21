@@ -324,8 +324,19 @@ function partRow(p, bike) {
   }
   return li;
 }
+const NUM_SPECS = new Set(['width_mm', 'tpi', 'max_psi', 'min_mm', 'diameter_mm', 'teeth', 'links', 'length', 'ml', 'bead_mm']);
 function specFields(f, kind, details) {  // a kind's model details, as inputs named spec_<key>
-  for (const [key, lab] of (cat.specs[kind] || [])) { const l = el('label', null, lab + ' '), i = el('input'); i.name = 'spec_' + key; i.value = (details || {})[key] == null ? '' : details[key]; i.maxLength = 60; l.append(i); f.append(l); }
+  for (const [key, lab] of (cat.specs[kind] || [])) {
+    const l = el('label', null, (key === 'tubeless' ? 'Tube' : lab) + ' '), cur = (details || {})[key]; let i;
+    if (key === 'tubeless') {  // a clear choice rather than typing yes/no
+      i = el('select'); [['', '—'], ['no', 'Tubed (inner tube)'], ['yes', 'Tubeless']].forEach(([v, t]) => { const o = el('option', null, t); o.value = v; i.append(o); });
+      i.value = cur === true ? 'yes' : cur === false ? 'no' : '';
+    } else {
+      i = el('input'); i.maxLength = 60; i.value = cur == null ? '' : cur;
+      if (NUM_SPECS.has(key)) { i.type = 'number'; i.step = 'any'; i.min = 0; }
+    }
+    i.name = 'spec_' + key; l.append(i); f.append(l);
+  }
 }
 function specValues(f) {
   const d = {}; for (const i of f.elements) if (i.name && i.name.startsWith('spec_') && i.value !== '') { const v = i.value.trim(); d[i.name.slice(5)] = /^[0-9]+(\.[0-9]+)?$/.test(v) ? Number(v) : v === 'yes' ? true : v === 'no' ? false : v; }

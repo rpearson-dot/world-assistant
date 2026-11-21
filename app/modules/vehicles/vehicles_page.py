@@ -26,7 +26,10 @@ PAGE = r"""<!doctype html>
 .veh .vn { font-weight: 650; }
 .veh .vs { color: var(--dim); font-size: .9em; }
 .veh .vs.err { color: var(--bad); }
-.veh .body { padding: 0 2px 12px 1.4em; display: grid; gap: 8px; }
+.veh .body { padding: 0 2px 12px 1.4em; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); }
+.veh .metrics { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 1px 10px; font-size: .9em; }
+.veh .metrics .k { color: var(--dim); white-space: nowrap; }
+.veh .metrics .v { overflow-wrap: anywhere; }
 .veh .acts { display: flex; gap: 8px; flex-wrap: wrap; }
 .vform { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 6px 0; }
 .vform h3 { margin: 0 0 6px; font-size: 1em; }
@@ -180,11 +183,11 @@ function draw() {
       ctl.append(button(car.locked === false ? 'Lock' : 'Unlock', () => { const pin = prompt((car.locked === false ? 'Lock' : 'Unlock') + ' the car — enter its PIN'); if (pin) run(() => api('POST', '/v1/ovms/' + encodeURIComponent(cid) + '/lock', { lock: car.locked === false, pin }), $('cmsg')); }));
       body.append(el('div', 'Controls (OVMS, over MQTT)', 'dim'), ctl);
       const md = el('details'); md.append(el('summary', 'All metrics from the car'));
-      const mbox = el('div', null, 'small'); md.append(mbox);
+      const mbox = el('div', null, 'metrics'); md.append(mbox);
       md.ontoggle = async () => { if (!md.open || mbox.dataset.done) return;
         try { const r = await api('GET', '/v1/ovms/' + encodeURIComponent(cid) + '/metrics'); mbox.replaceChildren();
           const ks = Object.keys(r.metrics); if (!ks.length) { mbox.textContent = 'No metrics yet.'; return; }
-          for (const k of ks) mbox.append(el('div', k + ': ' + r.metrics[k].value)); mbox.dataset.done = '1'; }
+          for (const k of ks) mbox.append(el('div', k, 'k'), el('div', String(r.metrics[k].value), 'v')); mbox.dataset.done = '1'; }
         catch (e) { mbox.textContent = e.message; } };
       body.append(md);
     }
