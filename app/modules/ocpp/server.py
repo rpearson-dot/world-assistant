@@ -131,7 +131,8 @@ class Hub:
         peer = ws.headers.get("x-wa-peer") or (ws.client.host if ws.client else "?")
         await self.keep(cid, events=[("connected", f"Connected from {peer}" + ("" if proto else " (no OCPP 1.6 subprotocol asked)"),
                                       {"peer": peer, "subprotocol": proto, "replaced": old is not None})],
-                        connected=True, connected_at=_now(), last_seen=_now())  # fmt: skip
+                        connected=True, connected_at=_now(), last_seen=_now(),
+                        **({"peer": peer} if peer and peer != "?" else {}))  # fmt: skip
         await self.redis.set(holder_key(cid), self.process, ex=HOLDER_S)
         ha.started(self, cid)
         asyncio.create_task(self._apply_after_connect(link))

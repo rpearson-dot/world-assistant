@@ -30,7 +30,6 @@ details.box > summary { cursor: pointer; font-weight: 650; padding: 4px 0; }
 .batt { display: flex; align-items: center; gap: 10px; } .batt b { font-size: 1.6em; font-variant-numeric: tabular-nums; }
 .now b { display: block; font-size: 1.6em; } .now span { display: block; }
 @keyframes fill { 0%, 100% { opacity: .25; } 50% { opacity: 1; } } .filling { animation: fill 1.6s ease-in-out infinite; }
-pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-height: 360px; overflow: auto; }
 </style></head><body><main>
 <!--NAV-->
 <h1>Charger</h1>
@@ -85,7 +84,8 @@ pre.raw { white-space: pre-wrap; word-break: break-all; font-size: .8em; max-hei
   <div class="row"><button id="cfg" type="button">Read its configuration</button><button id="soft" type="button">Restart (soft)</button>
     <button id="hard" type="button">Restart (hard)</button><button id="trig" type="button">Ask for its status</button></div>
   <table id="config"></table>
-  <details><summary>The last 100 messages, as sent</summary><pre class="raw" id="raw"></pre></details>
+  <p class="dim">The raw feeds have moved to <a href="/logs">Logs</a>: the charger's own syslog under
+  <a href="/logs/charger">Charger</a>, and every OCPP frame under <a href="/logs/ocpp">OCPP messages</a>.</p>
 </details></div>
 </section>
 
@@ -219,9 +219,6 @@ $('save').onclick = async () => {
   try { await api('PUT', '/v1/ocpp/settings', { chargers: $('ids').value.split(',').map(x => x.trim()).filter(Boolean), meter_every_s: Number($('every').value) || 60, publish_ha: $('ha').checked, server_address: $('srv').value.trim() });
     $('smsg').textContent = 'Saved.'; load(); } catch (e) { $('smsg').textContent = e.message; }
 };
-$('raw').parentElement.ontoggle = async e => { if (!e.target.open || !cur()) return;
-  const r = await api('GET', '/v1/ocpp/' + cur().id + '/messages?limit=100');
-  $('raw').textContent = r.messages.map(m => when(m.at) + (m.direction === 'in' ? '  ← ' : '  → ') + m.raw).join('\\n'); };
 $('kind').onchange = $('days').onchange = $('cp').onchange = () => draw().catch(e => msg.textContent = e.message);
 $('go').onclick = load;
 load();

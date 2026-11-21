@@ -9,7 +9,7 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [discovery](#discovery) · [ecodan](#ecodan) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [nest](#nest) · [network](#network) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [outside](#outside) · [ovms](#ovms) · [pihole](#pihole) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [solar](#solar) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [discovery](#discovery) · [ecodan](#ecodan) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [logs](#logs) · [map](#map) · [modules](#modules) · [nest](#nest) · [network](#network) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [outside](#outside) · [ovms](#ovms) · [pihole](#pihole) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [solar](#solar) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
 
 
 ## airstage
@@ -337,6 +337,15 @@ pages themselves hold no data: each one calls these endpoints.
 |---|---|---|
 | GET | `/v1/live-buses` | Buses reporting a position near a place or point, nearest first. |
 | GET | `/v1/live-buses/departures` | Next buses at the bus stops nearest a point, outside London as well as in it: each bus on its way, minutes worked out from where it is along its route (at a typical speed, so not seeing traffic), and failing that the timetable's next weekday times. A line whose timetable is still being fetched says so; ask again shortly. |
+
+## logs
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/logs/charger/{cid}` | The charger's own syslog (ocpp_log), newest first. Paged by `before` (the oldest id you already have). |
+| GET | `/v1/logs/chargers` | Every charger that has ever connected, newest first — for the picker on the charger and OCPP log pages. |
+| GET | `/v1/logs/network` | The network event stream (net_event) — DNS, firewall, clients joining and leaving, DHCP — newest first. |
+| GET | `/v1/logs/ocpp/{cid}` | The OCPP protocol frames either way (ocpp_message), newest first, exactly as they went. |
 
 ## map
 

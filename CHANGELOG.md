@@ -2,6 +2,35 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+## [0.64.0] - 2026-11-21
+
+### Added
+
+- **Logs tab: one home for the raw diagnostic feeds.** A new **Logs** page gathers the feeds you reach for when
+  something's wrong — **Charger** (the charger's own syslog), **OCPP messages** (every protocol frame to and from the
+  charger), and **Network** (the DNS/firewall/client event stream) — each on its own sub-page, filterable and paged.
+  Logs is always available and reads straight from the tables, so a module's log can still be read **after you've
+  switched that module off over a fault** — which is usually exactly when you need it.
+- **The car charger's own syslog.** Point the charger's log server at this machine (the same UDP syslog port the UniFi
+  gateway uses, 5514 / `WA_SYSLOG_PORT`) and its lines — plugging in, charging, faults, Wi-Fi drops — are kept in the
+  charger's log and shown under Logs → Charger. Lines are matched to a charger by the address it last connected to the
+  OCPP server from, and, should that address change, by the charge-point ID it names itself; anything unmatched still
+  flows to the network log, so nothing is lost. Kept for a month.
+- **Select all / Deselect all for network block suggestions.** The suggested-blocks list (Networking → Pi-hole, and
+  the device Network page) now has Select all and Deselect all buttons, so you can start from none and pick a few
+  instead of unticking a long pre-checked list.
+
+### Changed
+
+- **Charger page decluttered.** The raw "last 100 messages, as sent" viewer has moved off the Charger page into
+  Logs → OCPP messages; the Charger page keeps its curated "What happened" timeline and links across to Logs.
+- **Planner page reframed around World Assistant's own control.** Now that World Assistant controls the car charger
+  directly (Home Assistant's charger automation having been removed), the planner page drops the "in shadow" framing and
+  the Home-Assistant comparison (the "When they differed" table, the Home Assistant plan column and the agreed-% figures).
+  It now shows World Assistant's plan, why, whether it is acting, and the month-by-month cost.
+
 ## [0.63.0] - 2026-11-21
 
 ### Changed

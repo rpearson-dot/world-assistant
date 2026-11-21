@@ -125,6 +125,7 @@ ICONS = {
     "outdoors": '<path d="M3 20 12 4l9 16z"/><path d="M12 4v16M9 20l3-5 3 5"/>',
     "aircon": '<rect x="3" y="5" width="18" height="8" rx="2"/><path d="M6 10h12"/><path d="M8 16c0 1.5-1 2-1 3M12 16c0 1.5-1 2-1 3M16 16c0 1.5-1 2-1 3"/>',
     "more": '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
+    "logs": '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
 }  # fmt: skip
 
 PAGES = (  # (id, path, label, icon, on the phone's tab bar)
@@ -143,6 +144,7 @@ PAGES = (  # (id, path, label, icon, on the phone's tab bar)
     ("shopping", "/shopping", "Shopping", "shopping", False),
     ("graph", "/graph", "Graph", "graph", False),
     ("ha", "/ha", "Home Assistant", "ha", False),
+    ("logs", "/logs", "Logs", "logs", False),
     ("settings", "/settings", "Settings", "settings", False),
 )
 
@@ -166,7 +168,7 @@ SECTIONS = {"shopping": (("shopping", "/shopping", "List"), ("wishlist", "/wishl
 PARENT = {"climate": "home", "networking": "home"}
 # The tabs a module declares (Module.tabs) join their section; a section that had none starts with its menu page,
 # whose label becomes the first tab ("Tracker" for the buses).
-_FIRST = {"bus": "Tracker", "home": "Overview"}
+_FIRST = {"bus": "Tracker", "home": "Overview", "logs": "Overview"}
 
 
 def _module_tabs() -> None:

@@ -235,6 +235,6 @@ async def ocpp_watch(ctx: dict[str, Any]) -> Any:
 async def ocpp_housekeep(ctx: dict[str, Any]) -> Any:
     async def work() -> dict[str, Any]:
         async with ctx["engine"].begin() as conn:
-            return {"messages_deleted": await store.housekeep(conn)}
+            return {"messages_deleted": await store.housekeep(conn), "log_lines_deleted": await store.log_trim(conn)}
 
     return await tracked(ctx["engine"], "ocpp_housekeep", work)
