@@ -86,16 +86,23 @@ async def session_start(conn: Any, cid: str, s: dict[str, Any]) -> None:
 
 
 async def session_stop(conn: Any, cid: str, s: dict[str, Any]) -> None:
+    # Close the charger's open session by the fact it is open, not by the reported id: some chargers (the Sync EV
+    # among them) send StopTransaction with transactionId 0 instead of the id we assigned, so matching on the id would
+    # leave the session open forever and World Assistant would believe it is still charging.
     await conn.execute(text(
-        "UPDATE ocpp_session SET stopped_at = CAST(:stopped_at AS timestamptz), meter_stop_wh = :meter_stop_wh, "
-        "reason = :reason WHERE charger = :c AND transaction_id = :transaction_id"), {"c": cid, **s})  # fmt: skip
+        "UPDATE ocpp_session SET stopped_at = CAST(:stopped_at AS timestamptz), meter_stop_wh = :meter_stop_wh, reason = :reason "
+        "WHERE charger = :c AND stopped_at IS NULL AND started_at = ("
+        "  SELECT max(started_at) FROM ocpp_session WHERE charger = :c AND stopped_at IS NULL)"),
+        {"c": cid, "stopped_at": s.get("stopped_at"), "meter_stop_wh": s.get("meter_stop_wh"), "reason": s.get("reason")})  # fmt: skip
 
 
 async def session_meter(conn: Any, cid: str, m: dict[str, Any]) -> None:
+    # Target the open session (see session_stop): a charger reporting transactionId 0 must still update its live meter.
     await conn.execute(text(
         "UPDATE ocpp_session SET last_meter_wh = coalesce(:e, last_meter_wh), last_power_w = coalesce(:p, last_power_w) "
-        "WHERE charger = :c AND transaction_id = :t"),
-        {"c": cid, "t": m["transaction_id"], "e": m.get("energy_wh"), "p": m.get("power_w")})  # fmt: skip
+        "WHERE charger = :c AND stopped_at IS NULL AND started_at = ("
+        "  SELECT max(started_at) FROM ocpp_session WHERE charger = :c AND stopped_at IS NULL)"),
+        {"c": cid, "e": m.get("energy_wh"), "p": m.get("power_w")})  # fmt: skip
 
 
 async def housekeep(conn: Any) -> int:

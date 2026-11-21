@@ -28,6 +28,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ### Fixed
 
+- **The planner can stop a charger that reports transaction id 0.** Some chargers (the Sync EV among them) send
+  StopTransaction with id `0` instead of the id World Assistant assigned, so the session never closed and the planner
+  believed the car was charging for ever — unable to start or stop it correctly. A stop now closes the charger's open
+  session whatever id it reports, and the live meter follows the open session too.
 - **The charger's battery gauge now reads true.** It rounded each 20% segment up, so ~81% painted a full bar; it now
   fills in proportion (80% reads 80%, with the headroom to 100% shown) using the dashboard figure.
 - **The planner's fallback SoC used the low GID figure.** When Home Assistant had no charge level, the planner read the
