@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.64.0] - 2026-11-21
+
 ### Added
 
 - **Logs tab: one home for the raw diagnostic feeds.** A new **Logs** page gathers the feeds you reach for when
@@ -16,6 +18,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   charger's log and shown under Logs → Charger. Lines are matched to a charger by the address it last connected to the
   OCPP server from, and, should that address change, by the charge-point ID it names itself; anything unmatched still
   flows to the network log, so nothing is lost. Kept for a month.
+- **Select all / Deselect all for network block suggestions.** The suggested-blocks list (Networking → Pi-hole, and
+  the device Network page) now has Select all and Deselect all buttons, so you can start from none and pick a few
+  instead of unticking a long pre-checked list.
 
 ### Changed
 
@@ -25,12 +30,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   directly (Home Assistant's charger automation having been removed), the planner page drops the "in shadow" framing and
   the Home-Assistant comparison (the "When they differed" table, the Home Assistant plan column and the agreed-% figures).
   It now shows World Assistant's plan, why, whether it is acting, and the month-by-month cost.
-
-### Added
-
-- **Select all / Deselect all for network block suggestions.** The suggested-blocks list (Networking → Pi-hole, and
-  the device Network page) now has Select all and Deselect all buttons, so you can start from none and pick a few
-  instead of unticking a long pre-checked list.
 
 ## [0.63.0] - 2026-11-21
 
