@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.65.0] - 2026-11-21
+
 ### Added
 
 - **Capability manifest (`GET /v1/capabilities`).** World Assistant now describes everything it can do as a list of
