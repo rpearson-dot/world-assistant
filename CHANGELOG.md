@@ -2,6 +2,14 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Select all / Deselect all for network block suggestions.** The suggested-blocks list (Networking → Pi-hole, and
+  the device Network page) now has Select all and Deselect all buttons, so you can start from none and pick a few
+  instead of unticking a long pre-checked list.
+
 ## [0.63.0] - 2026-11-21
 
 ### Changed

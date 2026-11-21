@@ -37,6 +37,7 @@ table.t td.n, table.t th.n { text-align: right; } table.t tr.dev { cursor: point
   <h3>Suggested blocks</h3><p class="dim small" id="ssay"></p>
   <div id="sugg"></div>
   <div class="row" id="sact" hidden>
+    <button id="selall" type="button">Select all</button> <button id="selnone" type="button">Deselect all</button>
     <label>Block for <select id="target"></select></label>
     <button id="add" class="primary" type="button">Add to Pi-hole</button> <button id="copy" type="button">Copy the list</button></div>
   <p id="smsg" class="dim"></p>
@@ -112,6 +113,9 @@ async function open(mac) {
   const k = $('keep'); k.replaceChildren(); s.keep.forEach(x => k.append(el('span', x.domain, 'chip')));
 }
 function ticked() { return [...$('sugg').querySelectorAll('input:checked')].map(i => i.value); }
+const setAll = on => $('sugg').querySelectorAll('input[type=checkbox]').forEach(c => { c.checked = on; });
+$('selall').onclick = () => setAll(true);
+$('selnone').onclick = () => setAll(false);
 let armed = false;
 $('add').onclick = async () => {
   const doms = ticked(); if (!doms.length) { $('smsg').textContent = 'Tick at least one.'; return; }
