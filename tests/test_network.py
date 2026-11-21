@@ -8,7 +8,7 @@ import asyncio
 import importlib
 import json
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -20,7 +20,9 @@ from app.modules.pihole import client as pihole
 from app.modules.pihole import suggest
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
-NOW = datetime(2026, 11, 14, 16, tzinfo=UTC)
+# A recent, whole-second time (two days ago at noon): the device-merge re-keys only net_events from the last 7 days, so
+# a fixed past date made this test age out. Noon avoids straddling midnight; two days keeps it well inside the window.
+NOW = (datetime.now(UTC) - timedelta(days=2)).replace(hour=12, minute=0, second=0, microsecond=0)
 DHCP = "<30>Nov 14 16:00:01 UDR dnsmasq-dhcp[1234]: DHCPACK(br0) 10.0.2.50 aa:bb:cc:dd:ee:ff Living-Room-TV"
 FW = ("<4>Nov 14 16:00:02 UDR kernel: [WAN_OUT-D-2147483647] IN=br0 OUT=eth4 MAC=11:22:33:44:55:66:aa:bb:cc:dd:ee:ff:08:00 "
       "SRC=10.0.2.50 DST=8.8.8.8 LEN=60 PROTO=UDP SPT=5353 DPT=53")  # fmt: skip
