@@ -6,10 +6,14 @@ import asyncio
 import importlib.util
 import os
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import httpx
+
+# Far enough ahead that a disruption carrying the default end is always still active when the test runs.
+_FUTURE_END = (datetime.now(UTC) + timedelta(days=120)).strftime("%Y-%m-%dT%H:%M:%S")
 import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
@@ -44,7 +48,7 @@ def item(ident: str = "TIMS-1", **kw: Any) -> dict[str, Any]:
         "id": ident, "category": "Works", "subCategory": "Utility works", "severity": "Moderate",
         "status": "Active", "location": "[A23] Westminster Bridge Road (SE1) (Lambeth)",
         "comments": "Gas main replacement", "currentUpdate": "Lane closed",
-        "startDateTime": "2026-10-20T07:00:00", "endDateTime": "2026-11-20T19:00:00",
+        "startDateTime": "2026-10-20T07:00:00", "endDateTime": _FUTURE_END,
         "lastModifiedTime": "2026-10-22T08:00:00Z", "hasClosures": True, "corridorIds": ["a23"],
         "streets": [{"name": "Westminster Bridge Road", "closure": "Open",
                      "segments": [{"lineString": str(LINE)}]}],

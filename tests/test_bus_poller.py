@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 import os
 from collections.abc import Iterator
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Self
 from zoneinfo import ZoneInfo
@@ -22,8 +22,11 @@ from app.modules.bus.sources.bus.poller import Lookup, in_window, poll_one, proc
 from app.modules.bus.sources.bus.trips import new_state
 
 TZ = ZoneInfo("Europe/London")
-DAY = date(2026, 10, 20)  # a Tuesday, BST
-T0 = datetime(2026, 10, 20, 6, 0, tzinfo=UTC).timestamp()  # 07:00 local
+# A recent weekday (not today), computed so these fixtures always stay inside the database's retention window however
+# long after the test was written it runs; 07:00 local handles the BST/GMT change on its own.
+_today = datetime.now(TZ).date()
+DAY = next(_today - timedelta(days=i) for i in range(3, 12) if (_today - timedelta(days=i)).weekday() < 5)
+T0 = datetime(DAY.year, DAY.month, DAY.day, 7, 0, tzinfo=TZ).timestamp()  # 07:00 local
 
 
 def cfg_dict(**over: Any) -> dict[str, Any]:
@@ -283,7 +286,7 @@ async def test_poll_stores_hit_and_api_reports_it(
             assert row
             await poll_one(engine, client, row, now)  # type: ignore[arg-type]
             now += 30
-        t = c.get("/v1/bus/trackers/main/target?day=2026-10-20", headers=h).json()
+        t = c.get(f"/v1/bus/trackers/main/target?day={DAY.isoformat()}", headers=h).json()
         assert t["scheduled"] == ["07:00", "07:30", "08:00"] or t["scheduled"] == ["07:00", "07:30"]
         assert [x["vehicle"] for x in t["hits"]] == ["V9"] and t["hits"][0]["slot"] == "07:30"
         assert "reached the target stop" in t["summary"]

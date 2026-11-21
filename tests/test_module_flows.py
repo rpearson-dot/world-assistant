@@ -50,8 +50,10 @@ def test_every_module_is_listed_under_one_of_the_curated_headings() -> None:
     from app.modules import registry
     from app.modules.model import CATEGORIES
 
-    assert list(CATEGORIES)[:5] == ["transport", "place", "energy", "home", "network"]
+    assert list(CATEGORIES)[:4] == ["transport", "place", "energy", "home"]
     for m in registry.modules():
         assert m.category in CATEGORIES, (m.id, m.category)
-    net = {m.id for m in registry.modules() if m.category == "network"}
-    assert {"network", "unifi", "pihole", "discovery"} <= net
+    # Climate control and Networking are presented as sections of "In the home", so their modules live there.
+    home = {m.id for m in registry.modules() if m.category == "home"}
+    assert {"network", "unifi", "pihole", "discovery"} <= home
+    assert {"nest", "ecodan", "airstage"} <= home

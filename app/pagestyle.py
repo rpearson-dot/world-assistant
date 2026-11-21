@@ -153,7 +153,17 @@ SECTIONS = {"shopping": (("shopping", "/shopping", "List"), ("wishlist", "/wishl
                          ("outdoors", "/outdoors", "Outdoors")),
             "environment": (("environment", "/environment", "Air"), ("pollen", "/pollen", "Pollen"),
                             ("floods", "/environment/floods", "Floods and rivers"), ("env-tides", "/environment/tides", "Tides"),
-                            ("env-overflows", "/environment/overflows", "Overflows"))}  # fmt: skip
+                            ("env-overflows", "/environment/overflows", "Overflows")),
+            # Two areas of "In the home", each its own page with the related modules as tabs (seeded here in the order
+            # they should read; a tab whose module is off is dropped by _subnav. Their top-bar entry stays "In the home"
+            # through PARENT below).
+            "climate": (("climate", "/climate", "Overview"), ("nest", "/nest", "Heating"),
+                        ("ecodan", "/ecodan", "Heat pump"), ("aircon", "/aircon", "Air conditioning")),
+            "networking": (("networking", "/networking", "Overview"), ("network", "/network", "Devices"),
+                           ("pihole", "/pihole", "Pi-hole"), ("unifi", "/unifi", "Ubiquiti"),
+                           ("discovery", "/discovery", "Discovery"))}  # fmt: skip
+# A section that is a sub-area of a menu page: its pages keep that page lit in the top bar.
+PARENT = {"climate": "home", "networking": "home"}
 # The tabs a module declares (Module.tabs) join their section; a section that had none starts with its menu page,
 # whose label becomes the first tab ("Tracker" for the buses).
 _FIRST = {"bus": "Tracker", "home": "Overview"}
@@ -236,7 +246,8 @@ HEAD = (
 
 def themed(page: str, here: str, request: HTTPConnection | None = None) -> str:
     """Fill the style, head and nav placeholders of a page. From the local network, the token box goes away."""
-    top = SECTION_OF.get(here, here)
+    sec = SECTION_OF.get(here, here)
+    top = PARENT.get(sec, sec)
     nav = NAV.replace(f'data-p="{top}"', f'class="here" aria-current="page" data-p="{top}"') + _subnav(here)
     if request is not None and page_without_token(request):
         nav += PAGE_SNIPPET

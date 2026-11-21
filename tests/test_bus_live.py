@@ -21,7 +21,7 @@ from app.modules.bus.sources.bus import live
 from app.modules.bus.sources.bus.config import TrackerConfig
 from app.modules.bus.sources.bus.poller import poll_one
 from app.modules.bus.sources.bus.setup import SetupError, _shift, return_config
-from tests.test_bus_poller import T0, _FakeClient, cfg_dict, iso
+from tests.test_bus_poller import DAY, T0, _FakeClient, cfg_dict, iso
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
@@ -155,13 +155,13 @@ async def test_positions_are_gathered_only_in_the_window_and_only_for_followed_b
         board = _FakeClient.board
         await drive(engine, board - 600, board + 1000, monkeypatch, asked)  # 07:20 to 07:47, inside 07:00-08:10
         assert asked and len(asked) == len({*asked})
-        got = c.get("/v1/bus/trackers/main/positions?day=2026-10-20", headers=h).json()
+        got = c.get(f"/v1/bus/trackers/main/positions?day={DAY.isoformat()}", headers=h).json()
         assert got["count"] == len(asked) and {f["vehicle"] for f in got["fixes"]} == {"V9"}  # not OTHER, not the wrong line
         assert got["fixes"][0]["destination"] == "Fairfield Bus Station" and got["fixes"][0]["bearing"] == 315.0
         assert got["fixes"][0]["occupancy"] == "standingAvailable" and got["fixes"][0]["occupancy_counts"] == {"SeatedOccupancy": 40}
-        j = {x["slot"]: x for x in c.get("/v1/bus/trackers/main/target?day=2026-10-20", headers=h).json()["journeys"]}
+        j = {x["slot"]: x for x in c.get(f"/v1/bus/trackers/main/target?day={DAY.isoformat()}", headers=h).json()["journeys"]}
         assert j["07:30"]["vehicle"] == "V9" and j["07:30"]["occupancy"] == "standingAvailable"  # as it left the stop
-        assert c.get("/v1/bus/trackers/main/positions?day=2026-10-20&vehicle=NOPE", headers=h).json()["count"] == 0
+        assert c.get(f"/v1/bus/trackers/main/positions?day={DAY.isoformat()}&vehicle=NOPE", headers=h).json()["count"] == 0
 
         # 06:40 to 06:55 is polled (from 06:30) but is before the earliest bus: nothing is asked of BODS
         before: list[float] = []

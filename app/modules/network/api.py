@@ -29,9 +29,9 @@ async def devices(request: Request) -> dict[str, Any]:
     firewall decisions (its Pi-hole groups: /v1/pihole/device-groups)."""
     async with request.app.state.engine.connect() as conn:
         rows = [dict(r) for r in (await conn.execute(text(
-            "SELECT d.*, coalesce(sum(n) FILTER (WHERE kind = 'dns' AND action = 'allow'), 0) AS lookups, "
-            "coalesce(sum(n) FILTER (WHERE kind = 'dns' AND action = 'block'), 0) AS blocked, "
-            "coalesce(sum(n) FILTER (WHERE kind = 'firewall' AND action = 'block'), 0) AS firewall_blocks "
+            "SELECT d.*, coalesce(sum(y.n) FILTER (WHERE y.kind = 'dns' AND y.action = 'allow'), 0) AS lookups, "
+            "coalesce(sum(y.n) FILTER (WHERE y.kind = 'dns' AND y.action = 'block'), 0) AS blocked, "
+            "coalesce(sum(y.n) FILTER (WHERE y.kind = 'firewall' AND y.action = 'block'), 0) AS firewall_blocks "
             "FROM net_device d LEFT JOIN net_day y ON y.mac = d.mac AND y.day = current_date GROUP BY d.mac ORDER BY d.last_seen DESC"))).mappings().all()]  # fmt: skip
     from app.modules import gate
 
@@ -58,6 +58,28 @@ async def device(request: Request, mac: str, hours: int = Query(24, ge=1, le=24 
             "added_blocks": [dict(b) for b in blocks]}  # fmt: skip
 
 
+@router.get("/devices/{mac}/firewall")
+async def firewall(request: Request, mac: str, days: int = Query(7, ge=1, le=30)) -> dict[str, Any]:
+    """Advisory firewall-block suggestions for one device: what it reached, how chatty it is, and the rule to add
+    (World Assistant never changes your firewall). Reads the gateway's firewall log and the device's DNS lookups."""
+    from app.modules.network import firewall as fw
+
+    async with request.app.state.engine.connect() as conn:
+        d = (await conn.execute(text("SELECT * FROM net_device WHERE mac = :m"), {"m": mac.lower()})).mappings().first()
+        if d is None:
+            raise HTTPException(404, "no such device")
+        rows = (await conn.execute(text(
+            "SELECT dest, port, proto, action, count(*) AS n, count(DISTINCT date_trunc('hour', at)) AS hours "
+            "FROM net_event WHERE mac = :m AND kind = 'firewall' AND at > now() - make_interval(days => :d) "
+            "GROUP BY dest, port, proto, action ORDER BY n DESC LIMIT 300"), {"m": mac.lower(), "d": days})).mappings().all()  # fmt: skip
+        dns = (await conn.execute(text(
+            "SELECT dest, count(*) AS n FROM net_event WHERE mac = :m AND kind = 'dns' AND action = 'allow' "
+            "AND dest IS NOT NULL AND at > now() - make_interval(days => :d) GROUP BY dest ORDER BY n DESC LIMIT 200"),
+            {"m": mac.lower(), "d": days})).mappings().all()  # fmt: skip
+    out = fw.analyse([dict(r) for r in rows], [dict(x) for x in dns], days)
+    return {"device": {"mac": d["mac"], "label": _label(dict(d))}, "days": days, **out}
+
+
 @router.get("/events")
 async def events(request: Request, kind: str | None = None, action: str | None = None, hours: int = Query(1, ge=1, le=168),
                  limit: int = Query(200, ge=1, le=2000)) -> dict[str, Any]:  # fmt: skip
@@ -82,6 +104,23 @@ async def alias(request: Request, mac: str, body: AliasIn) -> dict[str, Any]:
     if not n:
         raise HTTPException(404, "no such device")
     return {"mac": mac.lower(), "alias": body.alias.strip() or None}
+
+
+class IdentityIn(BaseModel):
+    kind: str = Field("", max_length=80)
+
+
+@router.put("/devices/{mac}/identity")
+async def identity(request: Request, mac: str, body: IdentityIn) -> dict[str, Any]:
+    """Confirm what a device is (accepting Discovery's guess or your own words), or clear it with an empty value."""
+    k = body.kind.strip()
+    async with request.app.state.engine.begin() as conn:
+        n = (await conn.execute(text(
+            "UPDATE net_device SET confirmed_kind = nullif(:k, ''), confirmed_at = CASE WHEN nullif(:k, '') IS NULL THEN NULL ELSE now() END "
+            "WHERE mac = :m"), {"k": k, "m": mac.lower()})).rowcount  # fmt: skip
+    if not n:
+        raise HTTPException(404, "no such device")
+    return {"mac": mac.lower(), "kind": k or None}
 
 
 class SettingsIn(BaseModel):

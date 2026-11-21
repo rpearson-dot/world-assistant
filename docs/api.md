@@ -9,7 +9,7 @@ and for the web app in a browser on your tailnet, no token is needed ([security]
 pages themselves hold no data: each one calls these endpoints.
 
 
-**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [discovery](#discovery) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [nest](#nest) · [network](#network) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [outside](#outside) · [ovms](#ovms) · [pihole](#pihole) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [solar](#solar) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
+**Areas:** [airstage](#airstage) · [ask](#ask) · [audit](#audit) · [auto-deploy](#auto-deploy) · [backups](#backups) · [bank-holidays](#bank-holidays) · [bikes](#bikes) · [bus](#bus) · [bus-disruptions](#bus-disruptions) · [buslog](#buslog) · [clients](#clients) · [conditions](#conditions) · [crime](#crime) · [discovery](#discovery) · [ecodan](#ecodan) · [energy](#energy) · [environment](#environment) · [ev](#ev) · [events](#events) · [floods](#floods) · [food](#food) · [fuel](#fuel) · [graph](#graph) · [ha](#ha) · [health](#health) · [here](#here) · [live-buses](#live-buses) · [map](#map) · [modules](#modules) · [nest](#nest) · [network](#network) · [notify](#notify) · [ocpp](#ocpp) · [outdoors](#outdoors) · [outside](#outside) · [ovms](#ovms) · [pihole](#pihole) · [places](#places) · [planner](#planner) · [pollen](#pollen) · [postcodes](#postcodes) · [power](#power) · [roads](#roads) · [settings](#settings) · [setup](#setup) · [shopping](#shopping) · [solar](#solar) · [stations](#stations) · [status](#status) · [stops](#stops) · [tariffs](#tariffs) · [tfl](#tfl) · [trips](#trips) · [vehicle-checks](#vehicle-checks) · [vehicles](#vehicles) · [weather](#weather) · [wishlist](#wishlist) · [Other](#other)
 
 
 ## airstage
@@ -196,6 +196,14 @@ pages themselves hold no data: each one calls these endpoints.
 |---|---|---|
 | GET | `/v1/discovery` | Every device with what it probably is (likely or possibly, and why), its adapter's maker, and what World Assistant could do with it. |
 
+## ecodan
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/v1/ecodan` | Each heat pump as it stands, and whether the MELCloud login is set. |
+| GET | `/v1/ecodan/history` | A heat pump's readings over a day/week/month, for charting (tank, flow/return, outdoor, hot-water boost). |
+| POST | `/v1/ecodan/refresh` | Read the heat pump now (uses one of MELCloud's sparse allowed calls). |
+
 ## energy
 
 | Method | Path | What it does |
@@ -363,6 +371,8 @@ pages themselves hold no data: each one calls these endpoints.
 | GET | `/v1/network/devices` | Every device, newest first: its name, address, when first and last seen, and today's lookups, blocks and firewall decisions (its Pi-hole groups: /v1/pihole/device-groups). |
 | GET | `/v1/network/devices/{mac}` | One device's timeline (newest first) and its most looked-up and most blocked domains. |
 | PUT | `/v1/network/devices/{mac}/alias` | Alias |
+| GET | `/v1/network/devices/{mac}/firewall` | Advisory firewall-block suggestions for one device: what it reached, how chatty it is, and the rule to add (World Assistant never changes your firewall). Reads the gateway's firewall log and the device's DNS lookups. |
+| PUT | `/v1/network/devices/{mac}/identity` | Confirm what a device is (accepting Discovery's guess or your own words), or clear it with an empty value. |
 | GET | `/v1/network/events` | The newest events: kind dns, firewall, client, dhcp or system; action allow, block, join, leave, lease. |
 | GET | `/v1/network/settings` | Get Settings  |
 | PUT | `/v1/network/settings` | How long events are kept, and the new-device notification. |
@@ -460,6 +470,7 @@ pages themselves hold no data: each one calls these endpoints.
 
 | Method | Path | What it does |
 |---|---|---|
+| POST | `/v1/planner/boost` | Boost to 100% for a planned long drive: the planner tops the car up to 100% (at the cheap rate, a free hour or on spare solar) instead of stopping at your usual target, until it gets there or you turn it off. |
 | GET | `/v1/planner/charging` | The latest decision and why; how often it matched Home Assistant's plan; and each time they differed. |
 | GET | `/v1/planner/demand` | How predictable evening demand is from the cold (a straight-line fit of each evening's kWh on its heating degree-hours), and tomorrow evening's likely need. Worked out at most every six hours unless fresh. |
 | GET | `/v1/planner/reviews` | Each month (the last 12): what charging the car really cost and what it would have with the planner in charge, worked out on the 1st. Also the month so far. |

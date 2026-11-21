@@ -168,6 +168,36 @@ def db() -> Iterator[str]:
 
 
 @pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
+def test_a_stop_closes_the_session_even_when_the_id_does_not_match(db: str) -> None:
+    # The Sync EV reports StopTransaction with transactionId 0, not the id World Assistant assigned. The session must
+    # still close, or open_transaction keeps returning it and the planner believes the car is charging forever.
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.modules.ocpp import store
+
+    async def go() -> None:
+        engine = create_async_engine(URL)  # type: ignore[arg-type]
+        try:
+            async with engine.begin() as conn:
+                tid = await store.next_transaction(conn, "U1HKP")
+                assert tid == 1
+                await store.session_start(conn, "U1HKP", {"transaction_id": tid, "connector": 1, "id_tag": None,
+                                                          "started_at": "2026-11-20T21:00:00Z", "meter_start_wh": 1000})
+                assert await store.open_transaction(conn, "U1HKP") == tid
+                await store.session_meter(conn, "U1HKP", {"transaction_id": 0, "energy_wh": 9000, "power_w": 6900})
+                await store.session_stop(conn, "U1HKP", {"transaction_id": 0, "stopped_at": "2026-11-20T23:00:00Z",
+                                                         "meter_stop_wh": 23000, "reason": "EmergencyStop"})
+                assert await store.open_transaction(conn, "U1HKP") is None  # closed despite the id mismatch
+                row = (await conn.execute(text(
+                    "SELECT meter_stop_wh, reason, last_meter_wh FROM ocpp_session WHERE charger = 'U1HKP'"))).first()
+                assert row[0] == 23000 and row[1] == "EmergencyStop" and row[2] == 9000
+        finally:
+            await engine.dispose()
+
+    asyncio.run(go())
+
+
+@pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
 def test_a_charger_connects_charges_is_stopped_and_restarts(db: str, monkeypatch: pytest.MonkeyPatch) -> None:
     from fastapi.testclient import TestClient
     from sqlalchemy.ext.asyncio import create_async_engine

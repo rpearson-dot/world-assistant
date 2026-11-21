@@ -209,8 +209,7 @@ class Hub:
                     link.transaction = eff.session_start["transaction_id"]
                 if eff.session_stop:
                     await store.session_stop(conn, cid, eff.session_stop)
-                    if link.transaction == eff.session_stop.get("transaction_id"):
-                        link.transaction = None
+                    link.transaction = None  # a stop ends the charger's one session, whatever id it reported (0 included)
                 if eff.session_meter:
                     await store.session_meter(conn, cid, eff.session_meter)
                     if link.transaction is None and eff.session_meter.get("transaction_id") is not None:

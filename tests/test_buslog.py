@@ -10,7 +10,7 @@ import json
 import os
 import time
 from collections.abc import Iterator
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -329,7 +329,8 @@ def test_the_api_shows_the_switches_and_the_record(db: str, monkeypatch: pytest.
     c.delete("/v1/buslog/record-now", headers=h)
     cal = c.get("/v1/buslog/calendar", headers=h).json()
     assert cal["school"] == "Coombe Girls School"
-    assert c.put("/v1/buslog/calendar", json={**cal, "inset": ["2026-11-20"]}, headers=h).json()["inset"] == ["2026-11-20"]
+    future = (date.today() + timedelta(days=30)).isoformat()  # a future INSET day: past ones are dropped on save
+    assert c.put("/v1/buslog/calendar", json={**cal, "inset": [future]}, headers=h).json()["inset"] == [future]
     assert c.get("/v1/buslog/raw/999", headers=h).status_code == 404
     for path in ("/v1/buslog/route", "/v1/buslog/positions", "/v1/buslog/polls", "/v1/buslog/predictions?stop=490B",
                  "/v1/buslog/stop/490B", "/v1/buslog/vehicle/LJ16EZX"):

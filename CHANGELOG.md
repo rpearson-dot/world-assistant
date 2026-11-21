@@ -2,6 +2,56 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.62.0] - 2026-11-16
+
+### Added
+
+- **Boost to 100% (Charger page).** A one-press boost for a planned long drive: the planner tops the car up to 100%
+  (at the cheap rate, a free hour or on spare solar) instead of stopping at your usual target, then clears itself once
+  it gets there — or cancel it any time. Its own setting, so saving planner settings never disturbs it.
+- **Networking split into Pi-hole and Ubiquiti, with block suggestions.** In the home → Networking now has its own
+  pages. **Pi-hole** ranks devices by lookups (flagging the ones that talk a lot), shows what gets past your lists that
+  doesn't serve each device, and keeps the one-tap *Add to Pi-hole* (with Undo). **Ubiquiti** reads the UniFi gateway's
+  firewall log: which devices reach the most outside hosts, the tracker-like domains they resolve, and **advisory
+  firewall-block suggestions** with the exact rule to add — advisory only, World Assistant never changes your firewall.
+  A new `chatty_devices` assistant tool surfaces the chattiest devices.
+- **Confirm what a device is (Networking → Discovery).** Each device now has a *What it is* you can set — accept
+  Discovery's guess or type your own — so the guess becomes a fact kept on the device record.
+
+- **Heat pump (Energy → Heat pump).** Reads your Mitsubishi Ecodan through MELCloud every ten minutes (MELCloud limits
+  how often it can be asked) and keeps it: hot-water tank temperature and target, the hot-water boost, flow/return and
+  outdoor temperatures, the heating zone, power and daily energy — on a page with a history chart (tank, flow, return,
+  boost shaded), published read-only to Home Assistant as sensors plus a hot-water-boost sensor, and available to the
+  assistant. Tracking only for now; using spare solar to store hot water and keeping hot water on the cheapest windows
+  come next, shadow-first (see `claude/ecodan-design.md`). The MELCloud login goes on the Keys page (`melcloud_email`,
+  `melcloud_password`).
+
+### Fixed
+
+- **The planner can stop a charger that reports transaction id 0.** Some chargers (the Sync EV among them) send
+  StopTransaction with id `0` instead of the id World Assistant assigned, so the session never closed and the planner
+  believed the car was charging for ever — unable to start or stop it correctly. A stop now closes the charger's open
+  session whatever id it reports, and the live meter follows the open session too.
+- **The charger's battery gauge now reads true.** It rounded each 20% segment up, so ~81% painted a full bar; it now
+  fills in proportion (80% reads 80%, with the headroom to 100% shown) using the dashboard figure.
+- **The planner's fallback SoC used the low GID figure.** When Home Assistant had no charge level, the planner read the
+  car's GID-based `v.b.soc` (which reads low) and could have charged past the real target; it now uses the dashboard
+  figure, matching the rest of World Assistant.
+
+### Changed
+
+- **In the home is now two areas: Climate control and Networking.** *In the home* is a hub that opens into **Climate
+  control** (Heating/Nest, Heat pump/Ecodan and Air conditioning together) and **Networking** (Devices, Pi-hole,
+  Ubiquiti and Discovery). The Setup list groups these modules under *In the home* to match (the separate "Your network"
+  heading is retired).
+- **The car charger moves to Energy; the car folds into Vehicles.** The OCPP **Charger** tab now lives under **Energy**
+  (its schedule is part of energy). The standalone Car page is gone: each car's live OVMS data — battery, charging,
+  12 V, all metrics, and the charge/climate/lock controls — now shows under that car on the **Vehicles** page, beside
+  its DVLA/MOT block.
+- **KitchenOwl updated to v0.8.1** (was v0.7.10). The bundled shopping-list container now tracks the current release.
+  0.8 is a rootless image; its entrypoint fixes the data directory's ownership on first start — back up
+  `WA_DATA_DIR/kitchenowl` before updating, and if it can't start, chown that folder to the uid the logs name.
+
 ## [0.61.0] - 2026-11-15
 
 ### Fixed

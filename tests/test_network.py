@@ -197,6 +197,52 @@ def test_events_are_kept_against_the_right_device() -> None:
 
 
 @pytest.mark.skipif(not URL, reason="needs WA_TEST_DATABASE_URL")
+def test_devices_list_survives_the_identity_column() -> None:
+    # Regression: net_device.confirmed_kind must not be named "kind" — net_day has a kind column and devices() joins
+    # it, so a bare "kind" would be ambiguous and the endpoint would 500 (caught only by the whole-stack smoke).
+    from types import SimpleNamespace
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.modules.network import api as napi
+
+    sync = sa.create_engine(URL)  # type: ignore[arg-type]
+    with sync.begin() as conn:
+        conn.execute(sa.text("DROP TABLE IF EXISTS net_block, net_reference, net_day, net_event, net_device, app_setting"))
+        conn.execute(sa.text("CREATE TABLE app_setting (key text primary key, value jsonb, updated_at timestamptz)"))
+        ops = Operations(MigrationContext.configure(conn))
+        for name in ("0058_network", "0064_device_identity"):
+            mig = importlib.import_module(f"migrations.versions.{name}")
+            mig.op = ops  # type: ignore[attr-defined]
+            mig.upgrade()
+        conn.execute(sa.text("INSERT INTO net_device (mac, ip, name, first_seen, last_seen) "
+                             "VALUES ('aa:bb:cc:dd:ee:ff', '10.0.2.50', 'TV', now(), now())"))
+        conn.execute(sa.text("INSERT INTO net_day (day, mac, kind, action, n) VALUES "
+                             "(current_date, 'aa:bb:cc:dd:ee:ff', 'dns', 'allow', 5), "
+                             "(current_date, 'aa:bb:cc:dd:ee:ff', 'firewall', 'block', 2)"))
+
+    async def go() -> dict[str, Any]:
+        engine = create_async_engine(URL)  # type: ignore[arg-type]
+        try:
+            req = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(engine=engine)))
+            return await napi.devices(req)  # type: ignore[arg-type]
+        finally:
+            await engine.dispose()
+
+    try:
+        out = asyncio.run(go())
+    finally:
+        with sync.begin() as conn:
+            conn.execute(sa.text("DROP TABLE IF EXISTS net_block, net_reference, net_day, net_event, net_device, app_setting"))
+        sync.dispose()
+    assert len(out["devices"]) == 1
+    d = out["devices"][0]
+    assert d["lookups"] == 5 and d["firewall_blocks"] == 2 and d["confirmed_kind"] is None
+
+
+@pytest.mark.skipif(not URL, reason="needs WA_TEST_DATABASE_URL")
 def test_a_choice_with_network_on_keeps_both_halves_on() -> None:
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
