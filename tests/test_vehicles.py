@@ -51,7 +51,7 @@ def test_detour_can_wipe_out_a_saving() -> None:
 
 VERSIONS = Path(__file__).parent.parent / "migrations" / "versions"
 NAMES = ["0003_nh_storage", "0006_places_trips", "0007_fuel", "0008_trip_routes", "0009_vehicle",
-         "0029_vehicle_own_price", "0035_vehicle_connector"]
+         "0029_vehicle_own_price", "0035_vehicle_connector", "0066_vehicle_charging"]
 TABLES = ["vehicle", "fuel_price_change", "fuel_price", "fuel_station", "trip", "place",
           "nh_sign_message", "nh_sign", "nh_event_corridor", "nh_event", "nh_corridor"]  # fmt: skip
 
@@ -144,6 +144,21 @@ async def test_vehicle_api_trip_cost_and_net_saving(
     assert ev["one_way_on_a_full_charge"] and not ev["return_on_a_full_charge"]
     assert ev["cost_gbp_at_home_rate"] == pytest.approx(ev["kwh"] * 0.25, abs=0.02)
     assert c.get("/v1/fuel/along/trip-t?vehicle=leaf", headers=h).status_code == 422
+
+    # the charge target lives on the car, and the boost toggles via its own endpoint — what the planner reads
+    from app.modules.vehicles import vehicles as vehstore
+
+    assert c.put("/v1/vehicles/leaf", json={**leaf, "target_soc": 90}, headers=h).status_code == 200
+    got = {v["id"]: v for v in c.get("/v1/vehicles", headers=h).json()}
+    assert got["leaf"]["target_soc"] == 90 and got["leaf"]["charge_boost"] is False
+    assert c.post("/v1/vehicles/leaf/boost", json={"on": True}, headers=h).json()["charge_boost"] is True
+    assert c.post("/v1/vehicles/nope/boost", json={"on": True}, headers=h).status_code == 404
+    async with engine.connect() as conn:
+        assert await vehstore.ev_charge(conn) == {"id": "leaf", "target_soc": 90.0, "charge_boost": True}
+    assert c.post("/v1/vehicles/leaf/boost", json={"on": False}, headers=h).json()["charge_boost"] is False
+    # a petrol vehicle keeps no charge target even if one is sent
+    assert c.put("/v1/vehicles/estima", json={"name": "Toyota Estima hybrid", "mpg": 33, "target_soc": 70}, headers=h).status_code == 200
+    assert {v["id"]: v["target_soc"] for v in c.get("/v1/vehicles", headers=h).json()}["estima"] is None
     gas = {"name": "LPG Estima", "kind": "lpg", "mpg": 28, "fuel_pence_per_litre": 85}
     saved = c.put("/v1/vehicles/gas", json=gas, headers=h).json()
     assert (saved["type"], saved["fuel"]) == ("lpg", "LPG")

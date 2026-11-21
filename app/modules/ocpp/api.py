@@ -79,9 +79,9 @@ async def put_settings(request: Request, body: SettingsIn) -> dict[str, Any]:
     if server and address(server, "") != f"ws://{server}:8010/ocpp/":
         raise HTTPException(422, "the server's address is its IP address on your home network, such as 10.0.2.49")
     async with request.app.state.engine.connect() as conn:
-        mode = (await store.settings(conn)).get("mode", "auto")
-    st = {"chargers": ids, "meter_every_s": body.meter_every_s, "publish_ha": body.publish_ha, "mode": mode,
-          "server_address": server}  # fmt: skip
+        old = await store.settings(conn)
+    st = {**old, "chargers": ids, "meter_every_s": body.meter_every_s, "publish_ha": body.publish_ha,
+          "server_address": server}  # keeps mode and max_current_a, which have their own endpoints
     async with request.app.state.engine.begin() as conn:
         await store.save_settings(conn, st)
     return st
@@ -134,6 +134,28 @@ async def start(request: Request, cid: str) -> dict[str, Any]:
 async def stop(request: Request, cid: str) -> dict[str, Any]:
     """Stop the charging session the charger last said it started."""
     return await _send(request, cid, "RemoteStopTransaction", {})
+
+
+class CurrentIn(BaseModel):
+    amps: int | None = Field(None, ge=1, le=100, description="the maximum charging current in amps, or null to clear it")
+
+
+@router.put("/{cid}/current")
+async def put_current(request: Request, cid: str, body: CurrentIn) -> dict[str, Any]:
+    """Set (or clear, with null) a maximum charging current, sent to the charger as an OCPP charging profile and kept.
+    Not every charger honours it, so the result carries the charger's own answer (Accepted / Rejected / NotSupported),
+    and the charger's log (Logs → Charger) shows what it then did."""
+    async with request.app.state.engine.begin() as conn:
+        st = await store.settings(conn)
+        await store.save_settings(conn, {**st, "max_current_a": body.amps})
+    action, args = ("ClearChargingProfile", {}) if body.amps is None else ("SetChargingProfile", {"amps": body.amps})
+    try:
+        out = await _send(request, cid, action, args)
+    except HTTPException as exc:  # saved, but the charger is not connected to receive it now
+        if exc.status_code == 409:
+            return {"max_current_a": body.amps, "sent": False, "note": str(exc.detail)}
+        raise
+    return {"max_current_a": body.amps, **out}
 
 
 class CommandIn(BaseModel):

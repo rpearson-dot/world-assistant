@@ -13,7 +13,8 @@ SETTINGS_KEY = "ocpp.settings"
 # mode: "off" (the charger refuses to charge), "on" (charges whenever a car is plugged in), "auto" (World Assistant's
 # planner decides, when "Control the car charger" is on)
 MODES = ("off", "on", "auto")
-DEFAULTS: dict[str, Any] = {"chargers": [], "meter_every_s": 60, "publish_ha": True, "mode": "auto", "server_address": ""}
+DEFAULTS: dict[str, Any] = {"chargers": [], "meter_every_s": 60, "publish_ha": True, "mode": "auto", "server_address": "",
+                            "max_current_a": None}  # max_current_a: a current limit (amps) sent as an OCPP charging profile, or None
 KEEP_DAYS = 730
 LOG_KEEP_DAYS = 30  # the charger's own syslog (ocpp_log), kept shorter than the OCPP record
 _COLS = ("last_seen", "connected", "connected_at", "boot", "booted_at", "status", "error_code", "status_info", "meter",

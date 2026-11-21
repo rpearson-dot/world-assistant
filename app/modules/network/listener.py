@@ -1,7 +1,8 @@
-"""The syslog listener (the wa-syslog service): receives what the UniFi gateway sends on UDP (port 5514 in the
-container; the host's port is WA_SYSLOG_PORT, 5514 by default), reads each line and writes them in batches every two
-seconds. A new device sends a notification ("a new device joined the network") when that is switched on. Nothing is kept
-while the UniFi gateway log module is switched off.
+"""The syslog listener (the wa-syslog service): receives what the UniFi gateway and the car charger send on port 5514
+in the container (the host's port is WA_SYSLOG_PORT, 5514 by default), over **both UDP and TCP** — devices differ, and
+a plain "log server: IP + port" field often means TCP — reads each line and writes them in batches every two seconds.
+A new device sends a notification ("a new device joined the network") when that is switched on. Nothing of the UniFi
+stream is kept while the UniFi gateway log module is switched off.
 
 The car charger can be pointed at this same port. Its lines are not UniFi events, so they are told apart — by the
 address the charger last connected to World Assistant's OCPP server from, and, should that address have changed, by the
@@ -49,32 +50,74 @@ class Syslog(asyncio.DatagramProtocol):
                 cid = self.charger_hosts.get(host)
         return cid
 
-    def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
+    @staticmethod
+    def _is_private(ip: str) -> bool:
         try:
-            if not ipaddress.ip_address(addr[0]).is_private:
-                return
+            return ipaddress.ip_address(ip).is_private
         except ValueError:
-            return
+            return False
+
+    def _allow(self) -> bool:
+        """The per-second rate limit and the queue ceiling, shared by UDP and TCP. A flood is dropped and counted."""
         now = int(time.monotonic())
         if now != self._second:
             self._second, self._count = now, 0
         self._count += 1
         if self._count > MAX_PER_SECOND or len(self.queue) + len(self.charger_queue) > 50_000:
             self.dropped += 1
+            return False
+        return True
+
+    def ingest(self, ip: str, raw: str) -> None:
+        """One line from one device: to the charger's log when it belongs to a charger, otherwise the UniFi stream."""
+        if not raw.strip() or not self._allow():
             return
-        ip = addr[0]
+        cid = self._charger(ip, raw)
+        if cid is not None:
+            s = ocpp_syslog.read(raw)
+            self.charger_queue.append({"charger": cid, "facility": s["facility"], "severity": s["severity"],
+                                       "message": s["message"], "raw": s["raw"], "from_ip": ip})  # fmt: skip
+            return
+        ev = parse.line(raw)
+        ev["detail"] = {**(ev.get("detail") or {}), "from": ip}
+        self.queue.append(ev)
+
+    def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
+        if not self._is_private(addr[0]):
+            return
         for raw in data.decode("utf-8", "replace").splitlines():
-            if not raw.strip():
-                continue
-            cid = self._charger(ip, raw)
-            if cid is not None:
-                s = ocpp_syslog.read(raw)
-                self.charger_queue.append({"charger": cid, "facility": s["facility"], "severity": s["severity"],
-                                           "message": s["message"], "raw": s["raw"], "from_ip": ip})  # fmt: skip
-                continue
-            ev = parse.line(raw)
-            ev["detail"] = {**(ev.get("detail") or {}), "from": ip}
-            self.queue.append(ev)
+            self.ingest(addr[0], raw)
+
+    async def handle_tcp(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        """A TCP syslog connection: read newline-delimited lines (the common framing) and feed them in. A very long
+        line with no newline is flushed so the buffer can't grow without bound; a final unterminated line is kept."""
+        peer = writer.get_extra_info("peername")
+        ip = peer[0] if peer else ""
+        if not self._is_private(ip):
+            writer.close()
+            return
+        buf = b""
+        try:
+            while True:
+                chunk = await reader.read(4096)
+                if not chunk:
+                    break
+                buf += chunk
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    self.ingest(ip, line.decode("utf-8", "replace"))
+                if len(buf) > 65536:
+                    self.ingest(ip, buf.decode("utf-8", "replace"))
+                    buf = b""
+        except (OSError, asyncio.IncompleteReadError):
+            log.debug("tcp syslog read ended for %s", ip)
+        finally:
+            if buf.strip():
+                self.ingest(ip, buf.decode("utf-8", "replace"))
+            try:
+                writer.close()
+            except OSError:
+                pass
 
 
 async def refresh_chargers(engine: Any, proto: Syslog) -> None:
@@ -153,8 +196,10 @@ async def main() -> None:
     engine = create_async_engine(get_settings().database_url, pool_size=2, max_overflow=1)
     proto = Syslog()
     await asyncio.get_running_loop().create_datagram_endpoint(lambda: proto, local_addr=("0.0.0.0", PORT))
-    log.info("listening for syslog on UDP %s", PORT)
-    await flush(engine, proto)
+    server = await asyncio.start_server(proto.handle_tcp, "0.0.0.0", PORT)
+    log.info("listening for syslog on UDP and TCP %s", PORT)
+    async with server:
+        await flush(engine, proto)
 
 
 if __name__ == "__main__":

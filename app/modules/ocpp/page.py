@@ -55,7 +55,6 @@ details.box > summary { cursor: pointer; font-weight: 650; padding: 4px 0; }
   <div class="batt"><svg id="batt" viewBox="0 0 132 52" width="132" height="52" role="img" aria-label="Car battery"></svg><b id="pct">–</b></div>
   <div class="now"><b id="status">–</b><span id="sub" class="dim"></span></div>
   </div>
-  <div id="boostwrap" hidden style="margin-top:8px"><button type="button" id="boostbtn">Boost to 100%</button> <span id="boosthint" class="dim small"></span></div>
   <p class="dim" id="modewhy"></p><p id="cmsg" class="dim"></p>
 </div>
 <div class="card"><h2>What happened</h2>
@@ -76,6 +75,9 @@ details.box > summary { cursor: pointer; font-weight: 650; padding: 4px 0; }
       <label>This server's home network address <input id="srv" placeholder="e.g. 10.0.2.49"></label>
       <label class="tick"><input id="ha" type="checkbox"> Show the charger in Home Assistant</label>
       <button id="save" type="button">Save</button></div>
+    <div class="row"><label>Maximum charging current <input id="maxa" type="number" min="1" max="100" style="width:6em" placeholder="blank: no limit"> A</label>
+      <button id="setcur" type="button">Set</button><button id="clrcur" type="button">Clear</button></div>
+    <p class="dim" id="curmsg">Sent to the charger as an OCPP charging profile and kept. Not every charger honours it — the <a href="/logs/charger">charger's log</a> shows what it did.</p>
     <p class="dim">The address for a charger: <b id="addr2"></b><b class="cpid">charge point ID</b> (the charger's own
     name for itself, set next to the address in its settings)</p>
     <p id="smsg" class="dim"></p>
@@ -114,26 +116,11 @@ async function load() {
     const keep = $('cp').value; $('cp').replaceChildren(...data.chargers.map(c => new Option(c.id, c.id)));
     if (keep && data.chargers.some(c => c.id === keep)) $('cp').value = keep;
     $('none').hidden = data.chargers.length > 0; $('view').hidden = !data.chargers.length;
-    if (document.activeElement.tagName !== 'INPUT') { $('ids').value = data.settings.chargers.join(', '); $('every').value = data.settings.meter_every_s; $('ha').checked = data.settings.publish_ha; $('srv').value = data.settings.server_address || ''; }
+    if (document.activeElement.tagName !== 'INPUT') { $('ids').value = data.settings.chargers.join(', '); $('every').value = data.settings.meter_every_s; $('ha').checked = data.settings.publish_ha; $('srv').value = data.settings.server_address || ''; $('maxa').value = data.settings.max_current_a ?? ''; }
     if (data.chargers.length) await draw();
   } catch (e) { msg.textContent = e.message; }
 }
 let soc = null;  // the car's charge (dashboard figure), from its OVMS module when that module is on
-let boostState = false;
-function renderBoost() {
-  $('boostbtn').textContent = boostState ? 'Cancel boost' : 'Boost to 100%';
-  $('boostbtn').className = boostState ? 'primary' : '';
-  $('boosthint').textContent = boostState ? 'Topping up to 100% at the next cheap window, free hour or spare solar.'
-    : 'For a long drive: charge to 100% instead of your usual target.';
-}
-async function loadBoost() {
-  try { const p = await api('GET', '/v1/planner/charging?days=1'); boostState = !!p.boost; $('boostwrap').hidden = false; renderBoost(); }
-  catch (e) { $('boostwrap').hidden = true; }  // the planner is off: no boost control
-}
-$('boostbtn').onclick = async () => {
-  try { const r = await api('POST', '/v1/planner/boost', { on: !boostState }); boostState = r.boost; renderBoost(); }
-  catch (e) { $('cmsg').textContent = e.message; }
-};
 function battery(charging) {
   const svg = $('batt'), NS = 'http://www.w3.org/2000/svg', mk = (t, a) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
   svg.replaceChildren();
@@ -174,7 +161,6 @@ async function draw() {
   $('sub').textContent = word === 'Charging' && m.power_w != null ? (m.power_w / 1000).toFixed(1) + ' kW' + (kwh != null ? ' · ' + kwh + ' kWh added' : '')
     : word === 'Fault' ? c.error_code : word === 'Connected' && c.status === 'SuspendedEV' ? 'the car is not taking charge' : '';
   battery(c.status === 'Charging');
-  loadBoost();
   const mode = data.settings.mode || 'auto';
   document.querySelectorAll('.seg button').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.m === mode)); b.disabled = false; });
   $('modewhy').textContent = { off: 'Off: the charger will not charge, even if the car is plugged in.',
@@ -219,6 +205,17 @@ $('save').onclick = async () => {
   try { await api('PUT', '/v1/ocpp/settings', { chargers: $('ids').value.split(',').map(x => x.trim()).filter(Boolean), meter_every_s: Number($('every').value) || 60, publish_ha: $('ha').checked, server_address: $('srv').value.trim() });
     $('smsg').textContent = 'Saved.'; load(); } catch (e) { $('smsg').textContent = e.message; }
 };
+async function setCurrent(amps) {
+  const c = cur(); if (!c) return;
+  $('curmsg').textContent = amps == null ? 'Clearing the limit…' : 'Setting ' + amps + ' A…';
+  try { const r = await api('PUT', '/v1/ocpp/' + c.id + '/current', { amps });
+    $('curmsg').textContent = r.sent === false ? r.note
+      : (r.ok ? 'Charger answered: ' + ((r.answer && r.answer.status) || 'done') : 'Charger: ' + (r.error || 'no answer'));
+  } catch (e) { $('curmsg').textContent = e.message; }
+  setTimeout(load, 1500);
+}
+$('setcur').onclick = () => { const a = Number($('maxa').value); if (a >= 1 && a <= 100) setCurrent(a); else $('curmsg').textContent = 'Enter a current between 1 and 100 A.'; };
+$('clrcur').onclick = () => { $('maxa').value = ''; setCurrent(null); };
 $('kind').onchange = $('days').onchange = $('cp').onchange = () => draw().catch(e => msg.textContent = e.message);
 $('go').onclick = load;
 load();

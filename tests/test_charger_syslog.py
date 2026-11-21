@@ -49,3 +49,45 @@ def test_the_listener_keeps_charger_lines_apart() -> None:
     proto.datagram_received(b"<30>Nov 21 12:00:03 UDR dnsmasq-dhcp[1]: DHCPACK(br0) 10.0.2.50 aa:bb:cc:dd:ee:ff phone",
                             ("10.0.2.1", 514))
     assert len(proto.charger_queue) == 2 and len(proto.queue) == 1
+
+
+class _FakeWriter:
+    def __init__(self, ip: str) -> None:
+        self._ip = ip
+        self.closed = False
+
+    def get_extra_info(self, _key: str) -> tuple[str, int]:
+        return (self._ip, 55555)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _feed_tcp(proto: Syslog, ip: str, data: bytes) -> None:
+    import asyncio
+
+    async def go() -> None:
+        reader = asyncio.StreamReader()
+        reader.feed_data(data)
+        reader.feed_eof()
+        await proto.handle_tcp(reader, _FakeWriter(ip))  # type: ignore[arg-type]
+
+    asyncio.run(go())
+
+
+def test_tcp_syslog_is_read_line_by_line_and_routed() -> None:
+    # Many chargers send syslog over TCP to a plain "IP + port"; the listener reads newline-delimited lines, and keeps
+    # a final line with no trailing newline.
+    proto = Syslog()
+    proto.charger_ips = {"10.0.2.101": "U1HKP"}
+    _feed_tcp(proto, "10.0.2.101", b"<11>Nov 21 12:00:01 SYNCEV: plugged in\n<14>Nov 21 12:00:02 SYNCEV: charging\n<14>Nov 21 12:00:03 SYNCEV: done")
+    assert [r["message"] for r in proto.charger_queue] == ["plugged in", "charging", "done"]
+    assert not proto.queue
+
+    # A non-charger device over TCP still goes the ordinary way; a line from outside the home network is refused.
+    other = Syslog()
+    _feed_tcp(other, "10.0.2.1", b"<30>Nov 21 12:00:03 UDR dnsmasq-dhcp[1]: DHCPACK(br0) 10.0.2.50 aa:bb:cc:dd:ee:ff phone\n")
+    assert len(other.queue) == 1 and not other.charger_queue
+    public = Syslog()
+    _feed_tcp(public, "8.8.8.8", b"<14>Nov 21 12:00:04 somewhere: ignored\n")
+    assert not public.queue and not public.charger_queue
