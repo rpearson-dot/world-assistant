@@ -491,6 +491,15 @@ BUILTIN: tuple[Module, ...] = (
            uses=("events", "gridserve")),
     Module("routing", "Routing (Valhalla)", "Real road routes for trips, so road events, fuel and conditions follow them",
            category="service", listed=False, services=("docker-compose.routing.yml",)),
+    Module("logs", "Logs", "One place for the raw diagnostic feeds — the charger's own syslog, the OCPP protocol "
+           "frames and the network event stream. Always available, so a module's logs can be read even after it has "
+           "been switched off over a fault.",
+           category="service", core=True, listed=False,
+           routers=("app.modules.logs.api:router", "app.modules.logs.page:page_router"),
+           prefixes=("/v1/logs", "/logs"),
+           tabs=(("logs", "logs-charger", "/logs/charger", "Charger"),
+                 ("logs", "logs-ocpp", "/logs/ocpp", "OCPP messages"),
+                 ("logs", "logs-network", "/logs/network", "Network"))),
 )
 
 # What each does with data (role, reads, gives, controls): kept as one table in flows.py, set on the declarations here.

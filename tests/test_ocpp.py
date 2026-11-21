@@ -153,16 +153,19 @@ def db() -> Iterator[str]:
     from alembic.operations import Operations
 
     mig = importlib.import_module("migrations.versions.0049_ocpp")
+    mig_log = importlib.import_module("migrations.versions.0065_charger_log")
+    tables = ("ocpp_log", "ocpp_session", "ocpp_event", "ocpp_message", "ocpp_charger", "app_setting")
     sync = sa.create_engine(URL)  # type: ignore[arg-type]
     with sync.begin() as conn:
-        for t in ("ocpp_session", "ocpp_event", "ocpp_message", "ocpp_charger", "app_setting"):
+        for t in tables:
             conn.execute(text(f"DROP TABLE IF EXISTS {t}"))
         conn.execute(text("CREATE TABLE app_setting (key text primary key, value jsonb not null, updated_at timestamptz not null default now())"))
         with Operations.context(MigrationContext.configure(conn)):
             mig.upgrade()
+            mig_log.upgrade()
     yield URL  # type: ignore[misc]
     with sync.begin() as conn:
-        for t in ("ocpp_session", "ocpp_event", "ocpp_message", "ocpp_charger", "app_setting"):
+        for t in tables:
             conn.execute(text(f"DROP TABLE IF EXISTS {t}"))
     sync.dispose()
 
@@ -191,6 +194,50 @@ def test_a_stop_closes_the_session_even_when_the_id_does_not_match(db: str) -> N
                 row = (await conn.execute(text(
                     "SELECT meter_stop_wh, reason, last_meter_wh FROM ocpp_session WHERE charger = 'U1HKP'"))).first()
                 assert row[0] == 23000 and row[1] == "EmergencyStop" and row[2] == 9000
+        finally:
+            await engine.dispose()
+
+    asyncio.run(go())
+
+
+@pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
+def test_the_charger_syslog_is_kept_matched_and_trimmed(db: str) -> None:
+    import types
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.modules.logs import api as logs_api
+    from app.modules.ocpp import store
+
+    async def go() -> None:
+        engine = create_async_engine(URL)  # type: ignore[arg-type]
+        try:
+            async with engine.begin() as conn:
+                # a connection records the address the charger came from, for the listener to match on
+                await store.charger(conn, "U1HKP", last_seen="2026-11-21T12:00:00Z", peer="10.0.2.101")
+                await store.log(conn, [
+                    {"charger": "U1HKP", "facility": 1, "severity": 6, "message": "EV plugged in", "raw": "<14>... EV plugged in", "from_ip": "10.0.2.101"},
+                    {"charger": "U1HKP", "facility": 1, "severity": 3, "message": "fault F12", "raw": "<11>... fault F12", "from_ip": "10.0.2.101"},
+                ])  # fmt: skip
+            async with engine.connect() as conn:
+                peers = await store.peers(conn)
+                assert peers and peers[0]["id"] == "U1HKP" and peers[0]["peer"] == "10.0.2.101"
+
+            # read back through the core logs API (never gated) — newest first, and filterable by severity
+            req = types.SimpleNamespace(app=types.SimpleNamespace(state=types.SimpleNamespace(engine=engine)))
+            out = await logs_api.charger(req, "U1HKP", limit=200, before=None, severity=None)  # type: ignore[arg-type]
+            assert [l["message"] for l in out["lines"]] == ["fault F12", "EV plugged in"]
+            assert out["lines"][0]["severity_word"] == "error"
+            errs = await logs_api.charger(req, "U1HKP", limit=200, before=None, severity=3)  # type: ignore[arg-type]
+            assert [l["message"] for l in errs["lines"]] == ["fault F12"]
+
+            # the log is trimmed to a month: an old line goes, a recent one stays
+            async with engine.begin() as conn:
+                await conn.execute(text("UPDATE ocpp_log SET at = now() - interval '40 days' WHERE message = 'EV plugged in'"))
+                gone = await store.log_trim(conn)
+            assert gone == 1
+            after = await logs_api.charger(req, "U1HKP", limit=200, before=None, severity=None)  # type: ignore[arg-type]
+            assert [l["message"] for l in after["lines"]] == ["fault F12"]
         finally:
             await engine.dispose()
 

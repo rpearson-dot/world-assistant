@@ -10,13 +10,14 @@ from typing import Any
 from sqlalchemy import text
 
 SETTINGS_KEY = "ocpp.settings"
-# mode: "off" (the charger refuses to charge), "on" (charges whenever a car is plugged in), "auto" (Home Assistant's
-# charging plan decides through its switch)
+# mode: "off" (the charger refuses to charge), "on" (charges whenever a car is plugged in), "auto" (World Assistant's
+# planner decides, when "Control the car charger" is on)
 MODES = ("off", "on", "auto")
 DEFAULTS: dict[str, Any] = {"chargers": [], "meter_every_s": 60, "publish_ha": True, "mode": "auto", "server_address": ""}
 KEEP_DAYS = 730
+LOG_KEEP_DAYS = 30  # the charger's own syslog (ocpp_log), kept shorter than the OCPP record
 _COLS = ("last_seen", "connected", "connected_at", "boot", "booted_at", "status", "error_code", "status_info", "meter",
-         "config", "heartbeat_s")  # fmt: skip
+         "config", "heartbeat_s", "peer")  # fmt: skip
 _JSON = {"boot", "status_info", "meter", "config"}
 
 
@@ -47,6 +48,29 @@ async def message(conn: Any, charger: str, direction: str, kind: int, uid: str |
 async def event(conn: Any, charger: str, kind: str, words: str, detail: dict[str, Any] | None = None) -> None:
     await conn.execute(text("INSERT INTO ocpp_event (charger, kind, text, detail) VALUES (:c, :k, :t, CAST(:d AS jsonb))"),
                        {"c": charger, "k": kind, "t": words[:500], "d": _j(detail or {})})
+
+
+async def peers(conn: Any) -> list[dict[str, Any]]:
+    """Each charger with an address it has connected from, and its id, newest first. The syslog listener matches a
+    charger's log lines to it by this address (and by the id, should the address have changed)."""
+    rows = (await conn.execute(text(
+        "SELECT id, peer, last_seen FROM ocpp_charger WHERE peer IS NOT NULL ORDER BY last_seen DESC NULLS LAST"))).mappings().all()  # fmt: skip
+    return [dict(r) for r in rows]
+
+
+async def log(conn: Any, rows: list[dict[str, Any]]) -> int:
+    """Keep charger syslog lines (ocpp_log). Each row: {charger, facility, severity, message, raw, from_ip}."""
+    if not rows:
+        return 0
+    await conn.execute(text(
+        "INSERT INTO ocpp_log (charger, facility, severity, message, raw, from_ip) "
+        "VALUES (:charger, :facility, :severity, :message, :raw, :from_ip)"), rows)  # fmt: skip
+    return len(rows)
+
+
+async def log_trim(conn: Any) -> int:
+    r = await conn.execute(text("DELETE FROM ocpp_log WHERE at < now() - make_interval(days => :d)"), {"d": LOG_KEEP_DAYS})
+    return int(r.rowcount or 0)
 
 
 async def charger(conn: Any, cid: str, **cols: Any) -> None:
