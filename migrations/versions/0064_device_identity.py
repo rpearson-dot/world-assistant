@@ -15,10 +15,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE net_device ADD COLUMN IF NOT EXISTS kind text")
-    op.execute("ALTER TABLE net_device ADD COLUMN IF NOT EXISTS kind_at timestamptz")
+    # Named confirmed_kind (not kind): net_day already has a kind column, and net_device joins it, so a bare "kind"
+    # would be an ambiguous reference in those queries.
+    op.execute("ALTER TABLE net_device ADD COLUMN IF NOT EXISTS confirmed_kind text")
+    op.execute("ALTER TABLE net_device ADD COLUMN IF NOT EXISTS confirmed_at timestamptz")
 
 
 def downgrade() -> None:
-    op.execute("ALTER TABLE net_device DROP COLUMN IF EXISTS kind_at")
-    op.execute("ALTER TABLE net_device DROP COLUMN IF EXISTS kind")
+    op.execute("ALTER TABLE net_device DROP COLUMN IF EXISTS confirmed_at")
+    op.execute("ALTER TABLE net_device DROP COLUMN IF EXISTS confirmed_kind")

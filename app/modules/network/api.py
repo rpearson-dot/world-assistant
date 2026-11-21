@@ -29,9 +29,9 @@ async def devices(request: Request) -> dict[str, Any]:
     firewall decisions (its Pi-hole groups: /v1/pihole/device-groups)."""
     async with request.app.state.engine.connect() as conn:
         rows = [dict(r) for r in (await conn.execute(text(
-            "SELECT d.*, coalesce(sum(n) FILTER (WHERE kind = 'dns' AND action = 'allow'), 0) AS lookups, "
-            "coalesce(sum(n) FILTER (WHERE kind = 'dns' AND action = 'block'), 0) AS blocked, "
-            "coalesce(sum(n) FILTER (WHERE kind = 'firewall' AND action = 'block'), 0) AS firewall_blocks "
+            "SELECT d.*, coalesce(sum(y.n) FILTER (WHERE y.kind = 'dns' AND y.action = 'allow'), 0) AS lookups, "
+            "coalesce(sum(y.n) FILTER (WHERE y.kind = 'dns' AND y.action = 'block'), 0) AS blocked, "
+            "coalesce(sum(y.n) FILTER (WHERE y.kind = 'firewall' AND y.action = 'block'), 0) AS firewall_blocks "
             "FROM net_device d LEFT JOIN net_day y ON y.mac = d.mac AND y.day = current_date GROUP BY d.mac ORDER BY d.last_seen DESC"))).mappings().all()]  # fmt: skip
     from app.modules import gate
 
@@ -116,7 +116,7 @@ async def identity(request: Request, mac: str, body: IdentityIn) -> dict[str, An
     k = body.kind.strip()
     async with request.app.state.engine.begin() as conn:
         n = (await conn.execute(text(
-            "UPDATE net_device SET kind = nullif(:k, ''), kind_at = CASE WHEN nullif(:k, '') IS NULL THEN NULL ELSE now() END "
+            "UPDATE net_device SET confirmed_kind = nullif(:k, ''), confirmed_at = CASE WHEN nullif(:k, '') IS NULL THEN NULL ELSE now() END "
             "WHERE mac = :m"), {"k": k, "m": mac.lower()})).rowcount  # fmt: skip
     if not n:
         raise HTTPException(404, "no such device")
