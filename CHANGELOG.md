@@ -16,6 +16,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 - **Every assistant tool documents itself.** All ~68 tools now carry a title, summary, sample phrases and a kind
   (read or action); a new test fails if a tool is added without them, so the manifest can never fall behind.
 
+## [0.64.0] - 2026-11-21
+
 ### Added
 
 - **Logs tab: one home for the raw diagnostic feeds.** A new **Logs** page gathers the feeds you reach for when
