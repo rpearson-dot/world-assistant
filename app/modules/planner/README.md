@@ -10,7 +10,7 @@ In shadow until you turn on "act": it decides and keeps each decision, and only 
 | Reads | Home Assistant: the house's use statistic, the plan, the charger and car sensors, the battery and grid entities |
 | Gives | notifications: the planner's month |
 | **Controls** | the car charger: start and stop, only with "act" ticked and the switch on Auto |
-| Uses when there | [octopus](../octopus/), [weather](../weather/), [ocpp](../ocpp/), [ovms](../ovms/), [solar](../solar/) |
+| Uses when there | [octopus](../octopus/), [weather](../weather/), [ocpp](../ocpp/), [ovms](../ovms/), [solar](../solar/), [vehicles](../vehicles/) |
 | Endpoints | `/v1/planner`, `/planner` |
 | Scheduled jobs | `planner_tick`, `demand_job`, `planner_review` |
 | Assistant tools | `charging_plan`, `evening_demand` |
