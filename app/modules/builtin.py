@@ -70,7 +70,7 @@ CORE = Module(
             # outside modules: new releases checked (and installed unless held) each day; usage and limits each hour
             Job("app.outside.api:outside_daily", {"hour": {5}, "minute": {23}, "timeout": 900, "max_tries": 1}),
             Job("app.outside.api:outside_usage", {"minute": {27}, "timeout": 120, "max_tries": 1})),
-    tools=("list_options", "add_place", "add_trip"),
+    tools=("list_options", "search_place", "add_place", "add_trip"),
 )
 
 BUILTIN: tuple[Module, ...] = (

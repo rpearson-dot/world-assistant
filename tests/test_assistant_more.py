@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import importlib
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -35,6 +36,15 @@ class _AllTools:
 M = _AllTools()
 
 REQ: Any = object()  # the tools only pass it on; every function that would use it is replaced here
+
+
+def _conn_exec(execute: Any) -> Any:
+    """A stand-in engine.connect(): an async context manager whose conn.execute is the given function."""
+    @contextlib.asynccontextmanager
+    async def cm() -> Any:
+        yield SimpleNamespace(execute=execute)
+
+    return cm
 
 
 def test_every_feature_with_an_api_has_an_assistant_tool() -> None:
@@ -173,10 +183,67 @@ async def test_floods_roads_buses_stops_and_postcodes_read_well(monkeypatch: pyt
     assert (await M.postcode_tool(REQ, {}))["text"] == "The nearest postcode to Home is KT4 8AA."
 
 
-async def test_add_place_needs_somewhere(at_home: None) -> None:
-    with pytest.raises(ToolError, match="postcode"):
-        await M.add_place_tool(REQ, {"name": "Mum's"})
+async def test_add_place_with_coords_or_postcode(monkeypatch: pytest.MonkeyPatch) -> None:
+    saved: dict[str, Any] = {}
+
+    async def put_place(pid: str, body: Any, request: Any) -> dict[str, Any]:
+        saved.update(id=pid, name=body.name, postcode=body.postcode, lat=body.lat, lon=body.lon)
+        return {"id": pid, "name": body.name, "postcode": body.postcode}
+
+    async def exists(sql: Any, params: Any) -> Any:  # no place yet
+        return SimpleNamespace(first=lambda: None)
+
+    monkeypatch.setattr("app.places.put_place", put_place)
+    req = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+        engine=SimpleNamespace(connect=_conn_exec(exists)))))
+    out = await M.add_place_tool(req, {"name": "Mum's", "lat": 51.4, "lon": -0.3})
+    assert saved["lat"] == 51.4 and out["text"].startswith("Saved Mum's")
     assert M._slug("Mum's house!") == "mum-s-house"
+
+
+async def test_search_place_and_add_place_resolve_descriptions(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.geo import PlaceHit
+
+    hits = [PlaceHit("The O2, Greenwich", 51.503, 0.0032, "SE10 0DX", "attraction"),
+            PlaceHit("O2 Academy Brixton, Brixton", 51.4657, -0.115, None, "arts_centre")]  # fmt: skip
+    calls: dict[str, Any] = {}
+
+    async def fake_search(q: str, *, near: Any = None, base_url: str = "") -> list[PlaceHit]:
+        calls["q"], calls["near"] = q, near
+        return hits if "o2" in q.lower() else []
+
+    monkeypatch.setattr("app.geo.search_places", fake_search)
+
+    # search_place: returns both candidates, biased by the caller's location
+    found = await M.search_place_tool(REQ, {"query": "the O2 in London", "near_lat": 51.5, "near_lon": 0.0})
+    assert calls["near"] == (51.5, 0.0)
+    assert [c["label"] for c in found["data"]["candidates"]] == ["The O2, Greenwich", "O2 Academy Brixton, Brixton"]
+
+    # add_place with only a description and two matches: asks which, saves nothing
+    ask = await M.add_place_tool(REQ, {"name": "the O2 in London"})
+    assert "More than one match" in ask["text"] and len(ask["data"]["candidates"]) == 2
+
+    # add_place with a description that has one match: saves it under the matched name
+    saved: dict[str, Any] = {}
+
+    async def put_place(pid: str, body: Any, request: Any) -> dict[str, Any]:
+        saved.update(id=pid, name=body.name, lat=body.lat, lon=body.lon)
+        return {"id": pid, "name": body.name, "postcode": body.postcode}
+
+    async def none_exists(sql: Any, params: Any) -> Any:
+        return SimpleNamespace(first=lambda: None)
+
+    monkeypatch.setattr("app.places.put_place", put_place)
+    monkeypatch.setattr("app.geo.search_places", lambda q, *, near=None, base_url="": _one(hits[:1]))
+    req = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+        engine=SimpleNamespace(connect=_conn_exec(none_exists)))))
+    out = await M.add_place_tool(req, {"name": "O2 arena"})
+    assert saved["name"] == "The O2" and saved["lat"] == 51.503
+    assert out["text"].startswith("Saved The O2")
+
+
+async def _one(hits: list[Any]) -> list[Any]:
+    return hits
 
 
 @pytest.fixture

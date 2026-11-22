@@ -183,7 +183,7 @@ function choose(cell, it, r, x) {
   for (const p of x.candidates) {
     const li = el('li'); li.append(product(p), ' ', el('b', null, money(p.price)), ' ');
     li.append(button('Use this', () => guard(async () => {
-      await api('PUT', '/v1/shopping/match', { item_key: it.key, retailer: r, product: { id: p.id, name: p.name, price: p.price, size: p.size, unit_price: p.unit_price } });
+      await api('PUT', '/v1/shopping/match', { item_key: it.key, retailer: r, item_name: it.name, product: { id: p.id, name: p.name, price: p.price, size: p.size, unit_price: p.unit_price } });
       await price(false);
     }, $('pmsg'))));
     ul.append(li);

@@ -20,17 +20,70 @@ from app.assistant_base import Tool, ToolError, _need, _props, _slug, _wrap
 
 
 
+def _near(args: dict[str, Any]) -> tuple[float, float] | None:
+    """The caller's current position, if sent, to bias a place search towards nearby matches."""
+    lat, lon = args.get("near_lat"), args.get("near_lon")
+    if lat is None or lon is None:
+        return None
+    try:
+        return float(lat), float(lon)
+    except (TypeError, ValueError):
+        return None
+
+
+def _candidates(hits: list[Any]) -> list[dict[str, Any]]:
+    return [{"label": h.label, "lat": h.lat, "lon": h.lon, "postcode": h.postcode, "kind": h.kind} for h in hits]
+
+
+def _candidate_lines(hits: list[Any]) -> str:
+    return "; ".join(f"{i + 1}) {h.label}" + (f" ({h.postcode})" if h.postcode else "") for i, h in enumerate(hits))
+
+
+async def search_place_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.config import get_settings
+    from app.geo import GeocodeError, search_places
+
+    query = _need(args, "query")
+    try:
+        hits = await search_places(query, near=_near(args), base_url=get_settings().geocoder_url)
+    except GeocodeError as exc:
+        raise ToolError(f"Place search is unavailable right now ({exc}).") from exc
+    if not hits:
+        return {"text": f"I couldn't find anywhere matching {query!r}. Try adding the town or area.",
+                "data": {"candidates": []}}  # fmt: skip
+    return {"text": f"Found: {_candidate_lines(hits)}. To save one, add it as a place with its lat and lon.",
+            "data": {"candidates": _candidates(hits)}}  # fmt: skip
+
+
 async def add_place_tool(request: Request, args: dict[str, Any]) -> dict[str, Any]:
+    from app.config import get_settings
+    from app.geo import GeocodeError, search_places
     from app.places import PlaceIn, put_place
 
     name = _need(args, "name")
+    postcode = str(args.get("postcode") or "") or None
+    lat, lon = args.get("lat"), args.get("lon")
+    # No postcode and no coordinates: treat the name (or an explicit query) as a described place and look it up.
+    if not postcode and (lat is None or lon is None):
+        query = str(args.get("query") or name)
+        try:
+            hits = await search_places(query, near=_near(args), base_url=get_settings().geocoder_url)
+        except GeocodeError as exc:
+            raise ToolError(f"Place search is unavailable right now ({exc}). Give a postcode, or lat and lon.") from exc
+        if not hits:
+            raise ToolError(f"I couldn't find a place matching {query!r}. Add the town, or give a postcode.")
+        if len(hits) > 1:
+            return {"text": f"More than one match for {query!r}: {_candidate_lines(hits)}. "
+                            "Say which, then add that one with its lat and lon.",
+                    "data": {"candidates": _candidates(hits)}}  # fmt: skip
+        hit = hits[0]
+        lat, lon = hit.lat, hit.lon
+        # The name was itself the search text (no separate label or id given): adopt the matched place's name.
+        if not args.get("id") and not args.get("query"):
+            name = hit.label.split(",")[0].strip() or name
     pid = _slug(str(args.get("id") or name))
     if not pid:
         raise ToolError("Give the place a name with a letter or digit in it.")
-    postcode = str(args.get("postcode") or "") or None
-    lat, lon = args.get("lat"), args.get("lon")
-    if not postcode and (lat is None or lon is None):
-        raise ToolError("Give a postcode, or lat and lon.")
     async with request.app.state.engine.connect() as conn:
         exists = (await conn.execute(text("SELECT 1 FROM place WHERE id = :p"), {"p": pid})).first()
     if exists and not args.get("replace"):
@@ -81,14 +134,27 @@ MORE: list[Tool] = [
          {"type": "object", "properties": _props(count=("integer", "how many, default 3"))}, bank_holidays_tool,
          title="Next bank holidays", summary="The next UK bank holidays, and whether today is one.",
          phrases=("when's the next bank holiday", "is today a bank holiday"), kind="query"),
-    Tool("add_place", "Save a new place (by postcode, or lat and lon), so the other tools can use it.",
+    Tool("search_place", "Find a described place (e.g. 'the O2 in London') and get a few candidates to choose from. "
+         "Pass near_lat and near_lon (the caller's location) to prefer nearby matches. Nothing is saved.",
+         {"type": "object", "properties": _props(query=("string", "what to look for, e.g. 'the O2 in London'"),
+                                                 near_lat=("number", "the caller's latitude, to prefer nearby matches"),
+                                                 near_lon=("number", "the caller's longitude")),
+          "required": ["query"]}, search_place_tool,
+         title="Find a place", summary="Searches for a described place and returns candidates to pick from.",
+         phrases=("find {query}", "where is {query}"), kind="query"),
+    Tool("add_place", "Save a new place. Give a postcode, or lat and lon, or just describe it (e.g. 'the O2 in "
+         "London') and it is looked up; if more than one match, you are asked which. Pass near_lat/near_lon to prefer "
+         "nearby matches.",
          {"type": "object", "properties": _props(name=("string", "what to call it, e.g. Mum's"), postcode=("string", "UK postcode"),
                                                  lat=("number", "latitude, instead of a postcode"), lon=("number", "longitude"),
+                                                 query=("string", "describe the place to look up, if no postcode or coordinates"),
+                                                 near_lat=("number", "the caller's latitude, to prefer nearby matches"),
+                                                 near_lon=("number", "the caller's longitude"),
                                                  kind=("string", "home, work, school, family or other"),
                                                  id=("string", "optional id; default made from the name"),
                                                  replace=("boolean", "change a place already saved under that id")),
           "required": ["name"]}, add_place_tool,
-         title="Save a place", summary="Saves a new place by postcode or coordinates, so other features can use it.",
+         title="Save a place", summary="Saves a new place by postcode, coordinates or a described name, so other features can use it.",
          phrases=("save {name} as a place", "add a place called {name}"), kind="action"),
     Tool("add_trip", "Save a trip between two saved places and route it, for road conditions, chargers along it and cost.",
          {"type": "object", "properties": _props(from_place=("string", "id of the start place"), to_place=("string", "id of the end place"),

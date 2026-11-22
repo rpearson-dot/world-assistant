@@ -19,7 +19,12 @@ from app.config import get_settings
 from app.modules.nr.sources.rail import make_rail_client
 from app.modules.nr.sources.rail.rdm import RailError, RdmClient, parse_services
 from app.modules.tfl.sources.tfl.client import TflClient, TflError
-from app.modules.tfl.sources.tfl.normalise import parse_departures, select, summarise_status
+from app.modules.tfl.sources.tfl.normalise import (
+    parse_arrivals,
+    parse_departures,
+    select,
+    summarise_status,
+)
 from app.pagestyle import themed
 from app.places import check_slug
 from app.ratelimit import SlidingWindowLimiter
@@ -189,6 +194,96 @@ def _rail_client(request: Request) -> RdmClient:
     return make_rail_client(settings, limiter)
 
 
+def _adhoc_nr_board(crs: str, name: str) -> dict[str, Any]:
+    """A throwaway National Rail board for a station the person named but has not saved."""
+    return {"name": name, "source": "nationalrail", "station": crs.upper(),
+            "lines": [], "include": [], "exclude": [], "max_rows": 10}  # fmt: skip
+
+
+def _adhoc_tfl_board(stop: str, name: str) -> dict[str, Any]:
+    """A throwaway TfL board read from live arrival predictions (Tube/DLR/Overground/Elizabeth line)."""
+    return {"name": name, "source": "tfl", "station": stop, "method": "arrivals",
+            "lines": [], "include": [], "exclude": [], "max_rows": 10}  # fmt: skip
+
+
+# Which TfL mode a stop is, for a candidate label the person can tell apart.
+_TFL_MODE_LABEL = {"tube": "Tube", "dlr": "DLR", "overground": "Overground",
+                   "elizabeth-line": "Elizabeth line", "tram": "Tram"}  # fmt: skip
+_TFL_SEARCH_MODES = "tube,dlr,overground,elizabeth-line,tram"
+# Words that force a London (TfL) reading of a name that is also a National Rail station, e.g. "Waterloo underground".
+_TFL_HINT = re.compile(r"\b(underground|tube|overground|dlr|elizabeth line|elizabeth)\b", re.IGNORECASE)
+
+
+def _tfl_type(modes: Any) -> str:
+    ms = modes if isinstance(modes, list) else []
+    for m in ("tube", "elizabeth-line", "overground", "dlr", "tram"):
+        if m in ms:
+            return _TFL_MODE_LABEL[m]
+    return "London"
+
+
+async def resolve_board(request: Request, token: str) -> dict[str, Any]:
+    """Turn what the person said into a board to read. In order: a saved board (by id or name), a three-letter CRS
+    code (e.g. SNL), then a station name resolved live across National Rail (anywhere in GB) and TfL (Tube, DLR,
+    Overground, Elizabeth line). A name that matches more than one station comes back as {"candidates": [...]} so the
+    caller can ask which. Nothing here reads a stored station list — the lookups are live."""
+    token = token.strip()
+    if not token:
+        raise HTTPException(422, "say which board or station")
+    async with request.app.state.engine.connect() as conn:
+        row = (
+            await conn.execute(
+                text(
+                    "SELECT id, name, source, station, lines, include, exclude, max_rows FROM tfl_board "
+                    "WHERE lower(id) = lower(:t) OR lower(name) = lower(:t) "
+                    "ORDER BY (lower(id) = lower(:t)) DESC LIMIT 1"
+                ),
+                {"t": token},
+            )
+        ).mappings().first()  # fmt: skip
+    if row:
+        return dict(row)
+    if re.fullmatch(r"[A-Za-z]{3}", token):  # a CRS code
+        return _adhoc_nr_board(token, token.upper())
+
+    tfl_only = bool(_TFL_HINT.search(token))
+    query = _TFL_HINT.sub("", token).strip() or token
+    candidates: list[dict[str, Any]] = []
+
+    if not tfl_only:  # National Rail (nationwide)
+        try:
+            async with _rail_client(request) as rc:
+                found = await rc.search_stations(query)
+            candidates += [{"source": "nr", "station": f["crsCode"], "name": f["stationName"],
+                            "type": "National Rail"}
+                           for f in found if f.get("crsCode") and f.get("stationName")]  # fmt: skip
+        except RailError:
+            pass  # National Rail search is optional; TfL may still answer
+
+    try:  # TfL (Tube/DLR/Overground/Elizabeth line/Tram)
+        async with _client(request) as c:
+            stops = await c.search_stops(query, _TFL_SEARCH_MODES)
+        candidates += [{"source": "tfl", "station": s["id"], "name": s.get("name") or query,
+                        "type": _tfl_type(s.get("modes"))}
+                       for s in stops if s.get("id")]  # fmt: skip
+    except TflError:
+        pass  # TfL search is optional; National Rail may still answer
+
+    if not candidates:
+        raise HTTPException(404, f"no saved board or station matches {token!r}")
+    exact = [h for h in candidates if h["name"].lower() == query.lower()]
+    if len(candidates) == 1 or len(exact) == 1:
+        return _board_from_hit(candidates[0] if len(candidates) == 1 else exact[0])
+    return {"candidates": [{"id": h["station"], "name": h["name"], "type": h["type"], "source": h["source"]}
+                          for h in candidates[:6]]}  # fmt: skip
+
+
+def _board_from_hit(hit: dict[str, Any]) -> dict[str, Any]:
+    if hit["source"] == "nr":
+        return _adhoc_nr_board(hit["station"], hit["name"])
+    return _adhoc_tfl_board(hit["station"], hit["name"])
+
+
 async def board_departures(request: Request, board: dict[str, Any]) -> dict[str, Any]:
     settings = get_settings()
     now = datetime.now(UTC)
@@ -201,6 +296,12 @@ async def board_departures(request: Request, board: dict[str, Any]) -> dict[str,
                     lambda: rc.departures(board["station"], 10),
                 )
             parsed = parse_services(data, now - timedelta(seconds=age), settings.tfl_naive_tz)
+        elif board.get("method") == "arrivals":  # Tube/DLR/Overground/Elizabeth: live predictions, not a timetable
+            async with _client(request) as c:
+                records, age = await _cached_aged(
+                    f"arr:{board['station']}", CACHE_SECONDS, lambda: c.stop_arrivals(board["station"])
+                )
+            parsed = parse_arrivals(records, settings.tfl_naive_tz)
         else:
             async with _client(request) as c:
                 records, age = await _cached_aged(

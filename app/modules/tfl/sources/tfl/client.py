@@ -89,6 +89,14 @@ class TflClient:
             raise TflError("unexpected response shape for ArrivalDepartures")
         return [d for d in data if isinstance(d, dict)]
 
+    async def stop_arrivals(self, station: str) -> list[dict[str, Any]]:
+        """Live arrival predictions at a stop (Tube, DLR, Overground, Elizabeth line): there is no timetabled
+        departure board for these, so predictions are the closest thing to 'next trains'."""
+        data = await self.get(f"/StopPoint/{station}/Arrivals")
+        if not isinstance(data, list):
+            raise TflError("unexpected response shape for Arrivals")
+        return [d for d in data if isinstance(d, dict)]
+
     async def line_status(self, lines: list[str]) -> list[dict[str, Any]]:
         data = await self.get(f"/Line/{','.join(lines)}/Status")
         if not isinstance(data, list):

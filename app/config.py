@@ -127,6 +127,7 @@ class Settings(BaseSettings):
     nr_base_url: str = ""  # National Rail (Rail Data Marketplace) base URL; empty = the default
     tfl_naive_tz: str = "Europe/London"  # zone for TfL times that carry no offset
     valhalla_url: str = "http://valhalla:8002"
+    geocoder_url: str = "https://nominatim.openstreetmap.org"  # place-name search; point at a self-hosted Nominatim to avoid the public one
     fuel_poll_enabled: bool = False
     codepoint_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off
     boundary_poll_enabled: bool = False  # the compose file turns it on; CI and tests leave it off

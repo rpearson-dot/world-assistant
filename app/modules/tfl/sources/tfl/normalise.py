@@ -48,6 +48,26 @@ def parse_departures(records: Sequence[dict[str, Any]], naive_tz: str = "Europe/
     return out
 
 
+def parse_arrivals(records: Sequence[dict[str, Any]], naive_tz: str = "Europe/London") -> list[Departure]:
+    """Live arrival predictions (Tube/DLR/Overground/Elizabeth line) as departures. Each prediction carries an
+    `expectedArrival`; there is no scheduled time or departure status, so those stay None."""
+    out = []
+    for r in records:
+        out.append(
+            Departure(
+                station=_s(r, "stationName"),
+                line=_s(r, "lineName", "lineId"),
+                destination=_s(r, "destinationName", "towards"),
+                platform=_s(r, "platformName"),
+                scheduled=None,
+                expected=parse_time(r.get("expectedArrival"), naive_tz),
+                status=None,
+                cause=None,
+            )
+        )
+    return out
+
+
 def select(
     deps: Sequence[Departure], *, include: Sequence[str], exclude: Sequence[str], now: datetime,
     limit: int,

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -256,3 +258,31 @@ async def test_removing_items_asks_kitchenowl_once_for_all_of_them(wired: dict[s
     assert seen == [("DELETE", "/api/shoppinglist/7/items", {"items": [{"item_id": 3}, {"item_id": 12}]})]
     assert await S.remove_items(object(), [], transport=httpx.MockTransport(answer)) == 0  # type: ignore[arg-type]
     assert len(seen) == 1  # nothing to remove: nothing sent
+
+
+def _req_with_matches(rows: list[tuple[Any, ...]]) -> Any:
+    """A request whose shopping_match query returns these (item_key, retailer, product, item_name) rows."""
+    async def rows_coro() -> list[tuple[Any, ...]]:
+        return rows
+
+    @contextlib.asynccontextmanager
+    async def connect() -> Any:
+        yield SimpleNamespace(execute=lambda *a, **k: rows_coro())
+
+    return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(engine=SimpleNamespace(connect=connect))))
+
+
+async def test_usual_for_items_finds_by_key_or_by_name_so_it_survives_a_reindex() -> None:
+    rows = [
+        ("ko:1", "ocado", {"id": "o-milk", "name": "Ocado Milk"}, "Milk"),
+        ("ko:99", "ocado", {"id": "o-eggs", "name": "Ocado Eggs"}, "Eggs"),  # Eggs was ticked off; re-added as ko:2
+        ("ko:2", "ocado", {"id": "o-eggs-new", "name": "Ocado Eggs 12"}, "Eggs"),  # a fresher confirm wins by name
+    ]
+    items = [{"key": "ko:1", "name": "Milk"}, {"key": "ko:2", "name": "Eggs"}]
+    usual = await S.usual_for_items(_req_with_matches(rows), items)
+    assert usual[("ko:1", "ocado")]["id"] == "o-milk"       # matched by key
+    assert usual[("ko:2", "ocado")]["id"] == "o-eggs-new"   # exact key match wins over the older name row
+
+    # With no exact key row for the re-added item, the usual is still found by name (the point of the fix).
+    usual2 = await S.usual_for_items(_req_with_matches(rows[:2]), items)
+    assert usual2[("ko:2", "ocado")]["id"] == "o-eggs"
