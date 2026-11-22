@@ -4,6 +4,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Fixed
+
+- **The OCPP charger can finally be controlled.** Every command World Assistant sent (RemoteStart/Stop,
+  ChangeAvailability, TriggerMessage, charging profiles) went unanswered — "no answer within 30 s" — even though the
+  charger's own messages (boot, status, meter) arrived fine. The cause was WebSocket compression: uvicorn's default
+  permessage-deflate uses a 32 KB window, which the charger (a Sync EV) could not decompress, so it silently dropped
+  every frame World Assistant sent while its own frames, compressed with a smaller window, were read without trouble.
+  The server now runs with permessage-deflate off (OCPP-J messages are tiny, so nothing is lost), so the charger can
+  read our commands.
+
 ## [0.67.0] - 2026-11-22
 
 ### Added

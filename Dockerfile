@@ -59,5 +59,9 @@ COPY homeassistant ./homeassistant
 USER 10001:10001
 EXPOSE 8000
 
-# Default is the API; the worker and migrate services override the command in compose
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+# Default is the API; the worker and migrate services override the command in compose.
+# --ws-per-message-deflate false: never compress WebSocket frames. OCPP-J messages are tiny so compression buys
+# nothing, and uvicorn's default deflate uses a 32 KB window that some chargers (the Sync EV) cannot decompress — they
+# then silently drop every command while still sending their own messages. The OCPP library HA uses avoids this by
+# negotiating a small 4 KB window; turning compression off entirely is simpler and safe. (tests/test_ocpp.py guards it.)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--ws-per-message-deflate", "false"]

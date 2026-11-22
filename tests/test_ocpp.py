@@ -71,6 +71,16 @@ def test_a_frame_is_read_whether_text_or_binary() -> None:
         asyncio.run(_receive(FakeWS({"type": "websocket.disconnect", "code": 1001})))
 
 
+def test_the_server_runs_with_websocket_compression_off() -> None:
+    # The charger (Sync EV) could not decompress permessage-deflate frames compressed with uvicorn's default 32 KB
+    # window, so every command WA sent went unanswered while the charger's own messages arrived fine. The server must
+    # therefore run with --ws-per-message-deflate false. Guard that so a refactor can't silently re-enable it.
+    from pathlib import Path
+
+    cmd = Path(__file__).resolve().parents[1].joinpath("Dockerfile").read_text()
+    assert "--ws-per-message-deflate" in cmd and "false" in cmd.split("--ws-per-message-deflate", 1)[1][:12]
+
+
 def test_a_restart_is_told_from_a_first_boot() -> None:
     boot = {"chargePointVendor": "SyncEV", "chargePointModel": "EVCP-7KW", "firmwareVersion": "1.6.2"}
     first = protocol.respond("BootNotification", boot, connected_s=3, booted_before=False, transaction_id=0)
