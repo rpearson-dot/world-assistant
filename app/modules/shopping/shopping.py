@@ -301,15 +301,16 @@ def match_order(order: dict[str, Any], items: list[dict[str, Any]], products: di
     return out
 
 
-async def item_products(request: Request, retailer: str) -> dict[str, set[str]]:
-    """Per list item, the product ids at this retailer it means: the last priced choice and your usual."""
+async def item_products(request: Request, retailer: str, items: list[dict[str, Any]]) -> dict[str, set[str]]:
+    """Per current list item, the product ids at this retailer it means: the last priced choice and your usual (found
+    by the item's key or its name)."""
     out: dict[str, set[str]] = {}
     last = await _get(request, LAST_KEY)
     for it in (last or {}).get("items") or []:
         c = ((it.get("retailers") or {}).get(retailer) or {}).get("choice")
         if c and c.get("id"):
             out.setdefault(it["key"], set()).add(str(c["id"]))
-    for (key, r), p in (await usual_matches(request)).items():
+    for (key, r), p in (await usual_for_items(request, items)).items():
         if r == retailer and p.get("id"):
             out.setdefault(key, set()).add(str(p["id"]))
     return out
@@ -412,6 +413,47 @@ async def usual_matches(request: Request) -> dict[tuple[str, str], dict[str, Any
         return {(k, r): p for k, r, p in rows}
 
 
+async def usual_for_items(request: Request, items: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
+    """Each current item's confirmed "usual" product per retailer, found by its KitchenOwl key or, failing that, by
+    its name (newest confirmed wins) — so a usual survives an item being ticked off and re-added under a new id. The
+    result is keyed by the current item's key, so callers look it up exactly as before."""
+    by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    by_name: dict[tuple[str, str], dict[str, Any]] = {}
+    async with request.app.state.engine.connect() as conn:
+        rows = await conn.execute(
+            text("SELECT item_key, retailer, product, item_name FROM shopping_match ORDER BY confirmed_at")
+        )
+        for key, retailer, product, name in rows:
+            by_key[(key, retailer)] = product
+            if name:
+                by_name[(_norm(name), retailer)] = product  # a later (newer) row overwrites an older one
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    for it in items:
+        nk = _norm(it["name"])
+        for (key, retailer), product in by_key.items():
+            if key == it["key"]:
+                out[(it["key"], retailer)] = product
+        for (name, retailer), product in by_name.items():
+            if name == nk:
+                out.setdefault((it["key"], retailer), product)  # an exact key match wins over a name match
+    return out
+
+
+async def name_current_matches(request: Request, items: list[dict[str, Any]]) -> None:
+    """Fill in item_name on any match of a current item that has none yet (matches confirmed before names were
+    stored), so those usuals also survive the next tick-and-re-add."""
+    unnamed = [(it["key"], it["name"]) for it in items if it.get("name")]
+    if not unnamed:
+        return
+    async with request.app.state.engine.begin() as conn:
+        for key, name in unnamed:
+            await conn.execute(
+                text("UPDATE shopping_match SET item_name = :n "
+                     "WHERE item_key = :k AND (item_name IS NULL OR item_name = '')"),
+                {"n": name, "k": key},
+            )
+
+
 # --- routes -------------------------------------------------------------------------------------------------------
 
 
@@ -487,7 +529,8 @@ async def price(body: PriceIn, request: Request) -> dict[str, Any]:
     items = await current_items(request)
     if not items:
         raise HTTPException(409, "The list is empty")
-    usual = await usual_matches(request)
+    await name_current_matches(request, items)  # name any older matches so their usuals survive a re-add
+    usual = await usual_for_items(request, items)
     wanted: dict[str, set[str]] = {r: set() for r in st["retailers"]}
     for it in items:
         q = query_for(it["name"], quantity(it["description"])[1])
@@ -524,6 +567,7 @@ class MatchIn(BaseModel):
     item_key: str = Field(min_length=1, max_length=80)
     retailer: str
     product: Product | None = None  # none: forget the usual one
+    item_name: str | None = Field(default=None, max_length=120)  # so the usual can be re-found if the item's id changes
 
 
 def _retailer(r: str) -> str:
@@ -537,11 +581,19 @@ async def set_match(body: MatchIn, request: Request) -> dict[str, Any]:
     _retailer(body.retailer)
     if not body.product:
         raise HTTPException(422, "product: which product you mean")
+    name = (body.item_name or "").strip() or None
+    if not name:  # the page may not send it; find it on the current list by the item's key
+        try:
+            name = next((i["name"] for i in await current_items(request) if i["key"] == body.item_key), None)
+        except HTTPException:
+            name = None
     async with request.app.state.engine.begin() as conn:
         await conn.execute(
-            text("INSERT INTO shopping_match (item_key, retailer, product, confirmed_at) VALUES (:k, :r, CAST(:p AS jsonb), now()) "
-                 "ON CONFLICT (item_key, retailer) DO UPDATE SET product = EXCLUDED.product, confirmed_at = now()"),
-            {"k": body.item_key, "r": body.retailer, "p": body.product.model_dump_json()},
+            text("INSERT INTO shopping_match (item_key, retailer, product, item_name, confirmed_at) "
+                 "VALUES (:k, :r, CAST(:p AS jsonb), :n, now()) "
+                 "ON CONFLICT (item_key, retailer) DO UPDATE SET product = EXCLUDED.product, "
+                 "item_name = COALESCE(EXCLUDED.item_name, shopping_match.item_name), confirmed_at = now()"),
+            {"k": body.item_key, "r": body.retailer, "p": body.product.model_dump_json(), "n": name},
         )  # fmt: skip
     return {"item_key": body.item_key, "retailer": body.retailer, "product": body.product.model_dump()}
 
@@ -635,7 +687,7 @@ async def orders(retailer: str, request: Request) -> dict[str, Any]:
     except HTTPException as exc:
         raise _login_first(retailer, exc) from exc
     items = await current_items(request)
-    products = await item_products(request, retailer)
+    products = await item_products(request, retailer, items)
     for o in data.get("orders", []):
         o["on_list"] = match_order(o, items, products)
     return data  # type: ignore[no-any-return]
