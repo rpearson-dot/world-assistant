@@ -71,14 +71,17 @@ def test_a_frame_is_read_whether_text_or_binary() -> None:
         asyncio.run(_receive(FakeWS({"type": "websocket.disconnect", "code": 1001})))
 
 
-def test_the_server_runs_with_websocket_compression_off() -> None:
-    # The charger (Sync EV) could not decompress permessage-deflate frames compressed with uvicorn's default 32 KB
-    # window, so every command WA sent went unanswered while the charger's own messages arrived fine. The server must
-    # therefore run with --ws-per-message-deflate false. Guard that so a refactor can't silently re-enable it.
+def test_the_api_runs_with_websocket_compression_and_pings_off() -> None:
+    # The charger (Sync EV) could not decompress permessage-deflate frames (uvicorn's default 32 KB window) and is
+    # disrupted by uvicorn's automatic pings, so every command WA sent went unanswered while the charger's own messages
+    # arrived fine. app/serve.py must run uvicorn with both off (as HA's OCPP server does). Guard it against a refactor.
     from pathlib import Path
 
-    cmd = Path(__file__).resolve().parents[1].joinpath("Dockerfile").read_text()
-    assert "--ws-per-message-deflate" in cmd and "false" in cmd.split("--ws-per-message-deflate", 1)[1][:12]
+    root = Path(__file__).resolve().parents[1]
+    serve = root.joinpath("app", "serve.py").read_text()
+    assert "ws_per_message_deflate=False" in serve
+    assert "ws_ping_interval=None" in serve and "ws_ping_timeout=None" in serve
+    assert "app.serve" in root.joinpath("Dockerfile").read_text()  # the API actually starts via the launcher
 
 
 def test_a_restart_is_told_from_a_first_boot() -> None:

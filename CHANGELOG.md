@@ -11,8 +11,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   charger's own messages (boot, status, meter) arrived fine. The cause was WebSocket compression: uvicorn's default
   permessage-deflate uses a 32 KB window, which the charger (a Sync EV) could not decompress, so it silently dropped
   every frame World Assistant sent while its own frames, compressed with a smaller window, were read without trouble.
-  The server now runs with permessage-deflate off (OCPP-J messages are tiny, so nothing is lost), so the charger can
-  read our commands.
+  The API now runs with WebSocket permessage-deflate off (OCPP-J messages are tiny, so nothing is lost) and with
+  uvicorn's automatic WebSocket pings off — the same choices Home Assistant's OCPP server makes — so the charger can
+  read our commands. Liveness is kept by OCPP Heartbeat instead.
 
 ## [0.67.0] - 2026-11-22
 
