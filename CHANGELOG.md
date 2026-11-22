@@ -4,6 +4,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.68.0] - 2026-11-22
+
 ### Fixed
 
 - **The OCPP charger can finally be controlled.** Every command World Assistant sent (RemoteStart/Stop,
