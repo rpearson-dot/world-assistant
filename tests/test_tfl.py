@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import os
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Self
 from zoneinfo import ZoneInfo
 
@@ -21,6 +23,7 @@ from app.main import app
 from app.modules.tfl import tfl
 from app.modules.tfl.sources.tfl.client import TflClient, TflError
 from app.modules.tfl.sources.tfl.normalise import (
+    parse_arrivals,
     parse_departures,
     parse_time,
     select,
@@ -309,3 +312,130 @@ async def test_cache_serves_stale_on_error_and_coalesces(monkeypatch: pytest.Mon
     # nothing cached at all: the error surfaces
     with pytest.raises(RailError):
         await tfl._cached_aged("other", 30.0, fetch)
+
+
+# ---- live station resolution (no stored list): CRS, National Rail name, Tube/TfL name, disambiguation ----
+
+def _req_without_saved_board() -> Any:
+    """A request whose board table has no match, so resolve_board falls through to the live lookups."""
+    class _NoRow:
+        def mappings(self) -> Any:
+            return self
+
+        def first(self) -> None:
+            return None
+
+    @contextlib.asynccontextmanager
+    async def connect() -> Any:
+        yield SimpleNamespace(execute=lambda *a, **k: _async(_NoRow()))
+
+    return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(engine=SimpleNamespace(connect=connect))))
+
+
+async def _async(v: Any) -> Any:
+    return v
+
+
+class _Tfl:
+    def __init__(self, stops: list[dict[str, Any]]) -> None:
+        self._stops = stops
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, *a: object) -> None:
+        return None
+
+    async def search_stops(self, q: str, modes: str = "", limit: int = 10) -> list[dict[str, Any]]:
+        return self._stops
+
+
+class _Rail:
+    def __init__(self, found: list[dict[str, Any]]) -> None:
+        self._found = found
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, *a: object) -> None:
+        return None
+
+    async def search_stations(self, q: str) -> list[dict[str, Any]]:
+        return self._found
+
+
+def test_parse_arrivals_uses_expected_arrival() -> None:
+    recs = [
+        {"lineName": "Victoria", "destinationName": "Brixton", "platformName": "Southbound",
+         "expectedArrival": "2026-10-20T20:05:00Z"},
+        {"lineName": "Victoria", "towards": "Walthamstow Central", "expectedArrival": "2026-10-20T20:08:00Z"},
+    ]  # fmt: skip
+    deps = parse_arrivals(recs)
+    assert [d.destination for d in deps] == ["Brixton", "Walthamstow Central"]
+    kept = select(deps, include=[], exclude=[], now=datetime(2026, 10, 20, 20, 0, tzinfo=UTC), limit=5)
+    assert [d.when.strftime("%H:%M") for d in kept] == ["20:05", "20:08"]
+
+
+async def test_resolve_board_crs_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    board = await tfl.resolve_board(_req_without_saved_board(), "snl")
+    assert board == {"name": "SNL", "source": "nationalrail", "station": "SNL",
+                     "lines": [], "include": [], "exclude": [], "max_rows": 10}  # fmt: skip
+
+
+async def test_resolve_board_national_rail_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tfl, "_rail_client", lambda _r: _Rail([{"stationName": "Stoneleigh", "crsCode": "SNL"}]))
+    monkeypatch.setattr(tfl, "_client", lambda _r: _Tfl([]))
+    board = await tfl.resolve_board(_req_without_saved_board(), "Stoneleigh")
+    assert board["source"] == "nationalrail" and board["station"] == "SNL" and "method" not in board
+
+
+async def test_resolve_board_tube_name_uses_live_arrivals(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tfl, "_rail_client", lambda _r: _Rail([]))
+    monkeypatch.setattr(tfl, "_client",
+                        lambda _r: _Tfl([{"id": "940GZZLUOXC", "name": "Oxford Circus", "modes": ["tube"]}]))
+    board = await tfl.resolve_board(_req_without_saved_board(), "Oxford Circus")
+    assert board["source"] == "tfl" and board["station"] == "940GZZLUOXC" and board["method"] == "arrivals"
+
+
+async def test_resolve_board_ambiguous_returns_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tfl, "_rail_client", lambda _r: _Rail([{"stationName": "Victoria", "crsCode": "VIC"}]))
+    monkeypatch.setattr(tfl, "_client",
+                        lambda _r: _Tfl([{"id": "940GZZLUVIC", "name": "Victoria", "modes": ["tube"]}]))
+    out = await tfl.resolve_board(_req_without_saved_board(), "Victoria")
+    assert "candidates" in out
+    assert {(c["name"], c["type"]) for c in out["candidates"]} == {("Victoria", "National Rail"), ("Victoria", "Tube")}
+
+
+async def test_resolve_board_underground_hint_skips_national_rail(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _no(_r: Any) -> Any:
+        raise AssertionError("National Rail must not be searched when 'underground' is said")
+
+    monkeypatch.setattr(tfl, "_rail_client", _no)
+    monkeypatch.setattr(tfl, "_client",
+                        lambda _r: _Tfl([{"id": "940GZZLUWLO", "name": "Waterloo", "modes": ["tube"]}]))
+    board = await tfl.resolve_board(_req_without_saved_board(), "Waterloo underground")
+    assert board["source"] == "tfl" and board["method"] == "arrivals"
+
+
+async def test_trains_tool_formats_and_asks_when_ambiguous(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.modules.tfl import tools as T
+
+    async def one(request: Any, token: str) -> dict[str, Any]:
+        return tfl._adhoc_nr_board("SNL", "Stoneleigh")
+
+    async def board_dep(request: Any, board: dict[str, Any]) -> dict[str, Any]:
+        return {"board": "Stoneleigh",
+                "departures": [{"destination": "London Waterloo", "minutes": 8, "platform": "2"}]}
+
+    monkeypatch.setattr(T, "resolve_board", one)
+    monkeypatch.setattr(T, "board_departures", board_dep)
+    out = await T.trains(object(), {"board": "Stoneleigh"})
+    assert out["text"] == "Stoneleigh: London Waterloo in 8 minutes, platform 2."
+
+    async def many(request: Any, token: str) -> dict[str, Any]:
+        return {"candidates": [{"id": "VIC", "name": "London Victoria", "type": "National Rail", "source": "nr"},
+                               {"id": "940GZZLUVIC", "name": "Victoria", "type": "Tube", "source": "tfl"}]}
+
+    monkeypatch.setattr(T, "resolve_board", many)
+    out2 = await T.trains(object(), {"board": "Victoria"})
+    assert "which one" in out2["text"].lower() and "London Victoria (VIC)" in out2["text"]

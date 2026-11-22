@@ -138,13 +138,17 @@ async def test_fuel_http_error_becomes_tool_error(monkeypatch: pytest.MonkeyPatc
 
 
 async def test_trains_and_trip_cost_text(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def deps(_board: str, _r: Any) -> dict[str, Any]:
+    async def resolve(_r: Any, _token: str) -> dict[str, Any]:
+        return {"name": "To Waterloo", "source": "nationalrail", "station": "WAT"}
+
+    async def deps(_r: Any, _board: dict[str, Any]) -> dict[str, Any]:
         return {"board": "To Waterloo", "departures": [
             {"destination": "London Waterloo", "minutes": 6, "platform": "1", "status": "OnTime", "delay_minutes": 0},
             {"destination": "London Waterloo", "minutes": 21, "platform": None, "status": "Delayed", "delay_minutes": 4},
             {"destination": "London Waterloo", "minutes": 36, "platform": None, "status": "Cancelled"},
         ]}  # fmt: skip
 
+    monkeypatch.setattr("app.modules.tfl.tools.resolve_board", resolve)
     monkeypatch.setattr("app.modules.tfl.tools.board_departures", deps)
     t = (await assistant.run_tool(None, "trains", {"board": "b"}))["text"]  # type: ignore[arg-type]
     assert t == ("To Waterloo: London Waterloo in 6 minutes, platform 1; "

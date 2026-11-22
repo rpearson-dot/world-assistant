@@ -4,6 +4,7 @@ import importlib.util
 import os
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -14,7 +15,16 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.geo import Located, PostcodeError, lookup_postcode, normalise_postcode
+from app.geo import (
+    GeocodeError,
+    Located,
+    PlaceHit,
+    PostcodeError,
+    lookup_postcode,
+    normalise_postcode,
+    reverse_postcode,
+    search_places,
+)
 from app.main import app
 
 URL = os.environ.get("WA_TEST_DATABASE_URL")
@@ -52,6 +62,52 @@ async def test_lookup_postcode_errors() -> None:
     )
     with pytest.raises(PostcodeError, match="no coordinates"):
         await lookup_postcode("SW1A 2AA", transport=no_coords)
+
+
+async def test_search_places_parses_filters_and_biases() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["params"] = dict(req.url.params)
+        return httpx.Response(200, json=[
+            {"name": "The O2", "lat": "51.5030", "lon": "0.0032", "type": "attraction",
+             "address": {"suburb": "Greenwich", "postcode": "SE10 0DX"}},
+            {"name": "O2 Academy Brixton", "lat": "51.4657", "lon": "-0.1150", "type": "arts_centre",
+             "address": {"suburb": "Brixton", "city": "London"}},
+            {"name": "O2 somewhere abroad", "lat": "48.0", "lon": "2.5", "type": "x", "address": {}},  # out of UK
+        ])  # fmt: skip
+
+    hits = await search_places("the O2", near=(51.5, 0.0), transport=httpx.MockTransport(handler))
+    assert [h.label for h in hits] == ["The O2, Greenwich", "O2 Academy Brixton, Brixton"]  # abroad one dropped
+    assert hits[0].postcode == "SE10 0DX" and hits[0].kind == "attraction"
+    assert seen["params"]["countrycodes"] == "gb" and "viewbox" in seen["params"]
+
+
+async def test_search_places_error() -> None:
+    with pytest.raises(GeocodeError):
+        await search_places("x", transport=httpx.MockTransport(lambda _r: httpx.Response(503)))
+
+
+async def test_reverse_postcode_is_best_effort() -> None:
+    ok = httpx.MockTransport(lambda _r: httpx.Response(200, json={"result": [{"postcode": "SE10 0DX"}]}))
+    assert await reverse_postcode(51.5, 0.0, transport=ok) == "SE10 0DX"
+    bad = httpx.MockTransport(lambda _r: httpx.Response(500))
+    assert await reverse_postcode(51.5, 0.0, transport=bad) is None  # never raises
+
+
+def test_places_search_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("API_TOKEN", "s3cret")
+
+    async def fake(q: str, *, near: Any = None, base_url: str = "") -> list[PlaceHit]:
+        assert q == "the O2 in london" and near == (51.5, 0.0)
+        return [PlaceHit("The O2, Greenwich", 51.503, 0.0032, "SE10 0DX", "attraction")]
+
+    monkeypatch.setattr("app.places.search_places", fake)
+    r = client.get("/v1/places/search", params={"q": "the O2 in london", "lat": 51.5, "lon": 0.0}, headers=AUTH)
+    assert r.status_code == 200
+    assert r.json() == [{"label": "The O2, Greenwich", "lat": 51.503, "lon": 0.0032,
+                         "postcode": "SE10 0DX", "kind": "attraction"}]  # fmt: skip
+    assert client.get("/v1/places/search", params={"q": " "}, headers=AUTH).status_code == 422
 
 
 def test_places_page_loads_without_token() -> None:
@@ -107,7 +163,11 @@ async def test_places_and_trips_roundtrip(
     async def fake_lookup(postcode: str) -> Located:
         return Located(normalise_postcode(postcode), 51.50, -0.12)
 
+    async def no_reverse(lat: float, lon: float) -> None:
+        return None
+
     monkeypatch.setattr("app.places.lookup_postcode", fake_lookup)
+    monkeypatch.setattr("app.places.reverse_postcode", no_reverse)  # a coords-only save won't hit the network
     engine = create_async_engine(URL)  # type: ignore[arg-type]
     app.state.engine = engine
     try:

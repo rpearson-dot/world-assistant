@@ -479,6 +479,7 @@ pages themselves hold no data: each one calls these endpoints.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/v1/places` | List Places |
+| GET | `/v1/places/search` | Candidates for a described place, e.g. "the O2 in London". When a position is given (the phone's location), nearby matches are preferred so the right one is first. Read-only: nothing is saved. |
 | DELETE | `/v1/places/{place_id}` | Delete Place |
 | PUT | `/v1/places/{place_id}` | Put Place |
 

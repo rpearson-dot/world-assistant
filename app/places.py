@@ -12,7 +12,15 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.auth import require_token
-from app.geo import PostcodeError, local_postcode, lookup_postcode
+from app.config import get_settings
+from app.geo import (
+    GeocodeError,
+    PostcodeError,
+    local_postcode,
+    lookup_postcode,
+    reverse_postcode,
+    search_places,
+)
 from app.pagestyle import themed
 
 router = APIRouter(prefix="/v1", tags=["places"], dependencies=[Depends(require_token)])
@@ -82,6 +90,22 @@ async def list_places(request: Request) -> list[dict[str, Any]]:
         )
 
 
+@router.get("/places/search")
+async def search_places_endpoint(
+    request: Request, q: str, lat: float | None = None, lon: float | None = None
+) -> list[dict[str, Any]]:
+    """Candidates for a described place, e.g. "the O2 in London". When a position is given (the phone's location),
+    nearby matches are preferred so the right one is first. Read-only: nothing is saved."""
+    if not q.strip():
+        raise HTTPException(422, "say what to search for")
+    near = (lat, lon) if lat is not None and lon is not None else None
+    try:
+        hits = await search_places(q, near=near, base_url=get_settings().geocoder_url)
+    except GeocodeError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return [{"label": h.label, "lat": h.lat, "lon": h.lon, "postcode": h.postcode, "kind": h.kind} for h in hits]
+
+
 @router.put("/places/{place_id}")
 async def put_place(place_id: str, body: PlaceIn, request: Request) -> dict[str, Any]:
     check_slug(place_id)
@@ -95,6 +119,10 @@ async def put_place(place_id: str, body: PlaceIn, request: Request) -> dict[str,
         postcode = located.postcode
         if lat is None or lon is None:  # explicit coordinates win (a drag-and-drop pin)
             lat, lon = located.lat, located.lon
+    elif lat is not None and lon is not None:
+        # Saved from a position with no postcode (the phone's location, or a picked search result): label it with the
+        # nearest postcode, best-effort. A missing label never stops the save.
+        postcode = await reverse_postcode(lat, lon)
     async with request.app.state.engine.begin() as conn:
         await conn.execute(
             text(
@@ -211,11 +239,19 @@ PAGE = """<!doctype html>
   <label>Latitude <input id="plat" type="number" step="any" min="49.5" max="61" placeholder="e.g. 50.8225"></label>
   <label>Longitude <input id="plon" type="number" step="any" min="-8.7" max="2" placeholder="e.g. -0.1372"></label>
   <label>Kind <select id="pkind"><option>other</option><option>home</option><option>work</option></select></label>
+  <button id="ploc" type="button">📍 Use my location</button>
   <button id="psave" class="primary">Add place</button>
   <button id="pcancel" type="button" hidden>Cancel</button>
 </form>
-<p class="dim">Give a postcode, or a latitude and longitude, or both. A postcode alone is placed at its centre; a latitude
-and longitude are used as given (with the postcode kept as its label).</p>
+<p class="dim">Give a postcode, or a latitude and longitude, or both — or search below and pick one. A postcode alone is
+placed at its centre; a latitude and longitude are used as given (its nearest postcode is kept as the label).</p>
+<h3 style="margin:14px 0 6px;font-size:1em">Find a place to add</h3>
+<form id="findform" class="row">
+  <label>Search <input id="fq" placeholder="e.g. the O2 in London" maxlength="120" style="min-width:16em"></label>
+  <label class="dim"><input type="checkbox" id="fnear" checked> Prefer places near me</label>
+  <button class="primary">Search</button>
+</form>
+<div id="fresults"></div>
 <p id="pmsg" class="err"></p></div>
 
 <div class="card"><h2>Trips</h2>
@@ -345,6 +381,48 @@ document.getElementById('addplace').onsubmit = e => {
   }, $p('pmsg'));
 };
 $p('pcancel').onclick = resetPlace;
+let HERE = null, HEREWHY = '';
+function locate() {
+  return new Promise(res => {
+    if (HERE) return res(HERE);
+    if (!navigator.geolocation || !isSecureContext) { HEREWHY = 'location needs the https address'; return res(null); }
+    navigator.geolocation.getCurrentPosition(
+      p => { HERE = { lat: +p.coords.latitude.toFixed(5), lon: +p.coords.longitude.toFixed(5) }; res(HERE); },
+      e => { HEREWHY = e.code === 1 ? 'location not allowed' : 'location not found'; res(null); },
+      { timeout: 8000, maximumAge: 120000 });
+  });
+}
+$p('ploc').onclick = async () => {
+  const h = await locate();
+  if (!h) { $p('pmsg').textContent = 'Could not get your location: ' + HEREWHY + '.'; return; }
+  $p('plat').value = h.lat; $p('plon').value = h.lon; $p('ppc').value = '';
+  if (!$p('pname').value) $p('pname').value = 'My location';
+  $p('pmsg').textContent = ''; $p('pname').focus();
+};
+document.getElementById('findform').onsubmit = async e => {
+  e.preventDefault();
+  const q = $p('fq').value.trim(), out = document.getElementById('fresults');
+  out.replaceChildren(); $p('pmsg').textContent = '';
+  if (!q) return;
+  const qs = new URLSearchParams({ q });
+  if ($p('fnear').checked) { const h = await locate(); if (h) { qs.set('lat', h.lat); qs.set('lon', h.lon); } }
+  try {
+    const hits = await api('GET', '/v1/places/search?' + qs.toString());
+    if (!hits.length) { $p('pmsg').textContent = 'No matches — add the town or area.'; return; }
+    for (const h of hits) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.style.display = 'block'; b.style.margin = '4px 0'; b.style.textAlign = 'left';
+      b.textContent = h.label + (h.postcode ? ' (' + h.postcode + ')' : '') + (h.kind ? ' · ' + h.kind : '');
+      b.onclick = () => {
+        resetPlace();
+        $p('pname').value = h.label.split(',')[0]; $p('ppc').value = h.postcode || '';
+        $p('plat').value = h.lat; $p('plon').value = h.lon; $p('pkind').value = 'other';
+        out.replaceChildren(); $p('fq').value = ''; $p('pname').focus();
+      };
+      out.appendChild(b);
+    }
+  } catch (err) { $p('pmsg').textContent = err.message; }
+};
 document.getElementById('addtrip').onsubmit = e => {
   e.preventDefault();
   const f = document.getElementById('tfrom').value, t = document.getElementById('tto').value;

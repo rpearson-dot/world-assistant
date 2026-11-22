@@ -4,6 +4,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+### Added
+
+- **Save a place by describing it, or from where you are.** On the Places page a "Find a place to add" search (e.g.
+  "the O2 in London") returns candidates to pick from, and a "Use my location" button saves wherever the phone is
+  (its nearest postcode becomes the label). The assistant gains a `search_place` tool and `add_place` now resolves a
+  described place too (asking which when a name matches more than one), biased towards the caller's location when it
+  is sent. Lookups are live (Nominatim / OpenStreetMap, no key; the base URL is configurable for a self-hosted
+  instance); nothing is stored as a station or place list.
+- **"Next trains" works from any station by name or code, not just a saved board.** Say a National Rail station
+  anywhere in Great Britain ("Stoneleigh", "Waterloo", or a CRS code like "SNL") or a London Tube, DLR, Overground or
+  Elizabeth line station ("Oxford Circus"); stations are resolved live, and a name that matches more than one asks
+  which. Tube and the like show live arrival predictions; National Rail shows the timetabled departure board. A saved
+  board (by id or name) still works as before.
+
 ## [0.66.0] - 2026-11-21
 
 ### Added
