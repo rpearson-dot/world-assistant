@@ -74,6 +74,7 @@ def test_compose_puts_the_front_door_in_front() -> None:
     assert up["profiles"] == ["updater"] and "ports" not in up and "/var/run/docker.sock:/var/run/docker.sock" in up["volumes"]
     serve = (ROOT / "deploy" / "tailscale" / "serve.json").read_text()
     assert "http://wa-proxy:8000" in serve and "http://api:8000" not in serve
+    assert '"TCPForward": "wa-syslog:5514"' in serve  # app diagnostics reach the syslog listener over the tailnet (TCP)
     traefik = yaml.safe_load((ROOT / "docker-compose.traefik.yml").read_text())["services"]
     assert "wa-proxy" in traefik and "api" not in traefik
     caddy = (ROOT / "deploy" / "proxy" / "Caddyfile").read_text()

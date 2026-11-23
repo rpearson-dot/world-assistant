@@ -95,3 +95,12 @@ The MCP endpoint is `https://world-assistant.<your-tailnet>.ts.net/mcp`, with th
 
 The same Tailscale device also serves World Assistant's ntfy server on port 8443, for notifications to your phone
 (`https://<device>.<tailnet>:8443`). See [notifications.md](notifications.md).
+
+## App diagnostics (port 5514)
+
+The Tailscale device also forwards raw **TCP port 5514** to World Assistant's syslog listener (`wa-syslog`), so the
+MCP-to-Intent app can send its diagnostics from anywhere on your tailnet. In the app's Diagnostics screen set the
+host to `<device>.<tailnet>.ts.net` (e.g. `world-assistant.<tailnet>.ts.net`), the port to `5514`, and the transport
+to **TCP** (Tailscale Serve forwards TCP, not UDP). The lines arrive in **Logs** alongside the charger and UniFi logs.
+This is tailnet-only (no Funnel), like the web pages. On the home network you can instead point the app straight at
+the server's LAN IP on port 5514.
