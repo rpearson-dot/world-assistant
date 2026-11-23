@@ -13,6 +13,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   Assistant's broker (no bundled one) compose rejected the whole project ("depends on undefined service wa-mqtt").
   The dependency is removed — ocpp2mqtt reconnects to MQTT on its own — so the bridge starts against whichever broker
   `WA_MQTT_HOST` points at.
+- **The Charger page no longer shows "Offline" on the ocpp2mqtt backend.** The overview gated "connected" on the
+  built-in server's Redis WebSocket-holder key, which ocpp2mqtt never sets (the charger connects to that container,
+  not here). On the ocpp2mqtt backend it now trusts the connection state the bridge records.
+- **Auto drives the charger through the active backend.** The planner's Auto start/stop always called the built-in
+  WebSocket server; on the ocpp2mqtt backend it now publishes RemoteStart/Stop through the bridge, so Auto charging
+  reaches a charger connected to ocpp2mqtt.
+- **The Auto description names World Assistant, not Home Assistant.** With "act" on it is World Assistant's own
+  planner that starts and stops the charger, so the Charger page says so.
 
 ## [0.70.0] - 2026-11-23
 

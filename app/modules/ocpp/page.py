@@ -171,7 +171,7 @@ async function draw() {
   document.querySelectorAll('.seg button').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.m === mode)); b.disabled = false; });
   $('modewhy').textContent = { off: 'Off: the charger will not charge, even if the car is plugged in.',
     on: 'On: charges whenever the car is plugged in, whatever the plan says.',
-    auto: 'Auto: Home Assistant’s charging plan starts and stops it (cheap hours, free sessions, your target).' }[mode] +
+    auto: 'Auto: World Assistant’s charging plan starts and stops it (cheap hours, free sessions, your target).' }[mode] +
     (c.connected ? '' : ' The charger is not connected, so this applies when it next connects.');
   const ev = await api('GET', '/v1/ocpp/' + c.id + '/events?days=' + $('days').value + ($('kind').value ? '&kind=' + $('kind').value : ''));
   const box = $('events'); box.replaceChildren();
