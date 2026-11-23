@@ -55,6 +55,28 @@ readings, restarts, configuration, the raw messages) is under "Settings and tool
 - While it charges, World Assistant asks for meter readings every minute (the Sync EV never sends them by itself).
 - The Sync EV on its 2020 firmware has no current setting, so charging is start and stop at about 4.6 kW.
 
+## Server WebSocket settings (needed for control)
+
+The charger connects over a WebSocket, and two of the web server's defaults stop it **receiving** anything World
+Assistant sends — so the charger's own messages (boot, status, meter) are recorded fine, but every command
+(RemoteStart/Stop, ChangeAvailability, charging profiles) comes back "no answer within 30 s". The API process is
+therefore started by `app/serve.py`, which runs uvicorn with both turned off; `docker-compose.yml` must keep using
+the image's default command (do not override it with a bare `uvicorn …`), and the setting is guarded by a test in
+`tests/test_ocpp.py`.
+
+- **WebSocket compression (permessage-deflate) off.** uvicorn's default compresses each frame with a ~32 KB window.
+  Some chargers — the Sync EV among them — cannot decompress that and silently drop every frame, so no command is ever
+  received. OCPP-J messages are tiny, so compression gains nothing. (Home Assistant's OCPP server works only because
+  the `websockets` library it uses negotiates a small 4 KB window by default.)
+- **Automatic WebSocket pings off.** uvicorn pings every 20 s and drops the link if no pong arrives in 20 s; a charger
+  that mishandles ping control frames is disrupted. Liveness is kept by OCPP Heartbeat (every 5 minutes) and World
+  Assistant's own connection tracking instead. (Home Assistant's OCPP server disables automatic pings for the same
+  reason.)
+
+If control ever stops working after a server or dependency change, check these two first: point the charger at World
+Assistant and watch **Logs → Charger** — a command answered with Accepted/Rejected means the charger is receiving us;
+"no answer" every time means it is not, and compression is the first suspect.
+
 ## Home Assistant
 
 Over MQTT, as the device "Charger U1HKP": `sensor.wa_ocpp_status`, `sensor.wa_ocpp_power` (kW),

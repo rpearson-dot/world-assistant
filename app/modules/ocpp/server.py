@@ -5,6 +5,11 @@ connection, boot, fault and status change, so a charger that resets itself can b
 Only from the home network (never through Tailscale or another proxy), and only the chargers listed in the
 settings once any are listed. Commands from the API or Home Assistant reach whichever api process holds the
 charger's connection through Redis, so they work during an update while two versions run.
+
+For the charger to RECEIVE what we send, the WebSocket server must run with permessage-deflate compression and
+uvicorn's automatic pings OFF (see app/serve.py and docs/ocpp.md). With compression on, some chargers (the Sync EV)
+cannot decompress our frames and silently drop every command, while their own messages still arrive — so data looks
+fine but no command is ever answered. Do not serve this app with a bare `uvicorn` command that re-enables either.
 """
 
 from __future__ import annotations

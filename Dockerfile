@@ -59,5 +59,7 @@ COPY homeassistant ./homeassistant
 USER 10001:10001
 EXPOSE 8000
 
-# Default is the API; the worker and migrate services override the command in compose
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+# Default is the API; the worker and migrate services override the command in compose. app/serve.py runs uvicorn with
+# WebSocket compression and automatic pings off, which an OCPP charger needs (see its docstring; tests/test_ocpp.py
+# guards the settings).
+CMD ["python", "-m", "app.serve"]
