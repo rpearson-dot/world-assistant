@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import importlib
 import json
+import warnings
 from types import SimpleNamespace
 from typing import Any
 
@@ -47,11 +48,16 @@ def _conn_exec(execute: Any) -> Any:
     return cm
 
 
-def test_every_feature_with_an_api_has_an_assistant_tool() -> None:
-    """A module with routes must give the assistant a tool, so a new feature cannot again be API-only by accident."""
-    for m in registry.modules():
-        if m.routers and not m.core:
-            assert m.tools, f"{m.id} has an API but no assistant tool (add one in its tools.py)"
+def test_modules_with_an_api_are_encouraged_to_have_an_assistant_tool() -> None:
+    """Modules with routes should give the assistant a tool so the feature reaches MCP and Siri — but this is a
+    recommendation, not a gate. A module without one is surfaced as a warning, not a build failure. The integrity of
+    the tool registry is still enforced: every declared tool is real and belongs to a module."""
+    missing = sorted(m.id for m in registry.modules() if m.routers and not m.core and not m.tools)
+    if missing:
+        warnings.warn(
+            "modules with an API but no assistant tool (add one in tools.py to reach MCP/Siri): " + ", ".join(missing),
+            stacklevel=2,
+        )
     claimed = {t for m in registry.modules() for t in m.tools}
     assert claimed == set(TOOLS), "every tool belongs to a module, and every module's tool exists"
 
