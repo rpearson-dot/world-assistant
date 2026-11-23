@@ -4,6 +4,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.70.1] - 2026-11-23
+
+### Fixed
+
+- **`docker-compose.ocpp2mqtt.yml` no longer requires the bundled MQTT broker.** The overlay declared
+  `depends_on: wa-mqtt`, which is only a service when `docker-compose.mqtt.yml` is included; with your own or Home
+  Assistant's broker (no bundled one) compose rejected the whole project ("depends on undefined service wa-mqtt").
+  The dependency is removed — ocpp2mqtt reconnects to MQTT on its own — so the bridge starts against whichever broker
+  `WA_MQTT_HOST` points at.
+
 ## [0.70.0] - 2026-11-23
 
 ### Added

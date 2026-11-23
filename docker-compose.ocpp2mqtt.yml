@@ -54,7 +54,6 @@ services:
         set -eu
         export MQTT_PASSWORD="$$(cat /run/secrets/mqtt_password)"
         exec python /app/central_system.py
-    depends_on:
-      wa-mqtt:
-        condition: service_started
-        required: false
+    # No depends_on: the broker may be the bundled wa-mqtt, your own container, or Home Assistant's, so it is not
+    # necessarily a service in this project. ocpp2mqtt reconnects to MQTT on its own (MQTT_RECONNECT_*), so it starts
+    # fine before the broker is up.
