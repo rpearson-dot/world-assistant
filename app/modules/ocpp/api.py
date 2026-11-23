@@ -13,7 +13,7 @@ from sqlalchemy import text
 
 from app.auth import require_token
 from app.jobs import tracked
-from app.modules.ocpp import protocol, server, store
+from app.modules.ocpp import bridge, protocol, server, store
 
 router = APIRouter(prefix="/v1/ocpp", tags=["ocpp"], dependencies=[Depends(require_token)])
 QUIET_S = 900  # disconnected this long is worth a notification
@@ -87,6 +87,25 @@ async def put_settings(request: Request, body: SettingsIn) -> dict[str, Any]:
     return st
 
 
+class BackendIn(BaseModel):
+    backend: str = Field(pattern="^(builtin|ocpp2mqtt)$")
+    mqtt_base: str | None = Field(None, max_length=120, description="the ocpp2mqtt MQTT base path, e.g. wa/ocpp")
+
+
+@router.put("/backend")
+async def put_backend(request: Request, body: BackendIn) -> dict[str, Any]:
+    """Switch which OCPP central system drives the charger, live and without a redeploy: "builtin" (World Assistant's
+    own WebSocket server) or "ocpp2mqtt" (the external bridge, driven over MQTT). Both run; this chooses the one in
+    charge. Optionally set the MQTT base path ocpp2mqtt publishes under."""
+    async with request.app.state.engine.begin() as conn:
+        st = await store.settings(conn)
+        new = {**st, "backend": body.backend}
+        if body.mqtt_base is not None:
+            new["mqtt_base"] = body.mqtt_base.strip().strip("/") or "wa/ocpp"
+        await store.save_settings(conn, new)
+    return {"backend": new["backend"], "mqtt_base": new.get("mqtt_base")}
+
+
 class ModeIn(BaseModel):
     mode: str = Field(pattern="^(off|on|auto)$")
 
@@ -95,33 +114,46 @@ class ModeIn(BaseModel):
 async def put_mode(request: Request, body: ModeIn) -> dict[str, Any]:
     """The master switch: off (the charger refuses to charge), on (charges whenever the car is plugged in) or auto
     (Home Assistant's charging plan decides). Kept, and applied to every connected charger now."""
-    async with request.app.state.engine.begin() as conn:
+    engine = request.app.state.engine
+    async with engine.begin() as conn:
         st = await store.settings(conn)
         await store.save_settings(conn, {**st, "mode": body.mode})
         ids = [r["id"] for r in await store.chargers(conn)]
+    backend = str(st.get("backend") or "builtin")
     applied = {}
     for cid in ids:
         try:
-            applied[cid] = await server.ask(request.app.state.redis, cid, "WA.Mode", {"mode": body.mode})
+            if backend == "ocpp2mqtt":
+                applied[cid] = await bridge.apply_mode(engine, cid, body.mode, "set here")
+            else:
+                applied[cid] = await server.ask(request.app.state.redis, cid, "WA.Mode", {"mode": body.mode})
         except LookupError as exc:
             applied[cid] = {"ok": False, "error": str(exc)}
-    return {"mode": body.mode, "applied": applied}
+    return {"mode": body.mode, "backend": backend, "applied": applied}
 
 
 async def _send(request: Request, cid: str, action: str, args: dict[str, Any]) -> dict[str, Any]:
+    engine = request.app.state.engine
     tid = None
     if action == "RemoteStopTransaction" and "transaction_id" not in args:
-        async with request.app.state.engine.connect() as conn:
+        async with engine.connect() as conn:
             tid = await store.open_transaction(conn, cid)
     try:
         payload = protocol.command_payload(action, args, transaction_id=tid)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    async with engine.connect() as conn:
+        backend = str((await store.settings(conn)).get("backend") or "builtin")
+    if backend == "ocpp2mqtt":
+        # The charger's own reply comes back asynchronously (logged from cmd_result), so this reports the send.
+        out = await bridge.command(engine, cid, action, payload)
+        return {"action": action, "sent": payload, "backend": backend,
+                "ok": out.get("ok"), "answer": out.get("answer"), "error": out.get("error")}
     try:
         out = await server.ask(request.app.state.redis, cid, action, payload)
     except LookupError as exc:
         raise HTTPException(409, str(exc)) from exc
-    return {"action": action, "sent": payload, **out}
+    return {"action": action, "sent": payload, "backend": backend, **out}
 
 
 @router.post("/{cid}/start")

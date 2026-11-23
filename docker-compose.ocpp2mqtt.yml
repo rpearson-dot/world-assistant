@@ -1,0 +1,60 @@
+# Adds the ocpp2mqtt bridge (https://github.com/gyzod/ocpp2mqtt) as a dedicated container: the OCPP central system
+# the car charger connects to, speaking to World Assistant over MQTT. It runs the proven `ocpp` + `websockets` stack
+# (the same one Home Assistant uses), which answers the commands the built-in WebSocket server could not get the
+# Sync EV to honour. See claude/ocpp2mqtt-design.md and docs/ocpp.md.
+#
+# Run it ALONGSIDE World Assistant so you can switch between the two backends live on the Charger page (no redeploy):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.mqtt.yml -f docker-compose.ocpp2mqtt.yml up -d
+#   (or add docker-compose.ocpp2mqtt.yml to COMPOSE_FILE in .env, next to docker-compose.mqtt.yml)
+#
+# It needs an MQTT broker: the bundled one (docker-compose.mqtt.yml, host wa-mqtt) or your own (set WA_MQTT_HOST).
+#
+# Point the charger's OCPP 1.6J central-system address at  ws://<this server's home-network IP>:${WA_OCPP2MQTT_PORT}/<charge point ID>
+# (e.g. ws://10.0.2.49:3000/U1HKP). The charge point ID is the last path segment and must match WA_OCPP2MQTT_CPID.
+# Then, on the Charger page, set the backend to "ocpp2mqtt". World Assistant subscribes under WA_OCPP2MQTT_BASE/<id>
+# and drives the charger over the same broker.
+
+services:
+  wa-ocpp2mqtt:
+    # Pin to a digest in .env (WA_OCPP2MQTT_IMAGE=gyzod/ocpp2mqtt@sha256:...) once you have deployed once and read it
+    # off the pulled image, the same way WA_IMAGE pins World Assistant (docs/runbook.md). Defaults to the latest tag.
+    image: ${WA_OCPP2MQTT_IMAGE:-gyzod/ocpp2mqtt:latest}
+    restart: unless-stopped
+    labels:
+      net.unraid.docker.icon: "http://127.0.0.1:${WA_API_PORT:-8010}/icons/worker.png"
+    networks: [internal]
+    ports:
+      # The charger (on your home network) connects here. Publish it to the LAN; never forward it to the internet.
+      - "${WA_OCPP2MQTT_PORT:-3000}:3000"
+    environment:
+      TZ: ${TZ:-Europe/London}
+      # The broker: the bundled wa-mqtt, or your own (WA_MQTT_HOST, as an IP if it is on another Docker network).
+      MQTT_HOSTNAME: ${WA_MQTT_HOST:-wa-mqtt}
+      MQTT_PORT: ${WA_MQTT_PORT:-1883}
+      MQTT_USERNAME: ${WA_MQTT_USER:-wa}
+      # The base path World Assistant listens under: <base>/<charge point ID>/state/... and .../cmd. Keep WA's
+      # "ocpp2mqtt base path" (Charger page) equal to WA_OCPP2MQTT_BASE. One instance serves one charger.
+      MQTT_BASEPATH: ${WA_OCPP2MQTT_BASE:-wa/ocpp}/${WA_OCPP2MQTT_CPID:-U1HKP}
+      LISTEN_PORT: 3000
+      LISTEN_ADDR: 0.0.0.0
+      # Publish a retained "DISCONNECTED" for the charger at startup, so the Charger page is right before it connects.
+      EXPECTED_CHARGE_POINTS: '["${WA_OCPP2MQTT_CPID:-U1HKP}"]'
+      # World Assistant starts charges with the tag "WorldAssistant" (app/modules/ocpp/protocol.py ID_TAG); authorise it.
+      AUTHORIZED_TAG_ID_LIST: '["WorldAssistant"]'
+      OCPP_COMMAND_TIMEOUT: ${WA_OCPP2MQTT_CMD_TIMEOUT:-30}
+    secrets:
+      - mqtt_password
+    # ocpp2mqtt reads MQTT_PASSWORD from the environment; take it from the Docker secret at start so it is never
+    # written into .env or the image. ($$ is an escaped $ for compose.)
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -eu
+        export MQTT_PASSWORD="$$(cat /run/secrets/mqtt_password)"
+        exec python /app/central_system.py
+    depends_on:
+      wa-mqtt:
+        condition: service_started
+        required: false
