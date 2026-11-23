@@ -1,5 +1,9 @@
 {
-  "TCP": { "443": { "HTTPS": true }, "8443": { "HTTPS": true } },
+  "TCP": {
+    "443": { "HTTPS": true },
+    "8443": { "HTTPS": true },
+    "5514": { "TCPForward": "wa-syslog:5514" }
+  },
   "Web": {
     "${TS_CERT_DOMAIN}:443": {
       "Handlers": { "/": { "Proxy": "http://wa-proxy:8000" } }

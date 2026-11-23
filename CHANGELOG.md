@@ -4,6 +4,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.69.0] - 2026-11-23
+
+### Added
+
+- **App diagnostics reach the syslog listener over the tailnet.** Tailscale Serve forwards raw TCP port 5514 to the
+  `wa-syslog` listener, so the MCP-to-Intent app can send its captured MCP requests/responses and OAuth steps to World
+  Assistant's **Logs** from anywhere on the tailnet (host `world-assistant.<tailnet>.ts.net`, port 5514, TCP — Serve
+  forwards TCP, not UDP). Tailnet-only, no Funnel; on the home network the app can use the server's LAN IP instead.
+
 ## [0.68.0] - 2026-11-22
 
 ### Fixed
