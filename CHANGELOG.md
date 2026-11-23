@@ -4,6 +4,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.70.0] - 2026-11-23
+
+### Added
+
+- **A second OCPP backend, ocpp2mqtt, switchable live from the Charger page.** When the built-in WebSocket server
+  connects and records a charger fine but the charger ignores every command (the Sync EV does exactly this), the
+  charger can instead connect to a dedicated [ocpp2mqtt](https://github.com/gyzod/ocpp2mqtt) container, which runs the
+  proven `ocpp` + `websockets` stack (the same one Home Assistant uses) and speaks to World Assistant over MQTT. World
+  Assistant reads its state topics and drives it over the same broker, writing into the same tables, so the Charger
+  page, the record, the master switch and the Home Assistant entities work unchanged. Both backends run at once and
+  **Settings → Charger backend** chooses which is in charge — no redeploy — so you can try one and fall back to the
+  other without waiting for a second deployment. New overlay `docker-compose.ocpp2mqtt.yml`; see `docs/ocpp.md`.
+
 ## [0.69.0] - 2026-11-23
 
 ### Added

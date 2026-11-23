@@ -69,6 +69,12 @@ details.box > summary { cursor: pointer; font-weight: 650; padding: 4px 0; }
 <div class="stats" id="stats"></div>
 <h3>Settings</h3>
   <div class="form">
+    <div class="row"><label>Charger backend <select id="backend"><option value="builtin">Built-in (WA WebSocket server)</option><option value="ocpp2mqtt">ocpp2mqtt (over MQTT)</option></select></label>
+      <label>ocpp2mqtt base path <input id="mqttbase" placeholder="wa/ocpp" style="width:9em"></label>
+      <button id="savebk" type="button">Switch</button></div>
+    <p class="dim" id="bkmsg">Switches live — no redeploy. <b>Built-in</b>: point the charger at the address below.
+      <b>ocpp2mqtt</b>: point the charger at the ocpp2mqtt container (<b>ws://&lt;its host&gt;:3000/</b><b class="cpid">charge point ID</b>);
+      World Assistant reads its state over MQTT and drives it the same way.</p>
     <label>Chargers allowed to connect <input id="ids" placeholder="e.g. U1HKP (blank: any on the home network)">
       <span class="hint">Separate several with commas.</span></label>
     <div class="row"><label>Ask for meter readings while charging every <input id="every" type="number" min="15" max="900" style="width:6em"> s</label>
@@ -116,7 +122,7 @@ async function load() {
     const keep = $('cp').value; $('cp').replaceChildren(...data.chargers.map(c => new Option(c.id, c.id)));
     if (keep && data.chargers.some(c => c.id === keep)) $('cp').value = keep;
     $('none').hidden = data.chargers.length > 0; $('view').hidden = !data.chargers.length;
-    if (document.activeElement.tagName !== 'INPUT') { $('ids').value = data.settings.chargers.join(', '); $('every').value = data.settings.meter_every_s; $('ha').checked = data.settings.publish_ha; $('srv').value = data.settings.server_address || ''; $('maxa').value = data.settings.max_current_a ?? ''; }
+    if (document.activeElement.tagName !== 'INPUT') { $('ids').value = data.settings.chargers.join(', '); $('every').value = data.settings.meter_every_s; $('ha').checked = data.settings.publish_ha; $('srv').value = data.settings.server_address || ''; $('maxa').value = data.settings.max_current_a ?? ''; $('backend').value = data.settings.backend || 'builtin'; $('mqttbase').value = data.settings.mqtt_base || 'wa/ocpp'; }
     if (data.chargers.length) await draw();
   } catch (e) { msg.textContent = e.message; }
 }
@@ -204,6 +210,11 @@ $('cfg').onclick = () => cmd('/command', { action: 'GetConfiguration', args: {} 
 $('save').onclick = async () => {
   try { await api('PUT', '/v1/ocpp/settings', { chargers: $('ids').value.split(',').map(x => x.trim()).filter(Boolean), meter_every_s: Number($('every').value) || 60, publish_ha: $('ha').checked, server_address: $('srv').value.trim() });
     $('smsg').textContent = 'Saved.'; load(); } catch (e) { $('smsg').textContent = e.message; }
+};
+$('savebk').onclick = async () => {
+  try { const r = await api('PUT', '/v1/ocpp/backend', { backend: $('backend').value, mqtt_base: $('mqttbase').value.trim() || null });
+    $('bkmsg').textContent = 'Now using: ' + (r.backend === 'ocpp2mqtt' ? 'ocpp2mqtt (base ' + r.mqtt_base + ')' : 'built-in server') + '.'; load();
+  } catch (e) { $('bkmsg').textContent = e.message; }
 };
 async function setCurrent(amps) {
   const c = cur(); if (!c) return;

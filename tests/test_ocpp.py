@@ -402,3 +402,110 @@ def test_the_address_given_to_a_charger_is_on_the_home_network() -> None:
     for other in ("world-assistant.tailad4b24.ts.net", "100.101.2.3:8010", "localhost:8010", None):
         assert address(other) == "ws://<this server's home network address>:8010/ocpp/"
     assert address("world-assistant.tailad4b24.ts.net", "10.0.2.49") == "ws://10.0.2.49:8010/ocpp/"  # set on the page
+
+
+# --- the ocpp2mqtt backend -------------------------------------------------------------------------------------
+
+
+def test_ocpp2mqtt_commands_map_to_the_bridge_snake_case(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A World Assistant OCPP command (CamelCase action, camelCase payload) becomes ocpp2mqtt's snake_case action and
+    # args (the ocpp library's keyword names), published on the charger's cmd topic.
+    from app.modules.ocpp import bridge, protocol
+
+    sent: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def fake_publish(engine: Any, cid: str, name: str, args: dict[str, Any]) -> dict[str, Any]:
+        sent.append((cid, name, args))
+        return {"ok": True, "answer": None, "sent": {"action": name, "args": args}, "error": None}
+
+    monkeypatch.setattr(bridge, "publish_command", fake_publish)
+
+    async def go() -> None:
+        for action, raw in [("RemoteStartTransaction", {}), ("RemoteStopTransaction", {"transaction_id": 7}),
+                            ("TriggerMessage", {"message": "StatusNotification"}), ("ChangeAvailability", {"type": "Inoperative"}),
+                            ("SetChargingProfile", {"amps": 16}), ("Reset", {"type": "Soft"})]:  # fmt: skip
+            payload = protocol.command_payload(action, raw, transaction_id=None)
+            await bridge.command(None, "U1HKP", action, payload)
+        # an action ocpp2mqtt has no mapping for is refused, not published
+        bad = await bridge.command(None, "U1HKP", "GetLocalListVersion", {})
+        assert bad == {"ok": False, "error": "GetLocalListVersion is not available over ocpp2mqtt"}
+
+    asyncio.run(go())
+    by_name = {name: args for _cid, name, args in sent}
+    assert by_name["remote_start_transaction"] == {"connector_id": 1, "id_tag": protocol.ID_TAG}
+    assert by_name["remote_stop_transaction"] == {"transaction_id": 7}
+    assert by_name["trigger_message"] == {"requested_message": "StatusNotification"}
+    assert by_name["change_availability"] == {"connector_id": 0, "type": "Inoperative"}
+    assert by_name["set_charging_profile"]["connector_id"] == 0 and "cs_charging_profiles" in by_name["set_charging_profile"]
+    assert by_name["reset"] == {"type": "Soft"}
+
+
+@pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
+def test_ocpp2mqtt_apply_mode_publishes_the_right_commands(db: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.modules.ocpp import bridge, protocol
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def fake_publish(engine: Any, cid: str, name: str, args: dict[str, Any]) -> dict[str, Any]:
+        calls.append((name, args))
+        return {"ok": True, "answer": None, "sent": {"action": name, "args": args}, "error": None}
+
+    monkeypatch.setattr(bridge, "publish_command", fake_publish)
+
+    async def go() -> None:
+        engine = create_async_engine(URL)  # type: ignore[arg-type]
+        try:
+            # off with no session open: only make the charger unavailable (no RemoteStop without a transaction id)
+            calls.clear()
+            await bridge.apply_mode(engine, "U1HKP", "off")
+            assert calls == [("change_availability", {"connector_id": 0, "type": "Inoperative"})]
+            # on: make available, then start a charge with World Assistant's tag
+            calls.clear()
+            await bridge.apply_mode(engine, "U1HKP", "on")
+            assert calls == [("change_availability", {"connector_id": 0, "type": "Operative"}),
+                             ("remote_start_transaction", {"connector_id": 1, "id_tag": protocol.ID_TAG})]
+            # auto: just make it available; the planner decides when to charge
+            calls.clear()
+            await bridge.apply_mode(engine, "U1HKP", "auto")
+            assert calls == [("change_availability", {"connector_id": 0, "type": "Operative"})]
+        finally:
+            await engine.dispose()
+
+    asyncio.run(go())
+
+
+@pytest.mark.skipif(not URL, reason="WA_TEST_DATABASE_URL not set")
+def test_ocpp2mqtt_state_is_recorded_and_a_session_inferred(db: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.modules.ocpp import bridge, store
+
+    monkeypatch.setattr(ha, "changed", lambda hub, cid, with_discovery=False: None)
+
+    async def go() -> None:
+        engine = create_async_engine(URL)  # type: ignore[arg-type]
+        try:
+            b = bridge.Bridge()
+            b.engine, b.redis = engine, FakeRedis()
+            await b._state("U1HKP", "charge_point_vendor", "SyncEV")
+            await b._state("U1HKP", "charge_point_model", "EVCP")
+            await b._state("U1HKP", "firmware_version", "1.6.2")
+            await b._state("U1HKP", "connection_state", "CONNECTED")
+            await b._state("U1HKP", "energy_active_import_register", "12500")
+            await b._state("U1HKP", "power_active_import", "6900")
+            await b._state("U1HKP", "status", "Charging")  # starts a session
+            async with engine.connect() as conn:
+                rows = await store.chargers(conn)
+                assert rows and rows[0]["connected"] is True and rows[0]["status"] == "Charging"
+                assert rows[0]["meter"]["energy_wh"] == 12500 and rows[0]["meter"]["power_w"] == 6900
+                assert rows[0]["boot"]["charge_point_vendor"] == "SyncEV"
+                assert await store.open_transaction(conn, "U1HKP") is not None
+            await b._state("U1HKP", "status", "Available")  # unplugged: the session closes
+            async with engine.connect() as conn:
+                assert await store.open_transaction(conn, "U1HKP") is None
+        finally:
+            await engine.dispose()
+
+    asyncio.run(go())

@@ -14,7 +14,13 @@ SETTINGS_KEY = "ocpp.settings"
 # planner decides, when "Control the car charger" is on)
 MODES = ("off", "on", "auto")
 DEFAULTS: dict[str, Any] = {"chargers": [], "meter_every_s": 60, "publish_ha": True, "mode": "auto", "server_address": "",
-                            "max_current_a": None}  # max_current_a: a current limit (amps) sent as an OCPP charging profile, or None
+                            "max_current_a": None,  # max_current_a: a current limit (amps) sent as an OCPP charging profile, or None
+                            # backend: who is the charger's OCPP central system. "builtin" = World Assistant's own
+                            # WebSocket server (app/modules/ocpp/server.py). "ocpp2mqtt" = the external ocpp2mqtt
+                            # bridge, which World Assistant drives over MQTT (app/modules/ocpp/bridge.py). Switchable
+                            # live from the Charger page — no redeploy — so you can test one and fall back to the other.
+                            "backend": "builtin",
+                            "mqtt_base": "wa/ocpp"}  # the ocpp2mqtt MQTT base path (MQTT_BASEPATH on that container)
 KEEP_DAYS = 730
 LOG_KEEP_DAYS = 30  # the charger's own syslog (ocpp_log), kept shorter than the OCPP record
 _COLS = ("last_seen", "connected", "connected_at", "boot", "booted_at", "status", "error_code", "status_info", "meter",

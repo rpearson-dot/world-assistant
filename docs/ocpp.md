@@ -77,6 +77,37 @@ If control ever stops working after a server or dependency change, check these t
 Assistant and watch **Logs → Charger** — a command answered with Accepted/Rejected means the charger is receiving us;
 "no answer" every time means it is not, and compression is the first suspect.
 
+## Two backends: built-in or ocpp2mqtt
+
+The **backend** is who the charger connects to as its OCPP central system. You can switch between two, live on the
+Charger page (Settings → Charger backend) with no redeploy — both run at once, and the switch chooses which one is in
+charge. Either way the Charger page, the record, the master switch and the Home Assistant entities work the same,
+because both write into the same tables.
+
+- **Built-in** (the default): World Assistant's own WebSocket server (`app/modules/ocpp/server.py`). The charger
+  connects to `ws://<server>:8010/ocpp/<id>` as above. Fewest moving parts, but it depends on the WebSocket settings
+  above, and some chargers never answer its commands (see below).
+- **ocpp2mqtt**: a dedicated container ([gyzod/ocpp2mqtt](https://github.com/gyzod/ocpp2mqtt)) is the central system
+  the charger connects to; it runs the proven `ocpp` + `websockets` stack (the same one Home Assistant uses) and
+  speaks to World Assistant over MQTT. World Assistant reads its state topics and drives it over the same broker
+  (`app/modules/ocpp/bridge.py`). Use this when the built-in server connects and records fine but the charger ignores
+  every command — the Sync EV behaves this way, and ocpp2mqtt's stack is what makes it obey.
+
+To use ocpp2mqtt:
+
+1. Bring up the container alongside World Assistant and an MQTT broker:
+   `docker compose -f docker-compose.yml -f docker-compose.mqtt.yml -f docker-compose.ocpp2mqtt.yml up -d`
+   (or add `docker-compose.ocpp2mqtt.yml` to `COMPOSE_FILE` in `.env`). Set `WA_OCPP2MQTT_CPID` to your charge point
+   ID (default `U1HKP`); pin `WA_OCPP2MQTT_IMAGE` to a digest once deployed.
+2. Point the charger's OCPP 1.6J central-system address at `ws://<server>:${WA_OCPP2MQTT_PORT:-3000}/<id>`
+   (e.g. `ws://10.0.2.49:3000/U1HKP`) instead of the `:8010/ocpp/` address.
+3. On the Charger page, set **Charger backend** to *ocpp2mqtt*. Keep the **ocpp2mqtt base path** equal to the
+   container's `WA_OCPP2MQTT_BASE` (default `wa/ocpp`); the container publishes under `<base>/<id>/state/...` and
+   listens for commands on `<base>/<id>/cmd`.
+
+The command's answer comes back asynchronously over MQTT (shown in Logs → Charger as a command result), so the page
+reports that a command was sent rather than waiting for the charger's reply.
+
 ## Home Assistant
 
 Over MQTT, as the device "Charger U1HKP": `sensor.wa_ocpp_status`, `sensor.wa_ocpp_power` (kW),
@@ -91,6 +122,7 @@ Over MQTT, as the device "Charger U1HKP": `sensor.wa_ocpp_status`, `sensor.wa_oc
 | `GET /v1/ocpp` | every charger, its state, the week's restarts, drops and faults, and its current session |
 | `PUT /v1/ocpp/settings` | allowed chargers, meter reading interval, Home Assistant on or off |
 | `PUT /v1/ocpp/mode` | `{"mode": "off" \| "on" \| "auto"}`, applied to every connected charger |
+| `PUT /v1/ocpp/backend` | `{"backend": "builtin" \| "ocpp2mqtt", "mqtt_base"?: "wa/ocpp"}`, switch the backend live |
 | `POST /v1/ocpp/{id}/start`, `/stop` | start or stop a session once |
 | `POST /v1/ocpp/{id}/command` | `{"action": "Reset", "args": {"type": "Soft"}}`, GetConfiguration, ChangeConfiguration, TriggerMessage, UnlockConnector, ChangeAvailability, ClearCache |
 | `GET /v1/ocpp/{id}/events`, `/messages`, `/sessions` | the record |

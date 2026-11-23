@@ -274,8 +274,8 @@ BUILTIN: tuple[Module, ...] = (
            worker=(Job("app.modules.ocpp.api:ocpp_watch", {"minute": _every(5), "timeout": 120, "max_tries": 1}),
                    Job("app.modules.ocpp.api:ocpp_housekeep", {"hour": {3}, "minute": {33}, "timeout": 300, "max_tries": 1})),
            tools=("charger",),
-           provides={"assistant.tools": "app.modules.ocpp.tools:TOOLS", "startup": "app.modules.ocpp.server:startup",
-                     "shutdown": "app.modules.ocpp.server:shutdown"}),
+           provides={"assistant.tools": "app.modules.ocpp.tools:TOOLS", "startup": "app.modules.ocpp.lifecycle:startup",
+                     "shutdown": "app.modules.ocpp.lifecycle:shutdown"}),
     Module("ovms", "Car (OVMS)", "Your car's own module (OVMS): on the Vehicles page each car shows every metric it "
            "reports — battery, charging, cabin, tyres, position and more — with charge, climate and lock controls over MQTT",
            category="energy", jobs=("ovms_watch",), sdk=2,

@@ -407,6 +407,7 @@ pages themselves hold no data: each one calls these endpoints.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/v1/ocpp` | Every charger World Assistant has heard from, with its state, the last week's restarts, drops and faults, and the address to give a charger. |
+| PUT | `/v1/ocpp/backend` | Switch which OCPP central system drives the charger, live and without a redeploy: "builtin" (World Assistant's own WebSocket server) or "ocpp2mqtt" (the external bridge, driven over MQTT). Both run; this chooses the one in charge. Optionally set the MQTT base path ocpp2mqtt publishes under. |
 | PUT | `/v1/ocpp/mode` | The master switch: off (the charger refuses to charge), on (charges whenever the car is plugged in) or auto (Home Assistant's charging plan decides). Kept, and applied to every connected charger now. |
 | PUT | `/v1/ocpp/settings` | Which chargers may connect (by id; none listed: any on the home network), how often to ask for meter readings while charging, and whether to publish the charger to Home Assistant. |
 | POST | `/v1/ocpp/{cid}/command` | Any of the commands in protocol.COMMANDS: Reset {type: Soft\|Hard}, GetConfiguration {keys}, ChangeConfiguration {key, value}, TriggerMessage {message}, UnlockConnector, ChangeAvailability {type}, ClearCache. |
