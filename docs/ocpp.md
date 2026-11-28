@@ -18,8 +18,8 @@ stops seeing it; World Assistant publishes the charger to Home Assistant instead
    `U1HKP`); if yours does not, use `ws://<server>:8010/ocpp/U1HKP`. OCPP 1.6J, no TLS, no password.
 3. The charger connects within a minute or two. The page shows "Connected", and its first start-up.
 4. On the page, under Settings, put the charger's id in "Chargers allowed to connect", so nothing else can.
-5. In Home Assistant, remove or disable the OCPP integration. The charging plan (`wa_ev_plan.yaml`) uses World
-   Assistant's charger entities by itself once they appear, unless the plan's entity fields name others.
+5. In Home Assistant, remove or disable the OCPP integration, so it does not compete with World Assistant for the
+   charger. World Assistant's own planner drives charging (see the Charger page); Home Assistant only shows its state.
 
 To go back, point the charger at Home Assistant's address again.
 

@@ -169,12 +169,7 @@ polling window closes. The next arrivals and buses being followed come from TfL'
 | `summary` | one-sentence answer, good for voice |
 | `next_{stop key}` | minutes to the next bus at each stop of interest (attributes: next three; while polling) |
 
-To change the times from Home Assistant, add `homeassistant/packages/world_assistant_bus.yaml` to your
-packages folder and `wa_bus_settings_url: "http://<nas address>:8010/v1/bus/settings"` to `secrets.yaml`
-(with the `wa_authorization` the events package already needs). It gives three time helpers (arrive by,
-earliest departure, show the chance until), shown on the Trains and buses dashboard; changing one calls
-the API, and a refusal (say, a deadline earlier than the earliest time) appears as a notification. The
-helpers are only controls: the times in use are shown in the chance line. Set them once to match.
+Set the tracker's times (arrive by, earliest departure, show the chance until) on World Assistant's Bus page.
 
 Settings: `WA_MQTT_HOST`, `WA_MQTT_PORT`, `WA_MQTT_USER`, secret `mqtt_password`,
 `WA_MQTT_ENABLED`, `WA_MQTT_TOPIC_PREFIX` (default `world_assistant`),

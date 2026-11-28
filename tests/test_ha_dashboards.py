@@ -29,8 +29,7 @@ def _jinja() -> Any:
 
 
 def test_the_static_dashboards_are_here() -> None:
-    assert {p.stem for p in DASHBOARDS} == {"pollen", "fuel", "trains-buses", "roads", "events", "manage", "leaf",
-                                            "home-charging"}  # fmt: skip
+    assert {p.stem for p in DASHBOARDS} == {"pollen", "fuel", "roads", "events", "manage", "home-charging"}
 
 
 def _cards(view: dict) -> list[dict]:
@@ -320,53 +319,6 @@ def test_events_package_commands_render_valid_json() -> None:
     assert add["headers"]["Authorization"] == "<secret>" and rem["url"] == "<secret>"
 
 
-def test_bus_card_shows_next_bus_chance_and_record() -> None:
-    ents = {
-        "sensor.wa_bus_main_summary": ("The last bus got there at 07:52.", {"friendly_name": "Bus tracker main Target summary"}),
-        "sensor.wa_bus_main_last_bus": ("07:52", {}),
-        "sensor.wa_bus_main_next_board": ("4", {"friendly_name": "Next bus: Worcester Park", "next": [
-            {"minutes": 4, "towards": "Kingston"}, {"minutes": 11, "towards": "Kingston"}]}),
-        "sensor.wa_bus_main_chance": ("80", {"deadline": "08:10", "bus": "07:46", "based_on_days": 9, "based_on": "this departure",
-                                              "later_buses": [{"slot": "07:55", "chance": 60}], "relevant": True, "days_recorded": 9}),
-        "sensor.wa_bus_main_record": ("75", {"window_days": 30, "success": 15, "failure": 5,
-                                              "recent_days": [{"date": "2026-10-21", "buses": ["07:11 success (07:25)", "07:46 failure"]}]}),
-    }  # fmt: skip
-    card = next(c for c in yaml.safe_load((ROOT / "homeassistant" / "dashboards" / "trains-buses.yaml").read_text(encoding="utf-8"))["views"][0]["cards"] if c.get("title") == "Bus tracker")
-    out = _env(ents, user="Anyone").from_string(card["content"]).render()
-    assert "Next bus at Worcester Park" in out and "4 min, then 11" in out and "towards Kingston" in out
-    assert "80% for the 07:46 bus" in out and "07:55: 60%" in out
-    assert "75% made it (15 reached it, 5 did not)" in out and "07:46 failure" in out
-    ents["sensor.wa_bus_main_ended_early"] = ("1", {"today": ["07:41 turned back at Malden Road (4 stops short), next seen at Worcester Park 07:55"],
-                                                    "recent_days": [{"date": "2026-10-20", "count": 2, "buses": ["07:30 stopped reporting at X (3 stops short)"]}]})
-    import datetime
-
-    env = _env(ents, user="Anyone")
-    env.globals["now"] = lambda: datetime.datetime(2026, 10, 21, 7, 0, tzinfo=datetime.UTC)
-    early = env.from_string(card["content"]).render()
-    assert "Buses that ended early today**: 1" in early and "turned back at Malden Road" in early
-    assert "2026-10-20: 2; 07:30 stopped reporting at X" in early
-    ents["sensor.wa_bus_main_chance"] = ("unknown", {"relevant": False, "reason": "after 08:00", "deadline": "08:10"})
-    env = _env(ents, user="Anyone")
-    env.globals["now"] = lambda: datetime.datetime(2026, 10, 21, 7, 0, tzinfo=datetime.UTC)
-    quiet = env.from_string(card["content"]).render()
-    assert "not shown (after 08:00)" in quiet and "80%" not in quiet
-
-
-def test_bus_package_sends_only_the_time_that_changed() -> None:
-    env = _jinja().Environment()
-    doc = yaml.load((PACKAGES / "world_assistant_bus.yaml").read_text(encoding="utf-8"), Loader=_HaLoader)
-    assert set(doc["input_datetime"]) == {"wa_bus_deadline", "wa_bus_earliest", "wa_bus_show_until"}
-    cmd = doc["rest_command"]["wa_bus_settings"]
-    assert cmd["url"] == "<secret>" and cmd["headers"]["Authorization"] == "<secret>"
-    import json
-
-    body = json.loads(env.from_string(cmd["payload"]).render(deadline="08:30", earliest="", show_until=""))
-    assert body == {"deadline": "08:30", "earliest": "", "show_until": ""}  # the server ignores blanks
-    action = next(a for a in doc["automation"][0]["actions"] if "action" in a and a["action"] == "rest_command.wa_bus_settings")
-    for v in action["data"].values():
-        env.from_string(v)
-
-
 def _script_vars(name: str, ents: dict[str, tuple[str, dict[str, Any]]]) -> dict[str, Any]:
     """Render a manage-package script's `variables` step in order, as Home Assistant would."""
     doc = yaml.load((PACKAGES / "world_assistant_manage.yaml").read_text(encoding="utf-8"), Loader=_HaLoader)
@@ -434,92 +386,6 @@ def test_manage_dashboard_lists_what_is_set_up() -> None:
     assert empty.count("- none") == 2
 
 
-# --- the Leaf -----------------------------------------------------------------------------------
-
-LEAF_OK = {
-    "sensor.hv66bzd_instrument_soc_nissan_leaf": ("81.0757", {}),
-    "sensor.wa_car_range_miles": ("111.7", {}),
-    "sensor.nissan_leaf_hv66bzd_charge_substate": ("onrequest", {}),
-    "binary_sensor.nissan_leaf_hv66bzd_charging_status": ("off", {}),
-    "binary_sensor.nissan_leaf_hv66bzd_charge_port": ("off", {}),
-    "binary_sensor.hv66bzd_12v_battery_voltage_alert": ("off", {}),
-    "binary_sensor.hv66bzd_12v_battery_charging": ("off", {}),
-    "sensor.hv66bzd_12v_battery_voltage": ("12.4", {}),
-    "lock.hv66bzd_vehicle_lock": ("locked", {}),
-    **{f"binary_sensor.hv66bzd_{d}": ("off", {}) for d in
-       ("front_left_door", "front_right_door", "rear_left_door", "rear_right_door", "trunk")},
-    "binary_sensor.nissan_leaf_hv66bzd_cell_voltage_alerts": ("off", {}),
-    "binary_sensor.nissan_leaf_hv66bzd_cell_temperature_alerts": ("off", {}),
-    **{f"sensor.leaf_tyre_pressure_{t}_psi": ("36.0", {}) for t in
-       ("front_left", "front_right", "rear_left", "rear_right")},
-}
-
-
-def _leaf(**over: tuple[str, dict[str, Any]]) -> str:
-    return _env({**LEAF_OK, **over}).from_string(_card("leaf", 1)).render()
-
-
-def test_leaf_says_nothing_to_do_when_all_is_well() -> None:
-    out = _leaf()
-    assert "Nothing to do." in out and "81%" in out and "111.7 miles" in out
-    assert "🔌" not in out and "⚠️" not in out and "🛞" not in out
-
-
-def _heard(ago: timedelta, where: str, **newer: timedelta) -> str:
-    """The Leaf card with every car entity last reported `ago`, the car `where`, and some entities reported later."""
-    ents = {k: (v[0], {"_heard": NOW - ago}) for k, v in LEAF_OK.items() if "hv66bzd" in k}
-    ents["device_tracker.hv66bzd_location"] = (where, {"_heard": NOW - newer.pop("tracker", ago)})
-    return _leaf(**ents)
-
-
-def test_leaf_says_when_it_last_heard_from_the_car() -> None:
-    assert "_Last heard from the car 2 min ago._" in _leaf()  # fresh: a quiet line under the summary
-    away = _heard(timedelta(minutes=40), "not_home")
-    assert "📡 Nothing from the car for 40 min, so these are its last values" in away
-    assert "Last heard" not in away and "Nothing to do." not in away
-    home = _heard(timedelta(minutes=40), "home")  # parked at home on Wi-Fi: only odd after an hour
-    assert "📡" not in home and "Last heard from the car 40 min ago" in home
-    gone = _heard(timedelta(days=3), "home")
-    assert "📡 Nothing from the car for 3 days: is its Wi-Fi or the OVMS module down?" in gone
-    one_fresh = _heard(timedelta(minutes=40), "not_home", tracker=timedelta(minutes=3))
-    assert "📡" not in one_fresh and "3 min ago" in one_fresh  # the newest report is what counts
-
-
-def test_leaf_reports_charging_when_it_is() -> None:
-    out = _leaf(**{
-        "binary_sensor.nissan_leaf_hv66bzd_charging_status": ("on", {}),
-        "binary_sensor.nissan_leaf_hv66bzd_charge_port": ("on", {}),
-        "sensor.nissan_leaf_hv66bzd_time_to_full_charge": ("3h 51m", {}),
-    })
-    assert "Charging, 3h 51m to full." in out and "🔌" not in out  # plugged in and charging: no warning
-
-
-def test_leaf_flags_what_needs_doing() -> None:
-    out = _leaf(**{
-        "binary_sensor.nissan_leaf_hv66bzd_charge_port": ("on", {}),  # plugged in, not charging
-        "sensor.hv66bzd_instrument_soc_nissan_leaf": ("7", {}),
-        "sensor.wa_car_range_miles": ("7.7", {}),
-        "sensor.hv66bzd_12v_battery_voltage": ("11.6", {}),
-        "lock.hv66bzd_vehicle_lock": ("unlocked", {}),
-        "binary_sensor.hv66bzd_trunk": ("on", {}),
-        "sensor.leaf_tyre_pressure_front_right_psi": ("32.5", {}),
-        "sensor.leaf_tyre_pressure_rear_left_psi": ("41.0", {}),
-    })
-    assert "Plugged in but not charging (onrequest)" in out
-    assert "Charge is 7%, about 7.7 miles" in out
-    assert "12V battery at 11.6V" in out
-    assert "🔓 Unlocked" in out and "🚪 Boot open" in out
-    assert "Front right tyre 32.5 psi" in out and "Rear left tyre 41.0 psi" in out
-    assert "Front left" not in out and "Rear right" not in out  # the two at 36 psi say nothing
-    assert "Nothing to do." not in out
-
-
-def test_leaf_is_quiet_when_a_sensor_is_missing() -> None:
-    """A car asleep or an entity not yet created must not produce a false warning."""
-    out = _env({}).from_string(_card("leaf", 1)).render()
-    assert "Nothing to do." in out and "⚠️" not in out and "🛞" not in out
-
-
 def test_home_charging_plan_table_renders() -> None:
     """The plan card as Home Assistant shows it: a row for each of the six slots, and the health max suggestion."""
     import json
@@ -561,8 +427,9 @@ def test_home_charging_plan_table_renders() -> None:
 
 
 def test_files_name_package_sensors_by_the_id_home_assistant_gives_them() -> None:
-    """Home Assistant makes a template entity's id from its name, not its unique_id ("WA car charging plan" is
-    sensor.wa_car_charging_plan, whatever its unique_id). A file naming sensor.<unique_id> finds nothing."""
+    """Home Assistant makes a template entity's id from its name, not its unique_id (a sensor named "WA energy rate"
+    is sensor.wa_energy_rate, whatever its unique_id). A file naming sensor.<unique_id> finds nothing, so no file may
+    reference a sensor by a unique_id that differs from its name's slug."""
     import re
 
     class Loader(yaml.SafeLoader):
@@ -580,84 +447,7 @@ def test_files_name_package_sensors_by_the_id_home_assistant_gives_them() -> Non
                     slug = re.sub(r"[^a-z0-9]+", "_", str(x.get("name", "")).lower()).strip("_")
                     if x.get("unique_id") and slug != x["unique_id"]:
                         wrong[f"{domain}.{x['unique_id']}"] = f"{domain}.{slug}"
-    assert "sensor.wa_ev_plan" in wrong  # the case that broke the car plan's triggers
     for f in files:
         text = f.read_text(encoding="utf-8")
         for bad, good in wrong.items():
             assert not re.search(re.escape(bad) + r"(?![a-z0-9_])", text), f"{f.name} names {bad}; Home Assistant calls it {good}"
-
-
-# --- EV chargers near you (Leaf dashboard card and the EV package) -------------------------------------------------
-
-THURROCK = {"name": "MOTO Thurrock", "postcode": "RM16 3BG", "lat": 51.4925, "lon": 0.2711, "total": 20, "working": 19,
-            "free": 18, "open": True, "opens": None, "kw": 360, "p": 59.0, "p_max": 59.0, "broken": 0.8,
-            "by": {"CCS": [24, 23, 20, 360], "CHAdeMO": [6, 6, 0, 50]}}
-COBHAM = {"name": "Cobham", "postcode": "KT11 3DB", "lat": 51.40, "lon": -0.30, "total": 8, "working": 8, "free": 3,
-          "open": True, "opens": None, "kw": 350, "p": 79.0, "p_max": 79.0, "broken": 0.0,
-          "by": {"CCS": [8, 8, 3, 350], "CHAdeMO": [2, 2, 1, 50]}}
-RUGBY = {"name": "Rugby", "postcode": "CV23", "lat": 52.38, "lon": -1.20, "total": 4, "working": 4, "free": 4,
-         "open": False, "opens": "Sun 05:30", "kw": 150, "p": 79.0, "p_max": 79.0, "broken": None,
-         "by": {"CHAdeMO": [1, 1, 1, 50]}}
-EV_ENTS = {
-    "zone.home": ("zoning", {"latitude": 51.5, "longitude": -0.12, "friendly_name": "Home"}),
-    "person.alex": ("Coventry", {"latitude": 52.4, "longitude": -1.5, "gps_accuracy": 20, "friendly_name": "Alex"}),
-    "person.sam": ("home", {"friendly_name": "Sam", "latitude": 51.5, "longitude": -0.12}),
-    "sensor.wa_ev_summary": ("3", {"my_connector": "CHAdeMO"}),
-    "sensor.wa_ev_tile_51_m1": ("1", {"sites": [COBHAM]}),
-    "sensor.wa_ev_tile_51_0": ("1", {"sites": [THURROCK]}),
-    "sensor.wa_ev_tile_52_m2": ("1", {"sites": [RUGBY]}),
-}
-
-
-def _leaf_chargers(ents: dict[str, Any], user: str) -> str:
-    card = next(c for c in yaml.safe_load((ROOT / "homeassistant/dashboards/leaf.yaml").read_text())["views"][0]["cards"]
-                if c.get("title") == "Chargers near you")  # fmt: skip
-    return _env(ents, user=user).from_string(card["content"]).render()
-
-
-def test_chargers_near_whoever_is_looking_for_the_cars_connector() -> None:
-    home = _leaf_chargers(EV_ENTS, "Sam")
-    assert "Within 50 km of home, CHAdeMO only" in home  # the car's connector, from World Assistant
-    assert "**Thurrock" not in home and "**MOTO Thurrock**" in home and "**Cobham**" in home
-    assert home.index("**Cobham**") < home.index("**MOTO Thurrock**")  # nearest first
-    assert "0 of 6 free" in home and "⚠️ often has one out of order" in home  # Thurrock's CHAdeMO leads are busy
-    away = _leaf_chargers(EV_ENTS, "Alex")  # Alex's phone is in Coventry
-    assert "of your location" in away and "**Rugby**" in away and "closed now, opens Sun 05:30" in away
-    assert "Cobham" not in away
-    anyc = _leaf_chargers({**EV_ENTS, "input_select.wa_ev_connector": ("Any", {})}, "Sam")
-    assert "CHAdeMO only" not in anyc and "3 of 8 free, up to 350 kW, 79p/kWh" in anyc
-    none = _leaf_chargers({k: v for k, v in EV_ENTS.items() if not k.startswith("sensor.wa_ev_tile")}, "Sam")
-    assert "No charger data yet" in none
-
-
-def _package_sensor(name: str) -> dict[str, Any]:
-    pkg = yaml.safe_load((ROOT / "homeassistant/packages/world_assistant_ev.yaml").read_text())
-    return next(x for x in pkg["template"][0]["sensor"] if x["unique_id"] == name)
-
-
-def test_the_ev_package_finds_the_nearest_free_charger_for_one_person() -> None:
-    import ast
-
-    near = _package_sensor("wa_chargers_near")
-    nearest = _package_sensor("wa_nearest_free_charger")
-    for x in (near, nearest):  # Home Assistant makes the entity id from the name
-        assert re.sub(r"[^a-z0-9]+", "_", x["name"].lower()).strip("_") == x["unique_id"]
-    ents = {**EV_ENTS, "input_text.wa_ev_person": ("person.alex", {})}
-    env = _env(ents)
-    assert env.from_string(near["state"]).render().strip() == "Alex's location"
-    got = ast.literal_eval(env.from_string(near["attributes"]["near"]).render().strip())
-    assert [g["name"] for g in got] == ["Rugby"]  # within 50 km of Coventry, with CHAdeMO
-    # Rugby is closed: nothing open and free near Alex
-    ents["sensor.wa_chargers_near"] = ("Alex's location", {"near": got, "connector": "CHAdeMO"})
-    assert _env(ents).from_string(nearest["state"]).render().strip() == "none within 50 km"
-    # nobody named and two people: measured from home
-    home = {**EV_ENTS}
-    env = _env(home)
-    assert env.from_string(near["state"]).render().strip() == "home"
-    got = ast.literal_eval(env.from_string(near["attributes"]["near"]).render().strip())
-    assert [g["name"] for g in got] == ["Cobham", "MOTO Thurrock"]
-    home["sensor.wa_chargers_near"] = ("home", {"near": got, "connector": "CHAdeMO"})
-    env = _env(home)
-    assert env.from_string(nearest["state"]).render().strip() == "Cobham"  # Thurrock's CHAdeMO is busy
-    assert float(env.from_string(nearest["attributes"]["km"]).render()) > 0
-    assert env.from_string(nearest["attributes"]["pence_per_kwh"]).render().strip() == "79.0"

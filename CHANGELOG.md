@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [0.70.1] - 2026-11-23
 
+### Removed
+
+- **The Home Assistant car-charging and bus packages/dashboards, which World Assistant now owns.** Gone from `/ha`
+  (and the SMB copy): `packages/wa_ev_plan.yaml` (the car-charging automation — it polled the charger every minute
+  and wrote the logbook every five, a steady source of Home Assistant log growth), `packages/world_assistant_ev.yaml`
+  and `dashboards/leaf.yaml` (the public "chargers near you" finder), `packages/world_assistant_bus.yaml` and
+  `dashboards/trains-buses.yaml` (bus-time settings and the bus/departure boards). The car grid was removed from
+  `dashboards/home-charging.yaml`, leaving its battery/solar/tariff plan. Charging is driven by World Assistant's own
+  planner now (over its OCPP server or the ocpp2mqtt bridge). World Assistant still publishes the bus, train and
+  charger sensors over MQTT; only the Home Assistant copy of this logic is removed.
+
 ### Fixed
 
 - **`docker-compose.ocpp2mqtt.yml` no longer requires the bundled MQTT broker.** The overlay declared

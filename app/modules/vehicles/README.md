@@ -2,8 +2,6 @@
 
 What a trip costs in fuel or electricity for a saved vehicle.
 
-How to use it: [docs/leaf.md](../../../docs/leaf.md).
-
 | | |
 |---|---|
 | Role | Processor: works from other data |

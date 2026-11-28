@@ -41,34 +41,24 @@ ABOUT: dict[str, tuple[str, str]] = {
     "packages/world_assistant_fuel.yaml": ("Fuel type", "The Petrol / Diesel dropdown on the Fuel dashboard."),
     "packages/world_assistant_manage.yaml": ("Manage places and routes", ("Add places and routes from Home Assistant. "
                                              "Needs the events package too.")),
-    "packages/world_assistant_bus.yaml": ("Bus tracker times", "Change the bus tracker's times from the dashboard."),
     "packages/wa_energy_plan.yaml": ("Energy plan (battery charging)", (
         "Sets the battery's charge targets from expected use, Forecast.Solar and your battery health max, and charges "
         "from the grid in Free Electricity hours you joined, for any tariff, on a Deye/Sunsynk-style inverter: check "
         "the inverter and Forecast.Solar names above first. Starts as a dry run.")),
-    "packages/wa_ev_plan.yaml": ("Car charging plan", (
-        "Charges the car only while the rate is cheap or in Free Electricity hours you joined, and stops at your "
-        "target, through an OCPP charger and the car's charge level (OVMS or any integration). Set your charger and car "
-        "entities on the Home charging dashboard. Starts as a dry run.")),
-    "packages/world_assistant_ev.yaml": ("EV chargers near you", (
-        "The nearest GRIDSERVE site with a free charger for your car's connector, from a person's location while away "
-        "or home, as sensors for automations; and the connector picker on the Leaf dashboard. Needs the GRIDSERVE module.")),
     "dashboards/home-charging.yaml": ("Home charging", (
         "Battery, solar, prices, free hours and Saving Sessions, the charge plan and its tuning. "
         "Needs the energy plan package.")),
     "dashboards/fuel.yaml": ("Fuel", "Prices near each person, cheapest first."),
-    "dashboards/trains-buses.yaml": ("Trains and buses", "Departure boards and the bus tracker."),
     "dashboards/roads.yaml": ("Roads", "Closures and speed limits near each person, and your routes."),
     "dashboards/events.yaml": ("Events", "What is on near home and your extra places."),
     "dashboards/pollen.yaml": ("Pollen", "The pollen map, your own forecast and the home history."),
     "dashboards/manage.yaml": ("Manage", "Add places and routes."),
-    "dashboards/leaf.yaml": ("Leaf", "Nissan Leaf battery and charging (with OVMS), and chargers near you."),
 }  # fmt: skip
 
 # For dashboards kept as files (copied over SMB): Home Assistant's YAML-mode dashboards, so they update by themselves.
-DASH_ICONS = {"fuel": "mdi:gas-station", "trains-buses": "mdi:bus-clock", "roads": "mdi:road-variant",
+DASH_ICONS = {"fuel": "mdi:gas-station", "roads": "mdi:road-variant",
               "events": "mdi:calendar-star", "pollen": "mdi:flower-pollen", "manage": "mdi:map-marker-plus",
-              "leaf": "mdi:car-electric", "home-charging": "mdi:home-battery"}  # fmt: skip
+              "home-charging": "mdi:home-battery"}  # fmt: skip
 
 
 def lovelace_yaml(dashboards: list[dict[str, Any]], folder: str = "world_assistant/dashboards") -> str:
@@ -154,7 +144,6 @@ SECRET_PATHS: dict[str, str] = {
     "wa_locations_delete_url": "/v1/ha/locations/delete",
     "wa_routes_url": "/v1/ha/routes",
     "wa_routes_delete_url": "/v1/ha/routes/delete",
-    "wa_bus_settings_url": "/v1/bus/settings",
 }
 SECRET = re.compile(r"!secret\s+([a-z0-9_]+)")
 
