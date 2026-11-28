@@ -30,8 +30,8 @@
       "sha256": "7366e744dd9e52593782f0ec313062bd66f2cd9a43dab056bf182393b82b1ad6"
     },
     "packages/world_assistant_events.yaml": {
-      "changed_in": "0.23.5",
-      "sha256": "aa3b941ef72b4139f63b336e926772729bd58ee7b36385d344e05b1388ba491b"
+      "changed_in": "0.70.2",
+      "sha256": "abdc8181c3b420dedea6eb80a57bfac1ce780477522f0fd4a221b637239da93b"
     },
     "packages/world_assistant_fuel.yaml": {
       "changed_in": "0.7.5",

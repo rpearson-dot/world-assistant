@@ -10,7 +10,10 @@ rest:
       lon: "{{ state_attr('zone.home', 'longitude') | default(0, true) }}"
       radius_km: "8"
       days: "7"
-      limit: "20"
+      # Home Assistant drops a sensor's attributes (and warns) once they pass 16 KB, so keep the events list small
+      # enough to fit: ~10 events stays well under it. For a longer list, exclude sensor.wa_events_home_upcoming from
+      # the recorder instead and raise this.
+      limit: "10"
     scan_interval: 3600
     timeout: 30
     headers:
