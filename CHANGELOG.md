@@ -21,6 +21,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   reaches a charger connected to ocpp2mqtt.
 - **The Auto description names World Assistant, not Home Assistant.** With "act" on it is World Assistant's own
   planner that starts and stops the charger, so the Charger page says so.
+- **ocpp2mqtt charges now, instead of answering its own StartTransaction "Blocked".** ocpp2mqtt has its own
+  `charging_enabled` gate (default OFF); it authorises a transaction only while that is ON and the id tag is allowed,
+  so a RemoteStart was accepted by the charger but then immediately blocked by the bridge. World Assistant now drives
+  that gate: it is turned ON before every RemoteStart and OFF after every stop (and for Off/Auto), through the bridge,
+  so the API, the On switch and the planner all work. ChangeAvailability — which this charger ignores — is no longer
+  used for the mode; `charging_enabled` + RemoteStart/Stop is the lever.
 
 ## [0.70.0] - 2026-11-23
 

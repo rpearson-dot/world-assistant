@@ -108,6 +108,15 @@ To use ocpp2mqtt:
 The command's answer comes back asynchronously over MQTT (shown in Logs → Charger as a command result), so the page
 reports that a command was sent rather than waiting for the charger's reply.
 
+**How control works on this backend.** ocpp2mqtt is itself the central system, and it has its own `charging_enabled`
+gate (default OFF): it authorises a `StartTransaction` only while that gate is ON *and* the id tag is in
+`AUTHORIZED_TAG_ID_LIST` (the overlay sets `["WorldAssistant"]`, the tag World Assistant starts charges with).
+So World Assistant drives the gate — ON before every RemoteStart, OFF after every stop and for Off/Auto — rather than
+`ChangeAvailability`, which this charger ignores. In short, the lever is `charging_enabled` + RemoteStart/Stop. The
+charger does not free-vend, so leaving it blocked keeps it idle until World Assistant (or the planner, in Auto) starts
+a charge. If you ever see a charge start and then stop at once with the charger's `StartTransaction` answered
+`Blocked`, the gate was off — check that the id tag matches `AUTHORIZED_TAG_ID_LIST`.
+
 ## Home Assistant
 
 Over MQTT, as the device "Charger U1HKP": `sensor.wa_ocpp_status`, `sensor.wa_ocpp_power` (kW),

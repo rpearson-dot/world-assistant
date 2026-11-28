@@ -238,9 +238,10 @@ async def _last_energy(conn: Any, cid: str) -> float | None:
 # --- commands: publish to ocpp2mqtt -------------------------------------------------------------------------------
 
 # WA action -> ocpp2mqtt action name (snake_case) and how to shape its args.
-async def publish_command(engine: Any, cid: str, action: str, args: dict[str, Any]) -> dict[str, Any]:
+async def publish_command(engine: Any, cid: str, action: str, args: Any) -> dict[str, Any]:
     """Publish one command to ocpp2mqtt's cmd topic. The charger's answer is asynchronous (logged from cmd_result),
-    so this reports that the command was sent, not the charger's reply."""
+    so this reports that the command was sent, not the charger's reply. `args` is a dict for OCPP commands, or a
+    bare value for ocpp2mqtt's own locals such as charging_enabled."""
     conf, _ = await load(engine)
     if not conf.active:
         return {"ok": False, "error": "no MQTT broker configured (Settings -> Home Assistant)"}
@@ -258,24 +259,29 @@ async def publish_command(engine: Any, cid: str, action: str, args: dict[str, An
     return {"ok": True, "answer": None, "sent": {"action": action, "args": args}, "error": None}
 
 
+async def set_enabled(engine: Any, cid: str, on: bool) -> dict[str, Any]:
+    """Flip ocpp2mqtt's own `charging_enabled` gate. It authorizes a StartTransaction only while this is ON (and the
+    id tag is allowed), so a RemoteStart with it OFF is answered Blocked and the charger stops. It is an ocpp2mqtt
+    local (it does not reach the charger)."""
+    return await publish_command(engine, cid, "charging_enabled", "ON" if on else "OFF")
+
+
 async def apply_mode(engine: Any, cid: str, mode: str, reason: str = "") -> dict[str, Any]:
-    """Off makes the charger unavailable (stopping a session first); On makes it available and starts a session; Auto
-    makes it available and leaves starting/stopping to the planner. Published to ocpp2mqtt."""
+    """Off blocks charging (stopping a session first); On allows it and starts a charge; Auto blocks it until the
+    planner decides to charge. The lever is ocpp2mqtt's `charging_enabled` plus RemoteStart/Stop — not
+    ChangeAvailability, which this charger ignores. The charger does not free-vend, so "allowed but not started" never
+    charges on its own."""
     done: dict[str, Any] = {}
-    if mode == "off":
-        # The ocpp library's RemoteStopTransaction needs the transaction id, so only stop when a session is open.
+    if mode == "on":
+        done["start"] = await command(engine, cid, "RemoteStartTransaction",
+                                      protocol.command_payload("RemoteStartTransaction", {}, transaction_id=None))  # fmt: skip
+    else:  # off and auto both block; off also stops anything running (command() turns the gate off after a stop)
         async with engine.connect() as conn:
             tid = await store.open_transaction(conn, cid)
-        if tid is not None:
-            done["stop"] = await publish_command(engine, cid, "remote_stop_transaction", {"transaction_id": int(tid)})
-        done["availability"] = await publish_command(engine, cid, "change_availability",
-                                                     {"connector_id": 0, "type": "Inoperative"})  # fmt: skip
-    else:
-        done["availability"] = await publish_command(engine, cid, "change_availability",
-                                                     {"connector_id": 0, "type": "Operative"})  # fmt: skip
-        if mode == "on":
-            done["start"] = await publish_command(engine, cid, "remote_start_transaction",
-                                                 {"connector_id": 1, "id_tag": protocol.ID_TAG})  # fmt: skip
+        if mode == "off" and tid is not None:
+            done["stop"] = await command(engine, cid, "RemoteStopTransaction", {"transactionId": int(tid)})
+        else:
+            done["enabled"] = await set_enabled(engine, cid, False)
     with contextlib.suppress(Exception):
         async with engine.begin() as conn:
             await store.event(conn, cid, "mode", f"Set to {mode.capitalize()}" + (f" ({reason})" if reason else ""),
@@ -284,11 +290,18 @@ async def apply_mode(engine: Any, cid: str, mode: str, reason: str = "") -> dict
 
 
 async def command(engine: Any, cid: str, action: str, args: dict[str, Any]) -> dict[str, Any]:
-    """Translate a World Assistant OCPP command into ocpp2mqtt's snake_case command and publish it."""
+    """Translate a World Assistant OCPP command into ocpp2mqtt's snake_case command and publish it. A RemoteStart is
+    preceded by enabling the gate (or ocpp2mqtt answers the resulting StartTransaction Blocked); a RemoteStop is
+    followed by disabling it, so the charger cannot be re-authorized until World Assistant asks again."""
     name = _ACTIONS.get(action)
     if name is None:
         return {"ok": False, "error": f"{action} is not available over ocpp2mqtt"}
-    return await publish_command(engine, cid, name, _shape(action, args))
+    if name == "remote_start_transaction":
+        await set_enabled(engine, cid, True)
+    out = await publish_command(engine, cid, name, _shape(action, args))
+    if name == "remote_stop_transaction":
+        await set_enabled(engine, cid, False)
+    return out
 
 
 _ACTIONS = {"RemoteStartTransaction": "remote_start_transaction", "RemoteStopTransaction": "remote_stop_transaction",
