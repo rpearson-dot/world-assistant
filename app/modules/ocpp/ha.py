@@ -4,7 +4,8 @@ publishes (on every change) and listens for the switch.
 
 Entity ids: sensor.wa_ocpp_status, sensor.wa_ocpp_power, sensor.wa_ocpp_energy, sensor.wa_ocpp_session_energy,
 sensor.wa_ocpp_current, sensor.wa_ocpp_error, sensor.wa_ocpp_last_boot, binary_sensor.wa_ocpp_connected,
-switch.wa_ocpp_charging. The charging plan (homeassistant/packages/wa_ev_plan.yaml) uses them when they are there.
+switch.wa_ocpp_charging. World Assistant's own planner drives the charger; these entities are for Home Assistant to
+show its state and, if you want, control it from there.
 """
 
 from __future__ import annotations

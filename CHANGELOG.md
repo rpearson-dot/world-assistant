@@ -4,6 +4,49 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.70.1] - 2026-11-23
+
+### Removed
+
+- **The Home Assistant car-charging and bus packages/dashboards, which World Assistant now owns.** Gone from `/ha`
+  (and the SMB copy): `packages/wa_ev_plan.yaml` (the car-charging automation — it polled the charger every minute
+  and wrote the logbook every five, a steady source of Home Assistant log growth), `packages/world_assistant_ev.yaml`
+  and `dashboards/leaf.yaml` (the public "chargers near you" finder), `packages/world_assistant_bus.yaml` and
+  `dashboards/trains-buses.yaml` (bus-time settings and the bus/departure boards). The car grid was removed from
+  `dashboards/home-charging.yaml`, leaving its battery/solar/tariff plan. Charging is driven by World Assistant's own
+  planner now (over its OCPP server or the ocpp2mqtt bridge). World Assistant still publishes the bus, train and
+  charger sensors over MQTT; only the Home Assistant copy of this logic is removed.
+
+### Changed
+
+- **Gear cables, brake cables and bar tape are no longer flagged by age.** Their life is now distance only (cables
+  5,000 km; bar tape is no longer reminded at all, though its fitted date is still kept on the part). Time-based
+  services and checks — brake-fluid bleed, tubeless sealant, suspension services, tyre-pressure check and the rest —
+  keep their intervals. (This also removes a wall-clock dependency that was about to make a bike part read as due a
+  year after fitting regardless of use.)
+
+### Fixed
+
+- **`docker-compose.ocpp2mqtt.yml` no longer requires the bundled MQTT broker.** The overlay declared
+  `depends_on: wa-mqtt`, which is only a service when `docker-compose.mqtt.yml` is included; with your own or Home
+  Assistant's broker (no bundled one) compose rejected the whole project ("depends on undefined service wa-mqtt").
+  The dependency is removed — ocpp2mqtt reconnects to MQTT on its own — so the bridge starts against whichever broker
+  `WA_MQTT_HOST` points at.
+- **The Charger page no longer shows "Offline" on the ocpp2mqtt backend.** The overview gated "connected" on the
+  built-in server's Redis WebSocket-holder key, which ocpp2mqtt never sets (the charger connects to that container,
+  not here). On the ocpp2mqtt backend it now trusts the connection state the bridge records.
+- **Auto drives the charger through the active backend.** The planner's Auto start/stop always called the built-in
+  WebSocket server; on the ocpp2mqtt backend it now publishes RemoteStart/Stop through the bridge, so Auto charging
+  reaches a charger connected to ocpp2mqtt.
+- **The Auto description names World Assistant, not Home Assistant.** With "act" on it is World Assistant's own
+  planner that starts and stops the charger, so the Charger page says so.
+- **ocpp2mqtt charges now, instead of answering its own StartTransaction "Blocked".** ocpp2mqtt has its own
+  `charging_enabled` gate (default OFF); it authorises a transaction only while that is ON and the id tag is allowed,
+  so a RemoteStart was accepted by the charger but then immediately blocked by the bridge. World Assistant now drives
+  that gate: it is turned ON before every RemoteStart and OFF after every stop (and for Off/Auto), through the bridge,
+  so the API, the On switch and the planner all work. ChangeAvailability — which this charger ignores — is no longer
+  used for the mode; `charging_enabled` + RemoteStart/Stop is the lever.
+
 ## [0.70.0] - 2026-11-23
 
 ### Added

@@ -10,12 +10,8 @@
       "sha256": "cc1e311d9753e7702784fedd5779b8394df31454fff1704f5bf22eec54ee88ce"
     },
     "dashboards/home-charging.yaml": {
-      "changed_in": "0.53.0",
-      "sha256": "d67749380218cc4604990ab1be1d31ae464ce75d2bc454f02a34b94cd772a76a"
-    },
-    "dashboards/leaf.yaml": {
-      "changed_in": "0.52.0",
-      "sha256": "364b962ef1179d4d101ee3a64f1b2db9005a94bbc33fd9547b2a7871910b21c0"
+      "changed_in": "0.70.1",
+      "sha256": "28f5edde4dae65c927d0675f7334bdc29e8446a9ca5217fd720f557282792593"
     },
     "dashboards/manage.yaml": {
       "changed_in": "0.7.5",
@@ -29,25 +25,9 @@
       "changed_in": "0.7.3",
       "sha256": "58fc495a4decb4df4dc88f5bdbee527a01bdb3c5af5a62265fca8dc7768d3552"
     },
-    "dashboards/trains-buses.yaml": {
-      "changed_in": "0.12.0",
-      "sha256": "20945a2c3a1d253aa65a7a95baa88b6bd81713ea82db819e68530c00c952ffe2"
-    },
     "packages/wa_energy_plan.yaml": {
       "changed_in": "0.31.0",
       "sha256": "7366e744dd9e52593782f0ec313062bd66f2cd9a43dab056bf182393b82b1ad6"
-    },
-    "packages/wa_ev_plan.yaml": {
-      "changed_in": "0.57.0",
-      "sha256": "6321daf708f02a1c65b5c0fb577f4faede199e3572db2c7ef23a0493e93d1b40"
-    },
-    "packages/world_assistant_bus.yaml": {
-      "changed_in": "0.7.5",
-      "sha256": "cd6a1975e53ea51455bd7389fd7919d4a5452f6a369cba0c0ddea0429ef269e9"
-    },
-    "packages/world_assistant_ev.yaml": {
-      "changed_in": "0.23.0",
-      "sha256": "3bb33af1f30426377f754cee81f3fb4782b6191ded2315ea9321f6f51d45c6f6"
     },
     "packages/world_assistant_events.yaml": {
       "changed_in": "0.23.5",

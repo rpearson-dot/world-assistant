@@ -50,11 +50,18 @@ async def overview(request: Request) -> dict[str, Any]:
         sessions = {r[0]: dict(r._mapping) for r in (await conn.execute(text(
             "SELECT DISTINCT ON (charger) charger, transaction_id, started_at, stopped_at, meter_start_wh, last_meter_wh, "
             "meter_stop_wh, last_power_w, reason FROM ocpp_session ORDER BY charger, started_at DESC"))).all()}  # fmt: skip
+    backend = str(st.get("backend") or "builtin")
     out = []
     for r in rows:
-        held = bool(await request.app.state.redis.get(server.holder_key(r["id"])))
+        # Built-in: the charger is only really connected while an api process holds its live WebSocket (a Redis
+        # holder key). ocpp2mqtt: the charger connects to that container, not here, so trust the stored flag the
+        # bridge sets from ocpp2mqtt's connection_state.
+        if backend == "ocpp2mqtt":
+            connected = bool(r["connected"])
+        else:
+            connected = bool(r["connected"]) and bool(await request.app.state.redis.get(server.holder_key(r["id"])))
         out.append({**{k: r[k] for k in ("id", "status", "error_code", "connected", "heartbeat_s")},
-                    "connected": bool(r["connected"]) and held, "first_seen": r["first_seen"], "last_seen": r["last_seen"],
+                    "connected": connected, "first_seen": r["first_seen"], "last_seen": r["last_seen"],
                     "connected_at": r["connected_at"], "booted_at": r["booted_at"], "boot": r["boot"], "meter": r["meter"],
                     "status_info": r["status_info"], "config": r["config"], "week": week.get(r["id"], {"boots": 0, "drops": 0, "faults": 0}),
                     "session": sessions.get(r["id"])})  # fmt: skip

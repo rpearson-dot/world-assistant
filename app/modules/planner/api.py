@@ -228,15 +228,26 @@ async def act(engine: Any, redis: Any, plan: str, info: dict[str, Any]) -> str |
     if not cid:
         return "not acted: the charger is not on World Assistant's OCPP"
     async with engine.connect() as conn:
-        if (await ostore.settings(conn)).get("mode", "auto") != "auto":
+        st = await ostore.settings(conn)
+        if st.get("mode", "auto") != "auto":
             return None  # Off and On are the switch's own
+        backend = str(st.get("backend") or "builtin")
         tid = await ostore.open_transaction(conn, cid)
     await redis.set(server.wanted_key(cid), "1" if plan == "charge" else "0", ex=86400)
+
+    async def send(action: str, payload: dict[str, Any]) -> dict[str, Any]:
+        # The charger connects to whichever backend is in charge; drive that one (the built-in WebSocket server, or
+        # the ocpp2mqtt bridge over MQTT), not always the built-in one.
+        if backend == "ocpp2mqtt":
+            from app.modules.ocpp import bridge
+            return await bridge.command(engine, cid, action, payload)
+        return await server.ask(redis, cid, action, payload)
+
     if plan == "charge" and tid is None:
-        r = await server.ask(redis, cid, "RemoteStartTransaction", protocol.command_payload("RemoteStartTransaction", {}, transaction_id=None))
+        r = await send("RemoteStartTransaction", protocol.command_payload("RemoteStartTransaction", {}, transaction_id=None))
         return "started" if _accepted(r) else f"start refused: {r.get('error') or r.get('answer')}"
     if plan in ("wait", "full") and tid is not None:
-        r = await server.ask(redis, cid, "RemoteStopTransaction", {"transactionId": tid})
+        r = await send("RemoteStopTransaction", {"transactionId": tid})
         return "stopped" if _accepted(r) else f"stop refused: {r.get('error') or r.get('answer')}"
     return None
 

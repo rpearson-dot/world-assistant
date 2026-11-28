@@ -31,11 +31,8 @@ of order, how many on average and at worst.
 
 ## Home Assistant
 
-Every site is published nationwide in map tiles (`sensor.wa_ev_tile_*`) with a summary (`sensor.wa_ev_summary`). The
-Leaf dashboard's **Chargers near you** lists the nearest to whoever is looking (their phone while away, else home), for
-the connector picked (the car's by default). The EV package (`world_assistant_ev.yaml`) adds the picker and
-`sensor.wa_nearest_free_charger` for automations, measured from one person (`input_text.wa_ev_person`) or home.
-See [home-assistant.md](home-assistant.md).
+Every site is published nationwide in map tiles (`sensor.wa_ev_tile_*`) with a summary (`sensor.wa_ev_summary`,
+including `my_connector`, your car's connector) for your own automations. See [home-assistant.md](home-assistant.md).
 
 ## Counting chargers
 

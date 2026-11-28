@@ -457,19 +457,19 @@ def test_ocpp2mqtt_apply_mode_publishes_the_right_commands(db: str, monkeypatch:
     async def go() -> None:
         engine = create_async_engine(URL)  # type: ignore[arg-type]
         try:
-            # off with no session open: only make the charger unavailable (no RemoteStop without a transaction id)
+            # off with no session open: just block charging (no RemoteStop without a transaction id)
             calls.clear()
             await bridge.apply_mode(engine, "U1HKP", "off")
-            assert calls == [("change_availability", {"connector_id": 0, "type": "Inoperative"})]
-            # on: make available, then start a charge with World Assistant's tag
+            assert calls == [("charging_enabled", "OFF")]
+            # on: enable the gate, then start a charge with World Assistant's tag (command() enables before starting)
             calls.clear()
             await bridge.apply_mode(engine, "U1HKP", "on")
-            assert calls == [("change_availability", {"connector_id": 0, "type": "Operative"}),
+            assert calls == [("charging_enabled", "ON"),
                              ("remote_start_transaction", {"connector_id": 1, "id_tag": protocol.ID_TAG})]
-            # auto: just make it available; the planner decides when to charge
+            # auto: block until the planner decides to charge (the charger does not free-vend)
             calls.clear()
             await bridge.apply_mode(engine, "U1HKP", "auto")
-            assert calls == [("change_availability", {"connector_id": 0, "type": "Operative"})]
+            assert calls == [("charging_enabled", "OFF")]
         finally:
             await engine.dispose()
 

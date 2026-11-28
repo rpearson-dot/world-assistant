@@ -51,7 +51,7 @@ Over MQTT (retained, with discovery):
 | Device | Sensors |
 |---|---|
 | **Fuel prices** | `<fuel>: national median` (with the cheapest station in attributes), and one `<fuel> tile` sensor per half-degree map square (roughly 55 by 35 km). A tile's state is how many stations it holds; its attributes list every station with price, brand, postcode and coordinates, cheapest first. Petrol (E10) and diesel. Prices up to 30 days old are published (`WA_HA_FUEL_MAX_AGE_H`), each with its age in hours (`age_h`), because most stations only report a price when it changes; a tile too big for Home Assistant's 16 KB attribute limit is split into `…_p2`, `…_p3`. The national median uses only prices under 48 hours old. The Fuel dashboard shows prices up to a week old within 16 km by default and marks ones older than two days with ⚠️; change `radius_km` and `max_age_h` at the top of the card. A dropdown at the top picks Petrol or Diesel (add `homeassistant/packages/world_assistant_fuel.yaml` to your packages folder; the choice is shared by everyone who opens the dashboard). |
-| **EV chargers** (GRIDSERVE module) | `EV chargers` (`sensor.wa_ev_summary`: how many sites, chargers working and free, and `my_connector`, the connector set for your electric vehicle on the Vehicles page), and one `EV chargers tile` sensor per degree square (`sensor.wa_ev_tile_<lat>_<lon>`) listing each site with its position, chargers working and free in all and by connector (`by`: [total, working, free, kW]), whether it is open now, the fastest, the price per kWh and how often one has been out of order lately (`broken`, a share of the last 30 days' readings). The Leaf dashboard's **Chargers near you** card lists the nearest for whoever is looking (their phone while away, else home). The EV package (`homeassistant/packages/world_assistant_ev.yaml`) adds a connector picker (the car's, any, CCS, CHAdeMO, Type 2), `sensor.wa_chargers_near` (the sites within 50 km of one person, set in `input_text.wa_ev_person`; with none set, the only person, else home) and `sensor.wa_nearest_free_charger` (the nearest open site with a free charger, with distance, price and position) for automations. |
+| **EV chargers** (GRIDSERVE module) | `EV chargers` (`sensor.wa_ev_summary`: how many sites, chargers working and free, and `my_connector`, the connector set for your electric vehicle on the Vehicles page), and one `EV chargers tile` sensor per degree square (`sensor.wa_ev_tile_<lat>_<lon>`) listing each site with its position, chargers working and free in all and by connector (`by`: [total, working, free, kW]), whether it is open now, the fastest, the price per kWh and how often one has been out of order lately (`broken`, a share of the last 30 days' readings). These are raw sensors for your own automations. |
 | **Trains and buses** | For each departure board you have set up: `<board>: next departure` (minutes; the next services are in attributes) and `<board>: delayed or cancelled` (a count). Bus tracker sensors keep their own device (see [bus.md](bus.md)). |
 | **Roads** | `Live road events`, one `<corridor>: active works` sensor per enabled National Highways corridor, and one `Road events tile` sensor per half-degree map square that has any. A tile's attributes list its closures and speed restrictions (unplanned ones, plus planned works starting within a week) with road, direction, description, times and positions. |
 | **Trips** | For each trip with a route: `<trip>: conditions` (clear, minor, disrupted or severe, with the summary and the items behind it as attributes) and `<trip>: planned works` (a count; the next start in attributes). See [trip-conditions.md](trip-conditions.md). |
@@ -167,9 +167,8 @@ Neither needs any per-person setup, and neither package writes a secret into its
    ```
 2. Copy `homeassistant/packages/world_assistant_pollen.yaml` and
    `homeassistant/packages/world_assistant_events.yaml` to `/config/packages/`. Optional, for the matching
-   dashboards: `world_assistant_fuel.yaml` (the Petrol/Diesel dropdown), `world_assistant_manage.yaml`
-   (add places and routes; needs the events package too) and `world_assistant_bus.yaml` (change the bus
-   tracker's times). The events, bus and routes packages each carry a small automation or script, so if your
+   dashboards: `world_assistant_fuel.yaml` (the Petrol/Diesel dropdown) and `world_assistant_manage.yaml`
+   (add places and routes; needs the events package too). The events and routes packages each carry a small automation or script, so if your
    `configuration.yaml` has `automation:` or `script:` of its own, make sure they are lists/maps that
    packages can merge into (the usual `!include automations.yaml` works).
 3. In `/config/secrets.yaml`, add these lines (the address is your server's and `WA_API_PORT`, default
@@ -219,7 +218,7 @@ a stopped worker shows as unavailable rather than as old numbers that look curre
 
 Ready-made dashboards use only Home Assistant's built-in cards (no HACS):
 
-- In [`homeassistant/dashboards/`](../homeassistant/dashboards): `fuel.yaml`, `trains-buses.yaml`,
+- In [`homeassistant/dashboards/`](../homeassistant/dashboards): `fuel.yaml`,
   `roads.yaml`, `events.yaml`, `pollen.yaml` and `manage.yaml`. They find their entities by name, so they need no editing for
   boards or corridors. Fuel and roads have a `zone` and a radius at the top of each card, used when
   a viewer has no matching person. Fuel has a Petrol/Diesel dropdown (the fuel package). Manage needs the manage package. Events needs the events package; the pollen history graph needs the static pollen package.

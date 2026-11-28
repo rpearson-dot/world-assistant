@@ -156,8 +156,6 @@ def test_find_my_setup_reads_checks_and_names(db: None, monkeypatch: pytest.Monk
     names = {k: v["found"] for k, v in inv["names"].items() if v["found"]}
     saved = c.put("/v1/ha/names", headers=h, json={"names": names}).json()["names"]
     assert saved["inverter"] == "garage_deye" and saved["solar_today"] == "sensor.energy_production_today_2"
-    ev = c.get("/v1/ha/files/packages/wa_ev_plan.yaml", headers=h).text
-    assert "switch.wallbox_charge_control" in ev and "hv66bzd" not in ev and "sensor.charger_" not in ev
     plan = c.get("/v1/ha/files/packages/wa_energy_plan.yaml", headers=h).text
     assert "office_inverter" not in plan and "sensor.energy_production_tomorrow_2" in plan
     assert c.get("/v1/ha/setup", headers=h).json()["names"]["ovms_vehicle"] == "ab12cde"
