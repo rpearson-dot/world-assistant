@@ -78,6 +78,10 @@ def discovery(prefix: str, disc_prefix: str, device: Device, expire_after: int) 
                      ("device_class", s.device_class), ("state_class", s.state_class)):  # fmt: skip
             if v:
                 payload[k] = v
+        if s.device_class in ("timestamp", "date"):
+            # These parse the payload, and an empty one (our "no value") is logged as an "Invalid state message".
+            # Render a blank to unknown instead, so a sensor with nothing scheduled is quietly unknown, not an error.
+            payload["value_template"] = "{{ value if value else none }}"
         out.append((f"{disc_prefix}/sensor/{uid}/config", json.dumps(payload), True))
     return out
 

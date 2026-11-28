@@ -28,6 +28,15 @@ def test_discovery_has_expiry_unique_ids_and_only_set_fields() -> None:
     assert a["device"]["identifiers"] == ["world_assistant_pollen"]
 
 
+def test_timestamp_sensors_render_a_blank_to_unknown() -> None:
+    # An empty payload is "Invalid state message" for a timestamp/date sensor; a value_template turns blank into
+    # unknown so "nothing scheduled" is quiet. Other sensors get no template.
+    dev = Device("energy", "Energy", [Sensor("t", "T", None, device_class="timestamp"), Sensor("n", "N", 5)])
+    t, n = (json.loads(m[1]) for m in ha.discovery("wa", "homeassistant", dev, 900))
+    assert t["value_template"] == "{{ value if value else none }}"
+    assert "value_template" not in n
+
+
 def test_states_are_retained_and_none_is_empty() -> None:
     dev = Device("d", "D", [Sensor("a", "A", None, attributes={"k": 1})])
     msgs = ha.states("wa", dev)

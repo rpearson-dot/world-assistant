@@ -4,6 +4,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
 
 ## [Unreleased]
 
+## [0.70.2] - 2026-11-28
+
+### Fixed
+
+- **Two Home Assistant log warnings from World Assistant's own sensors.**
+  - Timestamp sensors (the next saving-session / free-electricity start times) logged `Invalid state message ''`
+    whenever nothing was scheduled, because an empty payload cannot be parsed as a time. Their MQTT discovery now
+    renders a blank to *unknown* instead, so "nothing scheduled" is quiet.
+  - The `sensor.wa_events_home_upcoming` REST sensor (events near your home zone, in `world_assistant_events.yaml`)
+    stored up to 20 events as attributes, which could exceed Home Assistant's 16 KB attribute cap — HA then dropped
+    the attributes and warned about recorder performance. The default is now 10 events; for a longer list, exclude
+    that sensor from the recorder and raise it.
+
 ## [0.70.1] - 2026-11-23
 
 ### Removed
