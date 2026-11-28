@@ -17,6 +17,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow 
   planner now (over its OCPP server or the ocpp2mqtt bridge). World Assistant still publishes the bus, train and
   charger sensors over MQTT; only the Home Assistant copy of this logic is removed.
 
+### Changed
+
+- **Gear cables, brake cables and bar tape are no longer flagged by age.** Their life is now distance only (cables
+  5,000 km; bar tape is no longer reminded at all, though its fitted date is still kept on the part). Time-based
+  services and checks — brake-fluid bleed, tubeless sealant, suspension services, tyre-pressure check and the rest —
+  keep their intervals. (This also removes a wall-clock dependency that was about to make a bike part read as due a
+  year after fitting regardless of use.)
+
 ### Fixed
 
 - **`docker-compose.ocpp2mqtt.yml` no longer requires the bundled MQTT broker.** The overlay declared

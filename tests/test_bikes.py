@@ -295,6 +295,9 @@ def test_due_parts_go_on_the_outdoors_list_once_and_not_with_a_spare(garage: Any
     from app.main import app
     from app.modules.bikes import api as A
 
+    # Pin "now" so the test does not depend on the wall clock: parts are due at 90% of their life, so a fixed fitted
+    # date plus the real date would make any time-lifed part cross the line as the year wears on.
+    monkeypatch.setattr(A, "_now", lambda: T0 + timedelta(days=60))
     c = garage
     c.post("/v1/bikes/riders", json={"name": "Rob"})
     bike = c.post("/v1/bikes/bikes", json={"rider": "rob", "label": "Road", "fitted_at": "2026-01-01"}).json()
